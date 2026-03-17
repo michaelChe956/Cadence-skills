@@ -7,14 +7,17 @@ REM   双击运行 install-offline.bat
 REM   或在命令行中执行: install-offline.bat
 REM
 REM 作者: Cadence Team
-REM 版本: v1.0
+REM 版本: v1.1
+REM 更新记录:
+REM   v1.1 (2025-03-17): 修复步骤4的 JSON 配置生成语法错误
+REM   v1.0: 初始版本
 REM ################################################################################
 
 setlocal enabledelayedexpansion
 
 REM 打印横幅
 echo ============================================================
-echo   Cadence Skills 离线安装脚本 v1.0 (Windows)
+echo   Cadence Skills 离线安装脚本 v1.1 (Windows)
 echo ============================================================
 echo.
 
@@ -84,6 +87,7 @@ echo   ✅ 复制完成
 echo.
 
 REM 步骤 4: 配置 known_marketplaces.json
+REM 修复：使用单行 PowerShell 命令避免批处理续行符问题 (v1.1)
 echo 🔨 步骤 4: 配置 known_marketplaces.json
 
 set "PLUGINS_DIR=%USERPROFILE%\.claude\plugins"
@@ -95,56 +99,13 @@ if not exist "%PLUGINS_DIR%" (
     echo   ✅ 已创建: %PLUGINS_DIR%
 )
 
-REM 获取当前时间戳（UTC格式）
-for /f "usebackq" %%i in (`powershell -Command "Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.000Z' -AsUTC"`) do set CURRENT_TIMESTAMP=%%i
-
-REM 检查文件是否存在
-if not exist "%MARKETPLACES_FILE%" (
-    REM 文件不存在，创建新文件
-    echo   ℹ️  文件不存在，创建新文件
-
-    REM 使用 PowerShell 创建 JSON 文件
-    powershell -Command ^
-        "$json = @{ ^
-            'cadence-skills-local' = @{ ^
-                'source' = @{ ^
-                    'source' = 'github'; ^
-                    'repo' = 'cadence/cadence-skills-local' ^
-                }; ^
-                'installLocation' = '%TARGET_DIR:\=\\%'; ^
-                'lastUpdated' = '%CURRENT_TIMESTAMP%' ^
-            } ^
-        } | ConvertTo-Json -Depth 10; ^
-        $json | Out-File -FilePath '%MARKETPLACES_FILE%' -Encoding UTF8"
-
-    echo   ✅ 已创建配置文件
-) else (
-    REM 文件存在，追加或更新 cadence-skills-local 配置
-    echo   ℹ️  文件已存在，检查配置
-
-    REM 使用 PowerShell 检查和更新 JSON
-    powershell -Command ^
-        "$file = '%MARKETPLACES_FILE%'; ^
-         $json = Get-Content $file -Raw | ConvertFrom-Json; ^
-         ^
-         if ($json.PSObject.Properties.Match('cadence-skills-local')) { ^
-             Write-Host '  ℹ️  cadence-skills-local 配置已存在'; ^
-         } else { ^
-             Write-Host '  ℹ️  添加 cadence-skills-local 配置'; ^
-             $
-             Add-Member -InputObject $json -MemberType NoteProperty -Name 'cadence-skills-local' -Value @{ ^
-                 source = @{ ^
-                     source = 'github'; ^
-                     repo = 'cadence/cadence-skills-local' ^
-                 }; ^
-                 installLocation = '%TARGET_DIR:\=\\%'; ^
-                 lastUpdated = '%CURRENT_TIMESTAMP%' ^
-             }; ^
-             $
-             $json | ConvertTo-Json -Depth 10 | Out-File -FilePath $file -Encoding UTF8; ^
-             Write-Host '  ✅ 已添加 cadence-skills-local 配置'; ^
-         }"
-)
+REM 使用单行 PowerShell 命令处理 JSON（统一处理创建和更新场景）
+REM 命令说明：
+REM   - 读取现有 JSON 文件（如果存在），否则创建空对象
+REM   - 检查是否已存在 cadence-skills-local 配置项
+REM   - 不存在则添加配置，存在则跳过（保留用户修改）
+REM   - 保存 JSON 文件
+powershell -Command "$f='%MARKETPLACES_FILE%'; $p='%TARGET_DIR:\=/%'; if(Test-Path $f){$j=Get-Content $f -Raw | ConvertFrom-Json}else{$j=@{}}; if($j.PSObject.Properties.Match('cadence-skills-local')){Write-Host '  ℹ️  cadence-skills-local 配置已存在，跳过更新'}else{$t=[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.000Z'); $j | Add-Member -NotePropertyName 'cadence-skills-local' -NotePropertyValue @{source=@{source='github';repo='cadence/cadence-skills-local'};installLocation=$p;lastUpdated=$t} -Force; $j | ConvertTo-Json -Depth 10 | Out-File $f -Encoding UTF8; Write-Host '  ✅ 已添加 cadence-skills-local 配置'}"
 
 echo.
 
