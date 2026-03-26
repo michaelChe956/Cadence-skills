@@ -26,16 +26,56 @@
      - 指定下载目录
      - 使用已有的 serena 项目
 
+4. **playwright-cli** - Playwright CLI with SKILLS
+   - 检查是否全局安装 @playwright/cli
+   - 自动安装缺失的 playwright-cli
+   - 自动安装 Playwright skills
+
 ## serena github地址
 - https://github.com/oraios/serena.git
+
+## playwright-cli 安装
+
+### 检查命令
+
+```bash
+# 检查 playwright-cli 是否已安装
+which playwright-cli || npm list -g @playwright/cli
+```
+
+### 安装命令
+
+```bash
+# 全局安装 Playwright CLI
+npm install -g @playwright/cli@latest
+
+# 安装 Playwright Skills（供 Claude Code 等 coding agents 使用）
+playwright-cli install --skills
+```
+
+### 验证安装
+
+```bash
+# 验证 playwright-cli 安装成功
+playwright-cli --help
+
+# 验证 skills 安装成功（检查全局 skills 目录）
+ls ~/.claude/skills/playwright-cli 2>/dev/null || echo "Skills not found"
+```
+
+### 说明
+
+- **用途**：浏览器自动化测试、表单填写、截图、数据提取
+- **特点**：Token-efficient，不会强制将页面数据加载到 LLM
+- **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
 
 ## 检查流程
 
 ```dot
-检查 npx → 检查 uvx → 检查 serena → 用户选择 → 验证配置 → 完成
+检查 npx → 检查 uvx → 检查 serena → 用户选择 → 验证配置 → 检查 playwright-cli → 完成
 ```
 
-**重要**：所有三个步骤都必须完成，不允许跳过任何步骤。
+**重要**：所有四个步骤都必须完成，不允许跳过任何步骤。
 
 ## 输出
 
@@ -65,7 +105,8 @@
 ## 强制规则
 
 - 所有与用户的交互必须使用中文
-- 必须完成所有三个步骤（npx、uvx、serena）
+- 必须完成所有四个步骤（npx、uvx、serena、playwright-cli）
 - serena 配置必须询问用户选择，提供三个选项
 - 验证失败必须重新选择，不能跳过
 - 必须验证配置成功后才能继续
+- playwright-cli 安装失败必须提供手动安装命令
