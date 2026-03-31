@@ -20,6 +20,7 @@ description: "配置 Claude Code 规则：语言规则、文档规则、命名�
 5. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，需要用户确认
 6. **目录结构创建** — 创建 `.claude/` 子目录
 7. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
+8. **智普/MiniMax MCP 使用规则配置** — 配置智普 AI 和 MiniMax MCP 的使用规则（可选）
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -335,6 +336,214 @@ playwright-cli close
 - 添加规则前询问用户是否需要 Playwright 自动化功能
 - 如果不需要，跳过此步骤
 - 如果需要，写入 CLAUDE.md 前展示完整规则供确认
+
+### 8. 智普/MiniMax MCP 使用规则配置（可选）
+
+**检测条件**：
+- 用户需要图像分析、视频理解、UI 截图转代码等视觉 AI 能力
+- 用户需要网络搜索、网页内容抓取等联网能力
+- 用户需要 GitHub 开源仓库文档搜索和代码读取能力
+- 用户需要 MiniMax 的网络搜索和图片理解能力
+
+**添加以下规则到 CLAUDE.md**：
+
+````markdown
+## 智普/MiniMax MCP 使用规则（可选）
+
+> **⚠️ 可选配置** — 以下 MCP 需要对应平台的 API Key
+
+### API Key 安全提醒
+
+> **🔴 安全警告**
+> 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 Claude Code
+> 2. 配置文件中使用占位符，用户需自行替换为真实密钥
+> 3. `.mcp.json` 已在 `.gitignore` 中排除，不会提交到版本控制
+>
+> - 智普 API Key 获取地址：https://open.bigmodel.cn/usercenter/apikeys
+> - MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-plan
+
+### 智普视觉理解 MCP
+
+**用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断
+
+**触发场景**：
+- 需要分析本地图片或截图内容
+- UI 截图转换为前端代码
+- 从截图中提取文字（OCR）
+- 分析错误弹窗、堆栈截图
+- 解读架构图、流程图、UML 图
+- 分析数据可视化图表
+- 对比两张 UI 截图差异
+- 视频内容理解
+
+**工具列表**：
+
+| 工具名 | 功能 |
+|--------|------|
+| `ui_to_artifact` | 将 UI 截图转换为代码、提示词、设计规范 |
+| `extract_text_from_screenshot` | OCR 提取截图中的文字 |
+| `diagnose_error_screenshot` | 解析错误弹窗/堆栈截图，给出修复建议 |
+| `understand_technical_diagram` | 解读架构图、流程图、UML、ER 图 |
+| `analyze_data_visualization` | 分析仪表盘、统计图表 |
+| `ui_diff_check` | 对比两张 UI 截图差异 |
+| `image_analysis` | 通用图像理解 |
+| `video_analysis` | 视频场景解析（MP4/MOV/M4V，本地最大 8M） |
+
+**使用规则**：
+1. 图片建议放到本地目录，通过对话指定图片名称或路径来调用
+2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外）
+3. 需要安装最新版本（>= 0.1.2）
+
+**典型工作流**：
+```bash
+# 分析本地截图
+> 请分析 screenshot.png 的内容
+
+# UI 截图转代码
+> 请将 design.png 转换为 React 组件代码
+
+# OCR 提取文字
+> 提取 error-log.png 中的错误信息
+
+# 视频分析
+> 分析 demo.mp4 中的操作流程
+```
+
+### 智普联网搜索 MCP
+
+**用途**：网络搜索、实时信息获取
+
+**触发场景**：
+- 需要搜索最新技术文档或解决方案
+- 获取实时信息（新闻、更新日志等）
+- 查找特定技术问题的最佳实践
+
+**工具列表**：
+
+| 工具名 | 功能 |
+|--------|------|
+| `webSearchPrime` | 搜索网络信息，返回网页标题、URL、摘要、网站名称等 |
+
+**使用规则**：
+1. 基于 HTTP 协议的远程服务，无需本地安装运行时
+2. 搜索结果包含标题、URL、摘要等结构化信息
+
+**典型工作流**：
+```bash
+# 搜索技术方案
+> 帮我搜索 React Server Components 的最新最佳实践
+
+# 查找解决方案
+> 搜索 Node.js 内存泄漏的排查方法
+```
+
+### 智普网页读取 MCP
+
+**用途**：网页内容抓取、结构化数据提取
+
+**触发场景**：
+- 需要读取指定 URL 的网页完整内容
+- 提取 API 文档、技术文章的结构化内容
+- 解析开源项目页面（README、Release Notes）
+
+**工具列表**：
+
+| 工具名 | 功能 |
+|--------|------|
+| `webReader` | 抓取指定 URL 的网页内容，返回标题、正文、元数据、链接列表 |
+
+**使用规则**：
+1. 基于 HTTP 协议的远程服务，无需本地安装运行时
+2. 返回结构化数据，包含标题、正文、元数据等
+
+**典型工作流**：
+```bash
+# 读取 API 文档
+> 帮我读取 https://docs.example.com/api 的内容并总结要点
+
+# 解析项目页面
+> 读取这个 GitHub 仓库的 README 页面，提取安装步骤
+```
+
+### 智普开源仓库 MCP（ZRead）
+
+**用途**：GitHub 开源仓库文档搜索、代码结构获取、代码读取
+
+**触发场景**：
+- 需要了解某个开源库的使用方法或实现原理
+- 查看 GitHub 仓库的目录结构和文件列表
+- 读取 GitHub 仓库中指定文件的代码内容
+- 排查开源库的 Issue 和历史记录
+
+**工具列表**：
+
+| 工具名 | 功能 |
+|--------|------|
+| `search_doc` | 搜索 GitHub 仓库的知识文档、新闻、Issue、PR、贡献者等 |
+| `get_repo_structure` | 获取 GitHub 仓库的目录结构和文件列表 |
+| `read_file` | 读取 GitHub 仓库中指定文件的完整代码内容 |
+
+**使用规则**：
+1. 基于 HTTP 协议的远程服务（基于 zread.ai），无需本地安装运行时
+2. 支持搜索文档、浏览结构、读取代码三种操作
+
+**典型工作流**：
+```bash
+# 快速上手开源库
+> 搜索 langchain 仓库的文档，了解如何使用 RAG 功能
+
+# 查看仓库结构
+> 获取 facebook/react 仓库的目录结构
+
+# 读取源码
+> 读取 vercel/next.js 仓库中 packages/next/src/server/app-render 目录的代码
+```
+
+### MiniMax Token Plan MCP
+
+**用途**：网络搜索和图片理解
+
+**触发场景**：
+- 需要网络搜索获取实时信息
+- 需要理解和分析图片内容
+
+**前置条件**：需要 `uvx`（pre-check 已包含检查）
+
+**工具列表**：
+
+| 工具名 | 功能 |
+|--------|------|
+| `web_search` | 网络搜索，获取实时信息 |
+| `understand_image` | 图片理解和分析 |
+
+**环境变量**：
+
+| 变量 | 说明 | 必需 |
+|------|------|------|
+| `MINIMAX_API_KEY` | MiniMax API 密钥 | 是 |
+| `MINIMAX_API_HOST` | API 地址，固定为 `https://api.minimaxi.com` | 是 |
+| `MINIMAX_MCP_BASE_PATH` | 本地输出目录路径（需有写入权限） | 否 |
+| `MINIMAX_API_RESOURCE_MODE` | 资源提供方式：`url` 或 `local`，默认 `url` | 否 |
+
+**使用规则**：
+1. 基于 uvx 运行的本地 MCP 服务
+2. 验证配置：进入 Claude Code 后输入 `/mcp`，能看到 `web_search` 和 `understand_image` 说明配置成功
+
+**典型工作流**：
+```bash
+# 网络搜索
+> 搜索 Python 3.12 的新特性有哪些
+
+# 图片理解
+> 分析 architecture.png 中的系统架构设计
+```
+````
+
+**用户确认**：
+- 添加规则前询问用户是否需要智普/MiniMax MCP 能力
+- 如果不需要，跳过此步骤
+- 如果需要，展示 API Key 安全提醒，写入 CLAUDE.md 前展示完整规则供确认
+- 智普和 MiniMax 可以独立选择，不需要同时启用
 
 ## 核心原则
 

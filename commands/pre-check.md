@@ -31,6 +31,12 @@
    - 自动安装缺失的 playwright-cli
    - 自动安装 Playwright skills
 
+5. **API Key 配置提醒（可选）** - 智普/MiniMax MCP 密钥
+   - 询问用户是否需要智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）
+   - 询问用户是否需要 MiniMax Token Plan MCP（网络搜索/图片理解）
+   - 提醒用户自行获取 API Key，不验证密钥有效性
+   - 安全提醒：不要将 API Key 直接告诉 Claude Code
+
 ## serena github地址
 - https://github.com/oraios/serena.git
 
@@ -72,10 +78,10 @@ ls ~/.claude/skills/playwright-cli 2>/dev/null || echo "Skills not found"
 ## 检查流程
 
 ```dot
-检查 npx → 检查 uvx → 检查 serena → 用户选择 → 验证配置 → 检查 playwright-cli → 完成
+检查 npx → 检查 uvx → 检查 serena → 用户选择 → 验证配置 → 检查 playwright-cli → API Key 提醒（可选） → 完成
 ```
 
-**重要**：所有四个步骤都必须完成，不允许跳过任何步骤。
+**重要**：前四个步骤（npx、uvx、serena、playwright-cli）必须完成，不允许跳过。第五步 API Key 提醒为可选。
 
 ## 输出
 
@@ -105,8 +111,10 @@ ls ~/.claude/skills/playwright-cli 2>/dev/null || echo "Skills not found"
 ## 强制规则
 
 - 所有与用户的交互必须使用中文
-- 必须完成所有四个步骤（npx、uvx、serena、playwright-cli）
+- 必须完成所有四个基础步骤（npx、uvx、serena、playwright-cli）
 - serena 配置必须询问用户选择，提供三个选项
 - 验证失败必须重新选择，不能跳过
 - 必须验证配置成功后才能继续
 - playwright-cli 安装失败必须提供手动安装命令
+- API Key 配置提醒为可选步骤，不验证密钥有效性
+- 安全提醒：不要将 API Key 直接告诉 Claude Code

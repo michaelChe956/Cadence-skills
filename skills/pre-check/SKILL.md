@@ -14,8 +14,9 @@ disable-model-invocation: true
 
 **强制规则**：
 1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
-2. **必须完成所有三个检查** - 不允许跳过 npx/uvx/serena 任一步骤
+2. **必须完成所有三个基础检查** - 不允许跳过 npx/uvx/serena 任一步骤
 3. **serena 配置必须询问用户** - 提供三个选项让用户选择，验证失败必须重新选择
+4. **API Key 配置为可选步骤** - 询问用户是否需要智普/MiniMax MCP，仅做配置提醒
 
 ## 何时使用
 
@@ -66,6 +67,11 @@ digraph check_flow {
     validate_serena [label="验证配置", shape=diamond];
     serena_found [label="serena 就绪"];
 
+    // 步骤4（可选）
+    ask_apikey [label="⚠️ 询问是否需要智普/MiniMax MCP", shape=diamond];
+    remind_apikey [label="提醒获取 API Key\n并配置环境变量"];
+    skip_apikey [label="跳过"];
+
     end [label="检查完成", shape=ellipse];
 
     start -> check_npx;
@@ -84,7 +90,11 @@ digraph check_flow {
     validate_serena -> serena_found [label="验证成功"];
     validate_serena -> user_choice [label="验证失败（重新选择）"];
 
-    serena_found -> end;
+    serena_found -> ask_apikey;
+    ask_apikey -> remind_apikey [label="需要"];
+    ask_apikey -> skip_apikey [label="不需要"];
+    remind_apikey -> end;
+    skip_apikey -> end;
 }
 ```
 
@@ -95,6 +105,7 @@ digraph check_flow {
 | **1. npx** | `npx --version` | 输出版本号 | 自动安装稳定版本 |
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. serena** | 用户选择配置方式 | 路径验证通过 | 重新选择或输入路径 |
+| **4. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
 
 ### serena 默认目录
 
@@ -167,6 +178,32 @@ uvx --version
 3. 验证 `pyproject.toml` 存在且可读
 4. 全部通过 → 报告 "✓ serena 项目验证成功"
 5. 任一失败 → 报告错误，**返回步骤 3.1**
+
+### 步骤 4：API Key 配置提醒（可选）
+
+> **⚠️ 可选步骤** — 仅在用户需要智普/MiniMax MCP 时执行
+
+使用 AskUserQuestion 工具（**必须使用中文**）询问用户是否需要以下可选 MCP：
+
+**选项 1：需要智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）**
+- 提醒用户前往 https://open.bigmodel.cn/usercenter/apikeys 获取 API Key
+- 告知用户需要订阅 GLM Coding Plan
+- 报告 "⚠️ 请自行获取智普 API Key，稍后在 MCP 配置步骤中将使用此密钥"
+- **不验证密钥有效性，仅做提醒**
+
+**选项 2：需要 MiniMax Token Plan MCP（网络搜索/图片理解）**
+- 提醒用户前往 https://platform.minimaxi.com/subscribe/token-plan 订阅并获取 API Key
+- 报告 "⚠️ 请自行获取 MiniMax API Key，稍后在 MCP 配置步骤中将使用此密钥"
+- **不验证密钥有效性，仅做提醒**
+
+**选项 3：都不需要，跳过**
+- 报告 "✓ 跳过可选 MCP 配置"
+
+**安全提醒（如果用户选择了选项 1 或 2，必须展示）**：
+```
+🔴 安全提醒：请不要将 API Key 直接告诉 Claude Code。
+稍后在 MCP 配置步骤中，配置文件会使用占位符，您需要自行替换为真实密钥。
+```
 
 ## 常见错误
 
