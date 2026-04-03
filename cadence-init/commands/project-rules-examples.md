@@ -39,18 +39,18 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 **文件路径**：`.claude/project-rules/README.md`
 
-**文件内容**：`commands/init/project-rules/README.md`
+**文件内容**：`references/project-rules/README.md`
 
 ### 2. 创建 requirement-template.md
 
 **文件路径**：`.claude/project-rules/examples/requirement-template.md`
 
-**文件内容**：`commands/init/project-rules/examples/requirement-template.md`
+**文件内容**：`references/project-rules/examples/requirement-template.md`
 ### 3. 创建 design-template.md
 
 **文件路径**：`.claude/project-rules/examples/design-template.md`
 
-**文件内容**：`commands/init/project-rules/examples/design-template.md`
+**文件内容**：`references/project-rules/examples/design-template.md`
 
 **生成要求**：
 
@@ -63,7 +63,7 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 **文件路径**：`.claude/project-rules/examples/coding-standards.md`
 
-**文件内容**：`commands/init/project-rules/examples/coding-standards.md`
+**文件内容**：`references/project-rules/examples/coding-standards.md`
 
 **生成要求**：
 
@@ -76,7 +76,7 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 **文件路径**：`.claude/project-rules/examples/test-standards.md`
 
-**文件内容**：`commands/init/project-rules/examples/test-standards.md`
+**文件内容**：`references/project-rules/examples/test-standards.md`
 
 ### 6. 添加 CLAUDE.md 规则
 
@@ -86,7 +86,7 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 **添加位置**：在 CLAUDE.md的最末位置，添加一个新的章节 `### 项目个性化规则`
 
-**添加内容**：`commands/init/project-rules/CLAUDE-RULE.md`
+**添加内容**：`references/project-rules/CLAUDE-RULE.md`
 
 ## 核心原则
 
