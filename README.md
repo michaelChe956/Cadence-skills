@@ -115,6 +115,13 @@ sudo apt install claude-code
 
 ## 安装
 
+Cadence 由两个独立插件组成：
+
+| 插件 | 说明 |
+|------|------|
+| **cadence-init** | 项目初始化 — 环境检查、项目分析、规则配置、MCP 配置、Skill 创建 |
+| **cadence-workflow** | 开发工作流 — 完整/快速/探索流程、TDD、代码审查、进度追踪 |
+
 ### 方式 1: 通过插件市场安装（推荐）
 
 在 Claude Code 中，首先注册市场：
@@ -123,19 +130,20 @@ sudo apt install claude-code
 /plugin marketplace add michaelChe956/Cadence-skills
 ```
 
-然后从这个市场安装插件：
+然后分别安装两个插件：
 
 ```bash
-/plugin install cadence@cadence-skills-marketplace
+/plugin install cadence-init@cadence-skills-marketplace
+/plugin install cadence-workflow@cadence-skills-marketplace
 ```
 
-### 方式 2: 从源码安装
+> 两个插件可以独立安装。如果只需要项目初始化功能，安装 `cadence-init` 即可；如果只需要开发工作流，安装 `cadence-workflow` 即可。推荐同时安装以获得完整体验。
 
-如果你想从源代码安装，可以使用以下步骤：
+### 方式 2: 离线安装
+
+适用于无法访问 GitHub 或需要在内网环境部署的场景。
 
 #### 步骤 1: 获取项目代码
-
-你可以通过以下任意方式获取项目代码：
 
 **方式 A: 使用 Git 克隆（推荐）**
 ```bash
@@ -150,7 +158,7 @@ cd Cadence-skills
 
 #### 步骤 2: 运行安装脚本
 
-项目提供了跨平台安装脚本：
+项目提供了跨平台安装脚本（v2.0，已适配双插件结构）：
 
 **Linux/macOS**：
 ```bash
@@ -164,48 +172,48 @@ chmod +x install-offline.sh
 install-offline.bat
 ```
 
-安装脚本会自动将项目安装到 `~/.claude/plugins/marketplaces/cadence-skills-local/` 目录。
+安装脚本会自动完成：
+- 将 `cadence-init` 和 `cadence-workflow` 安装到 `~/.claude/plugins/marketplaces/cadence-skills-local/`
+- 配置 `known_marketplaces.json` 注册本地 marketplace
+- 设置 `cadence-workflow/hooks/session-start` 的执行权限（macOS/Linux）
 
 #### 步骤 3: 配置项目启用插件
 
-在需要使用 Cadence 插件的项目目录中，执行以下操作：
+在需要使用 Cadence 插件的项目目录中：
 
 1. **创建 `.claude/` 目录**：
 ```bash
 mkdir -p .claude
 ```
 
-2. **创建 `settings.json` 文件**：
-```bash
-# Linux/macOS
-touch .claude/settings.json
-
-# Windows
-type nul > .claude\settings.json
-```
-
-3. **复制以下内容到 `settings.json` 文件**：
+2. **创建 `settings.json` 并启用插件**：
 ```json
 {
   "enabledPlugins": {
-    "cadence@cadence-skills-local": true
+    "cadence-init@cadence-skills-local": true,
+    "cadence-workflow@cadence-skills-local": true
   }
 }
 ```
 
-完成以上步骤后，重启 Claude Code 即可在该项目中使用 Cadence 插件。
+完成后重启 Claude Code 即可使用。
 
 #### 步骤 4: 更新插件
 
-如果需要更新插件，重复步骤 1 到步骤 3。
+拉取最新代码后重新运行安装脚本即可：
+
+```bash
+git pull
+./install-offline.sh  # 或 install-offline.bat
+```
 
 ### 验证安装
 
-在你选择的平台中开始一个新会话，请求一些应该触发 Skill 的内容（例如，"帮我规划这个功能"或"让我们调试这个问题"）。助手应该自动调用相关的 Cadence Skills。
+开始一个新会话，请求一些应该触发 Skill 的内容（例如，"帮我规划这个功能"或"让我们调试这个问题"）。助手应该自动调用相关的 Cadence Skills。
 
-## 项目初始化
+## 项目初始化（cadence-init 插件）
 
-> **重要**：安装完成后，强烈建议执行以下初始化步骤，确保项目环境正确配置。
+> **重要**：安装完成后，强烈建议执行以下初始化步骤，确保项目环境正确配置。以下命令均来自 `cadence-init` 插件。
 
 ### 步骤 1：前置条件检查
 
@@ -222,20 +230,7 @@ type nul > .claude\settings.json
 - ✅ 自动安装缺失的工具
 - ✅ 引导您完成 serena 项目配置
 
-### 步骤 2：项目初始化
-
-执行 `/init` 命令，初始化项目环境：
-
-```bash
-/init
-```
-
-该命令会：
-- ✅ 检测项目类型和技术栈
-- ✅ 创建 `.claude/` 目录结构
-- ✅ 配置项目规则和模板
-
-### 步骤 3：项目分析
+### 步骤 2：项目分析
 
 执行 `/project-analysis` 命令，分析项目结构：
 
@@ -247,7 +242,7 @@ type nul > .claude\settings.json
 - ✅ 分析项目技术栈和依赖
 - ✅ 生成项目初始化分析摘要文档
 
-### 步骤 4：Claude Code 规则配置
+### 步骤 3：Claude Code 规则配置
 
 执行 `/rule-config` 命令，配置项目规则：
 
@@ -261,7 +256,7 @@ type nul > .claude\settings.json
 - ✅ 配置命名规则
 - ✅ 配置目录结构
 
-### 步骤 5：MCP 配置
+### 步骤 4：MCP 配置
 
 执行 `/mcp-configuration` 命令，配置 MCP：
 
@@ -273,7 +268,7 @@ type nul > .claude\settings.json
 - ✅ 创建 `.mcp.json` 配置文件
 - ✅ 配置 MCP 使用规则
 
-### 步骤 6（可选）：项目个性化规则
+### 步骤 5（可选）：项目个性化规则
 
 执行 `/project-rules-examples` 命令，创建项目个性化规则：
 
@@ -289,7 +284,7 @@ type nul > .claude\settings.json
 
 **完成后**，您的项目就准备好使用 Cadence 的完整工作流程了！
 
-## 基本工作流程
+## 基本工作流程（cadence-workflow 插件）
 
 Cadence 提供 3 种流程模式，适应不同的开发场景：
 
@@ -536,10 +531,20 @@ Skills 直接存储在这个仓库中。要贡献：
 
 ## 更新
 
-当你更新插件时，Skills 会自动更新：
+### 市场安装更新
 
 ```bash
-/plugin update cadence
+/plugin update cadence-init
+/plugin update cadence-workflow
+```
+
+### 离线安装更新
+
+拉取最新代码后重新运行安装脚本：
+
+```bash
+git pull
+./install-offline.sh  # 或 install-offline.bat
 ```
 
 ## 版本历史
