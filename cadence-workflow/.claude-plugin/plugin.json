@@ -1,0 +1,13 @@
+{
+  "name": "cadence-workflow",
+  "description": "开发工作流插件 - 包含完整流程、快速流程、探索流程及所有开发节点（需求探索、技术设计、TDD开发、代码审查等）",
+  "version": "0.0.1",
+  "author": {
+    "name": "michaelChe",
+    "email": "michaelChe956@gmail.com"
+  },
+  "homepage": "https://github.com/michaelChe956/Cadence-skills",
+  "repository": "https://github.com/michaelChe956/Cadence-skills",
+  "license": "MIT",
+  "keywords": ["cadence", "workflow", "tdd", "ai-development", "multi-agent", "full-flow", "quick-flow"]
+}

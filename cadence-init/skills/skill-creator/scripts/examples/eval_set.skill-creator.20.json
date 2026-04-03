@@ -1,0 +1,82 @@
+[
+  {
+    "query": "我想在 Cadence 里新增一个叫 api-doc-audit 的 skill，帮我直接生成 skills/api-doc-audit 目录和 SKILL.md 初稿，再告诉我怎么验证。",
+    "should_trigger": true
+  },
+  {
+    "query": "现在这个 skill 的 description 太泛了，帮我重写成更容易触发的版本，并给出 eval 测试方法。",
+    "should_trigger": true
+  },
+  {
+    "query": "请帮我把 skills/design-review 这个技能打包成 .skill 文件，准备发给同事离线安装。",
+    "should_trigger": true
+  },
+  {
+    "query": "我需要一个流程：创建 skill、校验 frontmatter、再打包，给我按命令一步步执行。",
+    "should_trigger": true
+  },
+  {
+    "query": "给我做一套 skill 触发率评测，正负样本都要有，然后跑 run_eval 看当前描述命中率。",
+    "should_trigger": true
+  },
+  {
+    "query": "请把 skill-creator 的 description 优化成更精准的触发条件，最后直接写回 SKILL.md。",
+    "should_trigger": true
+  },
+  {
+    "query": "我想建立一个可复用的 skill 模板，包含 scripts/references/assets 三层目录和示例文件。",
+    "should_trigger": true
+  },
+  {
+    "query": "帮我检查 skills/ 下所有 SKILL.md 的 name 和目录名是否一致，避免安装后无法正确调用。",
+    "should_trigger": true
+  },
+  {
+    "query": "我要做一个一键命令，把 baseline 评测 + loop 优化都跑完，输出优化报告 JSON。",
+    "should_trigger": true
+  },
+  {
+    "query": "我们这个 marketplace 要加一个 skill-creator 子系统，你先生成最小可用脚本链路和示例评测集。",
+    "should_trigger": true
+  },
+  {
+    "query": "帮我把 README 里第 3 段改得更口语一点，不用改任何脚本。",
+    "should_trigger": false
+  },
+  {
+    "query": "我只想看看当前分支有哪些未提交文件，给我 git status 结果就行。",
+    "should_trigger": false
+  },
+  {
+    "query": "把 install-offline.sh 里的注释翻译成英文，逻辑不要改。",
+    "should_trigger": false
+  },
+  {
+    "query": "请在 docs/hooks-reference.md 追加一段关于 session-start hook 的说明文字。",
+    "should_trigger": false
+  },
+  {
+    "query": "帮我排查一个 Python 报错：ModuleNotFoundError: yaml，告诉我怎么安装依赖。",
+    "should_trigger": false
+  },
+  {
+    "query": "把这个 JSON 格式化一下并按 key 排序，不要做其他事情。",
+    "should_trigger": false
+  },
+  {
+    "query": "我想对比 main 和当前分支的 README 差异，列出主要变化点。",
+    "should_trigger": false
+  },
+  {
+    "query": "帮我写一个正则，匹配版本号 v1.2.3 这种格式。",
+    "should_trigger": false
+  },
+  {
+    "query": "我需要你分析 hooks/session-start 的执行流程，看看有没有潜在死循环。",
+    "should_trigger": false
+  },
+  {
+    "query": "把项目根目录下的所有 markdown 文件统计一下字数并输出表格。",
+    "should_trigger": false
+  }
+]

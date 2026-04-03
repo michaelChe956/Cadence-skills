@@ -1,0 +1,13 @@
+{
+  "name": "cadence-init",
+  "description": "项目初始化插件 - 包含环境检查、项目分析、规则配置、MCP配置等初始化功能",
+  "version": "0.0.1",
+  "author": {
+    "name": "michaelChe",
+    "email": "michaelChe956@gmail.com"
+  },
+  "homepage": "https://github.com/michaelChe956/Cadence-skills",
+  "repository": "https://github.com/michaelChe956/Cadence-skills",
+  "license": "MIT",
+  "keywords": ["cadence", "init", "project-setup", "mcp", "environment"]
+}
