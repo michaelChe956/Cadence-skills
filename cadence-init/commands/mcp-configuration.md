@@ -25,7 +25,18 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 
 ### 1. MCP 使用规则配置
 
-**添加以下规则到 CLAUDE.md**：
+**创建 `.claude/rules/mcp-servers.md` 规则文件**：
+
+从 `references/rules/mcp-servers.md` 读取模板内容，写入项目的 `.claude/rules/mcp-servers.md` 文件。
+
+**在 CLAUDE.md 中添加摘要引用行**：
+
+```markdown
+### 6. MCP Server 使用规则
+- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
+```
+
+> 以下为各 MCP 的配置说明，供配置时参考。详细使用规则见 `.claude/rules/mcp-servers.md`。
 
 #### Time MCP
 
@@ -308,7 +319,7 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 分析 architecture.png 中的系统架构设计
 ```
 
-### 4. 智普/MiniMax MCP 使用规则配置（可选）
+### 4. 智普/MiniMax MCP 规则追加（可选）
 
 > **⚠️ 可选配置** — 添加前必须询问用户是否需要
 
@@ -321,7 +332,7 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 **用户确认**：
 - 添加规则前询问用户是否需要智普/MiniMax MCP 能力
 - 如果不需要，跳过此步骤
-- 如果需要，展示 API Key 安全提醒，写入 CLAUDE.md 前展示完整规则供确认
+- 如果需要，展示 API Key 安全提醒，将智普/MiniMax 相关规则**追加到 `.claude/rules/mcp-servers.md` 文件末尾**
 - 智普和 MiniMax 可以独立选择，不需要同时启用
 
 **API Key 安全提醒**（如果用户选择启用，**必须**展示）：
