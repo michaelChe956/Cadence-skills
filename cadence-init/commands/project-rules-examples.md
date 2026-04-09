@@ -78,15 +78,20 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 **文件内容**：`references/project-rules/examples/test-standards.md`
 
-### 6. 添加 CLAUDE.md 规则
+### 6. 添加 CLAUDE.md 规则引用
 
-在项目的 `CLAUDE.md` 文件中添加个性化规则引用，使 Claude Code 能够自动使用这些定制规则。
+在项目的 `CLAUDE.md` 文件中添加个性化规则引用。
 
 **目标文件**：项目根目录的 `CLAUDE.md`
 
-**添加位置**：在 CLAUDE.md的最末位置，添加一个新的章节 `### 项目个性化规则`
+**添加位置**：在 CLAUDE.md 的"强制规则"章节中 `### 7. 项目个性化规则（强制规则）` 部分
 
-**添加内容**：`references/project-rules/CLAUDE-RULE.md`
+**添加内容**：`references/project-rules/CLAUDE-RULE.md`（已更新为强制约束 + 摘要引用格式）
+
+**注意事项**：
+- 确保 CLAUDE.md 中已有 `### 7. 项目个性化规则（强制规则）` 摘要引用
+- `project-rules/` 是用户自定义规则的唯一合法目录
+- 禁止将用户自定义规则写入 `.claude/rules/` 目录
 
 ## 核心原则
 
