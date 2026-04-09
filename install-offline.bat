@@ -7,9 +7,8 @@ REM   双击运行 install-offline.bat
 REM   或在命令行中执行: install-offline.bat
 REM
 REM 作者: Cadence Team
-REM 版本: v2.1
+REM 版本: v2.0
 REM 更新记录:
-REM   v2.1 (2026-04-09): 增加 .claude/ 目录复制（包含 rules/ 规则文件），适配规则目录重构
 REM   v2.0 (2026-04-03): 适配拆分后的双插件 marketplace 结构 (cadence-init + cadence-workflow)
 REM   v1.1 (2025-03-17): 修复步骤4的 JSON 配置生成语法错误
 REM   v1.0: 初始版本
@@ -19,7 +18,7 @@ setlocal enabledelayedexpansion
 
 REM 打印横幅
 echo ============================================================
-echo   Cadence Skills 离线安装脚本 v2.1 (Windows)
+echo   Cadence Skills 离线安装脚本 v2.0 (Windows)
 echo   包含插件: cadence-init + cadence-workflow
 echo ============================================================
 echo.
@@ -93,11 +92,6 @@ for %%f in (CLAUDE.md README.md LICENSE .mcp.json) do (
     if exist "%SOURCE_DIR%\%%f" (
         copy /y "%SOURCE_DIR%\%%f" "%TARGET_DIR%\" >nul
     )
-)
-
-REM 复制 .claude 目录（包含 rules/ 规则文件）
-if exist "%SOURCE_DIR%\.claude" (
-    xcopy "%SOURCE_DIR%\.claude" "%TARGET_DIR%\.claude\" /E /I /Y >nul
 )
 
 REM 复制 readmes 目录

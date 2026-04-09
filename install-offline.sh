@@ -7,9 +7,8 @@
 #   ./install-offline.sh
 #
 # 作者: Cadence Team
-# 版本: v2.1
+# 版本: v2.0
 # 更新记录:
-#   v2.1 (2026-04-09): 增加 .claude/ 目录复制（包含 rules/ 规则文件），适配规则目录重构
 #   v2.0 (2026-04-03): 适配拆分后的双插件 marketplace 结构 (cadence-init + cadence-workflow)
 #   v1.0: 初始版本
 ################################################################################
@@ -25,7 +24,7 @@ NC='\033[0m' # No Color
 
 # 打印横幅
 echo "============================================================"
-echo "  Cadence Skills 离线安装脚本 v2.1 (Linux/macOS)"
+echo "  Cadence Skills 离线安装脚本 v2.0 (Linux/macOS)"
 echo "  包含插件: cadence-init + cadence-workflow"
 echo "============================================================"
 echo ""
@@ -77,7 +76,7 @@ if command -v rsync &> /dev/null; then
 else
     echo -e "  ${BLUE}使用 cp 复制文件...${NC}"
     # 复制主要目录和文件
-    for item in ".claude-plugin" "cadence-init" "cadence-workflow" "CLAUDE.md" "README.md" "LICENSE" ".mcp.json" "readmes" ".claude"; do
+    for item in ".claude-plugin" "cadence-init" "cadence-workflow" "CLAUDE.md" "README.md" "LICENSE" ".mcp.json" "readmes"; do
         if [ -e "$SOURCE_DIR/$item" ]; then
             cp -r "$SOURCE_DIR/$item" "$TARGET_DIR/"
         fi
