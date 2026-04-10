@@ -471,7 +471,103 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-### 6. 配置 .gitignore
+### 6. 同步 MCP 配置到 Codex（可选）
+
+> **⚠️ 可选配置** — 添加前必须询问用户是否需要
+
+**用户确认**：
+- 在 `.mcp.json` 创建完成后，询问用户："是否将 MCP 配置同步到 Codex（生成 `.codex/config.toml`）？"
+- 如果不需要，跳过此步骤
+- 如果需要，根据下方模板生成 `.codex/config.toml`
+
+**已存在文件处理**：
+
+| 场景 | 处理方式 |
+|------|---------|
+| `.codex/` 目录和 `config.toml` 均不存在 | 创建目录和文件，写入完整 TOML 内容 |
+| `.codex/config.toml` 已存在但不含 `[mcp_servers` | 保留原有内容，在文件末尾追加 MCP 配置 |
+| `.codex/config.toml` 已存在且含 `[mcp_servers` | 询问用户是否覆盖 MCP 配置部分 |
+
+**TOML 写入规则**：
+- 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
+- `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
+- 写入顺序：基础配置 → 智普配置（如果选中）→ MiniMax 配置（如果选中）
+
+**Codex 与 Claude Code 格式差异**：
+
+| 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) |
+|------|--------------------------|------------------------------|
+| 格式 | JSON | TOML |
+| 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` |
+| 传输类型 | `"type": "stdio"` / `"type": "http"` | 隐式：有 `command` = stdio，有 `url` = http |
+| 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` |
+| HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` |
+| type 字段 | 必须显式声明 | 不需要（自动推断） |
+
+**`{{SERENA_PATH}}` 替换规则与 `.mcp.json` 相同**。
+
+**信任提醒**：
+- 提醒用户：首次在 Codex 中打开项目时需确认信任项目，否则 `.codex/config.toml` 不会被加载
+
+**在项目根目录创建 `.codex/config.toml`**：
+
+#### 基础配置（必选）
+
+````toml
+[mcp_servers]
+
+[mcp_servers.time]
+command = "uvx"
+args = ["mcp-server-time", "--local-timezone=Asia/Shanghai"]
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.sequential-thinking]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "{{SERENA_PATH}}", "serena", "start-mcp-server", "--context", "ide-assistant", "--enable-web-dashboard", "false", "--enable-gui-log-window", "false"]
+````
+
+#### 智普 MCP 配置（可选 — 用户确认后添加）
+
+> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换
+
+````toml
+[mcp_servers.zai-mcp-server]
+command = "npx"
+args = ["-y", "@z_ai/mcp-server"]
+env = { "Z_AI_API_KEY" = "your_zhipu_api_key", "Z_AI_MODE" = "ZHIPU" }
+
+[mcp_servers.web-search-prime]
+url = "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
+
+[mcp_servers.web-reader]
+url = "https://open.bigmodel.cn/api/mcp/web_reader/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
+
+[mcp_servers.zread]
+url = "https://open.bigmodel.cn/api/mcp/zread/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
+````
+
+#### MiniMax MCP 配置（可选 — 用户确认后添加）
+
+> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_minimax_api_key` 需用户自行替换
+
+````toml
+[mcp_servers.MiniMax]
+command = "uvx"
+args = ["minimax-coding-plan-mcp", "-y"]
+env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https://api.minimaxi.com" }
+````
+
+### 7. 配置 .gitignore
 
 **目的**：将 Cadence 工作目录添加到 .gitignore，避免将临时文件和本地配置提交到版本控制。
 
@@ -492,6 +588,7 @@ ls -la .gitignore
 .serena/
 .worktrees/
 .mcp.json
+.codex/
 ```
 
 如果 `.gitignore` 不存在，创建文件并添加内容：
@@ -502,6 +599,7 @@ cat > .gitignore << 'EOF'
 .serena/
 .worktrees/
 .mcp.json
+.codex/
 EOF
 ```
 
@@ -512,6 +610,7 @@ EOF
 | `.serena/` | Serena MCP 本地记忆和会话数据 | 包含用户本地的会话记录和项目记忆，不应共享 |
 | `.worktrees/` | Git worktrees 隔离开发环境 | 包含临时的隔离开发环境，不应提交 |
 | `.mcp.json` | MCP 配置文件 | 包含本地 MCP 路径配置，不应提交到版本控制 |
+| `.codex/` | Codex CLI 项目级配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
 
 **验证**：
 
