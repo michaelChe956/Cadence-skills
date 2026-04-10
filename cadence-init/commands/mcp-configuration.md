@@ -15,9 +15,10 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 
 1. **添加 MCP 使用规则** — 添加各 MCP server 的使用规则到 CLAUDE.md
 2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
-3. **配置 .gitignore** — 添加 `.serena/`、`.worktrees/` 和 `.mcp.json` 到 .gitignore
-4. **配置智普 MCP（可选）** — 询问用户是否需要智普 AI 的四个专属 MCP
-5. **配置 MiniMax MCP（可选）** — 询问用户是否需要 MiniMax Token Plan MCP
+3. **配置智普 MCP（可选）** — 询问用户是否需要智普 AI 的四个专属 MCP
+4. **配置 MiniMax MCP（可选）** — 询问用户是否需要 MiniMax Token Plan MCP
+5. **同步 MCP 配置到 Codex（可选）** — 询问用户是否将 MCP 配置同步为 Codex 的 `.codex/config.toml` 格式
+6. **配置 .gitignore** — 添加 `.serena/`、`.worktrees/`、`.mcp.json` 和 `.codex/` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
