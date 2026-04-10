@@ -9,7 +9,8 @@
 | 文件 | 内容概述 |
 |------|---------|
 | `language.md` | 语言规则（中文回答要求） |
-| `code-usage.md` | 代码使用规则（非必要不编写代码） |
+| `code-usage-coding.md` | 代码使用规则（编码项目适用） |
+| `code-usage-noncoding.md` | 代码使用规则（非编码项目适用） |
 | `document-storage.md` | 文档存储规则（目录、命名、路径映射） |
 | `markdown-format.md` | Markdown 格式规则（代码块嵌套） |
 | `serena-usage.md` | Serena MCP 使用规则 |
