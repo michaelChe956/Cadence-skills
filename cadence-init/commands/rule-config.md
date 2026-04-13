@@ -17,8 +17,10 @@ description: "配置 Claude Code 规则：创建 rules 规则文件、配置目�
 2. **添加 CLAUDE.md 规则引用** — 在 CLAUDE.md 中添加全部 8 条规则的摘要引用（规则 2 根据步骤 1a 检测结果选择对应文本）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
 4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，需要用户确认
-5. **目录结构创建** — 创建 `.claude/` 子目录
-6. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
+5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
+6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，用户确认后迁移到 `cadence/`
+7. **cadence gitignore 决策** — 询问用户是否将 `cadence/` 加入 `.gitignore`，默认不忽略
+8. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -68,7 +70,7 @@ description: "配置 Claude Code 规则：创建 rules 规则文件、配置目�
    如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，
    从通过验证的结果中取修改时间最新的。
 
-> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 6 的 playwright.md）。
+> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 playwright.md）。
 
 **步骤 1c：创建目标目录**
 
@@ -104,7 +106,7 @@ mkdir -p .claude/rules
 
 > **🔴 必须遵守 - 无例外**
 > 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `.claude/project-rules/` 目录。
+> 用户自定义规则见 `cadence/project-rules/` 目录。
 
 ### 1. 语言规则
 - **必须使用中文回答** → 详见 `.claude/rules/language.md`
@@ -126,10 +128,10 @@ mkdir -p .claude/rules
 - **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
 
 ### 7. 项目个性化规则（强制规则）
-- **用户自定义规则只能存放在 `.claude/project-rules/` 目录**
+- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `rules/` 目录下的框架内置规则文件
-- 详见 `.claude/project-rules/README.md`
+- 详见 `cadence/project-rules/README.md`
 
 ## 项目信息
 # currentDate
@@ -139,7 +141,7 @@ Today's date is {当前日期}。
 **注意**：
 - 规则 6（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 7（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 8（Playwright）由步骤 6 添加（如用户选择启用）
+- 规则 8（Playwright）由步骤 8 添加（如用户选择启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
 
 ### 3. 包管理器规则
@@ -214,30 +216,106 @@ grep -E "pytest|unittest" requirements.txt
 **创建以下目录结构**：
 
 ```bash
-mkdir -p .claude/{rules,prds,analysis-docs,docs,designs,designs-reviews,plans,readmes,modaos,models,architecture,notes,logs,reports,project-rules/examples}
+mkdir -p .claude/rules
+mkdir -p cadence/{prds,analysis,analysis-docs,docs,designs,designs-reviews,plans,readmes,modaos,models,architecture,notes,logs,reports,project-rules/examples,cache}
 ```
 
 **目录用途说明**：
 
 | 目录 | 用途 | 说明 |
 |------|------|------|
-| `rules/` | 框架规则 | 内置规则文件（维护者管理） |
-| `prds/` | 概要需求 | @brainstorming skill 生成的早期需求方案 |
-| `analysis-docs/` | 分析报告 | @analyze skill 生成的代码分析、调研报告 |
-| `docs/` | 详细需求 | @requirement skill 生成的详细需求文档 |
-| `designs/` | 设计文档 | @design skill 生成的技术方案、架构设计 |
-| `designs-reviews/` | 设计评审 | @design-review skill 的评审文档 |
-| `plans/` | 计划文档 | @plan skill 生成的实施计划 |
-| `readmes/` | README 文档 | 开发相关的技术文档（API 文档、开发指南等） |
-| `modaos/` | 界面原型 | 墨刀/Figma 原型截图、设计稿 |
-| `models/` | 数据模型 | 数据库表模型、ER 图、schema 定义 |
-| `architecture/` | 架构文档 | 系统架构分析、技术选型 |
-| `notes/` | 开发笔记 | 临时记录、开发心得、TODO 列表 |
-| `logs/` | 开发日志 | 问题追踪、Bug 记录、开发进度 |
-| `reports/` | 进度报告 | @report skill 生成的开发进度报告 |
-| `project-rules/` | 个性化规则 | 用户定制的模板和规范 |
+| `.claude/rules/` | 框架规则 | 内置规则文件（维护者管理） |
+| `cadence/prds/` | 概要需求 | @brainstorming skill 生成的早期需求方案 |
+| `cadence/analysis/` | 旧版分析报告 | 兼容旧版 Cadence analysis 输出目录 |
+| `cadence/analysis-docs/` | 分析报告 | @analyze skill 生成的代码分析、调研报告 |
+| `cadence/docs/` | 详细需求 | @requirement skill 生成的详细需求文档 |
+| `cadence/designs/` | 设计文档 | @design skill 生成的技术方案、架构设计 |
+| `cadence/designs-reviews/` | 设计评审 | @design-review skill 的评审文档 |
+| `cadence/plans/` | 计划文档 | @plan skill 生成的实施计划 |
+| `cadence/readmes/` | README 文档 | 开发相关的技术文档（API 文档、开发指南等） |
+| `cadence/modaos/` | 界面原型 | 墨刀/Figma 原型截图、设计稿 |
+| `cadence/models/` | 数据模型 | 数据库表模型、ER 图、schema 定义 |
+| `cadence/architecture/` | 架构文档 | 系统架构分析、技术选型 |
+| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、TODO 列表 |
+| `cadence/logs/` | 开发日志 | 问题追踪、Bug 记录、开发进度 |
+| `cadence/reports/` | 进度报告 | @report skill 生成的开发进度报告 |
+| `cadence/project-rules/` | 个性化规则 | 用户定制的模板和规范 |
+| `cadence/cache/` | 分析缓存 | @git-review 等流程生成的 Cadence 缓存 |
 
-### 6. Playwright Skills 规则配置
+### 6. 历史产物迁移
+
+**检测旧目录**：
+
+检查以下旧目录是否存在：
+
+```bash
+for dir in prds analysis analysis-docs docs designs designs-reviews plans readmes modaos models architecture notes logs reports project-rules cache; do
+  test -e ".claude/$dir" && echo ".claude/$dir -> cadence/$dir"
+done
+```
+
+**用户确认**：
+- 如果没有检测到旧目录，提示无需迁移并继续
+- 如果检测到旧目录，展示迁移清单，并询问用户是否迁移到 `cadence/`
+- 默认建议迁移
+
+**迁移规则**：
+
+| 场景 | 处理方式 |
+|------|----------|
+| `cadence/<dir>` 不存在 | 将 `.claude/<dir>` 移动到 `cadence/<dir>` |
+| `cadence/<dir>` 已存在且为空 | 将 `.claude/<dir>` 的内容移动到 `cadence/<dir>` |
+| `cadence/<dir>` 已存在且非空 | 跳过该目录并报告冲突，要求用户手动处理 |
+
+**禁止迁移**：
+- `.claude/rules`
+- `.claude/commands`
+- `.claude/skills`
+
+**迁移命令示例**：
+
+```bash
+mkdir -p cadence
+for dir in prds analysis analysis-docs docs designs designs-reviews plans readmes modaos models architecture notes logs reports project-rules cache; do
+  if [ -e ".claude/$dir" ]; then
+    if [ ! -e "cadence/$dir" ]; then
+      mv ".claude/$dir" "cadence/$dir"
+    elif [ -d "cadence/$dir" ] && [ -z "$(find "cadence/$dir" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
+      find ".claude/$dir" -mindepth 1 -maxdepth 1 -exec mv {} "cadence/$dir/" \;
+      rmdir ".claude/$dir" 2>/dev/null || true
+    else
+      echo "跳过冲突目录: .claude/$dir -> cadence/$dir"
+    fi
+  fi
+done
+```
+
+**完成报告**：
+
+迁移完成后，向用户报告已迁移目录、跳过目录和需要手动处理的冲突目录。
+
+### 7. cadence gitignore 决策
+
+**目的**：让用户决定是否将 `cadence/` 作为本地工作目录忽略。
+
+**用户确认**：
+- 询问用户：“是否将 `cadence/` 加入 `.gitignore`？”
+- 默认选择：不忽略
+- 默认不忽略的原因：PRD、设计、计划、用户项目规则等产物通常需要团队协作和版本管理
+
+**如果用户选择忽略**：
+
+检查 `.gitignore` 是否已包含 `cadence/`：
+
+```bash
+grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\ncadence/\n' >> .gitignore
+```
+
+**如果用户选择不忽略**：
+
+不修改 `.gitignore`。
+
+### 8. Playwright Skills 规则配置
 
 **检测条件**：
 - 用户需要浏览器自动化功能
@@ -259,7 +337,7 @@ mkdir -p .claude/{rules,prds,analysis-docs,docs,designs,designs-reviews,plans,re
 
 ## 核心原则
 
-- **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `.claude/project-rules/`
+- **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
 - **摘要引用** — CLAUDE.md 只保留摘要和引用，详细内容在规则文件中
-- **目录明确** — 每种文档类型有明确存储位置
+- **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
 - **用户确认** — 技术栈检测必须经过用户确认
