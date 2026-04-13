@@ -1,20 +1,20 @@
 ---
 name: rule-config
-description: "配置 Claude Code 规则：创建 rules 规则文件、配置目录结构和项目技术栈"
+description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、配置目录结构和项目技术栈"
 ---
 
-# Claude Code 规则配置
+# Claude Code 与 Codex 规则配置
 
 ## 概述
 
-配置 Claude Code 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用。
+配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用，并参考 CLAUDE.md 同步生成 AGENTS.md。
 
 ## 检查清单
 
 你必须为以下每个项目创建任务并按顺序完成：
 
 1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
-2. **添加 CLAUDE.md 规则引用** — 在 CLAUDE.md 中添加全部 8 条规则的摘要引用（规则 2 根据步骤 1a 检测结果选择对应文本）
+2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加全部 8 条规则的摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
 4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，需要用户确认
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
@@ -97,7 +97,7 @@ mkdir -p .claude/rules
 | `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
 | `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
 
-### 2. 添加 CLAUDE.md 规则引用
+### 2. 添加 CLAUDE.md 与 AGENTS.md 规则引用
 
 **在 CLAUDE.md 中添加以下结构**：
 
@@ -147,6 +147,63 @@ Today's date is {当前日期}。
 - 规则 7（项目个性化规则）由 `project-rules-examples` command 添加详细内容
 - 规则 8（Playwright）由步骤 8 添加（如用户选择启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
+
+**参考 CLAUDE.md 同步添加 AGENTS.md**：
+
+````markdown
+# AGENTS.md
+
+本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
+
+## 默认角色
+
+- **Coding 项目**：默认角色为**执行者**，按 issue 和用户指令完成实现、验证与结果汇报。
+- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。
+
+## 强制规则
+
+> **🔴 必须遵守 - 无例外**
+> 详细规则见 `.claude/rules/` 目录下的各规则文件。
+> 用户自定义规则见 `cadence/project-rules/` 目录。
+
+### 1. 语言规则
+- **必须使用中文回答** → 详见 `.claude/rules/language.md`
+
+### 2. 代码使用规则
+- **Coding 项目**：`- **遵循 TDD 和代码规范** → 详见 .claude/rules/code-usage.md`
+- **非 Coding 项目**：`- **非必要不编写代码** → 详见 .claude/rules/code-usage.md`
+
+### 3. 文档存储规则
+- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules` 目录下** → 详见 `.claude/rules/document-storage.md`
+
+### 4. Markdown 格式规则
+- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
+
+### 5. Serena 使用规则
+- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`
+
+### 6. MCP Server 与工具使用规则
+- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
+
+### 7. 项目个性化规则
+- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
+- 禁止在 `.claude/rules/` 目录中添加用户自定义规则
+- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
+- 详见 `cadence/project-rules/README.md`
+
+## 与 CLAUDE.md 的关系
+
+- 用户在当前任务中的明确指令优先级最高。
+- `CLAUDE.md` 面向 Claude Code。
+- `AGENTS.md` 面向 Codex 及其他通用 AI Agents。
+- 两者如有表述差异，应优先遵循本仓库中的实际规则文件，即 `.claude/rules/` 与 `cadence/project-rules/`。
+
+## Agent 执行要求
+
+- 开始任务前，应先读取 `CLAUDE.md`，并按需查看 `.claude/rules/` 与 `cadence/project-rules/` 中的相关规则文件。
+- 执行 issue 时，应先读取 issue 与相关上下文，再修改文件。
+- 完成任务后，必须汇报测试或验证结果。
+````
 
 ### 3. 包管理器规则
 
@@ -327,7 +384,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 **创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `playwright.md` 读取内容，写入 `.claude/rules/playwright.md`
 
-**在 CLAUDE.md 中添加**：
+**在 CLAUDE.md 和 AGENTS.md 中添加**：
 
 ```markdown
 ### 8. Playwright CLI 使用规则
@@ -337,11 +394,11 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 **用户确认**：
 - 添加规则前询问用户是否需要 Playwright 自动化功能
 - 如果不需要，跳过此步骤
-- 如果需要，写入 CLAUDE.md 前展示完整规则供确认
+- 如果需要，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认
 
 ## 核心原则
 
 - **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
-- **摘要引用** — CLAUDE.md 只保留摘要和引用，详细内容在规则文件中
+- **摘要引用** — CLAUDE.md 和 AGENTS.md 只保留摘要和引用，详细内容在规则文件中
 - **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
 - **用户确认** — 技术栈检测必须经过用户确认
