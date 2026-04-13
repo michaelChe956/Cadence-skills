@@ -13,7 +13,6 @@ description: "配置 Claude Code 规则：创建 rules 规则文件、配置目�
 
 你必须为以下每个项目创建任务并按顺序完成：
 
-0. **新增前置步骤：.cadence 迁移检测** — 检测并处理文档目录迁移（详见"步骤 0：.cadence 迁移检测"章节）
 1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
 2. **添加 CLAUDE.md 规则引用** — 在 CLAUDE.md 中添加全部 8 条规则的摘要引用（规则 2 根据步骤 1a 检测结果选择对应文本）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
@@ -24,64 +23,6 @@ description: "配置 Claude Code 规则：创建 rules 规则文件、配置目�
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
 ## 处理流程
-
-### 步骤 0（新增）：.cadence 迁移检测
-
-**目的**：将现有文档目录从 `.claude/` 迁移到 `.cadence/`，或为新项目创建 `.cadence/` 目录结构。
-
-**处理流程**：
-
-```
-步骤 0：.cadence 迁移检测
-│
-├── 1. 检测 .cadence/ 是否已存在
-│   ├── .cadence/ 已存在 → 跳过迁移（避免覆盖已有数据），仅更新 rules/document-storage.md
-│   │
-│   ├── .cadence/ 不存在，检测 .claude/ 下是否有需迁移的子目录
-│   │   ├── 有需迁移目录（prds/plans/designs/docs 等）
-│   │   │   → 提示用户：
-│   │   │     "检测到现有文档目录在 .claude/ 中，是否迁移到 .cadence/？"
-│   │   │     - 确认 → 执行迁移 + 更新所有引用
-│   │   │     - 拒绝 → 保留原状，仅更新 document-storage 规则
-│   │   └── 无需迁移目录（仅有 rules/）
-│   │       → 直接在 .cadence/ 创建新目录结构
-│   │
-│   └── .claude/ 本身不存在（全新项目）
-│       → 直接在 .cadence/ 创建新目录结构
-│
-├── 2. 迁移后操作
-│   └── 询问用户：是否将 .cadence/ 加入 .gitignore
-│       ├── 是 → 在 .gitignore 添加 `.cadence/`
-│       └── 否 → 不做操作
-│
-└── 3. 更新 rules/document-storage.md 中的路径映射
-    └── 将所有 .claude/ 文档路径改为 .cadence/
-```
-
-**迁移范围**（从 `.claude/` → `.cadence/`）：
-
-| 源路径 | 目标路径 |
-|--------|---------|
-| `.claude/project-rules/` | `.cadence/project-rules/` |
-| `.claude/prds/` | `.cadence/prds/` |
-| `.claude/plans/` | `.cadence/plans/` |
-| `.claude/designs/` | `.cadence/designs/` |
-| `.claude/designs-reviews/` | `.cadence/designs-reviews/` |
-| `.claude/docs/` | `.cadence/docs/` |
-| `.claude/analysis-docs/` | `.cadence/analysis-docs/` |
-| `.claude/readmes/` | `.cadence/readmes/` |
-| `.claude/modaos/` | `.cadence/modaos/` |
-| `.claude/models/` | `.cadence/models/` |
-| `.claude/architecture/` | `.cadence/architecture/` |
-| `.claude/notes/` | `.cadence/notes/` |
-| `.claude/logs/` | `.cadence/logs/` |
-| `.claude/reports/` | `.cadence/reports/` |
-
-**不迁移**：`.claude/rules/`（Claude Code 自动加载约定）
-
-**情况 A**：`.cadence/` 已存在 → 跳过迁移
-**情况 B**：`.cadence/` 不存在，且 `.claude/` 下有需迁移目录 → 询问用户
-**情况 C**：`.claude/` 下无需迁移目录 → 直接创建 `.cadence/` 结构
 
 ### 1. 创建 rules 目录和规则文件
 
@@ -101,23 +42,10 @@ description: "配置 Claude Code 规则：创建 rules 规则文件、配置目�
 - `node_modules/`
 
 排除后：
-- 有匹配结果 → **Coding 项目**
-- 无匹配结果 → **非 Coding 项目**（进入"步骤 0b：项目类型询问"）
+- 如果仍有匹配结果 → **Coding 项目**
+- 如果没有匹配结果或所有结果都被排除 → **非 Coding 项目**
 
 检测结果需**展示给用户确认**：向用户说明检测结果和依据，允许用户手动修正。
-
-**步骤 0b（新增）：项目类型询问
-
-当步骤 1a 检测为"非 Coding 项目"时，向用户展示选项：
-
-```
-检测到当前项目【不是 Coding 项目】（或为空目录）。
-请选择项目类型：
-1. Coding 项目 — 将使用代码开发规则（code-usage-coding.md）
-2. 非 Coding 项目 — 使用非代码规则（code-usage-noncoding.md）
-3. 跳过 — 不配置代码使用规则
-```
-**
 
 **步骤 1b：定位模板目录**
 
@@ -286,14 +214,14 @@ grep -E "pytest|unittest" requirements.txt
 **创建以下目录结构**：
 
 ```bash
-# .cadence/ 目录结构创建
-mkdir -p .cadence/{project-rules/examples,prds,analysis-docs,docs,designs,designs-reviews,plans,readmes,modaos,models,architecture,notes,logs,reports}
+mkdir -p .claude/{rules,prds,analysis-docs,docs,designs,designs-reviews,plans,readmes,modaos,models,architecture,notes,logs,reports,project-rules/examples}
 ```
 
 **目录用途说明**：
 
 | 目录 | 用途 | 说明 |
 |------|------|------|
+| `rules/` | 框架规则 | 内置规则文件（维护者管理） |
 | `prds/` | 概要需求 | @brainstorming skill 生成的早期需求方案 |
 | `analysis-docs/` | 分析报告 | @analyze skill 生成的代码分析、调研报告 |
 | `docs/` | 详细需求 | @requirement skill 生成的详细需求文档 |
@@ -331,7 +259,7 @@ mkdir -p .cadence/{project-rules/examples,prds,analysis-docs,docs,designs,design
 
 ## 核心原则
 
-- **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `.cadence/project-rules/`
+- **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `.claude/project-rules/`
 - **摘要引用** — CLAUDE.md 只保留摘要和引用，详细内容在规则文件中
 - **目录明确** — 每种文档类型有明确存储位置
 - **用户确认** — 技术栈检测必须经过用户确认

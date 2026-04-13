@@ -6,21 +6,21 @@
 
 | 文档类型 | 存储路径 | 说明 |
 |---------|---------|------|
-| **计划文档** | **`.cadence/plans/`** | **项目计划、开发计划、发布计划（🔴 强制路径）** |
-| **概要需求** | **`.cadence/prds/`** | **brainstorm skill 生成的概要需求方案（🔴 新增）** |
-| 需求文档 | `.cadence/docs/` | requirement skill 生成的详细需求文档 |
-| 方案设计 | `.cadence/designs/` | 技术方案、架构设计、API设计 |
-| **设计评审** | **`.cadence/designs-reviews/`** | **设计评审文档（🔴 新增）** |
-| **分析报告** | **`.cadence/analysis-docs/`** | **代码分析、调研报告、性能分析（🔴 路径调整）** |
-| **进度报告** | **`.cadence/reports/`** | **开发进度报告、阶段总结（🔴 新增）** |
+| **计划文档** | **`.claude/plans/`** | **项目计划、开发计划、发布计划（🔴 强制路径）** |
+| **概要需求** | **`.claude/prds/`** | **brainstorm skill 生成的概要需求方案（🔴 新增）** |
+| 需求文档 | `.claude/docs/` | requirement skill 生成的详细需求文档 |
+| 方案设计 | `.claude/designs/` | 技术方案、架构设计、API设计 |
+| **设计评审** | **`.claude/designs-reviews/`** | **设计评审文档（🔴 新增）** |
+| **分析报告** | **`.claude/analysis-docs/`** | **代码分析、调研报告、性能分析（🔴 路径调整）** |
+| **进度报告** | **`.claude/reports/`** | **开发进度报告、阶段总结（🔴 新增）** |
 | **框架规则** | **`.claude/rules/`** | **框架内置规则文件（维护者管理）（🔴 新增）** |
-| **个性化规则** | **`.cadence/project-rules/`** | **项目个性化模板和规范（🔴 新增）** |
+| **个性化规则** | **`.claude/project-rules/`** | **项目个性化模板和规范（🔴 新增）** |
 | **README文档** | **见下方详细规则** | **项目说明、安装指南、使用文档（🔴 特殊规则）** |
-| 页面原型 | `.cadence/modaos/` | 墨刀/Figma 原型截图、设计稿 |
-| 数据模型 | `.cadence/models/` | 数据库表模型、ER图、schema |
-| 架构文档 | `.cadence/architecture/` | 系统架构分析、技术选型 |
-| 开发笔记 | `.cadence/notes/` | 临时记录、开发心得、TODO |
-| 开发日志 | `.cadence/logs/` | 问题追踪、Bug记录、开发进度 |
+| 页面原型 | `.claude/modaos/` | 墨刀/Figma 原型截图、设计稿 |
+| 数据模型 | `.claude/models/` | 数据库表模型、ER图、schema |
+| 架构文档 | `.claude/architecture/` | 系统架构分析、技术选型 |
+| 开发笔记 | `.claude/notes/` | 临时记录、开发心得、TODO |
+| 开发日志 | `.claude/logs/` | 问题追踪、Bug记录、开发进度 |
 
 ### README 文档存储规则
 
@@ -31,7 +31,7 @@ README 文档根据内容和用途分为两类，存储位置不同：
 | README 类型 | 存储位置 | 内容说明 | 示例 |
 |------------|---------|---------|------|
 | **项目介绍** | 根目录 `README.md` 或根目录 `readmes/` | 面向项目使用者的介绍性文档 | 项目简介、快速开始、功能说明、用户指南 |
-| **开发相关** | `.cadence/readmes/` | 面向开发者的技术文档 | 开发指南、API文档、架构说明、技术栈介绍 |
+| **开发相关** | `.claude/readmes/` | 面向开发者的技术文档 | 开发指南、API文档、架构说明、技术栈介绍 |
 
 **详细说明**：
 
@@ -40,7 +40,7 @@ README 文档根据内容和用途分为两类，存储位置不同：
    - 根目录 `readmes/`：用户相关的详细文档，如用户手册、使用教程、FAQ等
    - 目标受众：项目使用者、最终用户
 
-2. **开发相关类 README**（存储在 `.cadence/readmes/`）
+2. **开发相关类 README**（存储在 `.claude/readmes/`）
    - 开发环境搭建指南
    - 技术架构说明
    - API 接口文档
@@ -50,7 +50,7 @@ README 文档根据内容和用途分为两类，存储位置不同：
 **判断标准**：
 - ❓ **问自己**：这个文档是给谁看的？
   - 👤 **用户** → 根目录 `README.md` 或 `readmes/`
-  - 👨‍💻 **开发者** → `.cadence/readmes/`
+  - 👨‍💻 **开发者** → `.claude/readmes/`
 
 **示例**：
 
@@ -84,7 +84,7 @@ YYYY-MM-DD_文档类型_文档名称_v版本号.扩展名
 YYYY-MM-DD_计划文档_计划类型_具体内容_v版本号.md
 ```
 
-> **🔴 强制规则**：所有 Plan 文档（计划文档）**必须**存储在 `.cadence/plans/` 目录下，禁止存储在其他任何位置。
+> **🔴 强制规则**：所有 Plan 文档（计划文档）**必须**存储在 `.claude/plans/` 目录下，禁止存储在其他任何位置。
 
 #### 临时笔记格式
 
@@ -100,9 +100,9 @@ YYYY-MM-DD_简短描述.md
 2025-11-15_需求文档_订单管理_v2.0.md
 2025-10-20_分析报告_性能优化_v1.0.pdf
 
-# Plan 文档（必须存储在 .cadence/plans/ 目录）
-.cadence/plans/2025-12-03_计划文档_项目开发_用户认证模块_v1.0.md
-.cadence/plans/2025-12-01_计划文档_版本发布_v2.0.0发布计划.md
+# Plan 文档（必须存储在 .claude/plans/ 目录）
+.claude/plans/2025-12-03_计划文档_项目开发_用户认证模块_v1.0.md
+.claude/plans/2025-12-01_计划文档_版本发布_v2.0.0发布计划.md
 
 # 临时笔记
 2025-12-03_当前任务.md
@@ -132,7 +132,7 @@ YYYY-MM-DD_简短描述.md
 - [ ] 日期使用当日日期
 - [ ] 版本号正确（首次为 v1.0）
 - [ ] 文档存放在 `.claude/` 对应子目录
-- [ ] **Plan 文档**：确认存储在 `.cadence/plans/` 目录
+- [ ] **Plan 文档**：确认存储在 `.claude/plans/` 目录
 
 ### 路径映射（跨平台）
 
@@ -140,8 +140,8 @@ YYYY-MM-DD_简短描述.md
 
 | 系统 | 完整路径示例 |
 |------|-------------|
-| **macOS** | `/Users/michaelche/projects/myproject/.cadence/docs/` |
-| **Linux** | `/home/michaelche/projects/myproject/.cadence/docs/` |
+| **macOS** | `/Users/michaelche/projects/myproject/.claude/docs/` |
+| **Linux** | `/home/michaelche/projects/myproject/.claude/docs/` |
 | **Windows** | `C:\Users\michaelche\projects\myproject\.claude\docs\` |
 
 > **注意**：在 Claude Code 中使用相对路径 `.claude/` 即可，系统会自动解析。
@@ -163,7 +163,7 @@ YYYY-MM-DD_简短描述.md
 - [ ] 文档类型已明确
 - [ ] 对应的 `.claude/` 子目录存在（若不存在则创建）
 - [ ] 文件命名符合规范
-- [ ] **Plan 文档强制路径**：计划类文档必须存储在 `.cadence/plans/` 目录
+- [ ] **Plan 文档强制路径**：计划类文档必须存储在 `.claude/plans/` 目录
 - [ ] **README 文档路径**：
   - [ ] 项目介绍类 → 根目录 `README.md` 或 `readmes/`
-  - [ ] 开发相关类 → `.cadence/readmes/`
+  - [ ] 开发相关类 → `.claude/readmes/`
