@@ -500,7 +500,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 |------|--------------------------|------------------------------|
 | 格式 | JSON | TOML |
 | 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` |
-| 传输类型 | `"type": "stdio"` / `"type": "http"` | 隐式：有 `command` = stdio，有 `url` = http |
+| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** |
 | 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` |
 | HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` |
 | type 字段 | 必须显式声明 | 不需要（自动推断） |
