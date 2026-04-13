@@ -16,7 +16,7 @@
 - 如确实需要编写脚本、验证工具或自动化代码，必须先说明必要性与用途。
 
 ### 3. 文档存储规则
-- **除本文件 `AGENTS.md` 外，所有文档必须存放在 `.claude` 目录下** → 详见 `.claude/rules/document-storage.md`
+- **除本文件 `AGENTS.md` 外，所有文档必须存放在 `.cadence` 目录下** → 详见 `.claude/rules/document-storage.md`
 - 本文件 `AGENTS.md` 作为仓库根目录的代理入口说明文件，按用户要求放置于项目根目录。
 
 ### 4. Markdown 格式规则
@@ -29,10 +29,10 @@
 - **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
 
 ### 7. 项目个性化规则
-- **用户自定义规则只能存放在 `.claude/project-rules/` 目录**
+- **用户自定义规则只能存放在 `.cadence/project-rules/` 目录**
 - 禁止在 `.claude/rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
-- 详见 `.claude/project-rules/README.md`
+- 详见 `.cadence/project-rules/README.md`
 
 ### 8. Playwright CLI 使用规则
 - **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`
