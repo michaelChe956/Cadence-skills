@@ -549,59 +549,22 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-## Chunk 8: 安装脚本和其他文件
+## Chunk 8: 收尾检查
 
-**文件：**
-- Modify: `install-offline.sh`
-- Modify: `install-offline.bat`
-
----
-
-### Task 12: 更新安装脚本中的业务文档路径
-
-**Files:**
-- Modify: `install-offline.sh`
-- Modify: `install-offline.bat`
-
-- [ ] **Step 1: 读取 install-offline.sh，搜索所有 .claude/ 业务文档路径引用**
-
-```bash
-grep -n "\.claude/" install-offline.sh
-```
-
-**注意**：只更新业务文档路径（如 `.claude/plans/`、`.claude/docs/` 等），**不要**更新插件目录 `$HOME/.claude/plugins/`。
-
-- [ ] **Step 2: 同样处理 install-offline.bat**
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add install-offline.sh install-offline.bat
-git commit -m "refactor: 更新安装脚本，业务文档路径改为 .cadence/
-
-注：仅更新业务文档路径，插件目录 $HOME/.claude/plugins/ 保持不变
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
-```
-
----
-
-## Chunk 9: 收尾检查
-
-### Task 13: 全局搜索确认无遗漏
+### Task 12: 全局搜索确认无遗漏
 
 - [ ] **Step 1: 全局搜索确认所有 .claude/ 业务文档路径已迁移**
 
 ```bash
 # 搜索所有 .claude/ 路径（排除 rules/ 和插件目录）
-grep -rn "\.claude/plds\|\.claude/plans\|\.claude/designs\|\.claude/docs\|\.claude/analysis-docs\|\.claude/reports\|\.claude/readmes\|\.claude/modaos\|\.claude/models\|\.claude/architecture\|\.claude/notes\|\.claude/logs\|\.claude/project-rules" \
+grep -rn "\.claude/prds\|\.claude/plans\|\.claude/designs\|\.claude/docs\|\.claude/analysis-docs\|\.claude/reports\|\.claude/readmes\|\.claude/modaos\|\.claude/models\|\.claude/architecture\|\.claude/notes\|\.claude/logs\|\.claude/project-rules" \
   --include="*.md" \
-  --include="*.sh" \
-  --include="*.bat" \
-  cadence-init/ cadence-workflow/ readmes/ install-offline.sh install-offline.bat CLAUDE.md AGENTS.md 2>/dev/null || echo "无遗漏"
+  cadence-init/ cadence-workflow/ readmes/ CLAUDE.md AGENTS.md 2>/dev/null || echo "无遗漏"
 ```
 
-**注意**：`.cadence/` 不在搜索范围内，已迁移。
+**注意**：
+- `.cadence/` 不在搜索范围内，已迁移
+- install-offline.sh/bat 中的 `$HOME/.claude/plugins/` 是插件目录，不是业务文档路径，无需更新
 
 - [ ] **Step 2: 确认 marketplace.json 是否需要更新**
 
@@ -623,7 +586,7 @@ git commit -m "chore: 完成 rule-config 命令改造，所有文档路径迁移
 - CLAUDE.md 和 AGENTS.md 路径引用更新
 - rule-config 命令流程重组（三态检测 + .cadence 迁移）
 - cadence-workflow skills/commands 路径更新
-- readmes/skills 和安装脚本路径更新
+- readmes/skills 路径更新
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 ```
@@ -647,9 +610,7 @@ Chunk 6 (cadence-workflow commands)
     ↓
 Chunk 7 (readmes/skills)
     ↓
-Chunk 8 (安装脚本)
-    ↓
-Chunk 9 (收尾检查)
+Chunk 8 (收尾检查)
 ```
 
-**注意**：Chunk 5-8 可以并行执行（相互无依赖），但必须在 Chunk 3 之后执行（因为 rule-config.md 是其他文件的模板来源）。
+**注意**：Chunk 5-7 可以并行执行（相互无依赖），但必须在 Chunk 3 之后执行（因为 rule-config.md 是其他文件的模板来源）。
