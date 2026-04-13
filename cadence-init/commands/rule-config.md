@@ -191,6 +191,9 @@ Today's date is {当前日期}。
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
+### 8. Playwright CLI 使用规则
+- **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
+
 ## 与 CLAUDE.md 的关系
 
 - 用户在当前任务中的明确指令优先级最高。
