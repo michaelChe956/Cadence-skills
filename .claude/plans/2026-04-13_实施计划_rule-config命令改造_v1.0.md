@@ -16,6 +16,7 @@
 
 **文件：**
 - Modify: `cadence-init/references/rules/document-storage.md`
+- Modify: `cadence-init/references/rules/README.md`
 - Modify: `cadence-init/references/project-rules/README.md`
 - Modify: `cadence-init/references/project-rules/CLAUDE-RULE.md`
 
@@ -76,7 +77,33 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: 更新 project-rules/README.md 模板
+### Task 2: 更新 rules/README.md 模板
+
+**Files:**
+- Modify: `cadence-init/references/rules/README.md`
+
+- [ ] **Step 1: 读取当前 rules/README.md**
+
+- [ ] **Step 2: 更新 `.claude/project-rules/` 引用为 `.cadence/project-rules/`**
+
+涉及内容：
+- 第 23 行："用户自定义规则应放在 `.claude/project-rules/` 目录" → `.cadence/project-rules/`
+- 第 36 行："用户自定义规则：`.claude/project-rules/`" → `.cadence/project-rules/`
+
+**注意**：`.claude/rules/` 保持不变（Claude Code 内置约定）。
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add cadence-init/references/rules/README.md
+git commit -m "refactor: 更新 rules README，project-rules 路径改为 .cadence/
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: 更新 project-rules/README.md 模板
 
 **Files:**
 - Modify: `cadence-init/references/project-rules/README.md`
@@ -101,7 +128,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: 更新 project-rules/CLAUDE-RULE.md 模板
+### Task 4: 更新 project-rules/CLAUDE-RULE.md 模板
 
 **Files:**
 - Modify: `cadence-init/references/project-rules/CLAUDE-RULE.md`
@@ -129,7 +156,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: 更新 CLAUDE.md 规则引用
+### Task 5: 更新 CLAUDE.md 规则引用
 
 **Files:**
 - Modify: `CLAUDE.md`
@@ -183,7 +210,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: 更新 AGENTS.md 规则引用
+### Task 6: 更新 AGENTS.md 规则引用
 
 **Files:**
 - Modify: `AGENTS.md`
@@ -246,7 +273,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: 重构 rule-config.md 命令流程
+### Task 7: 重构 rule-config.md 命令流程
 
 **Files:**
 - Modify: `cadence-init/commands/rule-config.md`
@@ -329,7 +356,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: 更新 project-rules-examples.md
+### Task 8: 更新 project-rules-examples.md
 
 **Files:**
 - Modify: `cadence-init/commands/project-rules-examples.md`
@@ -354,7 +381,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 8: 更新 project-analysis.md
+### Task 9: 更新 project-analysis.md
 
 **Files:**
 - Modify: `cadence-init/commands/project-analysis.md`
@@ -398,7 +425,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: 更新所有 cadence-workflow/skills 中的文档路径
+### Task 10: 更新所有 cadence-workflow/skills 中的文档路径
 
 **Files:**
 - Modify: 见上方列表
@@ -462,7 +489,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: 更新所有 cadence-workflow/commands 中的文档路径
+### Task 11: 更新所有 cadence-workflow/commands 中的文档路径
 
 **Files:**
 - Modify: 见上方列表
@@ -515,7 +542,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-### Task 11: 更新所有 readmes/skills 中的文档路径
+### Task 12: 更新所有 readmes/skills 中的文档路径
 
 **Files:**
 - Modify: 见上方列表
@@ -551,7 +578,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ## Chunk 8: 收尾检查
 
-### Task 12: 全局搜索确认无遗漏
+### Task 13: 全局搜索确认无遗漏
 
 - [ ] **Step 1: 全局搜索确认所有 .claude/ 业务文档路径已迁移**
 
