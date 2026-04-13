@@ -492,6 +492,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 - 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
 - `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
 - 写入顺序：基础配置 → 智普配置（如果选中）→ MiniMax 配置（如果选中）
+- **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
 **Codex 与 Claude Code 格式差异**：
 
@@ -537,23 +538,13 @@ args = ["--from", "{{SERENA_PATH}}", "serena", "start-mcp-server", "--context", 
 
 > 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换
 
+> **⚠️ Codex 不支持 HTTP 类型的 MCP servers** — 智普的 `web-search-prime`、`web-reader`、`zread` 为 HTTP 类型，不会同步到 Codex。仅同步 stdio 类型的 `zai-mcp-server`。
+
 ````toml
 [mcp_servers.zai-mcp-server]
 command = "npx"
 args = ["-y", "@z_ai/mcp-server"]
 env = { "Z_AI_API_KEY" = "your_zhipu_api_key", "Z_AI_MODE" = "ZHIPU" }
-
-[mcp_servers.web-search-prime]
-url = "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp"
-http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
-
-[mcp_servers.web-reader]
-url = "https://open.bigmodel.cn/api/mcp/web_reader/mcp"
-http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
-
-[mcp_servers.zread]
-url = "https://open.bigmodel.cn/api/mcp/zread/mcp"
-http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
 ````
 
 #### MiniMax MCP 配置（可选 — 用户确认后添加）
