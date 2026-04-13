@@ -237,7 +237,7 @@ graph TB
 - 用户描述的需求（明确的需求）
 
 **输出**:
-- 简化需求文档（`.claude/docs/{date}_需求文档_{功能名称}_v1.0.md`）
+- 简化需求文档（`cadence/docs/{date}_需求文档_{功能名称}_v1.0.md`）
 
 **精简说明**:
 - ✅ 简化需求文档，只记录核心需求
@@ -268,7 +268,7 @@ graph TB
 - 需求文档（来自 Requirement）
 
 **输出**:
-- 简单实现计划（`.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`）
+- 简单实现计划（`cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`）
 
 **精简说明**:
 - ✅ 简单任务分解，2-5个任务即可
@@ -460,8 +460,8 @@ Worktree 已创建：
 - 工作目录：.worktrees/avatar-upload
 
 输出产物：
-- 需求文档（简化版）：.claude/docs/2026-03-05_需求文档_用户头像上传_v1.0.md
-- 实现计划（简化版）：.claude/designs/2026-03-05_实现计划_用户头像上传_v1.0.md
+- 需求文档（简化版）：cadence/docs/2026-03-05_需求文档_用户头像上传_v1.0.md
+- 实现计划（简化版）：cadence/designs/2026-03-05_实现计划_用户头像上传_v1.0.md
 - 代码实现：src/features/avatar-upload/
 - 单元测试：src/features/avatar-upload/__tests__/
 

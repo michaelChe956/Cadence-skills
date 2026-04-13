@@ -205,7 +205,7 @@ write_memory(f"index-{project_id}-checkpoints-by-phase", phase_index)
 - 用户描述的需求
 
 **输出**:
-- PRD 文档（`.claude/docs/{date}_PRD_{功能名称}_v1.0.md`）
+- PRD 文档（`cadence/docs/{date}_PRD_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```
@@ -231,7 +231,7 @@ PRD 已生成：
 - PRD 文档（来自 Brainstorm）
 
 **输出**:
-- 存量分析报告（`.claude/analysis/{date}_存量分析_{功能名称}_v1.0.md`）
+- 存量分析报告（`cadence/analysis/{date}_存量分析_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```
@@ -259,7 +259,7 @@ PRD 已生成：
 - 存量分析报告（来自 Analyze）
 
 **输出**:
-- 需求文档（`.claude/docs/{date}_需求文档_{功能名称}_v1.0.md`）
+- 需求文档（`cadence/docs/{date}_需求文档_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```
@@ -287,7 +287,7 @@ PRD 已生成：
 - 存量分析报告（来自 Analyze）
 
 **输出**:
-- 技术方案（`.claude/designs/{date}_技术方案_{功能名称}_v1.0.md`）
+- 技术方案（`cadence/designs/{date}_技术方案_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```
@@ -315,7 +315,7 @@ PRD 已生成：
 - 技术方案（来自 Design）
 
 **输出**:
-- 审查报告（`.claude/docs/{date}_设计审查_{功能名称}_v1.0.md`）
+- 审查报告（`cadence/docs/{date}_设计审查_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```
@@ -345,7 +345,7 @@ PRD 已生成：
 - 审查报告（来自 Design Review，可选）
 
 **输出**:
-- 实现计划（`.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`）
+- 实现计划（`cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`）
 
 **人工确认**:
 ```

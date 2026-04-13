@@ -140,7 +140,7 @@ digraph requirement_process {
 **Operation**:
 ```bash
 # Read PRD document (if exists)
-Read: .claude/docs/*PRD*.md
+Read: cadence/docs/*PRD*.md
 ```
 
 **Extract Information**:
@@ -162,7 +162,7 @@ Read: .claude/docs/*PRD*.md
 **Operation**:
 ```bash
 # Read legacy analysis report
-Read: .claude/docs/*LegacyAnalysis*.md
+Read: cadence/docs/*LegacyAnalysis*.md
 ```
 
 **Extract Information**:
@@ -398,7 +398,7 @@ graph TD
 
 #### Step 9: Generate Requirement Document
 
-**Output Artifact**: `.claude/docs/{date}_Requirement_{FeatureName}_v1.0.md`
+**Output Artifact**: `cadence/docs/{date}_Requirement_{FeatureName}_v1.0.md`
 
 **Document Structure**:
 ```markdown
@@ -532,13 +532,13 @@ Ask: "Are requirements complete? Any missing items?"
 **Read PRD**:
 ```python
 # Read PRD document
-Read: .claude/docs/*PRD*.md
+Read: cadence/docs/*PRD*.md
 ```
 
 **Read Legacy Analysis**:
 ```python
 # Read legacy analysis report
-Read: .claude/docs/*LegacyAnalysis*.md
+Read: cadence/docs/*LegacyAnalysis*.md
 ```
 
 ### Mermaid Tool
@@ -578,7 +578,7 @@ After completing the Requirement skill, the system will **automatically** sugges
 - **Alternative**: If requirements unclear, suggest returning to Brainstorm
 
 #### 2. Save Progress
-- **Save requirement document** to `.claude/docs/`
+- **Save requirement document** to `cadence/docs/`
 - **Update progress tracker** with Requirement completion status
 - **Record artifact location** for next skill to use
 
@@ -605,7 +605,7 @@ After completing the Requirement skill, the system will **automatically** sugges
 📋 Requirement Analysis Complete!
 
 Generated artifacts:
-- .claude/docs/2026-03-05_Requirement_UserLogin_v1.0.md
+- cadence/docs/2026-03-05_Requirement_UserLogin_v1.0.md
 
 Key features identified:
 - P0: Email/password login
@@ -702,7 +702,7 @@ digraph skill_relationship {
 
 ### Provided Output
 
-1. **Requirement document**: `.claude/docs/{date}_Requirement_{FeatureName}_v1.0.md`
+1. **Requirement document**: `cadence/docs/{date}_Requirement_{FeatureName}_v1.0.md`
 2. **User story list**
 3. **Acceptance criteria list**
 4. **Legacy reuse plan**
@@ -774,7 +774,7 @@ digraph skill_relationship {
    - Modify: `middleware/rate_limit.py` (add rate limiting)
 
 6. **Generate Document**:
-   - Save to: `.claude/docs/2026-03-01_Requirement_UserLogin_v1.0.md`
+   - Save to: `cadence/docs/2026-03-01_Requirement_UserLogin_v1.0.md`
 
 7. **User Confirmation**:
    - Show core requirements

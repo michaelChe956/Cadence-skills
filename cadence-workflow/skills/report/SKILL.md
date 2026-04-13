@@ -7,7 +7,7 @@ description: Use when generating project progress reports, creating development 
 
 ## Overview
 
-**Core Principle**: Collect data from multiple sources, calculate statistics, generate formatted markdown report, and save to `.claude/reports/`.
+**Core Principle**: Collect data from multiple sources, calculate statistics, generate formatted markdown report, and save to `cadence/reports/`.
 
 Reports provide:
 - Session summary (completed phases)
@@ -226,7 +226,7 @@ report += f"{next_steps}\n"
 **Save report:**
 ```markdown
 # Generate filename
-filename = f".claude/reports/{date}_开发报告_{project_name}_v1.0.md"
+filename = f"cadence/reports/{date}_开发报告_{project_name}_v1.0.md"
 
 example: 2026-03-04_开发报告_user-auth_v1.0.md
 
@@ -284,8 +284,8 @@ commits = [
 ]
 
 output_files = [
-    ".claude/docs/2026-03-04_需求文档_用户认证_v1.0.md",
-    ".claude/designs/2026-03-04_设计方案_认证流程_v1.0.md"
+    "cadence/docs/2026-03-04_需求文档_用户认证_v1.0.md",
+    "cadence/designs/2026-03-04_设计方案_认证流程_v1.0.md"
 ]
 
 # Step 2: Calculate statistics
@@ -306,7 +306,7 @@ next_steps = [
 ]
 
 # Step 3: Generate report
-filename = f".claude/reports/{datetime.now().strftime('%Y-%m-%d')}_开发报告_user-auth.md"
+filename = f"cadence/reports/{datetime.now().strftime('%Y-%m-%d')}_开发报告_user-auth.md"
 report = f"""# Development Report: User Authentication System
 
 **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M')}
@@ -352,8 +352,8 @@ Total Checkpoints: 3
 - ghi9012 - Complete requirement: auth specifications
 - jkl3456 - Start design: authentication architecture
 ## Output Files
-- .claude/docs/2026-03-04_需求文档_用户认证_v1.0.md
-- .claude/designs/2026-03-04_设计方案_认证流程_v1.0.md
+- cadence/docs/2026-03-04_需求文档_用户认证_v1.0.md
+- cadence/designs/2026-03-04_设计方案_认证流程_v1.0.md
 ## Next Steps
 1. Complete design phase
 2. Run design review
@@ -438,6 +438,6 @@ Before deploying:
 - [ ] Calculates phase statistics
 - [ ] calculates overall statistics
 - [ ] generates markdown report
-- [ ] saves to `.claude/reports/`
+- [ ] saves to `cadence/reports/`
 - [ ] filename follows convention: `YYYY-MM-DD_开发报告_{project_name}_v1.0.md`
 - [ ] displays confirmation with file location

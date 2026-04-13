@@ -250,7 +250,7 @@ graph TB
 
 ## 输出产物
 
-**文件路径：** `.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`
+**文件路径：** `cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`
 
 **生成时间：** 5-40 分钟（取决于复杂度）
 
@@ -320,12 +320,12 @@ CLAUDE.md (用户维护)
 
 **触发条件**: 用户确认实现计划合理
 **执行动作**:
-- 保存实现计划到 `.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`
+- 保存实现计划到 `cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`
 - 记录保存路径，供后续节点使用
 
 **输出**:
 ```
-✅ 实现计划已保存到: .claude/designs/2026-03-05_实现计划_用户认证_v1.0.md
+✅ 实现计划已保存到: cadence/designs/2026-03-05_实现计划_用户认证_v1.0.md
 ```
 
 ### Step 2: 询问是否进入 Git Worktrees
@@ -359,7 +359,7 @@ CLAUDE.md (用户维护)
 
 **传递的上下文**:
 ```yaml
-plan_path: ".claude/designs/2026-03-05_实现计划_用户认证_v1.0.md"
+plan_path: "cadence/designs/2026-03-05_实现计划_用户认证_v1.0.md"
 feature_name: "用户认证"
 tasks:
   - name: "Task 1: 实现用户注册"

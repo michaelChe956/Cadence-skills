@@ -608,7 +608,7 @@ checkpoint = {
         "todowrite_state": todowrite_state,
         "project_context": project_context
     },
-    "output": ".claude/designs/2026-03-04_设计方案_认证流程_v1.0.md",
+    "output": "cadence/designs/2026-03-04_设计方案_认证流程_v1.0.md",
     "ttl": 2592000,
     "created_at": now.isoformat(),
     "expires_at": (now + timedelta(days=30)).isoformat()

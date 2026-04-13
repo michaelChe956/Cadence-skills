@@ -228,7 +228,7 @@ graph TB
 
 ## 输出产物
 
-**文件：** `.claude/designs/{date}_技术方案_{功能名称}_v1.0.md`
+**文件：** `cadence/designs/{date}_技术方案_{功能名称}_v1.0.md`
 
 **内容结构：**
 ```markdown
@@ -350,7 +350,7 @@ graph LR
 
 ### Step 1: 保存技术方案
 
-**操作**：自动保存技术方案到 `.claude/designs/` 目录
+**操作**：自动保存技术方案到 `cadence/designs/` 目录
 
 **文件名格式**：`{date}_技术方案_{功能名称}_v1.0.md`
 
@@ -381,7 +381,7 @@ design:
 ```
 ✅ 技术方案已完成并保存
 
-📁 文件位置: .claude/designs/{date}_技术方案_{功能名称}_v1.0.md
+📁 文件位置: cadence/designs/{date}_技术方案_{功能名称}_v1.0.md
 
 📋 方案摘要:
 - 架构模式: {架构类型}

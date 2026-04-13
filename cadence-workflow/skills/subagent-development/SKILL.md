@@ -91,7 +91,7 @@ graph TB
 
 ```bash
 # 读取计划文件
-cat .claude/designs/{date}_实现计划_{功能名称}_v1.0.md
+cat cadence/designs/{date}_实现计划_{功能名称}_v1.0.md
 ```
 
 **关键**: 只读取一次，避免重复文件读取。

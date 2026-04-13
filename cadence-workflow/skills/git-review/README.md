@@ -145,7 +145,7 @@ commands/
 
 ## 相关资源
 
-- [设计文档](../../.claude/plans/2026-03-04_计划文档_GitReviewSkill_v1.0.md)
+- [设计文档](../../cadence/plans/2026-03-04_计划文档_GitReviewSkill_v1.0.md)
 - [实现计划](../../docs/plans/2026-03-04-git-review-skill.md)
 - [Command 文档](../../commands/git-review.md)
 
