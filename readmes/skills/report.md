@@ -325,7 +325,7 @@ A: Report生成失败的常见原因：
 1. 运行 `/status` 检查是否有progress数据
 2. 运行 `/checkpoint` 创建检查点
 3. 提交代码到Git
-4. 创建报告目录：`mkdir -p .claude/reports`
+4. 创建报告目录：`mkdir -p .cadence/reports`
 
 ### Q: 如何生成特定时间范围的报告？
 
