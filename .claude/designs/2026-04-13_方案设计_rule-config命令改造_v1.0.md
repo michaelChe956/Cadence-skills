@@ -326,27 +326,50 @@ cadence-init/, Cadence-skills/, .claude-plugin/, node_modules/
 
 所有 cadence-workflow skills 中引用的 `.claude/` 文档路径需同步更新为 `.cadence/`。
 
-主要涉及文件：
+### cadence-workflow/skills/
 
-| 文件 | 路径模式 |
-|------|---------|
+| 文件 | 主要路径更新 |
+|------|-------------|
 | `cadence-workflow/skills/brainstorming/SKILL.md` | `.claude/prds/` → `.cadence/prds/` |
 | `cadence-workflow/skills/analyze/SKILL.md` | `.claude/analysis-docs/` → `.cadence/analysis-docs/` |
 | `cadence-workflow/skills/requirement/SKILL.md` | `.claude/docs/` → `.cadence/docs/` |
 | `cadence-workflow/skills/design/SKILL.md` | `.claude/designs/` → `.cadence/designs/` |
 | `cadence-workflow/skills/design-review/SKILL.md` | `.claude/designs-reviews/` → `.cadence/designs-reviews/` |
 | `cadence-workflow/skills/plan/SKILL.md` | `.claude/plans/` → `.cadence/plans/` |
-| `cadence-workflow/skills/full-flow/SKILL.md` | 多个路径更新 |
-| `cadence-workflow/skills/quick-flow/SKILL.md` | 多个路径更新 |
-| `cadence-workflow/skills/exploration-flow/SKILL.md` | 多个路径更新 |
+| `cadence-workflow/skills/full-flow/SKILL.md` | 多个路径 |
+| `cadence-workflow/skills/quick-flow/SKILL.md` | 多个路径 |
+| `cadence-workflow/skills/exploration-flow/SKILL.md` | 多个路径 |
 | `cadence-workflow/skills/checkpoint/SKILL.md` | `.claude/plans/` 等 |
 | `cadence-workflow/skills/status/SKILL.md` | 同上 |
 | `cadence-workflow/skills/resume/SKILL.md` | 同上 |
 | `cadence-workflow/skills/report/SKILL.md` | `.claude/reports/` → `.cadence/reports/` |
-| `cadence-workflow/commands/full-flow.md` | 多个路径更新 |
-| `cadence-workflow/commands/plan.md` | 同上 |
-| `cadence-workflow/commands/quick-flow.md` | 同上 |
-| `readmes/skills/*.md` | 多个路径更新 |
+
+### cadence-workflow/commands/
+
+| 文件 | 主要路径更新 |
+|------|-------------|
+| `cadence-workflow/commands/full-flow.md` | `.claude/docs/`, `.claude/designs/` |
+| `cadence-workflow/commands/quick-flow.md` | `.claude/docs/`, `.claude/designs/` |
+| `cadence-workflow/commands/plan.md` | `.claude/designs/` |
+| `cadence-workflow/commands/design.md` | `.claude/designs/` |
+| `cadence-workflow/commands/design-review.md` | `.claude/docs/` |
+
+### readmes/skills/
+
+| 文件 | 主要路径更新 |
+|------|-------------|
+| `readmes/skills/brainstorming.md` | `.claude/designs/` |
+| `readmes/skills/checkpoint.md` | `.claude/designs/` |
+| `readmes/skills/exploration-flow.md` | `.claude/docs/` |
+| `readmes/skills/full-flow.md` | `.claude/docs/`, `.claude/designs/`, `.claude/plans/` |
+| `readmes/skills/quick-flow.md` | `.claude/docs/`, `.claude/designs/` |
+| `readmes/skills/report.md` | `.claude/docs/`, `.claude/designs/`, `.claude/reports/` |
+
+### cadence-init/commands/
+
+| 文件 | 主要路径更新 |
+|------|-------------|
+| `cadence-init/commands/project-analysis.md` | `.claude/analysis-docs/` → `.cadence/analysis-docs/` |
 
 ---
 
@@ -397,21 +420,54 @@ mkdir -p .cadence/{project-rules/examples,prds,analysis-docs,docs,designs,design
 
 ## 实施检查清单
 
-- [ ] 更新 `cadence-init/commands/rule-config.md`（流程重组）
-- [ ] 更新 `cadence-init/references/rules/document-storage.md`（路径映射）
+### 核心文件
+- [ ] 更新 `cadence-init/commands/rule-config.md`（流程重组 + 步骤 0 新增）
+- [ ] 更新 `cadence-init/references/rules/document-storage.md`（路径映射 + 模板内容更新）
 - [ ] 更新 `cadence-init/references/rules/README.md`（如需）
-- [ ] 更新 `cadence-init/references/project-rules/README.md`（project-rules 路径）
+- [ ] 更新 `cadence-init/references/project-rules/README.md`（project-rules 路径改为 .cadence/）
 - [ ] 更新 `cadence-init/references/project-rules/CLAUDE-RULE.md`（同上）
-- [ ] 更新 `cadence-init/commands/project-rules-examples.md`（创建目录）
+- [ ] 更新 `cadence-init/commands/project-rules-examples.md`（创建目录改为 .cadence/）
+- [ ] 更新 `cadence-init/commands/project-analysis.md`（.claude/analysis-docs/ 路径）
 - [ ] 更新 `CLAUDE.md`（规则引用路径）
 - [ ] 更新 `AGENTS.md`（规则引用路径）
-- [ ] 更新所有 cadence-workflow skills 中的文档路径引用
-- [ ] 更新所有 cadence-workflow commands 中的文档路径引用
-- [ ] 更新 `readmes/skills/*.md` 中的文档路径引用
-- [ ] 更新 `install-offline.sh` 中的路径引用
-- [ ] 更新 `install-offline.bat` 中的路径引用
+
+### cadence-workflow skills
+- [ ] 更新 `cadence-workflow/skills/brainstorming/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/analyze/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/requirement/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/design/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/design-review/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/plan/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/full-flow/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/quick-flow/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/exploration-flow/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/checkpoint/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/status/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/resume/SKILL.md`
+- [ ] 更新 `cadence-workflow/skills/report/SKILL.md`
+
+### cadence-workflow commands
+- [ ] 更新 `cadence-workflow/commands/full-flow.md`
+- [ ] 更新 `cadence-workflow/commands/quick-flow.md`
+- [ ] 更新 `cadence-workflow/commands/plan.md`
+- [ ] 更新 `cadence-workflow/commands/design.md`
+- [ ] 更新 `cadence-workflow/commands/design-review.md`
+
+### readmes/skills
+- [ ] 更新 `readmes/skills/brainstorming.md`
+- [ ] 更新 `readmes/skills/checkpoint.md`
+- [ ] 更新 `readmes/skills/exploration-flow.md`
+- [ ] 更新 `readmes/skills/full-flow.md`
+- [ ] 更新 `readmes/skills/quick-flow.md`
+- [ ] 更新 `readmes/skills/report.md`
+
+### 安装脚本（注：仅更新业务文档路径，插件目录 `$HOME/.claude/plugins/` 不需更新）
+- [ ] 更新 `install-offline.sh` 中的业务文档路径引用
+- [ ] 更新 `install-offline.bat` 中的业务文档路径引用
+
+### 其他
 - [ ] 更新 `.claude-plugin/marketplace.json`（如有需要）
-- [ ] 将本设计文档提交 git
+- [ ] 确认本设计文档已提交 git
 
 ---
 
