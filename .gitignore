@@ -1,6 +1,5 @@
 # Cadence 工作目录
 .serena/
 .worktrees/
-.claude/commands/
 .mcp.json
-.claude/skills/
+.codex/config.toml

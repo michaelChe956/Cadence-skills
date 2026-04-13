@@ -253,7 +253,7 @@
 **环境变量**：
 
 | 变量 | 说明 | 必需 |
-|------|------|------|
+|------|------|-----|
 | `MINIMAX_API_KEY` | MiniMax API 密钥 | 是 |
 | `MINIMAX_API_HOST` | API 地址，固定为 `https://api.minimaxi.com` | 是 |
 | `MINIMAX_MCP_BASE_PATH` | 本地输出目录路径（需有写入权限） | 否 |

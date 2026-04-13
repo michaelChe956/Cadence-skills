@@ -9,7 +9,8 @@
 | 文件 | 内容概述 |
 |------|---------|
 | `language.md` | 语言规则（中文回答要求） |
-| `code-usage.md` | 代码使用规则（非必要不编写代码） |
+| `code-usage-coding.md` | 代码使用规则（编码项目适用） |
+| `code-usage-noncoding.md` | 代码使用规则（非编码项目适用） |
 | `document-storage.md` | 文档存储规则（目录、命名、路径映射） |
 | `markdown-format.md` | Markdown 格式规则（代码块嵌套） |
 | `serena-usage.md` | Serena MCP 使用规则 |
@@ -19,7 +20,7 @@
 ## 修改权限
 
 - **仅框架维护者**可以修改本目录下的文件
-- 用户自定义规则应放在 `.claude/project-rules/` 目录
+- 用户自定义规则应放在 `cadence/project-rules/` 目录
 - **禁止**用户直接修改 `.claude/rules/` 目录下的文件
 
 ## 从旧版迁移
@@ -32,5 +33,5 @@
 
 ## 相关目录
 
-- 用户自定义规则：`.claude/project-rules/`
+- 用户自定义规则：`cadence/project-rules/`
 - 项目主配置：`CLAUDE.md`
