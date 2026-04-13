@@ -2,12 +2,12 @@
 
 > **🔴 强制规则**
 >
-> - 用户自定义规则**只能**存放在 `.claude/project-rules/` 目录
+> - 用户自定义规则**只能**存放在 `cadence/project-rules/` 目录
 > - **禁止**在 `.claude/rules/` 目录中添加用户自定义规则
 > - **禁止**直接修改 `.claude/rules/` 目录下的框架内置规则文件
 > - 框架内置规则由维护者管理，详见 `.claude/rules/README.md`
 
-- **规则目录**：`.claude/project-rules/`
+- **规则目录**：`cadence/project-rules/`
 - **使用方法**：
   1. 查看项目初始化时创建的示例文件（`examples/` 目录）
   2. 根据需要复制和修改示例文件到 `project-rules/` 目录
@@ -23,14 +23,14 @@
 
 <!--
 ### 需求文档格式
-使用 `.claude/project-rules/requirement-template.md` 作为需求文档格式，
+使用 `cadence/project-rules/requirement-template.md` 作为需求文档格式，
 不要使用 requirement skill 中的通用格式。
 
 ### 设计文档格式
-使用 `.claude/project-rules/design-template.md` 作为设计文档模板。
+使用 `cadence/project-rules/design-template.md` 作为设计文档模板。
 
 ### 代码开发规范
-所有代码开发必须遵循 `.claude/project-rules/coding-standards.md` 中的规范。
+所有代码开发必须遵循 `cadence/project-rules/coding-standards.md` 中的规范。
 -->
 ````
 

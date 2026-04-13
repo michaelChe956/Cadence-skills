@@ -9,7 +9,7 @@
 | 目录 | 用途 | 管理者 |
 |------|------|--------|
 | `.claude/rules/` | 框架内置规则文件 | 框架维护者 |
-| `.claude/project-rules/` | 用户自定义规则文件 | 用户 |
+| `cadence/project-rules/` | 用户自定义规则文件 | 用户 |
 
 ### 禁止行为
 
@@ -19,7 +19,7 @@
 
 ### 正确做法
 
-- ✅ 用户自定义规则放在 `.claude/project-rules/` 目录
+- ✅ 用户自定义规则放在 `cadence/project-rules/` 目录
 - ✅ 从 `examples/` 目录复制模板并修改
 - ✅ 在 `CLAUDE.md` 中添加规则引用以启用
 
@@ -49,14 +49,14 @@
 ## 项目个性化规则
 
 ### 需求文档格式
-使用 `.claude/project-rules/requirement-template.md` 作为需求文档格式，
+使用 `cadence/project-rules/requirement-template.md` 作为需求文档格式，
 不要使用 requirement skill 中的通用格式。
 
 ### 设计文档格式
-使用 `.claude/project-rules/design-template.md` 作为设计文档模板。
+使用 `cadence/project-rules/design-template.md` 作为设计文档模板。
 
 ### 代码开发规范
-所有代码开发必须遵循 `.claude/project-rules/coding-standards.md` 中的规范。
+所有代码开发必须遵循 `cadence/project-rules/coding-standards.md` 中的规范。
 ```
 
 ## 📁 文件说明

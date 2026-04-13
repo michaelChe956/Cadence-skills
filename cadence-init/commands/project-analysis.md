@@ -108,7 +108,7 @@ ls -la | grep -E "requirements.txt|pom.xml|go.mod|Cargo.toml|pyproject.toml"
 
 ### 6. 生成分析报告
 
-**文件路径**：`.claude/analysis-docs/YYYY-MM-DD_分析报告_项目初始化摘要_v1.0.md`
+**文件路径**：`cadence/analysis-docs/YYYY-MM-DD_分析报告_项目初始化摘要_v1.0.md`
 
 **文件内容模板**：
 

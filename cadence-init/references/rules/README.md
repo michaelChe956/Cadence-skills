@@ -20,7 +20,7 @@
 ## 修改权限
 
 - **仅框架维护者**可以修改本目录下的文件
-- 用户自定义规则应放在 `.claude/project-rules/` 目录
+- 用户自定义规则应放在 `cadence/project-rules/` 目录
 - **禁止**用户直接修改 `.claude/rules/` 目录下的文件
 
 ## 从旧版迁移
@@ -33,5 +33,5 @@
 
 ## 相关目录
 
-- 用户自定义规则：`.claude/project-rules/`
+- 用户自定义规则：`cadence/project-rules/`
 - 项目主配置：`CLAUDE.md`

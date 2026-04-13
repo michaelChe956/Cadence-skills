@@ -37,18 +37,18 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 ### 1. 创建 README.md
 
-**文件路径**：`.claude/project-rules/README.md`
+**文件路径**：`cadence/project-rules/README.md`
 
 **文件内容**：`references/project-rules/README.md`
 
 ### 2. 创建 requirement-template.md
 
-**文件路径**：`.claude/project-rules/examples/requirement-template.md`
+**文件路径**：`cadence/project-rules/examples/requirement-template.md`
 
 **文件内容**：`references/project-rules/examples/requirement-template.md`
 ### 3. 创建 design-template.md
 
-**文件路径**：`.claude/project-rules/examples/design-template.md`
+**文件路径**：`cadence/project-rules/examples/design-template.md`
 
 **文件内容**：`references/project-rules/examples/design-template.md`
 
@@ -61,7 +61,7 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 ### 4. 创建 coding-standards.md
 
-**文件路径**：`.claude/project-rules/examples/coding-standards.md`
+**文件路径**：`cadence/project-rules/examples/coding-standards.md`
 
 **文件内容**：`references/project-rules/examples/coding-standards.md`
 
@@ -74,7 +74,7 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 ### 5. 创建 test-standards.md
 
-**文件路径**：`.claude/project-rules/examples/test-standards.md`
+**文件路径**：`cadence/project-rules/examples/test-standards.md`
 
 **文件内容**：`references/project-rules/examples/test-standards.md`
 
