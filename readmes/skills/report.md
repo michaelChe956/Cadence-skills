@@ -97,8 +97,8 @@
    - jkl3456 - Start design: authentication architecture
 
    ## Output Files
-   - .claude/docs/2026-03-04_需求文档_用户认证_v1.0.md
-   - .claude/designs/2026-03-04_设计方案_认证流程_v1.0.md
+   - cadence/docs/2026-03-04_需求文档_用户认证_v1.0.md
+   - cadence/designs/2026-03-04_设计方案_认证流程_v1.0.md
 
    ## Next Steps
    1. Complete design phase
@@ -111,7 +111,7 @@
    ```
    ✅ Report generated successfully!
 
-   Location: .claude/reports/2026-03-04_开发报告_user-auth.md
+   Location: cadence/reports/2026-03-04_开发报告_user-auth.md
    ```
 
 ### 案例 2：生成阶段报告
@@ -186,8 +186,8 @@
 - 时间范围
 
 **文件系统**：
-- `.claude/docs/` - 需求文档
-- `.claude/designs/` - 设计方案
+- `cadence/docs/` - 需求文档
+- `cadence/designs/` - 设计方案
 - 其他输出文件
 
 ## 报告结构
@@ -211,9 +211,9 @@
 
 **示例**：
 ```
-.claude/reports/2026-03-04_开发报告_user-auth.md
-.claude/reports/2026-03-03_开发报告_api-refactor.md
-.claude/reports/2026-03-02_阶段报告_brainstorm.md
+cadence/reports/2026-03-04_开发报告_user-auth.md
+cadence/reports/2026-03-03_开发报告_api-refactor.md
+cadence/reports/2026-03-02_阶段报告_brainstorm.md
 ```
 
 ## 统计计算逻辑
@@ -319,13 +319,13 @@ A: Report生成失败的常见原因：
 - ❌ 没有progress数据（需要先启动流程）
 - ❌ 没有checkpoint（需要先创建checkpoint）
 - ❌ Git历史为空（需要先提交代码）
-- ❌ 输出目录不存在（需要创建`.claude/reports/`）
+- ❌ 输出目录不存在（需要创建`cadence/reports/`）
 
 **解决方法**：
 1. 运行 `/status` 检查是否有progress数据
 2. 运行 `/checkpoint` 创建检查点
 3. 提交代码到Git
-4. 创建报告目录：`mkdir -p .claude/reports`
+4. 创建报告目录：`mkdir -p cadence/reports`
 
 ### Q: 如何生成特定时间范围的报告？
 

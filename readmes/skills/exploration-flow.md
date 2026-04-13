@@ -69,7 +69,7 @@
 - 多客户端可按需查询
 - 类型安全减少错误
 
-保存文档：.claude/docs/2026-03-02_探索PRD_GraphQL技术选型_v1.0.md
+保存文档：cadence/docs/2026-03-02_探索PRD_GraphQL技术选型_v1.0.md
 ```
 
 **用户确认**：✅ 继续下一步
@@ -89,7 +89,7 @@
 - Schema 设计：User, Post 类型
 - 数据库：PostgreSQL + Prisma
 
-保存文档：.claude/analysis/2026-03-02_简化分析_GraphQL技术分析_v1.0.md
+保存文档：cadence/analysis/2026-03-02_简化分析_GraphQL技术分析_v1.0.md
 ```
 
 **用户确认**：✅ 继续下一步
@@ -179,7 +179,7 @@ Subagent Development 完成后进入评估阶段，有 4 种结局：
 
 - **📚 结局3: 技术储备完成** - 功能可行但暂不需要
   - 清理 POC 代码
-  - 记录技术方案到 `.claude/docs/`
+  - 记录技术方案到 `cadence/docs/`
   - 生成技术储备文档
 
 - **❌ 结局4: 记录教训** - 功能不可行

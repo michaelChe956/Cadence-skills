@@ -252,7 +252,7 @@ git pull
 
 该命令会：
 - ✅ 创建 `.claude/rules/` 规则目录（8 个框架内置规则文件）
-- ✅ 创建 `.claude/project-rules/` 用户规则目录
+- ✅ 创建 `cadence/project-rules/` 用户规则目录
 - ✅ 在 CLAUDE.md 中添加规则摘要引用
 - ✅ 配置目录结构
 

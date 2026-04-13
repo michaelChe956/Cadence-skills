@@ -96,7 +96,7 @@ context:
   todowrite_state: [{task1}, {task2}, ...]
   project_context: {project info}
 
-output: ".claude/designs/2026-03-04_设计方案_认证流程_v1.0.md"
+output: "cadence/designs/2026-03-04_设计方案_认证流程_v1.0.md"
 
 ttl: 2592000  # 30 days
 created_at: "2026-03-04T15:30:00Z"
