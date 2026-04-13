@@ -18,12 +18,12 @@
 
 ## 输出
 
-- PRD 文档：`.claude/docs/{date}_PRD_{功能名称}_v1.0.md`
-- 存量分析报告：`.claude/analysis/{date}_存量分析_{功能名称}_v1.0.md`
-- 需求文档：`.claude/docs/{date}_需求文档_{功能名称}_v1.0.md`
-- 技术方案：`.claude/designs/{date}_技术方案_{功能名称}_v1.0.md`
-- 审查报告：`.claude/docs/{date}_设计审查_{功能名称}_v1.0.md`
-- 实现计划：`.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`
+- PRD 文档：`cadence/docs/{date}_PRD_{功能名称}_v1.0.md`
+- 存量分析报告：`cadence/analysis/{date}_存量分析_{功能名称}_v1.0.md`
+- 需求文档：`cadence/docs/{date}_需求文档_{功能名称}_v1.0.md`
+- 技术方案：`cadence/designs/{date}_技术方案_{功能名称}_v1.0.md`
+- 审查报告：`cadence/docs/{date}_设计审查_{功能名称}_v1.0.md`
+- 实现计划：`cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`
 - 代码实现 + 单元测试（覆盖率 ≥ 80%）
 
 ## 相关命令

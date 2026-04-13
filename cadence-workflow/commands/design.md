@@ -14,7 +14,7 @@
 
 ## 输出
 
-生成技术方案文档：`.claude/designs/{date}_技术方案_{功能名称}_v1.0.md`
+生成技术方案文档：`cadence/designs/{date}_技术方案_{功能名称}_v1.0.md`
 
 ## 相关命令
 

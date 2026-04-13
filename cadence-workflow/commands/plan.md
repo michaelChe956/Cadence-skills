@@ -14,7 +14,7 @@
 
 ## 输出
 
-生成实现计划文档：`.claude/designs/{date}_实现计划_{功能名称}_v1.0.md`
+生成实现计划文档：`cadence/designs/{date}_实现计划_{功能名称}_v1.0.md`
 
 ## 相关命令
 
