@@ -487,7 +487,7 @@ command frontmatter includes skill: legacy-bootstrap.
 Run:
 
 ```bash
-rg -n "生成 `.ai/`|作为主流程|远程 GitHub 仓库作为输入|clone 远程" cadence-init/skills/legacy-bootstrap/SKILL.md cadence-init/commands/legacy-bootstrap.md
+rg -n '生成 `.ai/`|作为主流程|远程 GitHub 仓库作为输入|clone 远程' cadence-init/skills/legacy-bootstrap/SKILL.md cadence-init/commands/legacy-bootstrap.md
 ```
 
 Expected:
