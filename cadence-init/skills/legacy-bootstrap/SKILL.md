@@ -1,6 +1,6 @@
 ---
 name: legacy-bootstrap
-description: "使用 repomix 对当前本地 legacy 项目进行 bootstrap，生成 Cadence 项目认知文档，并更新 CLAUDE.md 与 AGENTS.md 渐进式加载入口"
+description: "当需要为当前本地 legacy 项目建立 Cadence 项目认知时，使用 repomix bootstrap 并更新入口文档"
 disable-model-invocation: true
 ---
 
@@ -44,7 +44,7 @@ disable-model-invocation: true
 1. 读取目标项目规则。
 2. 确认执行模式。
 3. 执行 repomix。
-4. 参考 skill-generate。
+4. 必要时参考 skill-generate 输出结构，默认不执行 `--skill-generate`。
 5. 分析项目认知。
 6. 生成 Cadence 产物。
 7. 更新入口文档。
@@ -103,6 +103,16 @@ npx repomix@latest --output cadence/analysis-docs/YYYY-MM-DD_分析资料_repomi
 - `--include-logs`
 - `--include-diffs`
 
+建议使用 `--ignore` 避免把已有 repomix 输出、历史分析产物、生成物、缓存和大型构建目录重新打包。不要整体排除 `cadence/`，因为入口规则和部分项目文档可能是有效证据；应重点排除旧 repomix 输出和明显产物。
+
+示例：
+
+```bash
+npx repomix@latest \
+  --ignore "**/repomix-output*.xml,cadence/analysis-docs/*repomix-output*.xml,cadence/analysis-docs/*分析资料*.xml,node_modules,dist,build,coverage,.next,.turbo,target,tmp,cache,.cache" \
+  --output cadence/analysis-docs/YYYY-MM-DD_分析资料_repomix-output_v1.0.xml
+```
+
 如果 `npx` 不可用，提示用户先运行 `/pre-check` 或安装 Node.js/npx。
 
 如果 repomix 失败，必须记录失败原因、已执行命令和建议重试命令；不得在缺少 repomix 证据时编造分析文档。
@@ -146,6 +156,8 @@ npx repomix@latest --output cadence/analysis-docs/YYYY-MM-DD_分析资料_repomi
 所有产物必须写入 `cadence/`，不生成 `.ai/`。
 
 #### 标准模式产物
+
+标准模式也必须按证据充分性生成产物。下表是默认候选产物清单，不代表必须全量生成 8 个文档；证据不足时不要生成空文档，应在 bootstrap 总报告中记录未生成的文档、原因和后续确认方式。
 
 | 路径 | 内容 |
 |------|------|
@@ -216,7 +228,7 @@ npx repomix@latest --output cadence/analysis-docs/YYYY-MM-DD_分析资料_repomi
 
 | 错误 | 处理方式 |
 |------|----------|
-| 当前目录不是项目根目录 | 停止执行，提示用户在目标项目根目录重新运行；不要对上级目录或不确定目录写入产物 |
+| 当前目录不是项目根目录 | 先检查 `.git`、主项目清单文件和常见配置文件，例如 `package.json`、`Cargo.toml`、`pyproject.toml`、`go.mod`、`pom.xml`、`build.gradle`、`Makefile`、`README.md` 等；无法判断时先询问用户确认。确认不是根目录后停止执行，提示用户在目标项目根目录重新运行；不要对上级目录或不确定目录写入产物 |
 | `npx` 不可用 | 提示用户运行 `/pre-check` 或安装 Node.js/npx；不要继续执行 repomix |
 | repomix 失败 | 记录失败原因、命令和建议重试命令；不要编造分析文档 |
 | repomix 输出过大 | 优先使用 `--compress`、`--include`、`--ignore`、`--split-output`、`--token-count-tree` 缩小范围；必要时降级轻量模式 |
