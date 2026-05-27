@@ -40,7 +40,7 @@
 - 不生成 `.ai/` 目录。
 - 不直接修改业务代码。
 - 不把未知业务事实写成确定结论。
-- 不默认使用 repomix 的实验性 `--skill-generate` 作为主流程。
+- 不默认使用 repomix 的实验性 `--skill-generate` 作为主流程，但可以将其作为结构参考。
 
 ## 3. 使用场景
 
@@ -155,7 +155,25 @@ cadence/analysis-docs/YYYY-MM-DD_分析资料_repomix-output_v1.0.xml
 
 如果 repomix 执行失败，应记录失败原因和建议重试命令，不继续编造分析文档。
 
-### 5.4 分析 repomix 输出
+### 5.4 参考 repomix skill-generate
+
+repomix 提供实验性的 `--skill-generate` 能力，可基于仓库内容生成 Agent Skill。`legacy-bootstrap` 可以参考该能力的输出结构，但不能将其作为主流程。
+
+参考方式：
+
+- 可在设计或实施阶段查看 `--skill-generate` 生成的目录组织、触发描述和上下文拆分方式。
+- 可借鉴其“把代码库认知封装成可复用 Agent 入口”的思路。
+- 不直接把 `--skill-generate` 输出作为最终 `legacy-bootstrap` skill。
+- 不直接把 `--skill-generate` 输出作为目标项目的 Cadence 认知产物。
+- 若后续增加可选流程，应明确标记为实验参考模式，且默认关闭。
+
+原因：
+
+- 本 skill 的目标是 legacy 项目 bootstrap，并将认知沉淀到 `cadence/`。
+- `--skill-generate` 更偏代码库参考 skill，不覆盖 Cadence 文档分层、`CLAUDE.md` / `AGENTS.md` 渐进加载更新、风险与后续调研计划等要求。
+- repomix 官方将该能力标注为实验能力，默认主流程应保持稳定、可控。
+
+### 5.5 分析 repomix 输出
 
 分析重点：
 
@@ -175,7 +193,7 @@ cadence/analysis-docs/YYYY-MM-DD_分析资料_repomix-output_v1.0.xml
 - `TODO`
 - `NEED_CONFIRMATION`
 
-### 5.5 生成 Cadence 产物
+### 5.6 生成 Cadence 产物
 
 所有产物必须写入目标项目 `cadence/` 目录，不生成 `.ai/`。
 
@@ -203,7 +221,7 @@ cadence/analysis-docs/YYYY-MM-DD_分析资料_repomix-output_v1.0.xml
 
 如果某类信息没有足够证据，不应生成空洞文档。可以在 bootstrap 总报告中记录未生成原因。
 
-### 5.6 更新 CLAUDE.md 与 AGENTS.md
+### 5.7 更新 CLAUDE.md 与 AGENTS.md
 
 产物生成完成后，必须更新目标项目的 `CLAUDE.md` 与 `AGENTS.md`。
 
@@ -239,7 +257,7 @@ cadence/analysis-docs/YYYY-MM-DD_分析资料_repomix-output_v1.0.xml
 
 如果目标项目缺少 `CLAUDE.md` 或 `AGENTS.md`，skill 应按 Cadence 初始化规则提示或创建对应入口文件。
 
-### 5.7 输出 bootstrap 摘要
+### 5.8 输出 bootstrap 摘要
 
 完成后输出：
 
