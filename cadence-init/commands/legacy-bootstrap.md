@@ -17,18 +17,19 @@ skill: legacy-bootstrap
 
 执行以下流程：
 
-1. 读取当前项目规则和入口文档。
-2. 询问用户选择标准模式、深度模式或轻量降级模式。
+1. 读取目标项目规则和入口文档。
+2. 启动时确认是否使用深度模式；未选择深度模式时使用标准模式。
 3. 使用 `npx repomix@latest` 生成项目上下文。
-4. 参考 repomix 实验性 `--skill-generate` 的结构思路，但不作为主流程，默认不执行。
-5. 分析项目架构、模块、依赖、风险、数据模型、构建测试画像和未知项。
-6. 将有证据支撑的认知产物写入 `cadence/` 下的对应目录。
-7. 更新 `CLAUDE.md` 与 `AGENTS.md` 的渐进式项目认知加载区域，只链接实际生成的文档。
-8. 输出 bootstrap 摘要和建议下一步。
+4. 仅在 repomix 输出过大、不可处理或时间受限时降级为轻量模式。
+5. 参考 repomix 实验性 `--skill-generate` 的结构思路，但不作为主流程，默认不执行。
+6. 分析项目架构、模块、依赖、风险、数据模型、构建测试画像和未知项。
+7. 将有证据支撑的认知产物写入 `cadence/` 下的对应目录。
+8. 更新 `CLAUDE.md` 与 `AGENTS.md` 的渐进式项目认知加载区域，只链接实际生成的文档。
+9. 输出 bootstrap 摘要和建议下一步。
 
 ## 输出
 
-默认按实际证据生成或更新以下候选目录与文件：
+实际文件以 skill 基于证据生成的结果为准；以下候选目录不代表必须全量生成：
 
 - `cadence/analysis-docs/`
 - `cadence/architecture/`
@@ -37,6 +38,8 @@ skill: legacy-bootstrap
 - `cadence/plans/`
 - `CLAUDE.md`
 - `AGENTS.md`
+
+完成时至少汇报 repomix 输出文件、生成文档列表和入口文档更新情况。
 
 ## 约束
 
@@ -52,3 +55,7 @@ skill: legacy-bootstrap
 - `/pre-check` - 检查 npx 等基础工具
 - `/cadence:init:project-analysis` - 基础项目结构分析
 - `/cadence:init:rule-config` - 初始化项目规则
+
+## 详细文档
+
+- [legacy-bootstrap skill](../skills/legacy-bootstrap/SKILL.md)
