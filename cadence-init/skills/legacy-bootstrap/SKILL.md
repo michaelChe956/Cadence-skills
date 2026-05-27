@@ -106,7 +106,7 @@ npx repomix@latest --output cadence/analysis-docs/YYYY-MM-DD_分析资料_repomi
 
 这是最小可运行命令，不应在实际项目中无判断地直接复制。执行时应优先按项目情况补充 `--ignore`，避免把旧 repomix 输出、历史分析产物、生成物、缓存和大型构建目录重新打包。
 
-执行前确保 `cadence/analysis-docs/` 存在。项目较大时优先考虑以下选项，而不是放弃 bootstrap：
+执行 repomix 前必须先检查 `cadence/analysis-docs/` 是否存在；如果不存在，应先创建该目录，再执行 repomix。项目较大时优先考虑以下选项，而不是放弃 bootstrap：
 
 - `--compress`
 - `--include`
@@ -200,6 +200,8 @@ npx repomix@latest \
 
 更新方式不是复制完整分析，而是新增 `Legacy 项目认知` 或 `渐进式项目认知加载` 区域，指向 Cadence 入口文档和任务相关文档。
 
+`CLAUDE.md` 与 `AGENTS.md` 只能链接实际生成的 Cadence 文档，不得链接未生成的候选路径。候选产物如果因证据不足、模式降级或范围控制而未生成，只能在 bootstrap 总报告中说明未生成原因和后续确认方式。
+
 推荐 Markdown 结构：
 
 ```markdown
@@ -219,6 +221,8 @@ npx repomix@latest \
 
 ### 使用规则
 
+- 本区域只列出实际生成的 Cadence 文档；未生成的候选文档不得以占位路径写入 `CLAUDE.md` 或 `AGENTS.md`。
+- 未生成项及原因只在 bootstrap 总报告中说明。
 - 不确定内容以 `UNKNOWN`、`TODO`、`NEED_CONFIRMATION` 为准。
 - 不得把 bootstrap 初稿视为绝对事实。
 - 发现文档与代码不一致时，优先相信当前代码，并更新对应 Cadence 文档。
