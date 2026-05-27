@@ -209,15 +209,15 @@ npx repomix@latest \
 
 ### 首选入口
 
-- `cadence/analysis-docs/YYYY-MM-DD_分析报告_Legacy项目Bootstrap_v1.0.md`
-- `cadence/architecture/YYYY-MM-DD_架构文档_系统总览_v1.0.md`
-- `cadence/architecture/YYYY-MM-DD_架构文档_模块地图_v1.0.md`
+- `<实际生成的 Legacy Bootstrap 总报告路径>`
+- `<实际生成的系统总览文档路径，如存在>`
+- `<实际生成的模块地图文档路径，如存在>`
 
 ### 修改代码前必须读取
 
-- 构建与测试：`cadence/docs/YYYY-MM-DD_开发文档_构建测试画像_v1.0.md`
-- 风险区域：`cadence/docs/YYYY-MM-DD_约束文档_风险区域与遗留陷阱_v1.0.md`
-- 相关模块或领域文档：按当前任务选择读取 `cadence/architecture/`、`cadence/models/`、`cadence/docs/` 中的对应文件
+- 构建与测试：`<实际生成的构建测试画像文档路径，如存在>`
+- 风险区域：`<实际生成的风险区域与遗留陷阱文档路径，如存在>`
+- 相关模块或领域文档：按当前任务选择实际生成的模块、领域或风险分析文档
 
 ### 使用规则
 

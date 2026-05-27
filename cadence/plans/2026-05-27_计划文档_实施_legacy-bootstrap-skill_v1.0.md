@@ -1,51 +1,51 @@
-# legacy-bootstrap skill Implementation Plan
+# legacy-bootstrap skill 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向 Agent 执行者：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 按任务执行本计划。步骤使用复选框（`- [ ]`）追踪状态。
 
-**Goal:** 在 `cadence-init` 插件中新增 `legacy-bootstrap` command 与 skill，用 repomix 对当前本地 legacy 项目进行标准化 bootstrap，并把项目认知沉淀到 `cadence/` 与入口文档中。
+**目标：** 在 `cadence-init` 插件中新增 `legacy-bootstrap` command 与 skill，用 repomix 对当前本地 legacy 项目进行标准化 bootstrap，并把项目认知沉淀到 `cadence/` 与入口文档中。
 
-**Architecture:** 该实现是文档型插件能力，不编写脚本或业务代码。`commands/legacy-bootstrap.md` 作为用户显式入口，`skills/legacy-bootstrap/SKILL.md` 承载完整 SOP；skill 默认使用 `npx repomix@latest`，分析当前打开的本地项目，并要求更新目标项目 `CLAUDE.md` 与 `AGENTS.md`。
+**架构：** 该实现是文档型插件能力，不编写脚本或业务代码。`commands/legacy-bootstrap.md` 作为用户显式入口，`skills/legacy-bootstrap/SKILL.md` 承载完整 SOP；skill 默认使用 `npx repomix@latest`，分析当前打开的本地项目，并要求更新目标项目 `CLAUDE.md` 与 `AGENTS.md`。
 
-**Tech Stack:** Markdown、Claude Code Skill frontmatter、Cadence plugin directory conventions、Repomix CLI。
+**技术栈：** Markdown、Claude Code Skill frontmatter、Cadence 插件目录约定、Repomix CLI。
 
 ---
 
-## File Structure
+## 文件结构
 
-- Create: `cadence-init/skills/legacy-bootstrap/SKILL.md`
+- 创建：`cadence-init/skills/legacy-bootstrap/SKILL.md`
   - 负责完整 legacy bootstrap SOP。
   - 包含 frontmatter、使用场景、检查清单、流程、repomix 参数策略、Cadence 产物模板、`CLAUDE.md` / `AGENTS.md` 更新策略、错误处理和完成汇报。
-- Create: `cadence-init/commands/legacy-bootstrap.md`
+- 创建：`cadence-init/commands/legacy-bootstrap.md`
   - 负责命令入口说明。
   - 通过 frontmatter 指向 `legacy-bootstrap` skill。
   - 简述输入、流程、输出和使用约束。
-- Modify: no existing source files
+- 修改：无既有源码文件
   - 不修改 `cadence-init/.claude-plugin/plugin.json`，因为现有插件 manifest 不逐项枚举 command 或 skill。
   - 不修改 `.claude/rules/`，该目录是框架规则目录。
 
-## Task 1: Create legacy-bootstrap Skill
+## 任务 1：创建 legacy-bootstrap Skill
 
-**Files:**
+**文件：**
 
-- Create: `cadence-init/skills/legacy-bootstrap/SKILL.md`
+- 创建：`cadence-init/skills/legacy-bootstrap/SKILL.md`
 
-- [ ] **Step 1: Create skill directory**
+- [ ] **步骤 1：创建 skill 目录**
 
-Run:
+运行：
 
 ```bash
 mkdir -p cadence-init/skills/legacy-bootstrap
 ```
 
-Expected:
+期望：
 
 ```text
-Directory cadence-init/skills/legacy-bootstrap exists.
+目录 `cadence-init/skills/legacy-bootstrap` 存在。
 ```
 
-- [ ] **Step 2: Create `SKILL.md` with frontmatter and overview**
+- [ ] **步骤 2：创建包含 frontmatter 和概述的 `SKILL.md`**
 
-Create `cadence-init/skills/legacy-bootstrap/SKILL.md` with this opening structure:
+按以下开头结构创建 `cadence-init/skills/legacy-bootstrap/SKILL.md`：
 
 ````markdown
 ---
@@ -73,9 +73,9 @@ disable-model-invocation: true
 - `--skill-generate` 只作为结构参考，不作为主流程。
 ````
 
-- [ ] **Step 3: Add usage conditions and checklist**
+- [ ] **步骤 3：添加使用条件和检查清单**
 
-Append this section to `SKILL.md`:
+向 `SKILL.md` 追加以下内容：
 
 ````markdown
 ## 何时使用
@@ -108,9 +108,9 @@ Append this section to `SKILL.md`:
 8. **输出 bootstrap 摘要** - 汇报生成文件、已确认事实、未知项和建议下一步。
 ````
 
-- [ ] **Step 4: Add mode selection workflow**
+- [ ] **步骤 4：添加执行模式选择流程**
 
-Append this section:
+追加以下内容：
 
 ````markdown
 ## 执行模式
@@ -126,9 +126,9 @@ Append this section:
 默认推荐标准模式。如果用户选择深度模式，应生成更多模块级、领域级和风险级文档。如果 repomix 输出过大或时间有限，可以建议降级到轻量模式。
 ````
 
-- [ ] **Step 5: Add detailed process**
+- [ ] **步骤 5：添加详细处理流程**
 
-Append this section:
+追加以下内容：
 
 ````markdown
 ## 处理流程
@@ -210,9 +210,9 @@ repomix 的 `--skill-generate` 是实验能力，只能作为结构参考。
 - `NEED_CONFIRMATION`
 ````
 
-- [ ] **Step 6: Add Cadence output contract**
+- [ ] **步骤 6：添加 Cadence 产物约定**
 
-Append this section:
+追加以下内容：
 
 ````markdown
 ## Cadence 产物
@@ -244,9 +244,9 @@ Append this section:
 如果某类信息没有足够证据，不生成空洞文档。在 bootstrap 总报告中说明未生成原因。
 ````
 
-- [ ] **Step 7: Add CLAUDE.md and AGENTS.md update contract**
+- [ ] **步骤 7：添加 CLAUDE.md 与 AGENTS.md 更新约定**
 
-Append this section:
+追加以下内容：
 
 ````markdown
 ## 更新 CLAUDE.md 与 AGENTS.md
@@ -286,9 +286,9 @@ Append this section:
 如果目标项目缺少 `CLAUDE.md` 或 `AGENTS.md`，按 Cadence 初始化规则提示或创建对应入口文件。
 ````
 
-- [ ] **Step 8: Add error handling and final output**
+- [ ] **步骤 8：添加错误处理和完成汇报**
 
-Append this section:
+追加以下内容：
 
 ````markdown
 ## 错误处理
@@ -315,46 +315,46 @@ Append this section:
 - 建议下一步。
 ````
 
-- [ ] **Step 9: Verify skill file content**
+- [ ] **步骤 9：验证 skill 文件内容**
 
-Run:
+运行：
 
 ```bash
 test -f cadence-init/skills/legacy-bootstrap/SKILL.md
 rg -n "^name: legacy-bootstrap|npx repomix@latest|CLAUDE.md|AGENTS.md|--skill-generate|cadence/" cadence-init/skills/legacy-bootstrap/SKILL.md
 ```
 
-Expected:
+期望：
 
 ```text
-The file exists.
-The rg output includes all searched concepts.
+文件存在。
+`rg` 输出包含所有检索概念。
 ```
 
-- [ ] **Step 10: Commit skill file**
+- [ ] **步骤 10：提交 skill 文件**
 
-Run:
+运行：
 
 ```bash
 git add cadence-init/skills/legacy-bootstrap/SKILL.md
 git commit -m "feat: add legacy bootstrap skill"
 ```
 
-Expected:
+期望：
 
 ```text
-Commit created with cadence-init/skills/legacy-bootstrap/SKILL.md.
+提交已创建，包含 `cadence-init/skills/legacy-bootstrap/SKILL.md`。
 ```
 
-## Task 2: Create legacy-bootstrap Command
+## 任务 2：创建 legacy-bootstrap Command
 
-**Files:**
+**文件：**
 
-- Create: `cadence-init/commands/legacy-bootstrap.md`
+- 创建：`cadence-init/commands/legacy-bootstrap.md`
 
-- [ ] **Step 1: Create command file**
+- [ ] **步骤 1：创建 command 文件**
 
-Create `cadence-init/commands/legacy-bootstrap.md`:
+创建 `cadence-init/commands/legacy-bootstrap.md`：
 
 ````markdown
 ---
@@ -413,185 +413,185 @@ skill: legacy-bootstrap
 - `/cadence:init:rule-config` - 初始化项目规则
 ````
 
-- [ ] **Step 2: Verify command file**
+- [ ] **步骤 2：验证 command 文件**
 
-Run:
+运行：
 
 ```bash
 test -f cadence-init/commands/legacy-bootstrap.md
 rg -n "^skill: legacy-bootstrap|npx repomix@latest|--skill-generate|CLAUDE.md|AGENTS.md|cadence/" cadence-init/commands/legacy-bootstrap.md
 ```
 
-Expected:
+期望：
 
 ```text
-The file exists.
-The rg output includes the skill binding and core behavior.
+文件存在。
+`rg` 输出包含 skill 绑定和核心行为。
 ```
 
-- [ ] **Step 3: Commit command file**
+- [ ] **步骤 3：提交 command 文件**
 
-Run:
+运行：
 
 ```bash
 git add cadence-init/commands/legacy-bootstrap.md
 git commit -m "feat: add legacy bootstrap command"
 ```
 
-Expected:
+期望：
 
 ```text
-Commit created with cadence-init/commands/legacy-bootstrap.md.
+提交已创建，包含 `cadence-init/commands/legacy-bootstrap.md`。
 ```
 
-## Task 3: Validate Plugin Consistency
+## 任务 3：验证插件一致性
 
-**Files:**
+**文件：**
 
-- Read: `cadence-init/.claude-plugin/plugin.json`
-- Read: `cadence-init/skills/legacy-bootstrap/SKILL.md`
-- Read: `cadence-init/commands/legacy-bootstrap.md`
+- 读取：`cadence-init/.claude-plugin/plugin.json`
+- 读取：`cadence-init/skills/legacy-bootstrap/SKILL.md`
+- 读取：`cadence-init/commands/legacy-bootstrap.md`
 
-- [ ] **Step 1: Check plugin manifest does not require explicit registration**
+- [ ] **步骤 1：检查 plugin manifest 不需要显式注册**
 
-Run:
+运行：
 
 ```bash
 sed -n '1,160p' cadence-init/.claude-plugin/plugin.json
 ```
 
-Expected:
+期望：
 
 ```text
-The manifest describes cadence-init plugin metadata and does not enumerate individual commands or skills.
+manifest 只描述 `cadence-init` 插件元数据，不枚举单个 command 或 skill。
 ```
 
-- [ ] **Step 2: Check frontmatter and command binding**
+- [ ] **步骤 2：检查 frontmatter 和 command 绑定**
 
-Run:
+运行：
 
 ```bash
 sed -n '1,20p' cadence-init/skills/legacy-bootstrap/SKILL.md
 sed -n '1,20p' cadence-init/commands/legacy-bootstrap.md
 ```
 
-Expected:
+期望：
 
 ```text
-SKILL.md frontmatter includes name: legacy-bootstrap.
-command frontmatter includes skill: legacy-bootstrap.
+`SKILL.md` frontmatter 包含 `name: legacy-bootstrap`。
+command frontmatter 包含 `skill: legacy-bootstrap`。
 ```
 
-- [ ] **Step 3: Check prohibited outputs are excluded**
+- [ ] **步骤 3：检查禁止项只作为负向约束出现**
 
-Run:
+运行：
 
 ```bash
 rg -n '生成 `.ai/`|作为主流程|远程 GitHub 仓库作为输入|clone 远程' cadence-init/skills/legacy-bootstrap/SKILL.md cadence-init/commands/legacy-bootstrap.md
 ```
 
-Expected:
+期望：
 
 ```text
-Matches only appear in negative constraints, not as required behavior.
+匹配项只出现在负向约束中，不作为必需行为。
 ```
 
-- [ ] **Step 4: Check required outputs are included**
+- [ ] **步骤 4：检查必需产物引用**
 
-Run:
+运行：
 
 ```bash
 rg -n "cadence/analysis-docs|cadence/architecture|cadence/docs|cadence/models|cadence/plans|CLAUDE.md|AGENTS.md" cadence-init/skills/legacy-bootstrap/SKILL.md cadence-init/commands/legacy-bootstrap.md
 ```
 
-Expected:
+期望：
 
 ```text
-All required Cadence directories and entrance documents are referenced.
+所有必需的 Cadence 目录和入口文档均被引用。
 ```
 
-- [ ] **Step 5: Check git status**
+- [ ] **步骤 5：检查 git 状态**
 
-Run:
+运行：
 
 ```bash
 git status --short --branch
 ```
 
-Expected:
+期望：
 
 ```text
-Current branch is legacy-bootstrap-skill-design.
-Working tree is clean after the task commits.
+当前分支是 `legacy-bootstrap-skill-design`。
+任务提交后工作树干净。
 ```
 
-## Task 4: Final Review and PR Preparation
+## 任务 4：最终 review 与 PR 准备
 
-**Files:**
+**文件：**
 
-- Read: `cadence/designs/2026-05-27_方案设计_legacy-bootstrap-skill_v1.0.md`
-- Read: `cadence-init/skills/legacy-bootstrap/SKILL.md`
-- Read: `cadence-init/commands/legacy-bootstrap.md`
+- 读取：`cadence/designs/2026-05-27_方案设计_legacy-bootstrap-skill_v1.0.md`
+- 读取：`cadence-init/skills/legacy-bootstrap/SKILL.md`
+- 读取：`cadence-init/commands/legacy-bootstrap.md`
 
-- [ ] **Step 1: Review implementation against design**
+- [ ] **步骤 1：对照设计 review 实现**
 
-Run:
+运行：
 
 ```bash
 rg -n "legacy-bootstrap|npx repomix@latest|--skill-generate|CLAUDE.md|AGENTS.md|cadence/" cadence/designs/2026-05-27_方案设计_legacy-bootstrap-skill_v1.0.md cadence-init/skills/legacy-bootstrap/SKILL.md cadence-init/commands/legacy-bootstrap.md
 ```
 
-Expected:
+期望：
 
 ```text
-Design, skill, and command all reference the same core behavior.
+设计、skill 和 command 均引用相同核心行为。
 ```
 
-- [ ] **Step 2: Review final commit history**
+- [ ] **步骤 2：检查最终提交历史**
 
-Run:
+运行：
 
 ```bash
 git log --oneline --decorate main..HEAD
 ```
 
-Expected:
+期望：
 
 ```text
-Branch contains design commits and implementation commits only.
+分支只包含设计提交和实现提交。
 ```
 
-- [ ] **Step 3: Push branch when ready**
+- [ ] **步骤 3：准备完成后推送分支**
 
-Run:
+运行：
 
 ```bash
 git push -u origin legacy-bootstrap-skill-design
 ```
 
-Expected:
+期望：
 
 ```text
-Branch pushed to origin and ready for PR.
+分支已推送到 origin，可创建 PR。
 ```
 
-- [ ] **Step 4: Create PR**
+- [ ] **步骤 4：创建 PR**
 
-Run:
+运行：
 
 ```bash
 gh pr create --base main --head legacy-bootstrap-skill-design --title "Add legacy bootstrap skill" --body "Adds a cadence-init legacy-bootstrap command and skill for repomix-based legacy project bootstrap."
 ```
 
-Expected:
+期望：
 
 ```text
-GitHub PR URL is returned.
+返回 GitHub PR URL。
 ```
 
-## Self-Review
+## 自检
 
-- Spec coverage: covered command path, skill path, local project input, `npx repomix@latest`, standard/deep/light modes, Cadence output directories, `CLAUDE.md` / `AGENTS.md` update, `--skill-generate` reference boundary, and no `.ai/` output.
-- Placeholder scan: the plan uses the marker string `TODO` only because the approved design requires that generated uncertainty markers include `TODO`; it is not a placeholder in this implementation plan.
-- Scope check: the plan is focused on one plugin feature and does not require decomposition.
-- Type consistency: no code APIs or function signatures are introduced.
+- 规格覆盖：已覆盖 command 路径、skill 路径、本地项目输入、`npx repomix@latest`、标准/深度/轻量模式、Cadence 输出目录、`CLAUDE.md` / `AGENTS.md` 更新、`--skill-generate` 参考边界，以及不生成 `.ai/`。
+- 占位符检查：计划中出现的 `TODO` 是已批准设计要求的不确定项标记，不是本实施计划中的占位符。
+- 范围检查：计划聚焦一个插件能力，不需要拆分为多个子项目。
+- 类型一致性：未引入代码 API 或函数签名。
