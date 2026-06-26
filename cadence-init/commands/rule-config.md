@@ -14,13 +14,14 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 你必须为以下每个项目创建任务并按顺序完成：
 
 1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
-2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加全部 8 条规则的摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者）
+2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加全部 9 条规则的摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
 4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，需要用户确认
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
 6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，用户确认后迁移到 `cadence/`
 7. **cadence gitignore 决策** — 询问用户是否将 `cadence/` 加入 `.gitignore`，默认不忽略
-8. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
+8. **代码阅读规则配置** — 配置 `ast-grep outline` 的使用规则（可选，Coding 项目默认建议启用）
+9. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -74,7 +75,7 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
    如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，
    从通过验证的结果中取修改时间最新的。
 
-> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 playwright.md）。
+> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 9 的 playwright.md）。
 
 **步骤 1c：创建目标目录**
 
@@ -137,6 +138,9 @@ mkdir -p .claude/rules
 - 禁止直接修改 `rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
+### 8. 代码阅读规则
+- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+
 ## 项目信息
 # currentDate
 Today's date is {当前日期}。
@@ -145,7 +149,8 @@ Today's date is {当前日期}。
 **注意**：
 - 规则 6（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 7（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 8（Playwright）由步骤 8 添加（如用户选择启用）
+- 规则 8（代码阅读）由步骤 8 添加（如用户选择启用）
+- 规则 9（Playwright）由步骤 9 添加（如用户选择启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
 
 **参考 CLAUDE.md 同步添加 AGENTS.md**：
@@ -191,7 +196,10 @@ Today's date is {当前日期}。
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
-### 8. Playwright CLI 使用规则
+### 8. 代码阅读规则
+- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+
+### 9. Playwright CLI 使用规则
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 
 ## 与 CLAUDE.md 的关系
@@ -379,7 +387,27 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 不修改 `.gitignore`。
 
-### 8. Playwright Skills 规则配置
+### 8. 代码阅读规则配置
+
+**检测条件**：
+- 项目为 **Coding 项目**（基于步骤 1a 检测结果）
+- 用户需要代码阅读辅助（对 Coding 项目默认建议启用）
+
+**创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `code-reading.md` 读取内容，写入 `.claude/rules/code-reading.md`
+
+**在 CLAUDE.md 和 AGENTS.md 中添加**：
+
+```markdown
+### 8. 代码阅读规则
+- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+```
+
+**用户确认**：
+- 对 Coding 项目：询问用户是否启用代码阅读规则，默认选项为“启用”。
+- 对非 Coding 项目：默认跳过，仅提示“非 Coding 项目跳过代码阅读规则”。
+- 如果用户选择启用，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认。
+
+### 9. Playwright Skills 规则配置
 
 **检测条件**：
 - 用户需要浏览器自动化功能
@@ -390,7 +418,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 **在 CLAUDE.md 和 AGENTS.md 中添加**：
 
 ```markdown
-### 8. Playwright CLI 使用规则
+### 9. Playwright CLI 使用规则
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 ```
 
@@ -398,6 +426,57 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 - 添加规则前询问用户是否需要 Playwright 自动化功能
 - 如果不需要，跳过此步骤
 - 如果需要，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认
+
+## 增量运行
+
+`/cadence:init:rule-config` 支持在已初始化项目中重复执行。重复运行时应遵循“只新增缺失项，不覆盖已确认内容”的原则。
+
+### 规则文件增量处理
+
+复制规则文件到 `.claude/rules/` 前，先检查目标文件是否存在：
+
+| 场景 | 行为 |
+|------|------|
+| 文件不存在 | 从模板根路径读取并创建 |
+| 文件已存在 | **不自动覆盖**，向用户展示差异并询问是否更新 |
+| 新增规则模板（如 `code-reading.md`） | 检测为缺失项，询问用户是否需要新增 |
+
+**检测命令示例**：
+
+```bash
+for rule in README.md language.md document-storage.md markdown-format.md serena-usage.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
+  if [ -e ".claude/rules/$rule" ]; then
+    echo "已存在: .claude/rules/$rule"
+  else
+    echo "缺失: .claude/rules/$rule"
+  fi
+done
+```
+
+### CLAUDE.md / AGENTS.md 摘要增量处理
+
+写入摘要引用前，先读取现有文件并检查每条规则摘要是否已存在：
+
+| 场景 | 行为 |
+|------|------|
+| 摘要行已存在 | 跳过，不重复写入 |
+| 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 |
+| 规则编号与现有内容冲突 | 按最新规范重新编号，并提示用户确认 |
+
+### 可选规则增量处理
+
+对于代码阅读规则、Playwright 规则等可选步骤：
+
+| 场景 | 行为 |
+|------|------|
+| 规则文件和摘要均已存在 | 视为已启用，仅检查完整性，不再询问 |
+| 规则文件或摘要缺失 | 作为新增可选项询问用户 |
+| 无法判断历史选择 | 默认按新增项询问 |
+
+### 建议
+
+- 新版 Cadence 发布或框架规则更新后，可重新运行 `/cadence:init:rule-config` 补齐新增规则。
+- 重复运行前，先向用户展示本次将要新增/更新的内容清单，获取确认后再执行写入。
 
 ## 核心原则
 
