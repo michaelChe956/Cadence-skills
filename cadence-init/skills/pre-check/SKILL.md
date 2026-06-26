@@ -14,7 +14,7 @@ disable-model-invocation: true
 
 **强制规则**：
 1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
-2. **必须完成所有三个基础检查** - 不允许跳过 npx/uvx/serena 任一步骤
+2. **必须完成所有五个基础检查** - 不允许跳过 npx/uvx/serena/playwright-cli/ast-grep 任一步骤
 3. **serena 配置必须询问用户** - 提供三个选项让用户选择，验证失败必须重新选择
 4. **API Key 配置为可选步骤** - 询问用户是否需要智普/MiniMax MCP，仅做配置提醒
 
@@ -67,7 +67,17 @@ digraph check_flow {
     validate_serena [label="验证配置", shape=diamond];
     serena_found [label="serena 就绪"];
 
-    // 步骤4（可选）
+    // 步骤4
+    check_playwright [label="检查 playwright-cli", shape=diamond];
+    install_playwright [label="安装 playwright-cli"];
+    playwright_done [label="playwright-cli 就绪"];
+
+    // 步骤5
+    check_ast_grep [label="检查 ast-grep", shape=diamond];
+    install_ast_grep [label="安装 ast-grep"];
+    ast_grep_done [label="ast-grep 就绪"];
+
+    // 步骤6（可选）
     ask_apikey [label="⚠️ 询问是否需要智普/MiniMax MCP", shape=diamond];
     remind_apikey [label="提醒获取 API Key\n并配置环境变量"];
     skip_apikey [label="跳过"];
@@ -90,7 +100,17 @@ digraph check_flow {
     validate_serena -> serena_found [label="验证成功"];
     validate_serena -> user_choice [label="验证失败（重新选择）"];
 
-    serena_found -> ask_apikey;
+    serena_found -> check_playwright;
+    check_playwright -> install_playwright [label="未安装"];
+    check_playwright -> check_ast_grep [label="已安装"];
+    install_playwright -> playwright_done;
+    playwright_done -> check_ast_grep;
+
+    check_ast_grep -> install_ast_grep [label="未安装"];
+    check_ast_grep -> ask_apikey [label="已安装"];
+    install_ast_grep -> ast_grep_done;
+    ast_grep_done -> ask_apikey;
+
     ask_apikey -> remind_apikey [label="需要"];
     ask_apikey -> skip_apikey [label="不需要"];
     remind_apikey -> end;
@@ -105,7 +125,9 @@ digraph check_flow {
 | **1. npx** | `npx --version` | 输出版本号 | 自动安装稳定版本 |
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. serena** | 用户选择配置方式 | 路径验证通过 | 重新选择或输入路径 |
-| **4. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
+| **4. playwright-cli** | `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
+| **5. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
+| **6. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
 
 ### serena 默认目录
 
@@ -179,7 +201,40 @@ uvx --version
 4. 全部通过 → 报告 "✓ serena 项目验证成功"
 5. 任一失败 → 报告错误，**返回步骤 3.1**
 
-### 步骤 4：API Key 配置提醒（可选）
+### 步骤 4：检查 playwright-cli
+
+```bash
+playwright-cli --help
+```
+
+**行为（中文输出）**：
+- ✅ **已安装**：报告 "✓ playwright-cli 已安装"
+- ❌ **未安装**：报告 "正在安装 playwright-cli..."，执行全局安装并安装 skills，完成后报告 "✓ playwright-cli 安装成功"
+
+**安装命令**：
+
+```bash
+npm install -g @playwright/cli@latest
+playwright-cli install --skills
+```
+
+### 步骤 5：检查 ast-grep
+
+```bash
+ast-grep --version
+```
+
+**行为（中文输出）**：
+- ✅ **已安装**：报告 "✓ ast-grep 已安装（版本：{版本号}）"
+- ❌ **未安装**：报告 "正在安装 ast-grep..."，执行 `npm i @ast-grep/cli -g`，完成后报告 "✓ ast-grep 安装成功"
+
+**安装命令**：
+
+```bash
+npm i @ast-grep/cli -g
+```
+
+### 步骤 6：API Key 配置提醒（可选）
 
 > **⚠️ 可选步骤** — 仅在用户需要智普/MiniMax MCP 时执行
 
@@ -215,3 +270,5 @@ uvx --version
 | **serena 克隆失败** | 网络问题或 git 未安装 | 检查网络连接和 git |
 | **pyproject.toml 缺失** | 克隆不完整或损坏 | 删除目录重新克隆 |
 | **路径权限错误** | 无写入权限 | 使用有权限的目录 |
+| **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行安装命令 |
+| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i @ast-grep/cli -g` |
