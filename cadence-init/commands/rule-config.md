@@ -427,6 +427,57 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 - 如果不需要，跳过此步骤
 - 如果需要，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认
 
+## 增量运行
+
+`/cadence:init:rule-config` 支持在已初始化项目中重复执行。重复运行时应遵循“只新增缺失项，不覆盖已确认内容”的原则。
+
+### 规则文件增量处理
+
+复制规则文件到 `.claude/rules/` 前，先检查目标文件是否存在：
+
+| 场景 | 行为 |
+|------|------|
+| 文件不存在 | 从模板根路径读取并创建 |
+| 文件已存在 | **不自动覆盖**，向用户展示差异并询问是否更新 |
+| 新增规则模板（如 `code-reading.md`） | 检测为缺失项，询问用户是否需要新增 |
+
+**检测命令示例**：
+
+```bash
+for rule in README.md language.md document-storage.md markdown-format.md serena-usage.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
+  if [ -e ".claude/rules/$rule" ]; then
+    echo "已存在: .claude/rules/$rule"
+  else
+    echo "缺失: .claude/rules/$rule"
+  fi
+done
+```
+
+### CLAUDE.md / AGENTS.md 摘要增量处理
+
+写入摘要引用前，先读取现有文件并检查每条规则摘要是否已存在：
+
+| 场景 | 行为 |
+|------|------|
+| 摘要行已存在 | 跳过，不重复写入 |
+| 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 |
+| 规则编号与现有内容冲突 | 按最新规范重新编号，并提示用户确认 |
+
+### 可选规则增量处理
+
+对于代码阅读规则、Playwright 规则等可选步骤：
+
+| 场景 | 行为 |
+|------|------|
+| 规则文件和摘要均已存在 | 视为已启用，仅检查完整性，不再询问 |
+| 规则文件或摘要缺失 | 作为新增可选项询问用户 |
+| 无法判断历史选择 | 默认按新增项询问 |
+
+### 建议
+
+- 新版 Cadence 发布或框架规则更新后，可重新运行 `/cadence:init:rule-config` 补齐新增规则。
+- 重复运行前，先向用户展示本次将要新增/更新的内容清单，获取确认后再执行写入。
+
 ## 核心原则
 
 - **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
