@@ -65,27 +65,6 @@
 }
 ```
 
-### Serena MCP
-
-**用途**：语义代码理解和项目内存
-
-**触发场景**：
-- 符号操作：重命名、提取、移动函数/类
-- 项目级代码导航和探索
-- 多语言项目
-- 会话生命周期管理（`/cad-load`、`/cad-save`）
-- 大型代码库分析（>50 文件）
-
-**常用命令**：
-- `mcp__serena__activate_project` - 激活项目
-- `mcp__serena__list_memories` - 列出记忆
-- `mcp__serena__find_symbol` - 查找符号
-- `mcp__serena__get_symbols_overview` - 获取符号概览
-
-**重要规则**：
-- 禁止分析 `.git/` 目录
-- 使用 Git 命令获取版本信息
-
 ### 智普视觉理解 MCP（可选）
 
 **用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断

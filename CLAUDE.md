@@ -20,19 +20,16 @@
 ### 4. Markdown 格式规则
 - **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
 
-### 5. Serena 使用规则
-- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`
-
-### 6. MCP Server 使用规则
+### 5. MCP Server 使用规则
 - **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
 
-### 7. 项目个性化规则（强制规则）
+### 6. 项目个性化规则（强制规则）
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
-### 8. Playwright CLI 使用规则
+### 7. Playwright CLI 使用规则
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 
 ## 项目信息

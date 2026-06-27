@@ -93,7 +93,6 @@ mkdir -p .claude/rules
 | `language.md` | `.claude/rules/language.md` | 必选 |
 | `document-storage.md` | `.claude/rules/document-storage.md` | 必选 |
 | `markdown-format.md` | `.claude/rules/markdown-format.md` | 必选 |
-| `serena-usage.md` | `.claude/rules/serena-usage.md` | 必选 |
 | `mcp-servers.md` | `.claude/rules/mcp-servers.md` | 必选 |
 | `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
 | `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
@@ -126,19 +125,16 @@ mkdir -p .claude/rules
 ### 4. Markdown 格式规则
 - **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
 
-### 5. Serena 使用规则
-- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`
-
-### 6. MCP Server 使用规则
+### 5. MCP Server 使用规则
 - **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
 
-### 7. 项目个性化规则（强制规则）
+### 6. 项目个性化规则（强制规则）
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
-### 8. 代码阅读规则
+### 7. 代码阅读规则
 - **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
 
 ## 项目信息
@@ -147,10 +143,10 @@ Today's date is {当前日期}。
 ````
 
 **注意**：
-- 规则 6（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
-- 规则 7（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 8（代码阅读）由步骤 8 添加（如用户选择启用）
-- 规则 9（Playwright）由步骤 9 添加（如用户选择启用）
+- 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
+- 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
+- 规则 7（代码阅读）由步骤 8 添加（如用户选择启用）
+- 规则 8（Playwright）由步骤 9 添加（如用户选择启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
 
 **参考 CLAUDE.md 同步添加 AGENTS.md**：
@@ -184,22 +180,19 @@ Today's date is {当前日期}。
 ### 4. Markdown 格式规则
 - **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
 
-### 5. Serena 使用规则
-- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`
-
-### 6. MCP Server 与工具使用规则
+### 5. MCP Server 与工具使用规则
 - **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
 
-### 7. 项目个性化规则
+### 6. 项目个性化规则
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `.claude/rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
-### 8. 代码阅读规则
+### 7. 代码阅读规则
 - **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
 
-### 9. Playwright CLI 使用规则
+### 8. Playwright CLI 使用规则
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 
 ## 与 CLAUDE.md 的关系
@@ -444,7 +437,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 **检测命令示例**：
 
 ```bash
-for rule in README.md language.md document-storage.md markdown-format.md serena-usage.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
+for rule in README.md language.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
   if [ -e ".claude/rules/$rule" ]; then
     echo "已存在: .claude/rules/$rule"
   else

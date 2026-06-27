@@ -22,19 +22,16 @@
 ### 4. Markdown 格式规则
 - **Markdown 编写必须遵循项目格式规范** → 详见 `.claude/rules/markdown-format.md`
 
-### 5. 仓库分析规则
-- **禁止分析 `.git` 目录** → 详见 `.claude/rules/serena-usage.md`
-
-### 6. MCP Server 与工具使用规则
+### 5. MCP Server 与工具使用规则
 - **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
 
-### 7. 项目个性化规则
+### 6. 项目个性化规则
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `.claude/rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
 - 详见 `cadence/project-rules/README.md`
 
-### 8. Playwright CLI 使用规则
+### 7. Playwright CLI 使用规则
 - **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`
 
 ## 与 CLAUDE.md 的关系
