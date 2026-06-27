@@ -18,7 +18,7 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 3. **配置智普 MCP（可选）** — 询问用户是否需要智普 AI 的四个专属 MCP
 4. **配置 MiniMax MCP（可选）** — 询问用户是否需要 MiniMax Token Plan MCP
 5. **同步 MCP 配置到 Codex（可选）** — 询问用户是否将 MCP 配置同步为 Codex 的 `.codex/config.toml` 格式
-6. **配置 .gitignore** — 添加 `.serena/`、`.worktrees/`、`.mcp.json` 和 `.codex/` 到 .gitignore
+6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -100,28 +100,6 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
   "totalThoughts": 5,
   "nextThoughtNeeded": true
 }
-```
-
-#### Serena MCP
-
-**用途**：语义代码理解和项目内存
-
-**触发场景**：
-- 符号操作：重命名、提取、移动函数/类
-- 项目级代码导航和探索
-- 多语言项目
-- 会话生命周期管理（`/cad-load`、`/cad-save`）
-- 大型代码库分析（>50 文件）
-
-**常用命令**：
-- `mcp__serena__activate_project` - 激活项目
-- `mcp__serena__list_memories` - 列出记忆
-- `mcp__serena__find_symbol` - 查找符号
-- `mcp__serena__get_symbols_overview` - 获取符号概览
-
-**重要规则**：
-- 禁止分析 `.git/` 目录
-- 使用 Git 命令获取版本信息
 ```
 
 #### 智普视觉理解 MCP（可选）
@@ -351,9 +329,6 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 
 ### 5. MCP 配置文件创建
 **说明**：
-- `{{SERENA_PATH}}` 需要替换为用户提供的 Serena 本地路径。必须是全路径，默认路径为：`/Users/username/.cadence/serena`。**不可以使用`~/.cadence/serena`等相对路径**
-- windows和linux的默认路径分别为：`C:\Users\username\.cadence\serena`和`/home/username/.cadence/serena`
-- Windows 路径需要处理反斜杠（使用 `\\` 或转换为正斜杠 `/`）
 - 智普和 MiniMax MCP 为**可选配置**，根据用户选择决定是否包含
 
 **在项目根目录创建 `.mcp.json`**：
@@ -385,23 +360,6 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
       "args": [
         "-y",
         "@modelcontextprotocol/server-sequential-thinking"
-      ],
-      "env": {}
-    },
-    "serena": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "{{SERENA_PATH}}",
-        "serena",
-        "start-mcp-server",
-        "--context",
-        "ide-assistant",
-        "--enable-web-dashboard",
-        "false",
-        "--enable-gui-log-window",
-        "false"
       ],
       "env": {}
     }
@@ -505,8 +463,6 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 | HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` |
 | type 字段 | 必须显式声明 | 不需要（自动推断） |
 
-**`{{SERENA_PATH}}` 替换规则与 `.mcp.json` 相同**。
-
 **信任提醒**：
 - 提醒用户：首次在 Codex 中打开项目时需确认信任项目，否则 `.codex/config.toml` 不会被加载
 
@@ -528,10 +484,6 @@ args = ["-y", "@upstash/context7-mcp"]
 [mcp_servers.sequential-thinking]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-
-[mcp_servers.serena]
-command = "uvx"
-args = ["--from", "{{SERENA_PATH}}", "serena", "start-mcp-server", "--context", "ide-assistant", "--enable-web-dashboard", "false", "--enable-gui-log-window", "false"]
 ````
 
 #### 智普 MCP 配置（可选 — 用户确认后添加）
@@ -576,7 +528,6 @@ ls -la .gitignore
 
 ```gitignore
 # Cadence 工作目录
-.serena/
 .worktrees/
 .mcp.json
 .codex/
@@ -587,7 +538,6 @@ ls -la .gitignore
 ```bash
 cat > .gitignore << 'EOF'
 # Cadence 工作目录
-.serena/
 .worktrees/
 .mcp.json
 .codex/
@@ -598,7 +548,6 @@ EOF
 
 | 目录/文件 | 说明 | 排除原因 |
 |----------|------|---------|
-| `.serena/` | Serena MCP 本地记忆和会话数据 | 包含用户本地的会话记录和项目记忆，不应共享 |
 | `.worktrees/` | Git worktrees 隔离开发环境 | 包含临时的隔离开发环境，不应提交 |
 | `.mcp.json` | MCP 配置文件 | 包含本地 MCP 路径配置，不应提交到版本控制 |
 | `.codex/` | Codex CLI 项目级配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
@@ -607,7 +556,7 @@ EOF
 
 ```bash
 git status
-# 应该看不到 .serena/ 和 .worktrees/ 目录
+# 应该看不到 .worktrees/ 目录
 ```
 
 **错误处理**：

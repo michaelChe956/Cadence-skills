@@ -1,5 +1,4 @@
 # Cadence 工作目录
-.serena/
 .worktrees/
 .mcp.json
 .codex/config.toml

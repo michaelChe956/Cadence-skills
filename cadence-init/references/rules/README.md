@@ -13,7 +13,6 @@
 | `code-usage-noncoding.md` | 代码使用规则（非编码项目适用） |
 | `document-storage.md` | 文档存储规则（目录、命名、路径映射） |
 | `markdown-format.md` | Markdown 格式规则（代码块嵌套） |
-| `serena-usage.md` | Serena MCP 使用规则 |
 | `mcp-servers.md` | MCP Server 使用规则（所有 MCP 工具） |
 | `code-reading.md` | 代码阅读规则（ast-grep outline 使用规范） |
 | `playwright.md` | Playwright CLI 使用规则 |
