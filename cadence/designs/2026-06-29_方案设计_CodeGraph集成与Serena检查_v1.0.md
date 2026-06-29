@@ -40,6 +40,7 @@ codegraph init
    - 精确检索、单文件结构阅读、符号大纲优先使用 `ast-grep outline`。
    - `ast-grep` 与 CodeGraph 结果冲突时，以 `ast-grep outline` 为准。
 5. 去掉当前项目 Serena MCP 使用的检查结论：`cadence-init/` 当前已无 Serena 残留。
+6. 明确 `/pre-check` 与 `/rule-config` 必须支持反复增量执行，老项目重新运行时只补齐新增能力，不重复安装、不覆盖已确认配置。
 
 ## 2. 参考文档结论
 
@@ -116,6 +117,7 @@ rg -n "serena|Serena|\\.serena|mcp__serena" cadence-init
 | `.codegraph/` | 加入 `.gitignore` | 该目录保存本地 SQLite 索引，不应提交 |
 | `codegraph.json` | 不加入 `.gitignore` | 这是可共享的项目配置文件，应允许团队提交 |
 | 与 `ast-grep` 的关系 | 大范围用 CodeGraph，精确结构用 `ast-grep outline` | 两者职责不同，冲突时以结构化大纲工具为准 |
+| 增量执行模型 | `/pre-check` 按工具粒度补齐；`/rule-config` 按规则/配置/初始化状态补齐 | 支持已初始化项目升级到新版 Cadence，例如只补 CodeGraph |
 
 ## 5. 改动范围
 
@@ -182,6 +184,38 @@ rg -n "serena|Serena|\\.serena|mcp__serena" cadence-init
 3. 检查流程更新为包含 CodeGraph。
 4. 强制规则新增 CodeGraph 安装失败手动命令。
 
+#### 6.1.4 增量行为定义
+
+`/pre-check` 不是一次性初始化命令，必须允许用户在已执行过 `/pre-check` 的项目中再次运行。
+
+典型场景：
+
+```text
+老项目已完成 npx / uvx / playwright-cli / ast-grep 检查
+        ↓
+Cadence 新版本增加 CodeGraph
+        ↓
+用户重新运行 /pre-check
+        ↓
+只检查并安装缺失的 CodeGraph，其他已安装工具直接跳过
+```
+
+执行规则：
+
+| 场景 | 行为 |
+|------|------|
+| 工具已安装 | 输出当前版本或已安装状态，跳过安装 |
+| 工具未安装 | 执行对应安装命令，安装后验证 |
+| 单个工具安装失败 | 报告该工具失败并给出手动命令，不重装其他已就绪工具 |
+| 重复运行 | 每个工具独立检查，结果不依赖是否首次运行 |
+| 新增工具上线 | 老项目重新运行 `/pre-check` 时只补齐新增工具 |
+
+对 CodeGraph 的增量要求：
+
+1. 如果 `codegraph version` 成功，报告 CodeGraph 已安装并跳过。
+2. 如果 `codegraph version` 失败，执行 `npm i -g @colbymchenry/codegraph`。
+3. 安装完成后只验证 CodeGraph，不重新安装其他工具。
+
 ### 6.2 `/rule-config` 增加 CodeGraph 初始化
 
 #### 6.2.1 新增步骤位置
@@ -246,6 +280,40 @@ codegraph.json
 ```
 
 原因：`codegraph.json` 用于排除已提交的大型目录、自定义扩展名、嵌套仓库等配置，属于团队可共享配置。
+
+#### 6.2.6 增量行为定义
+
+`/rule-config` 也必须支持在已初始化项目中反复运行，用于补齐新版 Cadence 新增的规则、配置和项目初始化步骤。
+
+典型场景：
+
+```text
+老项目已经生成 .claude/rules、CLAUDE.md、AGENTS.md
+        ↓
+Cadence 新版本增加 CodeGraph 规则与初始化
+        ↓
+用户重新运行 /rule-config
+        ↓
+只补 CodeGraph 相关规则、摘要、.gitignore 和项目初始化，不覆盖已有规则全文
+```
+
+执行规则：
+
+| 检查对象 | 已存在时 | 缺失时 |
+|----------|----------|--------|
+| `.claude/rules/code-reading.md` | 不自动覆盖，检查是否缺少 CodeGraph 段落并询问是否更新 | 从模板创建 |
+| `.claude/rules/mcp-servers.md` | 不自动覆盖，检查是否缺少 CodeGraph MCP 章节并询问是否追加 | 从模板创建 |
+| `CLAUDE.md` / `AGENTS.md` 摘要 | 已有 CodeGraph/代码阅读摘要则跳过 | 追加或更新对应摘要 |
+| `.codegraph/` | 视为已初始化，运行 `codegraph status` 报告状态 | 询问用户后执行 `codegraph init` |
+| Claude/Codex MCP 配置 | 已有 CodeGraph server 时跳过 | 通过 `codegraph install --target=claude,codex --location=local --yes` 补齐 |
+| `.gitignore` | 已含 `.codegraph/` 时跳过 | 追加 `.codegraph/` |
+
+覆盖原则：
+
+1. 不直接覆盖用户已经存在的规则文件。
+2. 如果模板内容发生变化，先展示差异或说明变更范围，再询问是否更新。
+3. 可自动追加明显缺失且低风险的条目，例如 `.gitignore` 中的 `.codegraph/`。
+4. 对 `CLAUDE.md` 和 `AGENTS.md` 只做摘要级补齐，避免重写用户手工维护内容。
 
 ### 6.3 MCP 配置同步
 
@@ -346,29 +414,69 @@ codegraph serve --mcp
 
 `AGENTS.md` 同步使用同样表述。
 
-## 7. 增量运行策略
+## 7. 增量运行策略（核心要求）
+
+`/pre-check` 与 `/rule-config` 必须按增量命令设计，而不是仅面向首次初始化。
+
+核心原则：
+
+1. **可重复执行**：用户可以在任意已初始化项目中再次运行命令。
+2. **只补缺失项**：新版 Cadence 新增能力后，老项目重新运行命令只补齐新增内容。
+3. **不破坏已有配置**：不重复安装已就绪工具，不覆盖用户已确认或手工修改的规则。
+4. **每项独立判断**：某一项失败不应导致其他已就绪项被重复处理。
+5. **执行前报告变更范围**：尤其是 `/rule-config`，写入前应告知本次会新增或更新哪些文件。
 
 ### 7.1 `/pre-check`
 
-重复运行时：
+`/pre-check` 的增量粒度是“工具”。每次运行都逐项检查工具状态。
 
 | 场景 | 行为 |
 |------|------|
+| 老项目已执行过 `/pre-check`，新版新增 CodeGraph | 重新运行后只补装 CodeGraph |
+| npx / uvx / playwright-cli / ast-grep 已安装 | 报告已安装并跳过 |
 | CodeGraph 已安装 | 报告版本并跳过安装 |
 | CodeGraph 未安装 | 执行 `npm i -g @colbymchenry/codegraph` |
 | 安装后验证失败 | 报告失败并给出手动安装命令 |
+| 重复运行多次 | 输出检查结果，不重复安装已存在工具 |
+
+用户体验示例：
+
+```text
+✓ npx 已安装，跳过
+✓ uvx 已安装，跳过
+✓ playwright-cli 已安装，跳过
+✓ ast-grep 已安装，跳过
+正在安装 CodeGraph...
+✓ CodeGraph 安装成功
+```
 
 ### 7.2 `/rule-config`
 
-重复运行时：
+`/rule-config` 的增量粒度是“规则文件、入口摘要、MCP 配置、项目初始化状态”。
 
 | 场景 | 行为 |
 |------|------|
+| 老项目已执行过 `/rule-config`，新版新增 CodeGraph | 重新运行后只补 CodeGraph 相关规则、摘要、MCP 配置和 `.codegraph/` 初始化 |
+| 基础规则文件已存在 | 不自动覆盖，仅检查是否需要追加 CodeGraph 段落 |
 | `.codegraph/` 已存在 | 报告已初始化，不重复 `codegraph init` |
 | `.codegraph/` 不存在 | 询问是否初始化 |
 | CodeGraph 规则文件已存在 | 检查摘要是否缺失，不自动覆盖规则全文 |
 | `CLAUDE.md` / `AGENTS.md` 已有 CodeGraph 标记片段 | 不重复写入 |
+| Codex/Claude 已有 CodeGraph MCP server | 跳过，不重复写入 |
 | `.gitignore` 已包含 `.codegraph/` | 跳过 |
+
+用户体验示例：
+
+```text
+检测到项目已存在 .claude/rules 与 AGENTS.md。
+本次仅发现缺失项：
+- CodeGraph 代码阅读规则段落
+- CodeGraph MCP 规则段落
+- .codegraph/ 本地索引目录
+- .gitignore 中的 .codegraph/
+
+确认后只写入上述缺失项，不覆盖已有规则文件。
+```
 
 ## 8. 实施步骤
 
