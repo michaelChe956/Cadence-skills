@@ -1,6 +1,6 @@
 ---
 name: pre-check
-description: Use when setting up development environments or configuring npx/uvx tools. IMPORTANT - All user interactions MUST be in Chinese (中文) - triggers when tools need installation.
+description: Use when setting up development environments or incrementally configuring npx/uvx/playwright-cli/ast-grep/codegraph tools. IMPORTANT - All user interactions MUST be in Chinese (中文) - triggers when tools need installation.
 disable-model-invocation: true
 ---
 
@@ -14,7 +14,7 @@ disable-model-invocation: true
 
 **强制规则**：
 1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
-2. **必须完成所有四个基础检查** - 不允许跳过 npx/uvx/playwright-cli/ast-grep 任一步骤
+2. **必须完成所有五个基础检查** - 不允许跳过 npx/uvx/playwright-cli/ast-grep/codegraph 任一步骤
 3. **API Key 配置为可选步骤** - 询问用户是否需要智普/MiniMax MCP，仅做配置提醒
 
 ## 何时使用
@@ -37,9 +37,9 @@ digraph when_to_use {
 }
 ```
 
-**使用场景**：环境初始化、CI/CD 环境准备、新开发者环境搭建
+**使用场景**：环境初始化、CI/CD 环境准备、新开发者环境搭建、新版 Cadence 工具补齐
 
-**不适用场景**：工具已确认安装、仅需检查单个工具、非开发环境
+**不适用场景**：全部工具已确认安装、仅需检查单个工具、非开发环境
 
 ## 增量运行
 
@@ -47,6 +47,7 @@ digraph when_to_use {
 
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
+- 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有的 `npx`、`uvx`、`playwright-cli`、`ast-grep`。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装该工具。
 
 ## 检查流程
@@ -78,7 +79,12 @@ digraph check_flow {
     install_ast_grep [label="安装 ast-grep"];
     ast_grep_done [label="ast-grep 就绪"];
 
-    // 步骤5（可选）
+    // 步骤5
+    check_codegraph [label="检查 codegraph", shape=diamond];
+    install_codegraph [label="安装 codegraph"];
+    codegraph_done [label="codegraph 就绪"];
+
+    // 步骤6（可选）
     ask_apikey [label="⚠️ 询问是否需要智普/MiniMax MCP", shape=diamond];
     remind_apikey [label="提醒获取 API Key\n并配置环境变量"];
     skip_apikey [label="跳过"];
@@ -101,9 +107,14 @@ digraph check_flow {
     playwright_done -> check_ast_grep;
 
     check_ast_grep -> install_ast_grep [label="未安装"];
-    check_ast_grep -> ask_apikey [label="已安装"];
+    check_ast_grep -> check_codegraph [label="已安装"];
     install_ast_grep -> ast_grep_done;
-    ast_grep_done -> ask_apikey;
+    ast_grep_done -> check_codegraph;
+
+    check_codegraph -> install_codegraph [label="未安装"];
+    check_codegraph -> ask_apikey [label="已安装"];
+    install_codegraph -> codegraph_done;
+    codegraph_done -> ask_apikey;
 
     ask_apikey -> remind_apikey [label="需要"];
     ask_apikey -> skip_apikey [label="不需要"];
@@ -120,7 +131,8 @@ digraph check_flow {
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. playwright-cli** | `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **4. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
-| **5. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
+| **5. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
+| **6. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
 
 ## 实施步骤
 
@@ -177,7 +189,27 @@ ast-grep --version
 npm i @ast-grep/cli -g
 ```
 
-### 步骤 5：API Key 配置提醒（可选）
+### 步骤 5：检查 codegraph
+
+```bash
+codegraph version
+```
+
+**行为（中文输出）**：
+- ✅ **已安装**：报告 "✓ codegraph 已安装（版本：{版本号}）"
+- ❌ **未安装**：报告 "正在安装 codegraph..."，执行 `npm i -g @colbymchenry/codegraph`，完成后报告 "✓ codegraph 安装成功"
+
+**安装命令**：
+
+```bash
+npm i -g @colbymchenry/codegraph
+```
+
+**增量要求**：
+- 如果老项目已完成 `/pre-check`，重新运行时必须跳过已安装工具，只补装缺失的 codegraph。
+- codegraph 安装后只验证 codegraph，不重新安装 npx/uvx/playwright-cli/ast-grep。
+
+### 步骤 6：API Key 配置提醒（可选）
 
 > **⚠️ 可选步骤** — 仅在用户需要智普/MiniMax MCP 时执行
 
@@ -211,3 +243,4 @@ npm i @ast-grep/cli -g
 | **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行安装命令 |
 | **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i @ast-grep/cli -g` |
+| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i -g @colbymchenry/codegraph` |

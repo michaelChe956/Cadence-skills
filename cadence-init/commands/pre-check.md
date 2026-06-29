@@ -5,6 +5,7 @@
 ## 使用场景
 
 - 首次使用 Cadence 前，确保环境正确配置
+- 已初始化项目升级新版 Cadence 后，增量补齐新增工具（如 codegraph）
 
 ## 功能
 
@@ -28,7 +29,12 @@
    - 自动安装缺失的 ast-grep
    - 用于 `ast-grep outline` 代码阅读规则
 
-5. **API Key 配置提醒（可选）** - 智普/MiniMax MCP 密钥
+5. **codegraph** - 代码图谱与大范围代码检索工具
+   - 检查是否全局安装 @colbymchenry/codegraph
+   - 自动安装缺失的 codegraph
+   - 用于 CodeGraph MCP、项目级代码图初始化和大范围检索
+
+6. **API Key 配置提醒（可选）** - 智普/MiniMax MCP 密钥
    - 询问用户是否需要智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）
    - 询问用户是否需要 MiniMax Token Plan MCP（网络搜索/图片理解）
    - 提醒用户自行获取 API Key，不验证密钥有效性
@@ -98,13 +104,42 @@ ast-grep --version
 - **典型用法**：`ast-grep outline src/parser.ts`、`ast-grep outline src --items imports`
 - **与 rule-config 的关系**：`rule-config` 会为 Coding 项目配置 `code-reading.md` 规则，要求优先使用 `ast-grep outline`
 
+## CodeGraph 安装
+
+### 检查命令
+
+```bash
+# 检查 codegraph 是否已安装
+codegraph version
+```
+
+### 安装命令
+
+```bash
+# 全局安装 CodeGraph CLI
+npm i -g @colbymchenry/codegraph
+```
+
+### 验证安装
+
+```bash
+# 验证 codegraph 安装成功
+codegraph version
+```
+
+### 说明
+
+- **用途**：生成项目代码图，支持大范围代码检索、架构理解、调用链分析和影响面分析
+- **典型初始化**：`rule-config` 会在项目内执行 `codegraph install --target=claude,codex --location=local --yes` 与 `codegraph init`
+- **增量行为**：老项目重新运行 `/pre-check` 时，已安装工具会跳过，只会补装缺失的 codegraph
+
 ## 检查流程
 
 ```dot
-检查 npx → 检查 uvx → 检查 playwright-cli → 检查 ast-grep → API Key 提醒（可选） → 完成
+检查 npx → 检查 uvx → 检查 playwright-cli → 检查 ast-grep → 检查 codegraph → API Key 提醒（可选） → 完成
 ```
 
-**重要**：前四个步骤（npx、uvx、playwright-cli、ast-grep）必须完成，不允许跳过。第五步 API Key 提醒为可选。
+**重要**：前五个步骤（npx、uvx、playwright-cli、ast-grep、codegraph）必须完成，不允许跳过。第六步 API Key 提醒为可选。
 
 ## 增量运行
 
@@ -113,9 +148,10 @@ ast-grep --version
 - 已安装的工具会跳过安装，仅报告状态。
 - 缺失或未成功安装的工具会自动重新安装。
 - 不会重复安装已存在的 Playwright skills。
+- 不会重复安装已存在的 codegraph。
 
 适用场景：
-- 新版 Cadence 新增工具（如 `ast-grep`）后，老项目重新运行即可补齐。
+- 新版 Cadence 新增工具（如 `ast-grep`、`codegraph`）后，老项目重新运行即可补齐。
 - 之前某一步安装失败后环境问题已修复，重新运行会再次尝试。
 
 ## 输出
@@ -145,8 +181,9 @@ ast-grep --version
 ## 强制规则
 
 - 所有与用户的交互必须使用中文
-- 必须完成所有四个基础步骤（npx、uvx、playwright-cli、ast-grep）
+- 必须完成所有五个基础步骤（npx、uvx、playwright-cli、ast-grep、codegraph）
 - playwright-cli 安装失败必须提供手动安装命令
 - ast-grep 安装失败必须提供手动安装命令 `npm i @ast-grep/cli -g`
+- codegraph 安装失败必须提供手动安装命令 `npm i -g @colbymchenry/codegraph`
 - API Key 配置提醒为可选步骤，不验证密钥有效性
 - 安全提醒：不要将 API Key 直接告诉 Claude Code
