@@ -330,6 +330,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 ### 5. MCP 配置文件创建
 **说明**：
 - 智普和 MiniMax MCP 为**可选配置**，根据用户选择决定是否包含
+- CodeGraph MCP 通常由 `rule-config` 执行 `codegraph install --target=claude,codex --location=local --yes` 自动配置；本节提供手动兜底配置
 
 **在项目根目录创建 `.mcp.json`**：
 
@@ -363,6 +364,24 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
       ],
       "env": {}
     }
+  }
+}
+```
+
+#### CodeGraph MCP 配置（兜底 — rule-config 自动配置失败时添加）
+
+> 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。
+
+```json
+{
+  "codegraph": {
+    "type": "stdio",
+    "command": "codegraph",
+    "args": [
+      "serve",
+      "--mcp"
+    ],
+    "env": {}
   }
 }
 ```
@@ -449,7 +468,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 **TOML 写入规则**：
 - 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
 - `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
-- 写入顺序：基础配置 → 智普配置（如果选中）→ MiniMax 配置（如果选中）
+- 写入顺序：基础配置 → CodeGraph 配置（如果启用） → 智普配置（如果选中）→ MiniMax 配置（如果选中）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
 **Codex 与 Claude Code 格式差异**：
@@ -484,6 +503,16 @@ args = ["-y", "@upstash/context7-mcp"]
 [mcp_servers.sequential-thinking]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+````
+
+#### CodeGraph MCP 配置（兜底 — rule-config 自动配置失败时添加）
+
+> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。
+
+````toml
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
 ````
 
 #### 智普 MCP 配置（可选 — 用户确认后添加）

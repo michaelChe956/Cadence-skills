@@ -21,7 +21,8 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，用户确认后迁移到 `cadence/`
 7. **cadence gitignore 决策** — 询问用户是否将 `cadence/` 加入 `.gitignore`，默认不忽略
 8. **代码阅读规则配置** — 配置 `ast-grep outline` 的使用规则（可选，Coding 项目默认建议启用）
-9. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
+9. **CodeGraph 项目初始化** — 项目级安装 CodeGraph 到 Claude Code/Codex 并初始化 `.codegraph/`（可选，Coding 项目默认建议启用）
+10. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -75,7 +76,7 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
    如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，
    从通过验证的结果中取修改时间最新的。
 
-> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 9 的 playwright.md）。
+> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 10 的 playwright.md）。
 
 **步骤 1c：创建目标目录**
 
@@ -135,7 +136,7 @@ mkdir -p .claude/rules
 - 详见 `cadence/project-rules/README.md`
 
 ### 7. 代码阅读规则
-- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
 
 ## 项目信息
 # currentDate
@@ -146,7 +147,8 @@ Today's date is {当前日期}。
 - 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
 - 规则 7（代码阅读）由步骤 8 添加（如用户选择启用）
-- 规则 8（Playwright）由步骤 9 添加（如用户选择启用）
+- CodeGraph 项目初始化由步骤 9 执行（如用户选择启用）
+- 规则 8（Playwright）由步骤 10 添加（如用户选择启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
 
 **参考 CLAUDE.md 同步添加 AGENTS.md**：
@@ -190,7 +192,7 @@ Today's date is {当前日期}。
 - 详见 `cadence/project-rules/README.md`
 
 ### 7. 代码阅读规则
-- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
 
 ### 8. Playwright CLI 使用规则
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
@@ -392,7 +394,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 ```markdown
 ### 8. 代码阅读规则
-- **结构化优先，使用 `ast-grep outline` 避免盲读** → 详见 `.claude/rules/code-reading.md`
+- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
 ```
 
 **用户确认**：
@@ -400,7 +402,71 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 - 对非 Coding 项目：默认跳过，仅提示“非 Coding 项目跳过代码阅读规则”。
 - 如果用户选择启用，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认。
 
-### 9. Playwright Skills 规则配置
+### 9. CodeGraph 项目初始化
+
+**检测条件**：
+- 项目为 **Coding 项目**（基于步骤 1a 检测结果）
+- 用户需要大范围代码检索、调用链分析、架构理解或影响面分析
+- 对 Coding 项目默认建议启用，非 Coding 项目默认跳过
+
+**前置条件**：
+- `/pre-check` 已完成 `codegraph` 安装检查
+- `codegraph version` 可输出版本号
+
+**用户确认**：
+- 对 Coding 项目：询问用户是否启用 CodeGraph 项目初始化，默认选项为“启用”。
+- 对非 Coding 项目：默认跳过，仅提示“非 Coding 项目跳过 CodeGraph 初始化”。
+- 如果用户手动要求启用，即使未检测到源代码，也允许继续执行。
+
+**项目级安装命令**：
+
+```bash
+codegraph install --target=claude,codex --location=local --yes
+```
+
+**初始化命令**：
+
+```bash
+codegraph init
+```
+
+**验证命令**：
+
+```bash
+test -d .codegraph && codegraph status
+```
+
+**配置范围**：
+- `--target=claude,codex`：只支持 Claude Code 和 Codex。
+- `--location=local`：只写入当前项目配置，不写入全局 Agent 配置。
+- `.codegraph/`：本地代码图索引目录，应加入 `.gitignore`。
+- `codegraph.json`：团队共享配置文件，不应加入 `.gitignore`。
+
+**已存在状态处理**：
+
+| 场景 | 行为 |
+|------|------|
+| `.codegraph/` 不存在 | 用户确认后执行 `codegraph install` 与 `codegraph init` |
+| `.codegraph/` 已存在 | 运行 `codegraph status`，报告已初始化，不重复 `codegraph init` |
+| Claude/Codex 已有 CodeGraph MCP server | 跳过，不重复写入 |
+| Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 补齐 |
+| `codegraph install` 失败 | 提供 `mcp-configuration.md` 中的手动兜底配置 |
+| `codegraph init` 失败 | 提示用户确认项目语言、目录规模或是否需要配置 `codegraph.json` |
+
+**.gitignore 增量处理**：
+
+检查 `.gitignore` 是否已包含 `.codegraph/`：
+
+```bash
+grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地索引\n.codegraph/\n' >> .gitignore
+```
+
+**增量要求**：
+- `/rule-config` 重复运行时，只补齐缺失的 CodeGraph 规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` 项。
+- 不直接覆盖用户已经存在的规则文件或 Agent 配置。
+- 写入前向用户展示本次将新增或更新的内容清单。
+
+### 10. Playwright Skills 规则配置
 
 **检测条件**：
 - 用户需要浏览器自动化功能
@@ -433,6 +499,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 | 文件不存在 | 从模板根路径读取并创建 |
 | 文件已存在 | **不自动覆盖**，向用户展示差异并询问是否更新 |
 | 新增规则模板（如 `code-reading.md`） | 检测为缺失项，询问用户是否需要新增 |
+| 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，展示差异并询问是否追加 |
 
 **检测命令示例**：
 
@@ -465,6 +532,19 @@ done
 | 规则文件和摘要均已存在 | 视为已启用，仅检查完整性，不再询问 |
 | 规则文件或摘要缺失 | 作为新增可选项询问用户 |
 | 无法判断历史选择 | 默认按新增项询问 |
+
+### CodeGraph 增量处理
+
+对于 CodeGraph 项目初始化：
+
+| 场景 | 行为 |
+|------|------|
+| 老项目已执行过 `/rule-config`，但缺少 CodeGraph | 只补 CodeGraph 相关规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` |
+| `.codegraph/` 已存在 | 运行 `codegraph status` 并跳过初始化 |
+| `.codegraph/` 不存在 | 用户确认后执行 `codegraph init` |
+| Claude/Codex 已有 CodeGraph MCP server | 跳过，不重复写入 |
+| `.gitignore` 已有 `.codegraph/` | 跳过 |
+| `codegraph.json` 存在 | 保留，不加入 `.gitignore` |
 
 ### 建议
 

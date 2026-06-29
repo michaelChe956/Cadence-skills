@@ -4,9 +4,20 @@
 
 ### 核心原则
 
-- **优先使用 `ast-grep outline` 获取结构化大纲** - 在阅读、检索、理解代码时，必须优先使用 `ast-grep outline` 命令获取文件或目录的结构化大纲（函数、类、结构体、导入导出、成员及其源码区间），再基于大纲决定要精读哪一段，避免直接整文件盲读造成 token 浪费与上下文污染。
+- **大范围检索优先使用 CodeGraph** - 在架构理解、调用链分析、影响面分析、跨文件符号关系、功能流向追踪等场景中，优先使用 CodeGraph 或 `codegraph explore` 建立全局视图。
+- **精确结构阅读优先使用 `ast-grep outline`** - 在阅读、检索、理解具体文件或符号时，必须优先使用 `ast-grep outline` 命令获取文件或目录的结构化大纲（函数、类、结构体、导入导出、成员及其源码区间），再基于大纲决定要精读哪一段，避免直接整文件盲读造成 token 浪费与上下文污染。
 - **基于大纲定向精读** - 拿到大纲后，仅对真正需要的符号/区间做进一步阅读；先用 `--match` / `--view` 展开目标符号的签名或成员，再决定是否需要读取完整实现。
-- **检索代码时同样适用** - 查找“某个符号定义在哪”“某个模块导出了什么”“谁导入某个依赖”等结构化问题时，优先用 `ast-grep outline` 而非 `grep` 或整文件读取。
+- **冲突时以 `ast-grep outline` 为准** - 如果 CodeGraph 与 `ast-grep outline` 结果冲突，先以 `ast-grep outline` 的结构化大纲为准，再通过定向文件阅读确认。
+
+### CodeGraph 与 ast-grep 分工
+
+| 场景 | 优先工具 | 说明 |
+|------|----------|------|
+| 架构理解、调用链分析、影响面分析 | CodeGraph | 适合跨文件、跨模块的大范围检索 |
+| 功能从入口到落点的流向追踪 | CodeGraph | 先建立全局路径，再定向精读 |
+| 单文件结构阅读、导入导出查看 | `ast-grep outline` | 适合精确结构化定位 |
+| 类、函数、成员大纲查看 | `ast-grep outline` | 适合决定下一步精读范围 |
+| 两者结果冲突 | `ast-grep outline` | 以结构化大纲为准，再读目标源码确认 |
 
 ### 命令使用方式
 
@@ -38,6 +49,7 @@ ast-grep outline src --items imports --match ast-grep-core --view signatures
 
 ### 适用场景判断
 
+- ✅ **鼓励**：大范围理解代码库时先用 CodeGraph 建立架构和调用关系视图。
 - ✅ **鼓励**：理解陌生文件结构、定位符号定义、梳理模块导出/导入关系、决定下一步精读范围。
 - ✅ **鼓励**：在大型仓库中先用 outline 建立结构地图，再按需深入。
 - ⚠️ **需说明**：当目标文件极小（如十几行的配置/模块）或已明确需要完整实现时，可直接读取，但应说明跳过 outline 的原因。
@@ -46,4 +58,6 @@ ast-grep outline src --items imports --match ast-grep-core --view signatures
 ### 参考资源
 
 - 获取命令帮助：`ast-grep outline --help`
+- CodeGraph 项目初始化：`codegraph init`
+- CodeGraph 大范围检索：`codegraph explore`
 - 设计说明与背景：https://ast-grep.github.io/blog/ast-grep-outline.html#why-outline

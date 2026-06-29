@@ -65,6 +65,36 @@
 }
 ```
 
+### CodeGraph MCP
+
+**用途**：基于项目代码图进行大范围代码检索、架构理解、调用链分析和影响面分析。
+
+**触发场景**：
+- 需要理解某个功能跨文件如何工作
+- 需要分析调用链、依赖关系或影响面
+- 需要进行大范围代码检索
+- 需要回答“某功能从入口到落点如何流转”
+
+**使用规则**：
+1. 项目必须先执行 `codegraph init`，存在 `.codegraph/` 后 CodeGraph MCP 才提供工具。
+2. 大范围检索优先使用 CodeGraph。
+3. 精确结构阅读优先使用 `ast-grep outline`。
+4. `ast-grep outline` 与 CodeGraph 结果冲突时，以 `ast-grep outline` 为准。
+
+**手动服务命令**：
+```bash
+codegraph serve --mcp
+```
+
+**典型工作流**：
+```
+# 大范围理解功能流向
+> 使用 CodeGraph 分析登录流程从入口到服务层的调用链
+
+# 影响面分析
+> 使用 CodeGraph 分析修改 UserService 会影响哪些模块
+```
+
 ### 智普视觉理解 MCP（可选）
 
 **用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断
