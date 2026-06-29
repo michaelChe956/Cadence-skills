@@ -21,7 +21,7 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，用户确认后迁移到 `cadence/`
 7. **cadence gitignore 决策** — 询问用户是否将 `cadence/` 加入 `.gitignore`，默认不忽略
 8. **代码阅读规则配置** — 配置 `ast-grep outline` 的使用规则（可选，Coding 项目默认建议启用）
-9. **CodeGraph 项目初始化** — 项目级安装 CodeGraph 到 Claude Code/Codex 并初始化 `.codegraph/`（可选，Coding 项目默认建议启用）
+9. **CodeGraph 项目初始化** — 项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`（可选，Coding 项目默认建议启用）
 10. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
@@ -424,6 +424,23 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 codegraph install --target=claude,codex --location=local --yes
 ```
 
+**安装后强制核验**：
+
+执行 `codegraph install --target=claude,codex --location=local --yes` 后，不能只根据命令成功判断完成，必须分别检查：
+
+1. `.mcp.json` 的 `mcpServers` 中是否包含 `codegraph`
+2. `.codex/config.toml` 中是否包含 `[mcp_servers.codegraph]`
+
+如果 `.mcp.json` 已包含 CodeGraph MCP，但 `.codex/config.toml` 缺少 CodeGraph MCP，说明 CodeGraph 未通过自身安装流程完成 Codex 本地配置。此时必须参考 `.mcp.json` 中的 `codegraph` 配置，手动补齐 `.codex/config.toml`：
+
+````toml
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
+````
+
+如果 `.mcp.json` 也缺少 CodeGraph MCP，则按 `mcp-configuration.md` 的 CodeGraph MCP 兜底配置先补齐 `.mcp.json`，再同步补齐 `.codex/config.toml`。
+
 **初始化命令**：
 
 ```bash
@@ -448,9 +465,11 @@ test -d .codegraph && codegraph status
 |------|------|
 | `.codegraph/` 不存在 | 用户确认后执行 `codegraph install` 与 `codegraph init` |
 | `.codegraph/` 已存在 | 运行 `codegraph status`，报告已初始化，不重复 `codegraph init` |
-| Claude/Codex 已有 CodeGraph MCP server | 跳过，不重复写入 |
-| Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 补齐 |
-| `codegraph install` 失败 | 提供 `mcp-configuration.md` 中的手动兜底配置 |
+| `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
+| `.mcp.json` 有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 `.codex/config.toml` |
+| `.mcp.json` 缺少 CodeGraph MCP | 按 `mcp-configuration.md` 的兜底配置补齐 `.mcp.json`，再同步补齐 `.codex/config.toml` |
+| Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 后必须再次核验两个配置文件 |
+| `codegraph install` 失败 | 提供 `mcp-configuration.md` 中的手动兜底配置，并分别补齐 `.mcp.json` 与 `.codex/config.toml` |
 | `codegraph init` 失败 | 提示用户确认项目语言、目录规模或是否需要配置 `codegraph.json` |
 
 **.gitignore 增量处理**：
@@ -542,7 +561,9 @@ done
 | 老项目已执行过 `/rule-config`，但缺少 CodeGraph | 只补 CodeGraph 相关规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` |
 | `.codegraph/` 已存在 | 运行 `codegraph status` 并跳过初始化 |
 | `.codegraph/` 不存在 | 用户确认后执行 `codegraph init` |
-| Claude/Codex 已有 CodeGraph MCP server | 跳过，不重复写入 |
+| `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
+| `.mcp.json` 已有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 Codex 本地 MCP 配置 |
+| 任一配置文件缺少 CodeGraph MCP server | 先执行 `codegraph install --target=claude,codex --location=local --yes`，再核验并补齐缺失文件 |
 | `.gitignore` 已有 `.codegraph/` | 跳过 |
 | `codegraph.json` 存在 | 保留，不加入 `.gitignore` |
 
