@@ -7,22 +7,55 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 
 ## 概述
 
-配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用，并参考 CLAUDE.md 同步生成 AGENTS.md。
+配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用，并参考 CLAUDE.md 同步生成 AGENTS.md。默认采用无人工交互策略，按自动检测结果和保守默认值继续执行。
+
+## 无交互默认策略
+
+在没有用户额外输入时，按以下默认值执行：
+
+| 项 | 默认行为 |
+|----|----------|
+| 项目类型 | 检测到常见源码或主配置文件时判定为 Coding 项目；否则判定为非 Coding 项目 |
+| 技术栈 | 自动检测并写入；未检测到的命令写为“未检测到” |
+| 历史产物迁移 | 无冲突时自动迁移；目标目录非空时跳过并报告 |
+| `cadence/` gitignore | 默认不加入 `.gitignore` |
+| 代码阅读规则 | Coding 项目默认启用，非 Coding 项目默认跳过 |
+| CodeGraph 初始化 | Coding 项目默认启用，非 Coding 项目默认跳过 |
+| Playwright 规则 | 默认跳过，仅用户明确要求时启用 |
+| 已存在文件 | 默认不覆盖，只补齐缺失文件、缺失摘要和缺失配置块 |
+
+## 人工交互策略
+
+默认不向用户提问。只有出现以下情况才进入人工交互：
+
+| 触发条件 | 处理方式 |
+|----------|----------|
+| 即将覆盖已有非空文件 | 先询问；无响应则不覆盖，跳过并报告 |
+| 检测结果互相矛盾且会影响规则选择 | 先询问；无响应则按非 Coding 项目处理 |
+| 用户明确要求启用默认跳过项（如 Playwright）但缺少必要信息 | 先询问最少必要信息；无响应则跳过该可选项 |
+| 迁移旧目录时目标目录非空 | 不询问、不合并，直接跳过并报告冲突 |
+| 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只写占位符并提示用户自行替换 |
+
+提问规则：
+- 每次只问一个问题。
+- 问题必须给出推荐默认选项。
+- 如果运行环境支持自动超时，超时后采用推荐默认值。
+- 如果无法等待用户输入，采用保守默认：不覆盖、不删除、不提交密钥、不启用高成本可选项。
 
 ## 检查清单
 
 你必须为以下每个项目创建任务并按顺序完成：
 
 1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
-2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加全部 9 条规则的摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者）
+2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加核心规则摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
-4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，需要用户确认
+4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，按检测结果继续
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
-6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，用户确认后迁移到 `cadence/`
-7. **cadence gitignore 决策** — 询问用户是否将 `cadence/` 加入 `.gitignore`，默认不忽略
-8. **代码阅读规则配置** — 配置 `ast-grep outline` 的使用规则（可选，Coding 项目默认建议启用）
-9. **CodeGraph 项目初始化** — 项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`（可选，Coding 项目默认建议启用）
-10. **Playwright Skills 规则配置** — 配置 Playwright CLI 的使用规则（可选）
+6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，无冲突时自动迁移到 `cadence/`
+7. **cadence gitignore 决策** — 默认不将 `cadence/` 加入 `.gitignore`
+8. **代码阅读规则配置** — Coding 项目默认配置 `ast-grep outline` 与 CodeGraph 使用规则
+9. **CodeGraph 项目初始化** — Coding 项目默认项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`
+10. **Playwright Skills 规则配置** — 默认跳过，仅用户明确要求时配置 Playwright CLI 使用规则
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -49,11 +82,10 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 - 如果仍有匹配结果 → **Coding 项目**
 - 如果没有匹配结果或所有结果都被排除 → 可能是**非 Coding 项目**，也可能是**全新 Coding 项目**
 
-检测结果需**展示给用户确认**：向用户说明检测结果和依据，允许用户手动修正。
-
-如果没有检测到常见源代码文件，必须让用户选择项目类型：
-- **Coding 项目**：适用于全新编码项目；选择后使用 Coding 项目规则，默认角色为**执行者**
-- **非 Coding 项目**：适用于文档、配置、Skills/Commands 等非编码项目；选择后使用非 Coding 项目规则
+检测结果需记录到执行报告中。无人工交互模式下不等待用户确认：
+- 如果排除后仍有匹配结果，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**
+- 如果没有检测到常见源代码文件和主工程配置 → **非 Coding 项目**
+- 用户在命令中明确指定项目类型时，以用户指定为准
 
 **步骤 1b：定位模板目录**
 
@@ -146,9 +178,9 @@ Today's date is {当前日期}。
 **注意**：
 - 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 7（代码阅读）由步骤 8 添加（如用户选择启用）
-- CodeGraph 项目初始化由步骤 9 执行（如用户选择启用）
-- 规则 8（Playwright）由步骤 10 添加（如用户选择启用）
+- 规则 7（代码阅读）由步骤 8 添加（Coding 项目默认启用）
+- CodeGraph 项目初始化由步骤 9 执行（Coding 项目默认启用）
+- Playwright 规则由步骤 10 添加（默认跳过，用户明确要求时启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
 
 **参考 CLAUDE.md 同步添加 AGENTS.md**：
@@ -193,9 +225,6 @@ Today's date is {当前日期}。
 
 ### 7. 代码阅读规则
 - **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
-
-### 8. Playwright CLI 使用规则
-- **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 
 ## 与 CLAUDE.md 的关系
 
@@ -261,10 +290,10 @@ cat requirements.txt
 grep -E "pytest|unittest" requirements.txt
 ```
 
-**用户确认**：
-- 检测到技术栈后，必须展示给用户确认
-- 如果检测不准确，允许用户手动修改
-- 写入 CLAUDE.md 前必须获取用户确认
+**无交互行为**：
+- 检测到技术栈后，直接写入 CLAUDE.md / AGENTS.md 的项目配置章节。
+- 未检测到的命令写为“未检测到”，不阻塞初始化。
+- 如果用户后续发现检测不准确，可手动修改 CLAUDE.md / AGENTS.md 中的项目配置章节。
 
 **添加到 CLAUDE.md**：
 
@@ -321,10 +350,10 @@ for dir in prds analysis analysis-docs docs designs designs-reviews plans readme
 done
 ```
 
-**用户确认**：
-- 如果没有检测到旧目录，提示无需迁移并继续
-- 如果检测到旧目录，展示迁移清单，并询问用户是否迁移到 `cadence/`
-- 默认建议迁移
+**无交互行为**：
+- 如果没有检测到旧目录，报告无需迁移并继续。
+- 如果检测到旧目录，无冲突时自动迁移到 `cadence/`。
+- 如果目标 `cadence/<dir>` 已存在且非空，跳过该目录并报告冲突，不覆盖、不合并。
 
 **迁移规则**：
 
@@ -363,14 +392,14 @@ done
 
 ### 7. cadence gitignore 决策
 
-**目的**：让用户决定是否将 `cadence/` 作为本地工作目录忽略。
+**目的**：确定是否将 `cadence/` 作为本地工作目录忽略。
 
-**用户确认**：
-- 询问用户：“是否将 `cadence/` 加入 `.gitignore`？”
-- 默认选择：不忽略
-- 默认不忽略的原因：PRD、设计、计划、用户项目规则等产物通常需要团队协作和版本管理
+**无交互默认**：
+- 默认不将 `cadence/` 加入 `.gitignore`。
+- 默认不忽略的原因：PRD、设计、计划、用户项目规则等产物通常需要团队协作和版本管理。
+- 仅用户明确要求忽略 `cadence/` 时才追加 `.gitignore`。
 
-**如果用户选择忽略**：
+**如果用户明确要求忽略**：
 
 检查 `.gitignore` 是否已包含 `cadence/`：
 
@@ -378,7 +407,7 @@ done
 grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\ncadence/\n' >> .gitignore
 ```
 
-**如果用户选择不忽略**：
+**默认不忽略时**：
 
 不修改 `.gitignore`。
 
@@ -386,7 +415,7 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 **检测条件**：
 - 项目为 **Coding 项目**（基于步骤 1a 检测结果）
-- 用户需要代码阅读辅助（对 Coding 项目默认建议启用）
+- Coding 项目默认需要代码阅读辅助
 
 **创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `code-reading.md` 读取内容，写入 `.claude/rules/code-reading.md`
 
@@ -397,26 +426,26 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 - **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
 ```
 
-**用户确认**：
-- 对 Coding 项目：询问用户是否启用代码阅读规则，默认选项为“启用”。
-- 对非 Coding 项目：默认跳过，仅提示“非 Coding 项目跳过代码阅读规则”。
-- 如果用户选择启用，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认。
+**无交互行为**：
+- 对 Coding 项目：默认启用代码阅读规则，创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要。
+- 对非 Coding 项目：默认跳过，仅在报告中记录“非 Coding 项目跳过代码阅读规则”。
+- 已存在规则文件时不覆盖；缺少摘要时只追加摘要。
 
 ### 9. CodeGraph 项目初始化
 
 **检测条件**：
 - 项目为 **Coding 项目**（基于步骤 1a 检测结果）
-- 用户需要大范围代码检索、调用链分析、架构理解或影响面分析
-- 对 Coding 项目默认建议启用，非 Coding 项目默认跳过
+- Coding 项目默认需要大范围代码检索、调用链分析、架构理解或影响面分析
+- 对 Coding 项目默认启用，非 Coding 项目默认跳过
 
 **前置条件**：
 - `/pre-check` 已完成 `codegraph` 安装检查
 - `codegraph version` 可输出版本号
 
-**用户确认**：
-- 对 Coding 项目：询问用户是否启用 CodeGraph 项目初始化，默认选项为“启用”。
-- 对非 Coding 项目：默认跳过，仅提示“非 Coding 项目跳过 CodeGraph 初始化”。
-- 如果用户手动要求启用，即使未检测到源代码，也允许继续执行。
+**无交互行为**：
+- 对 Coding 项目：默认启用 CodeGraph 项目初始化。
+- 对非 Coding 项目：默认跳过，仅在报告中记录“非 Coding 项目跳过 CodeGraph 初始化”。
+- 如果用户明确要求启用，即使未检测到源代码，也允许继续执行。
 
 **项目级安装命令**：
 
@@ -463,14 +492,14 @@ test -d .codegraph && codegraph status
 
 | 场景 | 行为 |
 |------|------|
-| `.codegraph/` 不存在 | 用户确认后执行 `codegraph install` 与 `codegraph init` |
+| `.codegraph/` 不存在 | Coding 项目默认执行 `codegraph install` 与 `codegraph init` |
 | `.codegraph/` 已存在 | 运行 `codegraph status`，报告已初始化，不重复 `codegraph init` |
 | `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
 | `.mcp.json` 有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 `.codex/config.toml` |
 | `.mcp.json` 缺少 CodeGraph MCP | 按 `mcp-configuration.md` 的兜底配置补齐 `.mcp.json`，再同步补齐 `.codex/config.toml` |
 | Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 后必须再次核验两个配置文件 |
 | `codegraph install` 失败 | 提供 `mcp-configuration.md` 中的手动兜底配置，并分别补齐 `.mcp.json` 与 `.codex/config.toml` |
-| `codegraph init` 失败 | 提示用户确认项目语言、目录规模或是否需要配置 `codegraph.json` |
+| `codegraph init` 失败 | 报告项目语言、目录规模或 `codegraph.json` 可能需要人工配置，不阻塞其他初始化项 |
 
 **.gitignore 增量处理**：
 
@@ -483,12 +512,12 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 **增量要求**：
 - `/rule-config` 重复运行时，只补齐缺失的 CodeGraph 规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` 项。
 - 不直接覆盖用户已经存在的规则文件或 Agent 配置。
-- 写入前向用户展示本次将新增或更新的内容清单。
+- 写入前内部计算本次将新增或更新的内容清单，执行后在报告中展示。
 
 ### 10. Playwright Skills 规则配置
 
 **检测条件**：
-- 用户需要浏览器自动化功能
+- 用户明确要求浏览器自动化功能
 - 项目涉及 Web 测试、表单填写、截图、数据提取
 
 **创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `playwright.md` 读取内容，写入 `.claude/rules/playwright.md`
@@ -500,10 +529,10 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 - **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
 ```
 
-**用户确认**：
-- 添加规则前询问用户是否需要 Playwright 自动化功能
-- 如果不需要，跳过此步骤
-- 如果需要，写入 CLAUDE.md 和 AGENTS.md 前展示完整规则供确认
+**无交互行为**：
+- 默认跳过 Playwright 规则，不创建 `.claude/rules/playwright.md`，不添加摘要。
+- 仅用户明确要求 Playwright 自动化能力时启用。
+- 启用时已存在规则文件不覆盖，缺少摘要时只追加摘要。
 
 ## 增量运行
 
@@ -516,9 +545,9 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 | 场景 | 行为 |
 |------|------|
 | 文件不存在 | 从模板根路径读取并创建 |
-| 文件已存在 | **不自动覆盖**，向用户展示差异并询问是否更新 |
-| 新增规则模板（如 `code-reading.md`） | 检测为缺失项，询问用户是否需要新增 |
-| 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，展示差异并询问是否追加 |
+| 文件已存在 | **不自动覆盖**，报告已存在 |
+| 新增规则模板（如 `code-reading.md`） | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 |
 
 **检测命令示例**：
 
@@ -540,7 +569,7 @@ done
 |------|------|
 | 摘要行已存在 | 跳过，不重复写入 |
 | 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 |
-| 规则编号与现有内容冲突 | 按最新规范重新编号，并提示用户确认 |
+| 规则编号与现有内容冲突 | 不覆盖原内容，追加缺失摘要并在报告中说明可能需要人工整理编号 |
 
 ### 可选规则增量处理
 
@@ -548,9 +577,10 @@ done
 
 | 场景 | 行为 |
 |------|------|
-| 规则文件和摘要均已存在 | 视为已启用，仅检查完整性，不再询问 |
-| 规则文件或摘要缺失 | 作为新增可选项询问用户 |
-| 无法判断历史选择 | 默认按新增项询问 |
+| 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 |
+| 代码阅读规则缺失 | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| Playwright 规则缺失 | 默认跳过，用户明确要求时新增 |
+| 无法判断历史选择 | 按本节默认值处理，不询问 |
 
 ### CodeGraph 增量处理
 
@@ -560,7 +590,7 @@ done
 |------|------|
 | 老项目已执行过 `/rule-config`，但缺少 CodeGraph | 只补 CodeGraph 相关规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` |
 | `.codegraph/` 已存在 | 运行 `codegraph status` 并跳过初始化 |
-| `.codegraph/` 不存在 | 用户确认后执行 `codegraph init` |
+| `.codegraph/` 不存在 | Coding 项目默认执行 `codegraph init` |
 | `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
 | `.mcp.json` 已有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 Codex 本地 MCP 配置 |
 | 任一配置文件缺少 CodeGraph MCP server | 先执行 `codegraph install --target=claude,codex --location=local --yes`，再核验并补齐缺失文件 |
@@ -570,11 +600,11 @@ done
 ### 建议
 
 - 新版 Cadence 发布或框架规则更新后，可重新运行 `/cadence:init:rule-config` 补齐新增规则。
-- 重复运行前，先向用户展示本次将要新增/更新的内容清单，获取确认后再执行写入。
+- 重复运行前，内部计算本次将要新增/更新的内容清单；执行后输出已新增、已跳过、需人工处理的项目。
 
 ## 核心原则
 
 - **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
 - **摘要引用** — CLAUDE.md 和 AGENTS.md 只保留摘要和引用，详细内容在规则文件中
 - **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
-- **用户确认** — 技术栈检测必须经过用户确认
+- **无交互默认** — 初始化默认不等待用户确认；冲突项跳过并报告

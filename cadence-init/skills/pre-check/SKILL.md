@@ -1,6 +1,6 @@
 ---
 name: pre-check
-description: Use when setting up development environments or incrementally configuring npx/uvx/playwright-cli/ast-grep/codegraph tools. IMPORTANT - All user interactions MUST be in Chinese (中文) - triggers when tools need installation.
+description: Use when setting up development environments or incrementally configuring npx/uvx/ast-grep/codegraph/openspec/superpowers tools without requiring user interaction. IMPORTANT - All user interactions MUST be in Chinese (中文) - triggers when tools need installation.
 disable-model-invocation: true
 ---
 
@@ -8,14 +8,34 @@ disable-model-invocation: true
 
 ## 概述
 
-自动化环境检查和配置工具，确保项目所需的工具和依赖项正确安装。
+自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
-**核心原则**：检查-验证-安装-记录
+**核心原则**：检查-验证-安装-同步-记录
 
 **强制规则**：
 1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
-2. **必须完成所有五个基础检查** - 不允许跳过 npx/uvx/playwright-cli/ast-grep/codegraph 任一步骤
-3. **API Key 配置为可选步骤** - 询问用户是否需要智普/MiniMax MCP，仅做配置提醒
+2. **必须完成所有六个基础检查** - 不允许跳过 npx/uvx/ast-grep/codegraph/openspec/superpowers 任一步骤
+3. **必须支持增量运行** - 老项目重新运行 `/pre-check` 时，只补齐缺失能力，不重装、不覆盖已就绪配置
+4. **Superpowers 必须支持离线安装** - 用户可手动复制 `superpowers` 到 `~/.agents/superpowers`
+5. **Playwright 默认跳过** - 仅用户明确要求浏览器自动化能力时才安装 playwright-cli 与 skills
+6. **API Key 配置默认占位** - 不询问、不收集真实密钥；mcp-configuration 默认写入智普/MiniMax API Key 占位配置，并提醒用户后续自行替换
+
+## 人工交互策略
+
+默认不向用户提问。只有出现以下情况才进入人工交互：
+
+| 触发条件 | 处理方式 |
+|----------|----------|
+| 在线安装失败且存在离线安装路径选择 | 询问用户是否已准备离线目录；无法等待时报告离线复制路径并继续其他检查 |
+| Superpowers 目标目录存在同名非软链 | 不覆盖；如用户明确要求替换，再询问并执行 |
+| 用户明确要求安装 Playwright | 检查并安装；安装失败时提供手动命令 |
+| 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只提醒后续替换占位符 |
+
+提问规则：
+- 每次只问一个问题。
+- 问题必须给出推荐默认选项。
+- 如果运行环境支持自动超时，超时后采用推荐默认值。
+- 如果无法等待用户输入，采用保守默认：不覆盖、不删除、不收集真实密钥、不启用 Playwright。
 
 ## 何时使用
 
@@ -25,7 +45,7 @@ digraph when_to_use {
     node [shape=box, style="rounded"];
 
     start [label="开始任务", shape=ellipse];
-    need_tools [label="需要使用 npx/uvx?", shape=diamond];
+    need_tools [label="需要使用 npx/uvx/OpenSpec/Superpowers?", shape=diamond];
     need_project [label="需要定位项目目录?", shape=diamond];
     use_skill [label="使用本 skill", shape=box, style=filled];
 
@@ -37,18 +57,27 @@ digraph when_to_use {
 }
 ```
 
-**使用场景**：环境初始化、CI/CD 环境准备、新开发者环境搭建、新版 Cadence 工具补齐
+**使用场景**：环境初始化、CI/CD 环境准备、新开发者环境搭建、新版 Cadence 工具补齐、OpenSpec 指令文件补齐、Superpowers Skills 同步
 
 **不适用场景**：全部工具已确认安装、仅需检查单个工具、非开发环境
 
 ## 增量运行
 
-`/pre-check` 支持重复执行。每个工具独立检查，**已安装的工具会直接跳过，只补装缺失的工具**，不会重复安装或破坏已有配置。
+`/pre-check` 支持重复执行。每个工具独立检查，**已安装或已同步的项目会直接跳过，只补装、补齐、更新缺失项**，不会重复安装或破坏已有配置。
+
+增量原则：
+- 已就绪：跳过并报告当前状态。
+- 缺失：安装、初始化或补齐。
+- 部分存在：只修复缺失部分。
+- 冲突存在：不覆盖用户文件，中文警告并给出人工处理建议。
+- 单项失败：报告失败和手动命令，其他已就绪项不回滚。
 
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
-- 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有的 `npx`、`uvx`、`playwright-cli`、`ast-grep`。
-- 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装该工具。
+- 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
+- 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` 指令文件。
+- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 的软链。
+- 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
 ## 检查流程
 
@@ -59,35 +88,34 @@ digraph check_flow {
 
     start [label="开始检查", shape=ellipse];
 
-    // 步骤1
     check_npx [label="检查 npx", shape=diamond];
     install_npx [label="安装 npx"];
     npx_done [label="npx 就绪"];
 
-    // 步骤2
     check_uvx [label="检查 uvx", shape=diamond];
     install_uvx [label="安装 uvx"];
     uvx_done [label="uvx 就绪"];
 
-    // 步骤3
-    check_playwright [label="检查 playwright-cli", shape=diamond];
-    install_playwright [label="安装 playwright-cli"];
-    playwright_done [label="playwright-cli 就绪"];
-
-    // 步骤4
     check_ast_grep [label="检查 ast-grep", shape=diamond];
     install_ast_grep [label="安装 ast-grep"];
     ast_grep_done [label="ast-grep 就绪"];
 
-    // 步骤5
     check_codegraph [label="检查 codegraph", shape=diamond];
     install_codegraph [label="安装 codegraph"];
     codegraph_done [label="codegraph 就绪"];
 
-    // 步骤6（可选）
-    ask_apikey [label="⚠️ 询问是否需要智普/MiniMax MCP", shape=diamond];
-    remind_apikey [label="提醒获取 API Key\n并配置环境变量"];
-    skip_apikey [label="跳过"];
+    check_openspec [label="检查 OpenSpec", shape=diamond];
+    install_openspec [label="安装 OpenSpec CLI"];
+    sync_openspec [label="初始化或更新 OpenSpec 指令文件"];
+    openspec_done [label="OpenSpec 就绪"];
+
+    check_superpowers [label="检查 Superpowers", shape=diamond];
+    clone_superpowers [label="在线 clone 或提示离线复制"];
+    sync_superpowers [label="更新仓库并同步软链"];
+    superpowers_done [label="Superpowers 就绪"];
+
+    optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
+    remind_apikey [label="默认展示 API Key 占位提醒"];
 
     end [label="检查完成", shape=ellipse];
 
@@ -98,13 +126,9 @@ digraph check_flow {
     npx_done -> check_uvx;
 
     check_uvx -> install_uvx [label="未安装"];
-    check_uvx -> check_playwright [label="已安装"];
+    check_uvx -> check_ast_grep [label="已安装"];
     install_uvx -> uvx_done;
-    uvx_done -> check_playwright;
-    check_playwright -> install_playwright [label="未安装"];
-    check_playwright -> check_ast_grep [label="已安装"];
-    install_playwright -> playwright_done;
-    playwright_done -> check_ast_grep;
+    uvx_done -> check_ast_grep;
 
     check_ast_grep -> install_ast_grep [label="未安装"];
     check_ast_grep -> check_codegraph [label="已安装"];
@@ -112,27 +136,38 @@ digraph check_flow {
     ast_grep_done -> check_codegraph;
 
     check_codegraph -> install_codegraph [label="未安装"];
-    check_codegraph -> ask_apikey [label="已安装"];
+    check_codegraph -> check_openspec [label="已安装"];
     install_codegraph -> codegraph_done;
-    codegraph_done -> ask_apikey;
+    codegraph_done -> check_openspec;
 
-    ask_apikey -> remind_apikey [label="需要"];
-    ask_apikey -> skip_apikey [label="不需要"];
+    check_openspec -> install_openspec [label="CLI 未安装"];
+    check_openspec -> sync_openspec [label="CLI 已安装"];
+    install_openspec -> sync_openspec;
+    sync_openspec -> openspec_done;
+    openspec_done -> check_superpowers;
+
+    check_superpowers -> clone_superpowers [label="来源缺失"];
+    check_superpowers -> sync_superpowers [label="来源存在"];
+    clone_superpowers -> sync_superpowers;
+    sync_superpowers -> superpowers_done;
+    superpowers_done -> optional_playwright;
+    optional_playwright -> remind_apikey;
     remind_apikey -> end;
-    skip_apikey -> end;
 }
 ```
 
 ## 快速参考
 
-| 步骤 | 检查命令 | 成功标志 | 失败处理 |
-|------|---------|---------|---------|
+| 步骤 | 检查命令或路径 | 成功标志 | 失败处理 |
+|------|----------------|----------|----------|
 | **1. npx** | `npx --version` | 输出版本号 | 自动安装稳定版本 |
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
-| **3. playwright-cli** | `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
-| **4. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
-| **5. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **6. API Key（可选）** | 询问用户 | 用户确认已获取 | 跳过或提供获取地址 |
+| **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
+| **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
+| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml` | CLI 和指令文件存在 | 安装 CLI 后执行 `openspec init` 或 `openspec update` |
+| **6. Superpowers** | `~/.agents/superpowers/skills` | 三层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
+| **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
 ## 实施步骤
 
@@ -143,8 +178,8 @@ npx --version
 ```
 
 **行为（中文输出）**：
-- ✅ **已安装**：报告 "✓ npx 已安装（版本：{版本号}）"
-- ❌ **未安装**：报告 "正在安装 npx..."，自动安装，完成后报告 "✓ npx 安装成功"
+- 已安装：报告 "✓ npx 已安装（版本：{版本号}）"
+- 未安装：报告 "正在安装 npx..."，自动安装，完成后报告 "✓ npx 安装成功"
 
 ### 步骤 2：检查 uvx
 
@@ -153,18 +188,21 @@ uvx --version
 ```
 
 **行为（中文输出）**：
-- ✅ **已安装**：报告 "✓ uvx 已安装（版本：{版本号}）"
-- ❌ **未安装**：报告 "正在安装 uvx..."，自动安装，完成后报告 "✓ uvx 安装成功"
+- 已安装：报告 "✓ uvx 已安装（版本：{版本号}）"
+- 未安装：报告 "正在安装 uvx..."，自动安装，完成后报告 "✓ uvx 安装成功"
 
-### 步骤 3：检查 playwright-cli
+### 可选步骤：检查 playwright-cli
+
+> 默认不执行。仅当用户明确要求浏览器自动化、截图、表单填写、端到端测试能力时执行。
 
 ```bash
 playwright-cli --help
 ```
 
 **行为（中文输出）**：
-- ✅ **已安装**：报告 "✓ playwright-cli 已安装"
-- ❌ **未安装**：报告 "正在安装 playwright-cli..."，执行全局安装并安装 skills，完成后报告 "✓ playwright-cli 安装成功"
+- 未明确要求：报告 "✓ 默认跳过 playwright-cli 安装，可稍后按需启用"
+- 已明确要求且已安装：报告 "✓ playwright-cli 已安装"
+- 已明确要求但未安装：报告 "正在安装 playwright-cli..."，执行全局安装并安装 skills，完成后报告 "✓ playwright-cli 安装成功"
 
 **安装命令**：
 
@@ -173,15 +211,15 @@ npm install -g @playwright/cli@latest
 playwright-cli install --skills
 ```
 
-### 步骤 4：检查 ast-grep
+### 步骤 3：检查 ast-grep
 
 ```bash
 ast-grep --version
 ```
 
 **行为（中文输出）**：
-- ✅ **已安装**：报告 "✓ ast-grep 已安装（版本：{版本号}）"
-- ❌ **未安装**：报告 "正在安装 ast-grep..."，执行 `npm i @ast-grep/cli -g`，完成后报告 "✓ ast-grep 安装成功"
+- 已安装：报告 "✓ ast-grep 已安装（版本：{版本号}）"
+- 未安装：报告 "正在安装 ast-grep..."，执行 `npm i @ast-grep/cli -g`，完成后报告 "✓ ast-grep 安装成功"
 
 **安装命令**：
 
@@ -189,15 +227,15 @@ ast-grep --version
 npm i @ast-grep/cli -g
 ```
 
-### 步骤 5：检查 codegraph
+### 步骤 4：检查 codegraph
 
 ```bash
 codegraph version
 ```
 
 **行为（中文输出）**：
-- ✅ **已安装**：报告 "✓ codegraph 已安装（版本：{版本号}）"
-- ❌ **未安装**：报告 "正在安装 codegraph..."，执行 `npm i -g @colbymchenry/codegraph`，完成后报告 "✓ codegraph 安装成功"
+- 已安装：报告 "✓ codegraph 已安装（版本：{版本号}）"
+- 未安装：报告 "正在安装 codegraph..."，执行 `npm i -g @colbymchenry/codegraph`，完成后报告 "✓ codegraph 安装成功"
 
 **安装命令**：
 
@@ -207,29 +245,142 @@ npm i -g @colbymchenry/codegraph
 
 **增量要求**：
 - 如果老项目已完成 `/pre-check`，重新运行时必须跳过已安装工具，只补装缺失的 codegraph。
-- codegraph 安装后只验证 codegraph，不重新安装 npx/uvx/playwright-cli/ast-grep。
+- codegraph 安装后只验证 codegraph，不重新安装 npx/uvx/ast-grep。
 
-### 步骤 6：API Key 配置提醒（可选）
+### 步骤 5：检查 OpenSpec
 
-> **⚠️ 可选步骤** — 仅在用户需要智普/MiniMax MCP 时执行
+```bash
+openspec --version
+```
 
-使用 AskUserQuestion 工具（**必须使用中文**）询问用户是否需要以下可选 MCP：
+**行为（中文输出）**：
+- CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
+- CLI 未安装：报告 "正在安装 OpenSpec CLI..."，执行 `npm install -g @fission-ai/openspec@latest`，完成后再次验证
 
-**选项 1：需要智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）**
+**安装命令**：
+
+```bash
+npm install -g @fission-ai/openspec@latest
+```
+
+**初始化与更新命令**：
+
+```bash
+# 当前项目尚未存在 openspec/config.yaml 时
+openspec init --tools claude,codex
+
+# 当前项目已存在 openspec/config.yaml 时
+openspec update
+```
+
+**增量要求**：
+- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex`。
+- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件。
+- OpenSpec 生成的 Claude Code 和 Codex 目录结构不同，不能混用：
+  - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
+  - Codex：`.codex/skills/openspec-*`
+- 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
+
+**验证命令**：
+
+```bash
+test -f openspec/config.yaml
+test -f .codex/skills/openspec-propose/SKILL.md
+test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+```
+
+### 步骤 6：检查 Superpowers
+
+**目录约定**：
+
+| 用途 | 路径 |
+|------|------|
+| Superpowers 源目录 | `~/.agents/superpowers` |
+| 统一 Skills 目录 | `~/.agents/skills` |
+| Codex 目标目录 | `~/.codex/skills/skills` |
+| Claude Code 目标目录 | `~/.claude/skills` |
+
+**在线安装来源**：
+
+```bash
+git clone https://github.com/obra/superpowers "$HOME/.agents/superpowers"
+```
+
+**离线安装方式**：
+
+用户可自行下载或复制 Superpowers 到：
+
+```bash
+$HOME/.agents/superpowers
+```
+
+只要存在以下目录，即视为有效离线来源：
+
+```bash
+$HOME/.agents/superpowers/skills
+```
+
+**行为（中文输出）**：
+- `~/.agents/superpowers/.git` 存在：执行 Git 更新逻辑，然后同步软链。
+- `~/.agents/superpowers/.git` 不存在但 `~/.agents/superpowers/skills` 存在：报告 "检测到 Superpowers 离线安装目录，跳过 Git 更新"，继续同步软链。
+- `~/.agents/superpowers/skills` 不存在：尝试在线 clone；如果失败，提示用户离线复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check`。
+
+**Git 更新逻辑**：
+
+```bash
+cd "$HOME/.agents/superpowers"
+git fetch --all
+git rev-parse --abbrev-ref --symbolic-full-name @{u}
+git pull --ff-only
+```
+
+**软链同步逻辑**：
+
+1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 存在。
+2. 将 `~/.agents/superpowers/skills/*` 逐项软链到 `~/.agents/skills`。
+3. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.codex/skills/skills`。
+4. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.claude/skills`。
+5. 已存在正确软链：跳过。
+6. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
+7. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
+8. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
+
+**验证命令**：
+
+```bash
+test -d "$HOME/.agents/superpowers/skills"
+test -d "$HOME/.agents/skills"
+test -d "$HOME/.codex/skills/skills"
+test -d "$HOME/.claude/skills"
+```
+
+**增量要求**：
+- 重新运行 `/pre-check` 时，已有正确软链必须跳过。
+- 只补齐缺失软链或更新指向旧来源的软链。
+- 离线安装目录有效时，不要求 `.git` 存在，不尝试 Git 更新。
+- 在线 clone 或 Git 更新失败时，不删除已有离线目录或已有软链。
+
+### 默认步骤：API Key 占位配置提醒
+
+> **⚠️ 默认执行提醒** — 不主动询问用户是否需要，不要求用户输入真实 API Key，不阻塞初始化。
+
+默认使用中文展示以下提醒：
+
+**智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）**
 - 提醒用户前往 https://open.bigmodel.cn/usercenter/apikeys 获取 API Key
 - 告知用户需要订阅 GLM Coding Plan
-- 报告 "⚠️ 请自行获取智普 API Key，稍后在 MCP 配置步骤中将使用此密钥"
+- 报告 "⚠️ mcp-configuration 将写入 your_zhipu_api_key 占位符，请稍后自行替换为真实密钥"
 - **不验证密钥有效性，仅做提醒**
 
-**选项 2：需要 MiniMax Token Plan MCP（网络搜索/图片理解）**
+**MiniMax Token Plan MCP（网络搜索/图片理解）**
 - 提醒用户前往 https://platform.minimaxi.com/subscribe/token-plan 订阅并获取 API Key
-- 报告 "⚠️ 请自行获取 MiniMax API Key，稍后在 MCP 配置步骤中将使用此密钥"
+- 报告 "⚠️ mcp-configuration 将写入 your_minimax_api_key 占位符，请稍后自行替换为真实密钥"
 - **不验证密钥有效性，仅做提醒**
 
-**选项 3：都不需要，跳过**
-- 报告 "✓ 跳过可选 MCP 配置"
+**默认行为**：
+- 报告 "✓ 默认使用 API Key 占位符完成初始化，不收集真实密钥"
 
-**安全提醒（如果用户选择了选项 1 或 2，必须展示）**：
+**安全提醒（必须展示）**：
 ```
 🔴 安全提醒：请不要将 API Key 直接告诉 Claude Code。
 稍后在 MCP 配置步骤中，配置文件会使用占位符，您需要自行替换为真实密钥。
@@ -238,9 +389,13 @@ npm i -g @colbymchenry/codegraph
 ## 常见错误
 
 | 错误 | 原因 | 解决方案 |
-|------|------|---------|
+|------|------|----------|
 | **npx 安装失败** | Node.js 未安装 | 先安装 Node.js |
 | **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
-| **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行安装命令 |
 | **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i @ast-grep/cli -g` |
 | **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i -g @colbymchenry/codegraph` |
+| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm install -g @fission-ai/openspec@latest` |
+| **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
+| **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
+| **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
+| **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |

@@ -7,7 +7,36 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件和添加 MCP 使用规则到 CLAUDE.md。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。默认不需要人工交互即可完成基础 MCP 初始化。
+
+## 无交互默认策略
+
+| 项 | 默认行为 |
+|----|----------|
+| 基础 MCP | 默认配置 `time`、`context7`、`sequential-thinking` |
+| CodeGraph MCP | 如果缺失，按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml` |
+| 智普 MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
+| MiniMax MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
+| Codex 同步 | 默认启用，只同步 stdio MCP |
+| 已存在配置 | 不覆盖整文件，只补缺失 server 配置块；冲突配置跳过并报告 |
+| `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/` |
+
+## 人工交互策略
+
+默认不向用户提问。只有出现以下情况才进入人工交互：
+
+| 触发条件 | 处理方式 |
+|----------|----------|
+| `.mcp.json` 或 `.codex/config.toml` 中已有同名 MCP server 且配置不同 | 询问是否保留现有配置或追加新名称；无响应则保留现有配置并报告 |
+| 用户明确要求禁用默认 MCP（如智普或 MiniMax） | 询问要禁用的具体 server；无响应则保留默认占位配置 |
+| `.gitignore` 中存在相反规则（如显式允许 `.mcp.json`） | 询问是否调整；无响应则不修改该项 |
+| 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只写占位符并提示用户自行替换 |
+
+提问规则：
+- 每次只问一个问题。
+- 问题必须给出推荐默认选项。
+- 如果运行环境支持自动超时，超时后采用推荐默认值。
+- 如果无法等待用户输入，采用保守默认：不覆盖已有配置、不删除配置、不收集真实密钥。
 
 ## 检查清单
 
@@ -15,9 +44,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 
 1. **添加 MCP 使用规则** — 添加各 MCP server 的使用规则到 CLAUDE.md
 2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
-3. **配置智普 MCP（可选）** — 询问用户是否需要智普 AI 的四个专属 MCP
-4. **配置 MiniMax MCP（可选）** — 询问用户是否需要 MiniMax Token Plan MCP
-5. **同步 MCP 配置到 Codex（可选）** — 询问用户是否将 MCP 配置同步为 Codex 的 `.codex/config.toml` 格式
+3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
+4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
+5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
 6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
@@ -102,9 +131,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 }
 ```
 
-#### 智普视觉理解 MCP（可选）
+#### 智普视觉理解 MCP
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要，需要智普 GLM Coding Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key
 
 **用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断
 
@@ -151,9 +180,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 分析 demo.mp4 中的操作流程
 ```
 
-#### 智普联网搜索 MCP（可选）
+#### 智普联网搜索 MCP
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要，需要智普 GLM Coding Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key
 
 **用途**：网络搜索、实时信息获取
 
@@ -184,9 +213,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 搜索 TypeScript 最新版本的新特性
 ```
 
-#### 智普网页读取 MCP（可选）
+#### 智普网页读取 MCP
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要，需要智普 GLM Coding Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key
 
 **用途**：网页内容抓取、结构化数据提取
 
@@ -218,9 +247,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 读取这个 Stack Overflow 链接，参考解决方案修复当前 Bug
 ```
 
-#### 智普开源仓库 MCP — ZRead（可选）
+#### 智普开源仓库 MCP — ZRead
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要，需要智普 GLM Coding Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key
 
 **用途**：GitHub 开源仓库文档搜索、代码结构获取、代码读取
 
@@ -257,9 +286,9 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 搜索 prisma/prisma 仓库中关于连接池超时的 Issue
 ```
 
-#### MiniMax Token Plan MCP（可选）
+#### MiniMax Token Plan MCP
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要，需要 MiniMax Token Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_minimax_api_key` 替换为真实 MiniMax Token Plan API Key
 
 **用途**：网络搜索和图片理解
 
@@ -298,23 +327,21 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 > 分析 architecture.png 中的系统架构设计
 ```
 
-### 4. 智普/MiniMax MCP 规则追加（可选）
+### 4. 智普/MiniMax MCP 规则追加
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要
+> **默认添加规则说明与配置占位符** — 不需要用户提供真实 API Key，不阻塞初始化
 
 **检测条件**：
-- 用户需要图像分析、视频理解、UI 截图转代码等视觉 AI 能力
-- 用户需要网络搜索、网页内容抓取等联网能力
-- 用户需要 GitHub 开源仓库文档搜索和代码读取能力
-- 用户需要 MiniMax 的网络搜索和图片理解能力
+- 默认启用智普 MCP 占位配置，用于图像分析、视频理解、UI 截图转代码、联网搜索、网页读取和开源仓库读取。
+- 默认启用 MiniMax MCP 占位配置，用于网络搜索和图片理解。
 
-**用户确认**：
-- 添加规则前询问用户是否需要智普/MiniMax MCP 能力
-- 如果不需要，跳过此步骤
-- 如果需要，展示 API Key 安全提醒，将智普/MiniMax 相关规则**追加到 `.claude/rules/mcp-servers.md` 文件末尾**
-- 智普和 MiniMax 可以独立选择，不需要同时启用
+**无交互行为**：
+- 默认将智普/MiniMax 相关规则**追加到 `.claude/rules/mcp-servers.md` 文件末尾**。
+- 默认将智普/MiniMax 配置块写入 `.mcp.json`，使用 `your_zhipu_api_key` 与 `your_minimax_api_key` 占位。
+- Codex 同步时只同步 stdio MCP：智普仅同步 `zai-mcp-server`，不同步 HTTP 类型的 `web-search-prime`、`web-reader`、`zread`。
+- 已存在对应规则段落时跳过，不重复追加。
 
-**API Key 安全提醒**（如果用户选择启用，**必须**展示）：
+**API Key 安全提醒**（必须展示）：
 
 ```
 ⚠️ API Key 安全提醒：
@@ -329,7 +356,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 
 ### 5. MCP 配置文件创建
 **说明**：
-- 智普和 MiniMax MCP 为**可选配置**，根据用户选择决定是否包含
+- 智普和 MiniMax MCP 默认包含占位配置，不要求用户在初始化时提供真实 API Key
 - CodeGraph MCP 通常由 `rule-config` 执行 `codegraph install --target=claude,codex --location=local --yes` 自动配置；本节提供手动兜底配置
 
 **在项目根目录创建 `.mcp.json`**：
@@ -368,9 +395,9 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-#### CodeGraph MCP 配置（兜底 — rule-config 自动配置失败时添加）
+#### CodeGraph MCP 配置（兜底 — 缺失时自动补齐）
 
-> 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。
+> 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
 
 ```json
 {
@@ -386,7 +413,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-#### 智普 MCP 配置（可选 — 用户确认后添加）
+#### 智普 MCP 配置（默认添加占位）
 
 > 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中，`your_zhipu_api_key` 需用户自行替换
 
@@ -428,7 +455,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-#### MiniMax MCP 配置（可选 — 用户确认后添加）
+#### MiniMax MCP 配置（默认添加占位）
 
 > 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中，`your_minimax_api_key` 需用户自行替换
 
@@ -448,14 +475,14 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-### 6. 同步 MCP 配置到 Codex（可选）
+### 6. 同步 MCP 配置到 Codex
 
-> **⚠️ 可选配置** — 添加前必须询问用户是否需要
+> **默认启用** — 无人工交互模式下自动生成或补齐 `.codex/config.toml`。只同步 stdio MCP。
 
-**用户确认**：
-- 在 `.mcp.json` 创建完成后，询问用户："是否将 MCP 配置同步到 Codex（生成 `.codex/config.toml`）？"
-- 如果不需要，跳过此步骤
-- 如果需要，根据下方模板生成 `.codex/config.toml`
+**无交互行为**：
+- 在 `.mcp.json` 创建完成后，默认同步到 Codex，生成或补齐 `.codex/config.toml`。
+- 如果 `.codex/config.toml` 已存在，只追加缺失的 `[mcp_servers.<name>]` 配置块，不覆盖已有块。
+- 如果已有同名 MCP server 但配置不同，跳过该 server 并在报告中标记为“需人工确认”。
 
 **已存在文件处理**：
 
@@ -463,12 +490,12 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 |------|---------|
 | `.codex/` 目录和 `config.toml` 均不存在 | 创建目录和文件，写入完整 TOML 内容 |
 | `.codex/config.toml` 已存在但不含 `[mcp_servers` | 保留原有内容，在文件末尾追加 MCP 配置 |
-| `.codex/config.toml` 已存在且含 `[mcp_servers` | 询问用户是否覆盖 MCP 配置部分 |
+| `.codex/config.toml` 已存在且含 `[mcp_servers` | 只追加缺失的 server 配置块；同名不同配置跳过并报告 |
 
 **TOML 写入规则**：
 - 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
 - `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
-- 写入顺序：基础配置 → CodeGraph 配置（如果启用） → 智普配置（如果选中）→ MiniMax 配置（如果选中）
+- 写入顺序：基础配置 → CodeGraph 配置（如果启用） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
 **Codex 与 Claude Code 格式差异**：
@@ -505,9 +532,9 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
 ````
 
-#### CodeGraph MCP 配置（兜底 — rule-config 自动配置失败时添加）
+#### CodeGraph MCP 配置（兜底 — 缺失时自动补齐）
 
-> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。
+> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
 
 ````toml
 [mcp_servers.codegraph]
@@ -515,7 +542,7 @@ command = "codegraph"
 args = ["serve", "--mcp"]
 ````
 
-#### 智普 MCP 配置（可选 — 用户确认后添加）
+#### 智普 MCP 配置（默认添加占位）
 
 > 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换
 
@@ -528,7 +555,7 @@ args = ["-y", "@z_ai/mcp-server"]
 env = { "Z_AI_API_KEY" = "your_zhipu_api_key", "Z_AI_MODE" = "ZHIPU" }
 ````
 
-#### MiniMax MCP 配置（可选 — 用户确认后添加）
+#### MiniMax MCP 配置（默认添加占位）
 
 > 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_minimax_api_key` 需用户自行替换
 
@@ -541,7 +568,7 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 
 ### 7. 配置 .gitignore
 
-**目的**：将 Cadence 工作目录添加到 .gitignore，避免将临时文件和本地配置提交到版本控制。
+**目的**：将 Cadence 工作目录和本地配置添加到 .gitignore，避免将临时文件、本地 MCP 配置和 Codex 项目配置提交到版本控制。无人工交互模式下默认执行。
 
 **操作步骤**：
 

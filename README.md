@@ -214,6 +214,32 @@ git pull
 ## 项目初始化（cadence-init 插件）
 
 > **重要**：安装完成后，强烈建议执行以下初始化步骤，确保项目环境正确配置。以下命令均来自 `cadence-init` 插件。
+> 默认初始化流程尽量无人工交互：能自动检测和补齐的内容会直接执行；遇到覆盖、删除、密钥、同名冲突等高风险操作时，会采用保守默认值或提示人工处理。
+
+### 初始化命令说明
+
+| 命令 | 默认行为 | 需要显式启用的内容 |
+|------|----------|--------------------|
+| `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
+| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
+| `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
+| `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
+
+如果需要 Playwright，请明确说明：
+
+```bash
+/pre-check 并启用 Playwright
+/rule-config 并启用 Playwright 规则
+```
+
+智普和 MiniMax 默认会写入占位符：
+
+```text
+your_zhipu_api_key
+your_minimax_api_key
+```
+
+请在初始化完成后自行替换为真实密钥，不要把真实 API Key 直接告诉 AI Agent。
 
 ### 步骤 1：前置条件检查
 
@@ -226,7 +252,10 @@ git pull
 该命令会：
 - ✅ 检查 npx 是否安装（Node.js 包执行器）
 - ✅ 检查 uvx 是否安装（Python 包执行器）
-- ✅ 自动安装缺失的工具
+- ✅ 检查并补齐 ast-grep、codegraph、OpenSpec、Superpowers
+- ✅ 支持 Superpowers 在线更新和离线目录同步
+- ✅ 默认跳过 Playwright，除非显式启用
+- ✅ 默认提醒后续替换智普/MiniMax API Key 占位符
 
 ### 步骤 2：项目分析
 
@@ -249,10 +278,12 @@ git pull
 ```
 
 该命令会：
-- ✅ 创建 `.claude/rules/` 规则目录（8 个框架内置规则文件）
+- ✅ 创建 `.claude/rules/` 规则目录
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
-- ✅ 在 CLAUDE.md 中添加规则摘要引用
+- ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
 - ✅ 配置目录结构
+- ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
+- ✅ 默认不启用 Playwright 规则，除非显式要求
 
 ### 步骤 4：MCP 配置
 
@@ -265,8 +296,11 @@ git pull
 该命令会：
 - ✅ 创建 `.mcp.json` 配置文件
 - ✅ 配置 MCP 使用规则
+- ✅ 默认写入智普/MiniMax API Key 占位配置
+- ✅ 默认同步 stdio MCP 到 `.codex/config.toml`
+- ✅ 默认将 `.worktrees/`、`.mcp.json`、`.codex/` 加入 `.gitignore`
 
-### 步骤 5（可选）：项目个性化规则
+### 步骤 5（推荐）：项目个性化规则
 
 执行 `/project-rules-examples` 命令，创建项目个性化规则：
 
