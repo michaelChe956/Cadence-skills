@@ -1,6 +1,7 @@
 ---
 name: project-analysis
 description: "分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档"
+disable-model-invocation: true
 ---
 
 # 项目分析

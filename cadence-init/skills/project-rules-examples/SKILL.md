@@ -1,6 +1,7 @@
 ---
 name: project-rules-examples
 description: "创建项目个性化规则模板：需求文档模板、设计文档模板、代码开发规范、测试规范"
+disable-model-invocation: true
 ---
 
 # 个性化规则示例

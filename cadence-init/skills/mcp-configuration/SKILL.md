@@ -1,6 +1,7 @@
 ---
 name: mcp-configuration
 description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
+disable-model-invocation: true
 ---
 
 # MCP 配置

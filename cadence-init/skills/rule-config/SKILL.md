@@ -1,6 +1,7 @@
 ---
 name: rule-config
 description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、配置目录结构和项目技术栈"
+disable-model-invocation: true
 ---
 
 # Claude Code 与 Codex 规则配置
