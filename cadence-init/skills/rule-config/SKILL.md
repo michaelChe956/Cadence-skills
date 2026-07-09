@@ -93,17 +93,17 @@ disable-model-invocation: true
 按以下优先级顺序查找模板目录：
 
 1. **在线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/references/rules/language.md` 是否存在
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
    - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
 
 2. **离线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/references/rules/language.md` 是否存在
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
    - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
 
 3. **回退搜索**（开发环境）：
    - 使用 Glob 工具搜索标识文件：
    ```
-   **/cadence-init/references/rules/language.md
+   **/cadence-init/skills/rule-config/references/rules/language.md
    ```
    从返回结果中提取目录路径（去掉末尾 `language.md`），作为**模板根路径**。
    如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，

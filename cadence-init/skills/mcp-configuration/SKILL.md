@@ -58,7 +58,7 @@ disable-model-invocation: true
 
 **创建 `.claude/rules/mcp-servers.md` 规则文件**：
 
-从 `references/rules/mcp-servers.md` 读取模板内容，写入项目的 `.claude/rules/mcp-servers.md` 文件。
+从 `rule-config` skill 的模板目录 `cadence-init/skills/rule-config/references/rules/mcp-servers.md` 读取模板内容（该文件也可通过 `rule-config` 步骤 1b 定位的模板根路径获取），写入项目的 `.claude/rules/mcp-servers.md` 文件。
 
 **在 CLAUDE.md 中添加摘要引用行**：
 
