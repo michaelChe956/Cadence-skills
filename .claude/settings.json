@@ -1,6 +1,3 @@
 {
-  "enabledPlugins": {
-    "superpowers@superpowers-marketplace": true,
-    "cadence-init@cadence-skills-marketplace": true
-  }
+  "enabledPlugins": {}
 }
