@@ -28,10 +28,12 @@
 - [report](report.md) - 生成进度报告
 - [monitor](monitor.md) - 实时监控进度
 
-### 元 Commands（2个）
+### 元能力（2个）
 
-- [cad-load](cad-load.md) - 加载项目上下文
-- [skill-create](skill-create.md) - 创建和优化 skills
+- [cad-load](cad-load.md) - 加载项目上下文（cadence-workflow Command）
+- [skill-creator](../skills/skill-creator.md) - 创建和优化 skills（cadence-init Skill，输入 `/skill-creator` 触发）
+
+> **说明**：`skill-creator` 由 `cadence-init` 插件以 Skill 形式提供，已不再是 Command。
 
 ## 快速导航
 
@@ -65,18 +67,20 @@
 ### 组合 1：新项目开始
 
 ```bash
-# 项目初始化（首次使用时）
-/pre-check                # 前置条件检查
-/init                    # 项目初始化
-/project-analysis      # 项目分析
-/rule-config           # 项目规则配置
-/mcp-configuration     # MCP 配置
+# 项目初始化（首次使用时，均为 cadence-init 插件的 Skill）
+/pre-check               # 前置条件检查
+/init                    # 项目初始化（Claude Code 内建）
+/project-analysis        # 项目分析
+/rule-config             # 项目规则配置
+/mcp-configuration       # MCP 配置
 /project-rules-examples  # 项目个性化规则（可选）
 
 # 开始开发
 /cad-load           # 加载项目上下文
 /full-flow          # 开始完整流程
 ```
+
+> **说明**：`pre-check`、`project-analysis`、`rule-config`、`mcp-configuration`、`project-rules-examples` 均由 `cadence-init` 插件以 Skill 形式提供，直接输入 `/名称` 触发。
 
 ### 组合 2：快速开发
 
@@ -116,7 +120,7 @@
 
 ## Commands 与 Skills 的关系
 
-每个 Command 对应一个 Skill：
+cadence-workflow 的每个 Command 对应一个 Skill（cadence-init 已全部改为纯 Skill，无对应 Command）：
 
 | Command | Skill | 说明 |
 |---------|-------|------|
@@ -134,7 +138,7 @@
 | `/report` | full-flow/quick-flow/exploration-flow | 生成报告 |
 | `/monitor` | full-flow/quick-flow/exploration-flow | 实时监控 |
 | `/cad-load` | cad-load | 加载上下文 |
-| `/skill-create` | skill-creator | 创建与优化 skills |
+| `/skill-creator` | skill-creator | 创建与优化 skills（cadence-init Skill，无 Command） |
 
 ## 快速参考
 

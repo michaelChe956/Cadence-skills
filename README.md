@@ -213,14 +213,15 @@ git pull
 
 ## 项目初始化（cadence-init 插件）
 
-> **重要**：安装完成后，强烈建议执行以下初始化步骤，确保项目环境正确配置。以下命令均来自 `cadence-init` 插件。
+> **重要**：安装完成后，强烈建议执行以下初始化步骤，确保项目环境正确配置。以下能力均来自 `cadence-init` 插件，并以 **Skill 形式**提供，直接输入 `/名称`（如 `/pre-check`）即可触发。
 > 默认初始化流程尽量无人工交互：能自动检测和补齐的内容会直接执行；遇到覆盖、删除、密钥、同名冲突等高风险操作时，会采用保守默认值或提示人工处理。
 
-### 初始化命令说明
+### 初始化 Skill 说明
 
-| 命令 | 默认行为 | 需要显式启用的内容 |
+| Skill | 默认行为 | 需要显式启用的内容 |
 |------|----------|--------------------|
 | `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
+| `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
 | `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
@@ -243,13 +244,13 @@ your_minimax_api_key
 
 ### 步骤 1：前置条件检查
 
-执行 `/pre-check` 命令，自动检查和配置必要的工具：
+触发 `/pre-check` Skill，自动检查和配置必要的工具：
 
 ```bash
 /pre-check
 ```
 
-该命令会：
+该 Skill 会：
 - ✅ 检查 npx 是否安装（Node.js 包执行器）
 - ✅ 检查 uvx 是否安装（Python 包执行器）
 - ✅ 检查并补齐 ast-grep、codegraph、OpenSpec、Superpowers
@@ -259,25 +260,25 @@ your_minimax_api_key
 
 ### 步骤 2：项目分析
 
-执行 `/project-analysis` 命令，分析项目结构：
+触发 `/project-analysis` Skill，分析项目结构：
 
 ```bash
 /project-analysis
 ```
 
-该命令会：
+该 Skill 会：
 - ✅ 分析项目技术栈和依赖
 - ✅ 生成项目初始化分析摘要文档
 
 ### 步骤 3：Claude Code 规则配置
 
-执行 `/rule-config` 命令，配置项目规则：
+触发 `/rule-config` Skill，配置项目规则：
 
 ```bash
 /rule-config
 ```
 
-该命令会：
+该 Skill 会：
 - ✅ 创建 `.claude/rules/` 规则目录
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
 - ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
@@ -287,13 +288,13 @@ your_minimax_api_key
 
 ### 步骤 4：MCP 配置
 
-执行 `/mcp-configuration` 命令，配置 MCP：
+触发 `/mcp-configuration` Skill，配置 MCP：
 
 ```bash
 /mcp-configuration
 ```
 
-该命令会：
+该 Skill 会：
 - ✅ 创建 `.mcp.json` 配置文件
 - ✅ 配置 MCP 使用规则
 - ✅ 默认写入智普/MiniMax API Key 占位配置
@@ -302,13 +303,13 @@ your_minimax_api_key
 
 ### 步骤 5（推荐）：项目个性化规则
 
-执行 `/project-rules-examples` 命令，创建项目个性化规则：
+触发 `/project-rules-examples` Skill，创建项目个性化规则：
 
 ```bash
 /project-rules-examples
 ```
 
-该命令会：
+该 Skill 会：
 - ✅ 创建需求文档模板
 - ✅ 创建设计文档模板
 - ✅ 创建代码开发规范
@@ -454,11 +455,13 @@ Cadence 提供 3 种流程模式，适应不同的开发场景：
 
 **📖 [查看所有 Commands 详细指南](readmes/skills/README.md)**
 
-### 元 Commands（3个）
+### 元能力（3个）
 
-- `/pre-check` - 前置条件检查，确保环境正确配置
+- `/pre-check` - 前置条件检查，确保环境正确配置（cadence-init Skill）
 - `/cad-load` - 加载项目上下文（支持 quick/standard/full 三种模式）
-- `/skill-create` - 创建和优化 Skills（创建模板、打包、触发率优化）
+- `/skill-creator` - 创建和优化 Skills（创建模板、打包、触发率优化，cadence-init Skill）
+
+> **说明**：`pre-check` 与 `skill-creator` 由 `cadence-init` 插件以 Skill 形式提供，直接输入 `/pre-check`、`/skill-creator` 即可触发。
 
 **📖 [查看所有 Commands 详细指南](readmes/commands/README.md)**
 
