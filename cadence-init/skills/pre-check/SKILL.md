@@ -202,7 +202,7 @@ playwright-cli --help
 **行为（中文输出）**：
 - 未明确要求：报告 "✓ 默认跳过 playwright-cli 安装，可稍后按需启用"
 - 已明确要求且已安装：报告 "✓ playwright-cli 已安装"
-- 已明确要求但未安装：报告 "正在安装 playwright-cli..."，执行全局安装并安装 skills，完成后报告 "✓ playwright-cli 安装成功"
+- 已明确要求但未安装：报告 "正在安装 playwright-cli..."，执行全局安装与 skills 安装，完成后报告 "✓ playwright-cli 与 skills 安装成功"
 
 **安装命令**：
 
@@ -210,6 +210,20 @@ playwright-cli --help
 npm install -g @playwright/cli@latest
 playwright-cli install --skills
 ```
+
+**验证安装**：
+
+```bash
+playwright-cli --help
+ls ~/.claude/skills/playwright-cli
+```
+
+**说明**：
+
+- **用途**：浏览器自动化测试、表单填写、截图、数据提取
+- **特点**：Token-efficient，不会强制将页面数据加载到 LLM
+- **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
+- **默认行为**：不安装、不启用；需要时由用户显式要求
 
 ### 步骤 3：检查 ast-grep
 

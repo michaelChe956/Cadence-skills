@@ -295,7 +295,7 @@ test -d "$HOME/.claude/skills"
 
 - 已安装的工具会跳过安装，仅报告状态。
 - 缺失或未成功安装的工具会自动重新安装。
-- 不会默认安装 Playwright skills。
+- 不会默认安装 Playwright。
 - 不会重复安装已存在的 codegraph。
 - 不会重复初始化已存在的 OpenSpec 项目；只执行 `openspec update` 补齐指令文件。
 - 不会覆盖已有的 OpenSpec skills、commands 或用户改动。

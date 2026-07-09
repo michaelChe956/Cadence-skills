@@ -14,12 +14,12 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 | 项 | 默认行为 |
 |----|----------|
 | 基础 MCP | 默认配置 `time`、`context7`、`sequential-thinking` |
-| CodeGraph MCP | 如果缺失，按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml` |
+| CodeGraph MCP | **仅 Coding 项目**：如果缺失，按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml`；非 Coding 项目跳过 |
 | 智普 MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
 | MiniMax MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
 | Codex 同步 | 默认启用，只同步 stdio MCP |
 | 已存在配置 | 不覆盖整文件，只补缺失 server 配置块；冲突配置跳过并报告 |
-| `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/` |
+| `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` |
 
 ## 人工交互策略
 
@@ -47,7 +47,7 @@ description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
 5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
-6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/` 到 .gitignore
+6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -357,7 +357,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 ### 5. MCP 配置文件创建
 **说明**：
 - 智普和 MiniMax MCP 默认包含占位配置，不要求用户在初始化时提供真实 API Key
-- CodeGraph MCP 通常由 `rule-config` 执行 `codegraph install --target=claude,codex --location=local --yes` 自动配置；本节提供手动兜底配置
+- CodeGraph MCP 仅 Coding 项目启用；通常由 `rule-config` 执行 `codegraph install --target=claude,codex --location=local --yes` 自动配置；本节提供手动兜底配置
 
 **在项目根目录创建 `.mcp.json`**：
 
@@ -395,9 +395,9 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-#### CodeGraph MCP 配置（兜底 — 缺失时自动补齐）
+#### CodeGraph MCP 配置（仅 Coding 项目 — 缺失时自动补齐）
 
-> 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
+> **非 Coding 项目跳过此步骤**。将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
 
 ```json
 {
@@ -495,7 +495,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 **TOML 写入规则**：
 - 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
 - `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
-- 写入顺序：基础配置 → CodeGraph 配置（如果启用） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
+- 写入顺序：基础配置 → CodeGraph 配置（仅 Coding 项目） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
 **Codex 与 Claude Code 格式差异**：
@@ -532,9 +532,9 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
 ````
 
-#### CodeGraph MCP 配置（兜底 — 缺失时自动补齐）
+#### CodeGraph MCP 配置（仅 Coding 项目 — 缺失时自动补齐）
 
-> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
+> **非 Coding 项目跳过此步骤**。将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
 
 ````toml
 [mcp_servers.codegraph]
@@ -586,7 +586,7 @@ ls -la .gitignore
 # Cadence 工作目录
 .worktrees/
 .mcp.json
-.codex/
+.codex/config.toml
 ```
 
 如果 `.gitignore` 不存在，创建文件并添加内容：
@@ -596,7 +596,7 @@ cat > .gitignore << 'EOF'
 # Cadence 工作目录
 .worktrees/
 .mcp.json
-.codex/
+.codex/config.toml
 EOF
 ```
 
@@ -606,7 +606,7 @@ EOF
 |----------|------|---------|
 | `.worktrees/` | Git worktrees 隔离开发环境 | 包含临时的隔离开发环境，不应提交 |
 | `.mcp.json` | MCP 配置文件 | 包含本地 MCP 路径配置，不应提交到版本控制 |
-| `.codex/` | Codex CLI 项目级配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
+| `.codex/config.toml` | Codex CLI 项目级 MCP 配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
 
 **验证**：
 
