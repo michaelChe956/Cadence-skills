@@ -1,0 +1,4 @@
+interface:
+  display_name: "KnowledgeBase 页面能力"
+  short_description: "分析 Vue 与 React 页面路由权限状态及后端接口映射关系"
+  default_prompt: "使用 $knowledge-base-pages 生成当前前端项目的页面能力文档。"

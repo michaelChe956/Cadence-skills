@@ -1,0 +1,21 @@
+schema_version: "1.0"
+generator:
+  skill: "knowledge-base-bootstrap"
+  version: "1.0"
+mode: "unknown"
+generated_at: "unknown"
+git:
+  branch: "unknown"
+  baseline_commit: "unknown"
+scope:
+  repositories: []
+  services: []
+  modules: []
+inputs: {}
+documents: []
+coverage: {}
+open_questions:
+  blocking: 0
+  high: 0
+  medium: 0
+  low: 0

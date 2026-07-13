@@ -1,0 +1,4 @@
+interface:
+  display_name: "KnowledgeBase API 能力"
+  short_description: "分析并区分项目对外对内 REST RPC 消息文件与任务能力"
+  default_prompt: "使用 $knowledge-base-api 生成当前项目的 API 与集成能力文档。"
