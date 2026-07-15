@@ -10,7 +10,52 @@ disable-model-invocation: true
 
 配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用，并参考 CLAUDE.md 同步生成 AGENTS.md。默认采用无人工交互策略，按自动检测结果和保守默认值继续执行。
 
+## 参数模式
+
+支持以下调用方式：
+
+```text
+/rule-config
+/rule-config no-interrupt
+/rule-config --no-interrupt
+```
+
+- 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
+- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的不覆盖、冲突跳过、人工交互和历史产物迁移逻辑。
+- 两种模式互斥；不得把 `no-interrupt` 合并或禁止迁移规则应用到普通模式。
+
+### no-interrupt 通用规则
+
+- 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
+- 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
+- 冲突必须按本节的确定性规则合并，不得跳过冲突文件后继续。
+- 无法完成安全合并时必须先保留备份；备份或后续写入失败时立即报错终止。
+- 失败报告必须包含失败文件、失败原因、已完成项目和恢复建议。
+
+### no-interrupt 权威合并规则
+
+`rule-config` 的模板结构、必需章节、强制约束、框架规则路径和摘要引用是权威内容；当前项目内容作为补充保留。
+
+| 场景 | 合并动作 |
+|------|----------|
+| 目标文件不存在 | 创建标准文件 |
+| 模板与项目存在不同章节 | 保留模板章节，并按原顺序保留项目独有章节 |
+| 模板与项目存在同名章节 | 模板规范在前，项目独有内容去重后追加到该章节的“项目补充” |
+| CLAUDE.md / AGENTS.md 强制规则冲突 | 强制规则摘要和引用路径以 `rule-config` 为准，项目技术栈、命令、业务规则和其他章节保留 |
+| 内容完全重复 | 只保留一份 |
+| Markdown 无法可靠解析 | 先备份，再写标准结构，并把原内容附加到“原项目补充” |
+
+合并时以“标题级别 + 去除开头编号后的标题文本”识别同名章节。备份文件命名为 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`，禁止删除原始内容。
+
+### no-interrupt 历史目录规则
+
+- 只检测 `.claude/prds`、`.claude/analysis`、`.claude/analysis-docs`、`.claude/docs`、`.claude/designs`、`.claude/designs-reviews`、`.claude/plans`、`.claude/readmes`、`.claude/modaos`、`.claude/models`、`.claude/architecture`、`.claude/notes`、`.claude/logs`、`.claude/reports`、`.claude/project-rules`、`.claude/cache`。
+- 检测到历史目录时仅写入执行报告，不执行 `mv`、目录内容合并、目录删除或空目录清理。
+- 本规则只覆盖 `no-interrupt` 模式；普通模式继续执行本 Skill 原有的历史产物迁移步骤。
+
 ## 无交互默认策略
+
+> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
 
 在没有用户额外输入时，按以下默认值执行：
 
@@ -26,6 +71,8 @@ disable-model-invocation: true
 | 已存在文件 | 默认不覆盖，只补齐缺失文件、缺失摘要和缺失配置块 |
 
 ## 人工交互策略
+
+> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
 
 默认不向用户提问。只有出现以下情况才进入人工交互：
 
@@ -339,7 +386,9 @@ mkdir -p cadence/{prds,analysis,analysis-docs,docs,designs,designs-reviews,plans
 | `cadence/project-rules/` | 个性化规则 | 用户定制的模板和规范 |
 | `cadence/cache/` | 分析缓存 | @git-review 等流程生成的 Cadence 缓存 |
 
-### 6. 历史产物迁移
+### 6. 历史产物迁移（仅普通模式）
+
+> 携带 `no-interrupt` 或 `--no-interrupt` 时不得执行本节，只执行“no-interrupt 历史目录规则”。
 
 **检测旧目录**：
 
