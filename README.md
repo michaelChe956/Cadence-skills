@@ -226,6 +226,45 @@ git pull
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
+### 强制无交互模式（no-interrupt）
+
+`pre-check`、`rule-config`、`mcp-configuration`、`project-rules-examples` 支持显式的强制无交互参数：
+
+```bash
+/pre-check no-interrupt
+/rule-config no-interrupt
+/mcp-configuration no-interrupt
+/project-rules-examples no-interrupt
+```
+
+`--no-interrupt` 与 `no-interrupt` 等价，例如：
+
+```bash
+/pre-check --no-interrupt
+```
+
+> **向后兼容**：不携带 `no-interrupt` 或 `--no-interrupt` 时，四个 Skill 完整保持原有逻辑，包括条件询问、保守默认、冲突跳过和历史文档迁移等行为。
+
+| Skill | no-interrupt 模式行为 |
+|------|------------------------|
+| `/pre-check` | 除 Playwright 外，强制完成 npx、uvx、ast-grep、codegraph、OpenSpec、Superpowers 的安装和验证；任一项失败立即终止；Superpowers 固定离线目录无效时直接报错；同名冲突先备份再处理 |
+| `/rule-config` | 冲突时以 `rule-config` 模板和强制规则为准，项目已有内容作为补充合并；只报告历史文档目录，不执行迁移 |
+| `/mcp-configuration` | 冲突时以标准 MCP 结构和必需参数为准，保留项目额外 Server、扩展字段和已有非占位密钥；解析或验证失败时恢复备份并终止 |
+| `/project-rules-examples` | 冲突时以标准模板骨架和强制约束为准，保留项目事实、真实占位值和额外章节；无法结构化合并时备份并保留原文 |
+
+强制无交互模式不会调用用户提问工具，也不会等待确认或使用交互超时。无法自动完成严格结果时会直接报错终止，并报告失败步骤和恢复建议。
+
+新项目可以使用以下全程强制无交互初始化流程。`/init` 和 `/project-analysis` 不支持该参数，仍按原方式调用：
+
+```bash
+/pre-check no-interrupt
+/init
+/project-analysis
+/rule-config no-interrupt
+/mcp-configuration no-interrupt
+/project-rules-examples no-interrupt
+```
+
 如果需要 Playwright，请明确说明：
 
 ```bash

@@ -163,3 +163,21 @@ Superpowers 来源目录或软链目标存在同名非软链内容时：
 - 不绕过宿主平台权限审批或网络限制。
 - 不安装用户未要求的 Playwright。
 - 不迁移、删除或清理项目历史文档目录。
+
+## 9. README 使用说明同步
+
+为避免项目入口文档与 Skill 实际能力不一致，同步更新以下三个 README：
+
+- 根目录 `README.md`
+- `readmes/commands/README.md`
+- `readmes/skills/README.md`
+
+文档必须统一说明：
+
+- `no-interrupt` 和 `--no-interrupt` 是等价的完整 token 参数。
+- 不携带参数时保持四个 Skill 原有逻辑。
+- 携带参数时禁止用户交互，按各 Skill 的严格策略执行。
+- 无法自动完成严格结果时直接报错终止，不等待用户确认。
+- 新项目初始化示例同时展示普通模式和可选的强制无交互模式。
+
+根 README 提供完整行为对照表；命令指南和 Skills 指南提供简化调用示例并链接回根 README 的初始化章节，避免重复维护全部规则细节。

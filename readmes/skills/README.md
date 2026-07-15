@@ -84,6 +84,28 @@
 10. /status             # 查看进度
 ```
 
+#### 场景 1A：强制无交互初始化
+
+如果初始化过程不能等待用户回答，可以为四个支持的 Skill 增加 `no-interrupt`：
+
+```text
+1. /pre-check no-interrupt
+2. /init
+3. /project-analysis
+4. /rule-config no-interrupt
+5. /mcp-configuration no-interrupt
+6. /project-rules-examples no-interrupt
+7. /cad-load
+8. /full-flow
+```
+
+- `--no-interrupt` 与 `no-interrupt` 等价。
+- 不加参数时保持各 Skill 原有逻辑。
+- 该参数只适用于 `pre-check`、`rule-config`、`mcp-configuration`、`project-rules-examples`，不用于 `/init` 或 `/project-analysis`。
+- 严格模式无法自动完成时会直接报错终止，不会发起用户交互。
+
+完整行为差异见[项目 README 的项目初始化章节](../../README.md#项目初始化cadence-init-插件)。
+
 ### 场景 2：快速 Bug 修复
 
 ```

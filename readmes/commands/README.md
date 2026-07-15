@@ -82,6 +82,26 @@
 
 > **说明**：`pre-check`、`project-analysis`、`rule-config`、`mcp-configuration`、`project-rules-examples` 均由 `cadence-init` 插件以 Skill 形式提供，直接输入 `/名称` 触发。
 
+#### 强制无交互初始化（可选）
+
+需要禁止用户提问并对冲突采用确定性处理时，可以为四个支持的初始化 Skill 增加 `no-interrupt`：
+
+```bash
+/pre-check no-interrupt
+/init
+/project-analysis
+/rule-config no-interrupt
+/mcp-configuration no-interrupt
+/project-rules-examples no-interrupt
+```
+
+- `--no-interrupt` 与 `no-interrupt` 等价。
+- 不加参数时保持各 Skill 原有逻辑。
+- `/init` 和 `/project-analysis` 不支持该参数。
+- 强制无交互模式无法自动完成严格结果时会直接报错终止，不会等待用户确认。
+
+完整行为差异见[项目 README 的项目初始化章节](../../README.md#项目初始化cadence-init-插件)。
+
 ### 组合 2：快速开发
 
 ```bash
