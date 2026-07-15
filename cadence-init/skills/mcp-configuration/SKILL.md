@@ -10,7 +10,64 @@ disable-model-invocation: true
 
 配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。默认不需要人工交互即可完成基础 MCP 初始化。
 
+## 参数模式
+
+支持以下调用方式：
+
+```text
+/mcp-configuration
+/mcp-configuration no-interrupt
+/mcp-configuration --no-interrupt
+```
+
+- 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
+- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的补齐缺失配置、同名冲突询问或跳过策略。
+- 两种模式互斥；不得把 `no-interrupt` 深度合并规则应用到普通模式。
+
+### no-interrupt 通用规则
+
+- 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
+- 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
+- 同名配置冲突必须按本节的确定性规则合并，不得保留冲突后跳过该 Server。
+- 写入前必须验证 JSON/TOML 结构并保留必要备份；备份、合并或验证失败时立即报错终止。
+- 失败报告不得输出 API Key、Token、Authorization Header 等真实私密值。
+
+### no-interrupt MCP 集合合并
+
+`mcp-configuration` 定义的必需 Server、传输类型、命令、URL 和必要参数是权威配置；当前项目配置作为补充保留。
+
+| 场景 | 合并动作 |
+|------|----------|
+| Skill Server 缺失 | 新增 Skill Server |
+| 项目额外 Server | 保留项目 Server |
+| 同名 Server 的 `type`、`command`、`url` 冲突 | 使用 Skill 值 |
+| 同名 Server 的必要参数冲突 | Skill 必需参数作为数组前缀，再追加不重复且不改变必需语义的项目参数 |
+| 项目独有 `env`、`headers`、`http_headers` 或扩展字段 | 按键保留并合并 |
+| 内容完全重复 | 只保留一份 |
+
+Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json` 按 `mcpServers` 子项合并；`.codex/config.toml` 按 `[mcp_servers.<name>]` 配置块合并。Codex 仍然只同步有 `command` 字段的 stdio Server，不同步 HTTP Server。
+
+### no-interrupt 占位符与私密值
+
+- `your_zhipu_api_key`、`your_minimax_api_key` 以及 `your_*_api_key` 形式的值视为占位符。
+- Skill 占位符与项目非占位值冲突时，保留项目非占位值；这是“Skill 结构权威”的唯一值级例外。
+- Skill 非占位值与项目值冲突时，使用 Skill 值。
+- 执行报告只允许记录变量名和“已保留非占位值”，不得显示、截断显示或散列输出真实值。
+
+### no-interrupt 解析失败与备份
+
+1. 修改现有 `.mcp.json` 或 `.codex/config.toml` 前，先完成语法解析。
+2. 无法解析时，将原文件备份为 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`。
+3. 只允许恢复能够作为完整 JSON Server 对象或完整 TOML Server 配置块独立解析成功的项目配置。
+4. 以 Skill 标准配置为基础重建目标文件，再按“MCP 集合合并”规则合并已恢复的完整配置块。
+5. 无法安全识别项目补充配置时立即报错，不覆盖原文件；备份仅用于恢复，不代表初始化成功。
+6. 合并完成后重新解析目标文件；验证失败时恢复备份并报错终止。
+
+`no-interrupt` 模式下 `.gitignore` 使用集合合并，确保 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 生效并去重。如果存在对应的精确反向规则 `!.worktrees/`、`!.mcp.json` 或 `!.codex/config.toml`，移除该反向规则；其他项目忽略规则保持不变。
+
 ## 无交互默认策略
+
+> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
 
 | 项 | 默认行为 |
 |----|----------|
@@ -23,6 +80,8 @@ disable-model-invocation: true
 | `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` |
 
 ## 人工交互策略
+
+> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
 
 默认不向用户提问。只有出现以下情况才进入人工交互：
 
