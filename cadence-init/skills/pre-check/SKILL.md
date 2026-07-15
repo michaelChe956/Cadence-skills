@@ -10,6 +10,53 @@ disable-model-invocation: true
 
 自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
+## 参数模式
+
+支持以下调用方式：
+
+```text
+/pre-check
+/pre-check no-interrupt
+/pre-check --no-interrupt
+```
+
+- 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
+- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过和失败后继续策略。
+- 两种模式互斥；不得把 `no-interrupt` 规则应用到普通模式。
+
+### no-interrupt 通用规则
+
+- 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
+- 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
+- 不询问、不收集 API Key、Token、密码等私密信息。
+- 不绕过操作系统权限、网络授权或执行平台安全限制；缺少必要条件时按失败处理。
+- 失败报告必须包含失败步骤、失败原因、已完成步骤和恢复建议，不得宣称初始化成功。
+
+### no-interrupt 强制完成策略
+
+除 Playwright 外，六个基础检查都是完成门槛。已安装且验证通过视为完成，不重复安装；缺失时必须安装并验证。任一项失败立即终止 `/pre-check`，不执行剩余检查、API Key 提醒或下游初始化 Skill。
+
+| 项目 | 完成条件 | 失败动作 |
+|------|----------|----------|
+| npx | `npx --version` 成功 | 立即终止 |
+| uvx | `uvx --version` 成功 | 立即终止 |
+| ast-grep | `ast-grep --version` 成功 | 立即终止 |
+| codegraph | `codegraph version` 成功 | 立即终止 |
+| OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
+| Superpowers | 来源目录和三层 Skills 软链验证成功 | 立即终止 |
+| Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
+
+`no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
+
+### no-interrupt Superpowers 处理
+
+1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成三层软链。
+2. 来源目录无效或缺失时，尝试在线 clone 或 Git 更新。
+3. 在线操作失败后，只允许校验固定离线目录 `~/.agents/superpowers/skills`，不询问其他离线来源路径。
+4. 固定离线目录仍无效时立即报错，终止 `/pre-check`。
+5. Superpowers 来源目录或软链目标存在同名非软链内容时，将冲突内容重命名为 `<原名称>.cadence-backup-YYYYMMDDHHMMSS`，再创建正确目录或软链并验证。
+6. 备份、创建或验证任一步失败时立即终止；禁止删除原内容，也禁止跳过冲突项继续。
+
 **核心原则**：检查-验证-安装-同步-记录
 
 **强制规则**：
@@ -21,6 +68,8 @@ disable-model-invocation: true
 6. **API Key 配置默认占位** - 不询问、不收集真实密钥；mcp-configuration 默认写入智普/MiniMax API Key 占位配置，并提醒用户后续自行替换
 
 ## 人工交互策略
+
+> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
 
 默认不向用户提问。只有出现以下情况才进入人工交互：
 
