@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 项目概览"
   short_description: "生成项目导航领域术语核心流程待确认项与 Coding Agent 规则"
-  default_prompt: "使用 $knowledge-base-overview 生成项目概览并接入 Coding Agent 规则。"
+  default_prompt: "使用 $knowledge-base-overview 汇总 Schema 3.0 KnowledgeBase，并安全接入 Coding Agent 规则。"

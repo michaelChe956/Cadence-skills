@@ -19,20 +19,20 @@ description: "Use when 需要为 Vue 或 React 存量前端分析页面、静态
 
 优先读取：
 
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/01-base-information.md`
-- `cadence/knowledgeBase/02-api-capabilities.md`
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
+- `cadence/knowledge-base/base-information.md`
+- `cadence/knowledge-base/interfaces/` 下的接口主文件
 - 用户提供的路由、菜单、角色和权限资料
 - Vue/React 路由、页面、状态管理和请求模块代码
 
-API 文档缺失或页面调用无法定位时，记录待确认，不得根据按钮名称猜测后端接口。
+Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base-bootstrap`。页面状态为 `不适用` 时记录跳过原因并结束。API 文档缺失或页面调用无法定位时，记录待确认，不得根据按钮名称猜测后端接口。
 
 ## 强制规则
 
 - 为页面和路由分别生成稳定 ID。
 - 区分静态路由、动态路由、后端下发路由和运行时注入路由。
 - 区分路由存在、组件存在、页面可达和用户有权访问。
-- 页面调用的 API 必须关联到 `02-api-capabilities.md` 中的 API ID；未登记接口先标记候选。
+- 页面调用的 API 必须关联到 `interfaces/` 下对应接口主文件中的 API ID；未登记接口先标记候选。
 - 权限结论必须结合路由元数据、守卫、菜单、状态和后端鉴权资料。
 - 测试页面、Storybook、Demo 和开发工具页面单独标记。
 - 动态 Import、别名和懒加载路径必须解析到实际组件或标记未知。
@@ -160,12 +160,12 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 
 生成或更新：
 
-- `cadence/knowledgeBase/03-page-capabilities.md`
-- `cadence/knowledgeBase/pages/`，仅大型项目使用
-- `cadence/knowledgeBase/evidence/source-index.md`
-- `cadence/knowledgeBase/evidence/traceability-matrix.md`
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/07-open-questions.md`
+- `cadence/knowledge-base/pages/README.md`
+- `cadence/knowledge-base/pages/` 下单页面能力文档
+- `cadence/knowledge-base/evidence/source-index.md`
+- `cadence/knowledge-base/evidence/traceability-matrix.md`
+- `cadence/knowledge-base/manifest.yaml`
+- `cadence/knowledge-base/open-questions.md`
 
 ## 禁止行为
 
@@ -192,4 +192,3 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 - 页面、API、服务和数据之间能够导航。
 - 动态、权限和运行时限制已经明确。
 - 孤立、不可达和冲突项进入待确认清单。
-

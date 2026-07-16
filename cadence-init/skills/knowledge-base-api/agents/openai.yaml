@@ -1,4 +1,4 @@
 interface:
-  display_name: "KnowledgeBase API 能力"
-  short_description: "分析并区分项目对外对内 REST RPC 消息文件与任务能力"
-  default_prompt: "使用 $knowledge-base-api 生成当前项目的 API 与集成能力文档。"
+  display_name: "KnowledgeBase API 与集成能力"
+  short_description: "按用户对外清单全量盘点或指定深挖项目 API 与非 HTTP 能力"
+  default_prompt: "使用 $knowledge-base-api 按 Manifest 3.0 中的工程范围和对外能力清单执行全量或指定分析，生成 interfaces 索引与能力文档。"

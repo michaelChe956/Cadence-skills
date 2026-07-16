@@ -43,7 +43,7 @@ cadence/project-rules/knowledge-base-usage.md
 <!-- cadence-knowledge-base:start -->
 ## 项目 KnowledgeBase
 
-修改代码前读取 `cadence/knowledgeBase/README.md`。
+修改代码前读取 `cadence/knowledge-base/README.md`。
 详细规则见 `cadence/project-rules/knowledge-base-usage.md`。
 <!-- cadence-knowledge-base:end -->
 ```

@@ -1,197 +1,206 @@
 ---
 name: knowledge-base-api
-description: "Use when 需要从 API 文档和代码盘点 Java 项目的 REST、Feign、Dubbo、消息、Redis 队列、FTP、文件交换、定时任务等能力，并区分对外、对内和服务间接口。"
+description: "Use when 需要按用户提供的对外能力清单和工程范围，全量盘点或指定深挖 REST、RPC、消息、Redis 队列、文件交换、定时任务与批处理能力。"
 ---
 
-# KnowledgeBase API 能力
+# KnowledgeBase API 与集成能力
 
 ## 概述
 
-建立系统能力清单和可追溯调用链，而不只是罗列 Controller。结合 API 文档、网关、鉴权、框架装配和实现代码，明确能力分类、可用状态、调用方、数据副作用和证据可信度。
+同时承担项目级能力盘点和单能力调用链深挖。用户提供的对外能力清单决定对外分类；工程范围内发现但未登记的能力归入对内能力。不得用单接口 Demo 替代全量盘点。
 
 ## 必读资源
 
 - 执行前读取 `references/api-analysis-guide.md`。
-- 生成文档时使用 `assets/api-capabilities-template.md`。
-- 需要对照综合场景时读取 `references/demo.md`。
+- 生成能力主文件时使用 `assets/api-capabilities-template.md`。
+- 生成请求响应配套文件时使用 `assets/api-parameters-message-template.md`。
+- 需要查看成品格式时读取 `references/demo.md` 和 `references/demo_参数与报文.md`。
 
 ## 前置输入
 
-优先读取：
+必须读取：
 
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/01-base-information.md`
-- `cadence/knowledgeBase/evidence/source-index.md`
-- OpenAPI、Swagger、Knife4j 或用户 API 文档
-- 网关、鉴权、RPC、消息、文件和任务资料
+- `cadence/knowledge-base/manifest.yaml`
+- Manifest 中登记的工程范围
+- Manifest 中登记的对外能力清单
+- Manifest 中登记的 API 状态、执行模式和指定能力
+- 用户提供的 DDL、中间件和页面范围
 
-API 文档缺失时允许从代码生成，但必须标记“代码生成，待人工校对”。
+Manifest 不存在、Schema 不是 `3.0` 或 API 输入未通过 Bootstrap 校验时停止，并引导执行 `knowledge-base-bootstrap`。
 
-## 强制分类
+## 对外与对内分类
 
-每项能力必须属于以下类别之一：
+### 对外能力
 
-1. 对外公开 REST API
-2. 合作方或受限外部 REST API
-3. 内部前端 REST API
-4. 服务间 REST API
-5. RPC Provider 或 Consumer
-6. 消息生产或消费能力
-7. Redis Pub/Sub、Stream 或队列能力
-8. FTP、SFTP、对象存储或文件交换
-9. 定时任务、批处理或异步作业
-10. 状态未知，待人工确认
+用户 `api-scope.md` 中登记的全部能力是对外能力的权威清单：
 
-禁止把“对外 API”和“项目内部存在的 REST 接口”混为一类。
+- 保持对外分类，不因代码暂时无法定位而改判为对内。
+- 代码用于核实实现、装配、暴露状态、调用链和副作用。
+- 清单与代码冲突时保留对外分类，将实现冲突写入待确认项。
+
+### 对内能力
+
+在工程范围内发现但未登记的以下能力归为对内能力：
+
+- 内部前端 REST API
+- 服务间 REST API
+- RPC Provider 与 Consumer
+- 消息生产与消费
+- Redis Pub/Sub、Stream、List 等队列式能力
+- FTP、SFTP、对象存储和文件交换
+- 定时任务、批处理和异步作业
+
+疑似对外但未登记的能力标记为对内候选或待确认，不自动升级为对外。
+
+## 执行模式
+
+### 全量模式
+
+1. 在 Manifest 工程范围内扫描所有能力类型。
+2. 先建立 `cadence/knowledge-base/interfaces/README.md` 总索引。
+3. 索引分为“对外能力”和“对内能力”。
+4. 对每项能力记录稳定 ID、类型、状态、实现位置、证据和明细链接。
+5. 再逐项生成能力主文件；请求响应能力同时生成参数与报文文件。
+
+### 指定模式
+
+1. 只分析 Manifest 中的指定能力。
+2. 允许追踪完成调用链所需的内部依赖。
+3. 不盘点与指定能力无关的接口。
+4. 指定能力不在对外清单时默认归为对内。
+
+用户明确选择全量或多个能力后连续执行，不在每完成一项后重复询问是否继续。
+
+## 能力状态
+
+每项能力分别判断：
+
+- 已声明
+- 已实现
+- 已装配
+- 已暴露
+- 条件启用
+- 已废弃
+- 测试专用
+- 代码存在但不可达
+- 状态未知
+
+对外清单只能证明对外设计分类，不能单独证明当前代码已实现或运行环境已暴露。
 
 ## 工作流程
 
-### 1. 确认 API 资料范围
+### 1. 读取范围并建立索引
 
-记录 API 文档版本、环境、维护时间和覆盖服务。文档与代码不一致时分别保留“设计描述”和“当前实现”。
-
-### 2. 扫描 REST 入口
-
-识别：
-
-- Spring MVC、WebFlux 路由
-- 类级和方法级路径组合
-- HTTP 方法、Consumes、Produces
-- 参数绑定、校验和响应模型
-- Context Path、Servlet Path 和版本前缀
-- 网关路由、重写、StripPrefix 和外部域入口
-
-为 API 生成稳定 ID，例如 `API-order-create`。
-
-### 3. 判断能力状态
-
-分别判断：
-
-- 已声明：存在路由或接口声明
-- 已实现：存在具体实现
-- 已装配：位于有效扫描、Bean 或配置范围
-- 已暴露：通过网关、路由或部署配置可访问
-- 条件启用：依赖 Profile、开关或环境
-- 已废弃：有废弃标记或替代能力
-- 测试专用：仅存在测试或 Mock 范围
-- 代码存在但不可达：缺少有效入口
-- 状态未知：证据不足
-
-Controller 存在不能单独证明对外暴露。
-
-### 4. 分析 REST 语义
-
-记录：
-
-- 分类和稳定 ID
-- HTTP 方法与完整路径
-- 网关或上下文前缀
-- 鉴权、角色、权限和租户约束
-- Header、Path、Query、Form 和 Body 参数
-- 请求、响应、分页和错误模型
-- 幂等、限流、版本和缓存语义
-- Controller、Service 和下游调用
-- 数据表、缓存、消息和文件副作用
-- 调用方、消费者和已知使用页面
-
-不复制大量源码或完整生成模型，只记录理解接口所需结构与来源。
-
-### 5. 分析服务间能力
-
-识别：
-
-- Feign Client
-- RestTemplate、WebClient 和自定义 HTTP Client
-- Dubbo、gRPC 或项目自定义 RPC
-- Provider、Consumer、注册名、版本、分组和超时
-- 重试、负载、熔断和降级
-
-接口定义存在但没有装配或调用证据时，标记为已声明或状态未知。
-
-### 6. 分析消息和队列能力
-
-识别：
-
-- Producer、Listener 和 Consumer
-- Topic、Queue、Exchange、Routing Key 和 Consumer Group
-- Redis Pub/Sub、Stream、List 或其他队列式用法
-- 消息模型、序列化、顺序、重复和幂等
-- 重试、回退、死信和补偿
-- 消费副作用和事务边界
-
-配置值需脱敏，逻辑名称可保留，生产地址和凭证不得输出。
-
-### 7. 分析文件和任务能力
-
-文件能力记录协议、目录或 Bucket 逻辑名、文件格式、触发方、接收方、重试和归档规则。
-
-任务能力记录：
-
-- JOB 稳定 ID
-- 调度框架
-- Cron 或触发方式
-- 所属模块和处理入口
-- 输入、输出和数据副作用
-- 并发、锁、分片、重试和补偿
-- 外部调用方或运维入口
-
-### 8. 与基础信息交叉验证
-
-检查：
-
-- 数据源和表是否存在于基础信息
-- 中间件、Topic 和配置键是否已登记
-- 鉴权、事务和异常模型是否一致
-- API 文档版本是否与代码依赖和网关配置匹配
-
-冲突写入 `07-open-questions.md`，不得静默修正文档或代码。
-
-### 9. 建立关系矩阵
-
-至少写入：
+读取 Manifest 和对外能力清单，生成或更新：
 
 ```text
-API → Controller/RPC → Service → TABLE/MIDDLEWARE
-EVENT → Producer → Consumer → 副作用
-JOB → 入口 → Service → TABLE/API/MIDDLEWARE
+cadence/knowledge-base/interfaces/README.md
 ```
 
-关系包含来源 ID、关系类型、目标 ID、证据和可信度。
+索引至少包含：
 
-### 10. 输出
+| ID | 能力名称 | 分类 | 类型 | 状态 | 实现位置 | 主文件 | 参数与报文 | 证据 |
+|----|----------|------|------|------|----------|--------|------------|------|
 
-生成或更新：
+### 2. 发现能力入口
 
-- `cadence/knowledgeBase/02-api-capabilities.md`
-- `cadence/knowledgeBase/apis/`，仅大型项目使用
-- `cadence/knowledgeBase/evidence/source-index.md`
-- `cadence/knowledgeBase/evidence/traceability-matrix.md`
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/07-open-questions.md`
+根据项目实际技术栈识别：
+
+- Spring MVC、WebFlux 和自定义路由
+- Feign、RestTemplate、WebClient 和自定义 HTTP Client
+- Dubbo、gRPC、HSF 或其他 RPC
+- 消息 Producer、Listener 和 Consumer
+- Redis 队列式使用
+- 文件上传、下载、交换和对象存储
+- 调度注解、调度框架、批处理和异步任务
+
+大范围关系优先使用 CodeGraph；具体文件先用 `ast-grep outline` 获取结构，再定向阅读。工具不可用时使用文本检索降级。
+
+Mapper XML、配置和资源目录必须根据项目结构探测，不假设固定位置。
+
+### 3. 核实调用链
+
+对每项能力核实：
+
+1. 入口定义、实现、装配和暴露证据
+2. 参数、响应、错误和鉴权
+3. Service、DAO、RPC、消息和文件调用
+4. 分支条件、开关和环境差异
+5. 数据表、缓存、中间件和外部系统副作用
+6. 调用方、消费者、页面和任务关系
+
+间接调用必须逐跳追踪。无法唯一映射时列出候选并标记待确认。
+
+### 4. 核实数据库证据
+
+只使用：
+
+- 用户提供的 DDL
+- Entity、Mapper、SQL 和迁移文件
+- 数据源与 Schema 配置
+- 用户明确说明
+
+禁止连接数据库或查询在线元数据。无法确认 Schema、表归属或环境时标记待确认，不使用工程名代替数据库名。
+
+### 5. 生成能力文档
+
+请求响应能力生成：
+
+```text
+cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}.md
+cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与报文.md
+```
+
+消息、文件、任务等非请求响应能力只生成主文件；没有参数与报文时不创建空配套文件。
+
+主文件遵循 11 节结构。字段处理：
+
+- 有证据：填写真实值和来源。
+- 用户未提供：填写 `未提供`。
+- 扫描未发现：填写 `未发现`。
+- 不适用于能力：填写 `不适用`。
+- 单个字段缺失不阻断文档生成。
+
+### 6. 更新关系与进度
+
+更新：
+
+- `interfaces/README.md`
+- `manifest.yaml`
+- `evidence/source-index.md`
+- `evidence/traceability-matrix.md`
+- `open-questions.md`
+
+进度只记录在 Manifest 和索引中，不使用运行时任务或记忆目录。
+
+## 交互规则
+
+范围、同名能力或证据冲突确实无法判断时：
+
+- Claude Code 使用 `AskUserQuestion`。
+- Codex 工具可用时使用 `request_user_input`。
+- 工具不可用时使用普通文本提问。
+
+用户范围已经明确时不得重复确认。
 
 ## 禁止行为
 
 - 不根据 Controller 名称判断对外属性。
-- 不把 Feign Consumer 写成系统对外 Provider。
-- 不把依赖存在视为消息或 RPC 实际使用。
-- 不猜测请求字段业务含义、错误码或鉴权规则。
-- 不输出凭证、生产地址和真实敏感样例。
-- 不把定时任务的内部处理方法当成 REST API。
-
-## 降级规则
-
-- 缺少 API 文档：代码生成并标记待人工校对。
-- 缺少网关资料：接口暴露状态写为未知或内部候选。
-- 动态路由无法还原：记录配置入口和运行时限制。
-- 只有接口定义无调用：标记已声明，不认定已使用。
-- 工具不可用：按注解、配置和调用模式进行文本检索后定向阅读。
+- 不凭 API 名称猜实现工程或能力集。
+- 不把依赖声明视为能力实际使用。
+- 不把同 JVM 本地调用误写成网络 RPC。
+- 不根据 DAO 名猜表名，必须核对 SQL 或 DDL。
+- 不连接数据库、中间件或远程环境。
+- 不输出凭证、完整连接串和未脱敏敏感值。
+- 不把定时任务内部方法当成 REST API。
+- 不自动写入 `cadence/project-rules/`。
 
 ## 完成条件
 
-- 能力分类明确。
-- 对外和对内 REST 已分开。
-- 非 HTTP 能力已纳入清单。
+- 对外能力完全来自用户清单。
+- 工程内未登记能力已归类为对内。
+- 全量或指定模式符合 Manifest。
+- REST、RPC、消息、队列、文件和任务按范围纳入。
 - 核心能力具有稳定 ID、状态、证据和可信度。
-- 数据副作用与基础信息能够关联。
-- 暴露范围不确定的能力进入待确认清单。
-
+- 数据副作用能够关联 DDL、代码和配置证据。
+- 不确定项进入待确认清单。

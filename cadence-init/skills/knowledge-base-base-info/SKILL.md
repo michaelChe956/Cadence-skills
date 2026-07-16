@@ -7,7 +7,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 ## 概述
 
-从代码、DDL、配置和用户资料中建立项目的基础事实模型，生成 `01-base-information.md` 和 `06-development-guide.md`。重要结论必须可定位、可区分事实与推断，并能被 API、页面和增量技能复用。
+从代码、DDL、配置和用户资料中建立项目的基础事实模型，生成 `base-information.md` 和 `development-guide.md`。重要结论必须可定位、可区分事实与推断，并能被 API、页面和增量技能复用。
 
 ## 必读资源
 
@@ -20,12 +20,12 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 优先读取：
 
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/inputs/input-inventory.md`
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
+- `cadence/knowledge-base/input-inventory.md`
 - 用户提供的 DDL、配置和中间件清单
 - 项目构建文件、配置文件和代码结构
 
-如果总控技能尚未初始化知识库，先确认目标路径、分析范围和执行模式，不得静默假设完整模式。
+Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base-bootstrap`。只分析 Manifest 声明的工程、DDL 和中间件范围，不得自行扩大范围。
 
 ## 强制规则
 
@@ -153,20 +153,20 @@ MODULE-order-core
 - 模块 → 中间件
 - 横切机制 → 配置与实现位置
 
-将详细来源写入 `cadence/knowledgeBase/evidence/source-index.md`，将关系写入 `traceability-matrix.md`。
+将详细来源写入 `cadence/knowledge-base/evidence/source-index.md`，将关系写入 `cadence/knowledge-base/evidence/traceability-matrix.md`。
 
 ### 9. 输出
 
 生成或更新：
 
-- `cadence/knowledgeBase/01-base-information.md`
-- `cadence/knowledgeBase/06-development-guide.md`
-- `cadence/knowledgeBase/evidence/source-index.md`
-- `cadence/knowledgeBase/evidence/traceability-matrix.md`
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/07-open-questions.md`
+- `cadence/knowledge-base/base-information.md`
+- `cadence/knowledge-base/development-guide.md`
+- `cadence/knowledge-base/evidence/source-index.md`
+- `cadence/knowledge-base/evidence/traceability-matrix.md`
+- `cadence/knowledge-base/manifest.yaml`
+- `cadence/knowledge-base/open-questions.md`
 
-大型项目按服务、模块或 Schema 拆分到 `services/`、`modules/` 和 `data-models/`。
+大型项目按服务或 Schema 拆分到 `services/` 和 `data-models/`。
 
 ## 降级规则
 
@@ -184,4 +184,3 @@ MODULE-order-core
 - 来源冲突和未覆盖范围进入待确认清单。
 - 开发指南中的命令均有来源。
 - 未输出明文敏感值。
-

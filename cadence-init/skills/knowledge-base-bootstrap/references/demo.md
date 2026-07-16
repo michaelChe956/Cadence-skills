@@ -1,35 +1,43 @@
 # KnowledgeBase 初始化案例
 
-## 完整模式案例
+## 输入缺失
 
-用户提供：
-
-- `inputs/ddl/order.sql`：MySQL 生产结构导出
-- `inputs/config/`：开发与生产配置的脱敏副本
-- `inputs/api/openapi.yaml`
-- `inputs/routes/admin-routes.md`
-- `inputs/middleware.md`：Kafka 3.7、Redis 7、Nacos 2.4
-- `inputs/glossary.md`
+目标项目没有 `cadence/knowledge-base/user-input/base-info.md`。
 
 处理结果：
 
-1. 确认 `order-service`、`user-service` 和 `admin-web` 三个边界。
-2. 将资料状态标记为已提供。
-3. 记录当前分支和 Git 基线。
-4. 依次执行基础信息、API、页面和概览分析。
-5. 将 OpenAPI 与 Controller、网关配置交叉核对。
-6. 将页面路由关联到 API、服务和数据表。
-7. 生成完整模式知识库和待确认清单。
+1. 停止扫描。
+2. 报告缺失路径。
+3. 指向 Skill 的 `user-input/` 模板目录。
+4. 列出需要复制的六个文件。
 
-## 有限证据模式案例
+## 全量模式
 
-用户只能提供代码和开发配置，无法提供生产 DDL、API 文档和动态菜单配置。
+`base-info.md` 中五个领域均为 `全量`，引用文件有效。
 
-处理方式：
+处理结果：
 
-- DDL：根据迁移文件、Entity、Mapper 和 SQL 生成候选模型，标记数据库结构不完整。
-- API：根据 Controller、Feign 和网关配置生成代码清单，标记待人工校对。
-- 页面：分析静态路由和请求模块，动态菜单页面标记未覆盖。
-- 中间件：只有依赖但无 Producer、Listener 或有效配置的组件标记为候选，不认定实际使用。
-- 最终报告明确有限证据模式，不给出虚构覆盖率。
+1. 解析工程范围。
+2. 生成 Manifest 3.0。
+3. 在工程范围内分析全部基础信息、中间件、对外与对内能力、页面和路由。
+4. 用户接口清单中的能力归为对外，其余发现能力归为对内。
 
+## 指定接口模式
+
+接口状态为 `指定`，`api-scope.md` 的指定能力为 `API-example-query`。
+
+处理结果：
+
+1. 只深挖该能力。
+2. 允许追踪完成调用链所需的内部依赖。
+3. 不额外盘点无关接口。
+
+## 页面不适用
+
+页面状态为 `不适用`，原因是项目没有前端应用。
+
+处理结果：
+
+- Manifest 记录跳过原因。
+- 不调用页面领域分析。
+- 其他领域继续执行。

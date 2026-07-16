@@ -1,17 +1,34 @@
-schema_version: "1.0"
+schema_version: "3.0"
 generator:
-  skill: "knowledge-base-bootstrap"
-  version: "1.0"
-mode: "unknown"
-generated_at: "unknown"
+  skill: knowledge-base-bootstrap
+  version: "3.0"
+mode: full-or-scoped
+generated_at: ""
 git:
-  branch: "unknown"
-  baseline_commit: "unknown"
+  branch: ""
+  baseline_commit: ""
+input:
+  root: cadence/knowledge-base/user-input
+  base_info: cadence/knowledge-base/user-input/base-info.md
+  inventory: cadence/knowledge-base/input-inventory.md
 scope:
-  repositories: []
-  services: []
-  modules: []
-inputs: {}
+  projects:
+    status: full-or-scoped
+    items: []
+  database:
+    status: full-or-scoped-or-not-applicable
+    source: ""
+  middleware:
+    status: full-or-scoped-or-not-applicable
+    source: ""
+  api:
+    status: full-or-scoped-or-not-applicable
+    external_registry: ""
+    selected: []
+  pages:
+    status: full-or-scoped-or-not-applicable
+    source: ""
+    selected: []
 documents: []
 coverage: {}
 open_questions:

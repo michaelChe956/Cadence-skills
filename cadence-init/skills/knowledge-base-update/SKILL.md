@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-update
-description: "Use when Java 与 Vue/React 项目迭代后需要根据 Git 代码差异、增量 DDL、配置、中间件、API、路由或领域资料，安全幂等地更新现有 cadence/knowledgeBase。"
+description: "Use when Java 与 Vue/React 项目的 Schema 3.0 KnowledgeBase 需要根据 Git 差异、增量 DDL、配置、中间件、API、路由或领域资料进行安全幂等更新。"
 ---
 
 # KnowledgeBase 增量更新
@@ -19,14 +19,14 @@ description: "Use when Java 与 Vue/React 项目迭代后需要根据 Git 代码
 
 优先读取：
 
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/05-change-history.md`
-- `cadence/knowledgeBase/evidence/traceability-matrix.md`
-- `cadence/knowledgeBase/07-open-questions.md`
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
+- `cadence/knowledge-base/change-history.md`
+- `cadence/knowledge-base/evidence/traceability-matrix.md`
+- `cadence/knowledge-base/open-questions.md`
 - 当前 Git 分支、提交和工作区状态
 - 用户提供的增量 DDL、配置、中间件、API、路由和领域资料
 
-如果知识库不存在，停止增量流程并引导使用 `knowledge-base-bootstrap`。
+如果知识库不存在、Manifest 缺失或 Schema 不是 3.0，停止增量流程并引导使用 `knowledge-base-bootstrap` 全量建立当前 Schema。不得迁移或覆盖旧版知识库。
 
 ## 强制规则
 
@@ -70,13 +70,11 @@ description: "Use when Java 与 Vue/React 项目迭代后需要根据 Git 代码
 
 manifest 缺少基线时，允许用户指定起点；无法确定时不得假设某个历史提交。
 
-### 2. 检查版本兼容性
+### 2. 检查 Schema 3.0
 
-- Schema 兼容：继续增量更新。
-- Schema 可迁移：先生成迁移说明和影响文件。
-- Schema 不兼容：停止自动覆盖，建议全量重建或人工迁移。
-
-迁移不得删除人工内容或历史记录。
+- Manifest 为 Schema 3.0：继续增量更新。
+- Manifest 缺失或不是 Schema 3.0：停止，不执行自动迁移或覆盖。
+- 需要旧知识库内容时，由用户人工确认后另行整理，不属于本技能范围。
 
 ### 3. 收集变更
 
@@ -167,7 +165,7 @@ manifest 缺少基线时，允许用户指定起点；无法确定时不得假�
 - 受影响文档
 - 新增、修改、删除、移动和重命名
 - 来源冲突和待确认项
-- Schema 迁移情况
+- Schema 版本校验结果
 
 相同起止提交和相同变更实体不得重复追加。
 
@@ -214,7 +212,7 @@ manifest 缺少基线时，允许用户指定起点；无法确定时不得假�
 - 不把文件移动误判成能力删除和新增。
 - 不把删除文件当成暂时无法扫描而保留活动状态。
 - 不在不同 Git 分支之间合并知识事实。
-- 不自动升级不兼容的知识库 Schema。
+- 不迁移或自动升级旧版知识库 Schema。
 - 不提交、推送或清理用户工作区，除非用户明确要求。
 
 ## 完成条件
@@ -226,4 +224,3 @@ manifest 缺少基线时，允许用户指定起点；无法确定时不得假�
 - 人工内容未被覆盖。
 - 相同变更重复执行不会产生重复记录。
 - 未覆盖范围和待确认项已经报告。
-

@@ -22,14 +22,14 @@ description: "Use when 需要将项目基础信息、API、页面、核心业务
 
 优先读取：
 
-- `cadence/knowledgeBase/manifest.yaml`
-- `cadence/knowledgeBase/01-base-information.md`
-- `cadence/knowledgeBase/02-api-capabilities.md`
-- `cadence/knowledgeBase/03-page-capabilities.md`
-- `cadence/knowledgeBase/06-development-guide.md`
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
+- `cadence/knowledge-base/base-information.md`
+- `cadence/knowledge-base/interfaces/README.md`
+- `cadence/knowledge-base/pages/README.md`
+- `cadence/knowledge-base/development-guide.md`
 - 用户提供的术语、架构和业务流程资料
 
-缺少某个领域文档时，不得把概览技能变成重复的全仓分析技能。记录缺失并引导执行对应领域技能。
+Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base-bootstrap`。缺少某个适用领域文档时，不得把概览技能变成重复的全仓分析技能；记录缺失并引导执行对应领域技能。不适用领域按 Manifest 跳过。
 
 ## 强制规则
 
@@ -69,7 +69,7 @@ description: "Use when 需要将项目基础信息、API、页面、核心业务
 - 领域术语
 - 变更历史和待确认项
 
-大型项目链接到 `services/`、`apis/`、`pages/` 和 `data-models/` 子文档。
+大型项目链接到 `services/`、`interfaces/`、`pages/` 和 `data-models/` 子文档。
 
 ### 3. 整理核心业务流程
 
@@ -123,10 +123,9 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 
 生成或更新：
 
-- `cadence/knowledgeBase/README.md`
-- `cadence/knowledgeBase/00-project-overview.md`
-- `cadence/knowledgeBase/04-domain-glossary.md`
-- `cadence/knowledgeBase/07-open-questions.md`
+- `cadence/knowledge-base/README.md`（入口索引）
+- `cadence/knowledge-base/domain-glossary.md`
+- `cadence/knowledge-base/open-questions.md`
 - `cadence/project-rules/knowledge-base-usage.md`
 
 `README.md` 作为 Coding Agent 首选入口，保持短小，只提供读取顺序、覆盖范围和导航。
@@ -139,7 +138,7 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 <!-- cadence-knowledge-base:start -->
 ## 项目 KnowledgeBase
 
-修改代码前读取 `cadence/knowledgeBase/README.md`，并按任务范围读取相关文档。
+修改代码前读取 `cadence/knowledge-base/README.md`，并按任务范围读取相关文档。
 <!-- cadence-knowledge-base:end -->
 ```
 
@@ -189,4 +188,3 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 - 待确认项按优先级整理。
 - `CLAUDE.md`、`AGENTS.md` 只修改稳定区块。
 - 项目规则明确知识库的读取和更新方式。
-

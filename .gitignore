@@ -3,3 +3,6 @@
 .mcp.json
 .codex/config.toml
 .claude/commands/sync-backup.md
+
+# macOS
+.DS_Store
