@@ -14,7 +14,8 @@ description: "Use when 需要按用户提供的对外能力清单和工程范围
 - 执行前读取 `references/api-analysis-guide.md`。
 - 生成能力主文件时使用 `assets/api-capabilities-template.md`。
 - 生成请求响应配套文件时使用 `assets/api-parameters-message-template.md`。
-- 需要查看成品格式时读取 `references/demo.md` 和 `references/demo_参数与报文.md`。
+- 分析用户清单中的对外能力时，成品格式参考 `references/demo.md` 和 `references/demo_参数与报文.md`。
+- 分析工程扫描发现的对内前端 REST 时，成品格式参考 `references/demo_对内REST.md` 和 `references/demo_对内REST_参数与报文.md`。
 
 ## 前置输入
 
@@ -51,6 +52,15 @@ Manifest 不存在、Schema 不是 `3.0` 或 API 输入未通过 Bootstrap 校�
 - 定时任务、批处理和异步作业
 
 疑似对外但未登记的能力标记为对内候选或待确认，不自动升级为对外。
+
+### 成品案例选择
+
+| 可观察条件 | 分类 | 参考案例 | 入口分析重点 |
+|------------|------|----------|--------------|
+| 能力登记在用户对外能力清单中 | 对外 | `demo.md`、`demo_参数与报文.md` | 对外清单、开放网关、能力编码、协议转换、Provider、外部鉴权与暴露状态 |
+| 工程范围发现前端或内部系统 REST，且未登记在对外清单中 | 对内 | `demo_对内REST.md`、`demo_对内REST_参数与报文.md` | 页面或内部调用方、请求封装、BFF/内部网关、Controller、权限和服务调用链 |
+
+Demo 只约束文档形状，不提供目标项目事实。不得因为对内 REST 与某个对外能力业务名称相似，就复用对外分类、能力编码、调用方或网关结论。
 
 ## 执行模式
 

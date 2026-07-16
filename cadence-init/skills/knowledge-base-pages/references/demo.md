@@ -3,6 +3,8 @@
 > **案例范围**：虚构订单管理前端，展示 Vue 动态路由、React 静态路由、页面到 REST API 主文件的关联，以及未登记接口的候选处理。
 >
 > **链接说明**：接口链接按最终产物位于 `cadence/knowledge-base/pages/` 时的相对路径编写，目标是 `cadence/knowledge-base/interfaces/` 下由 `knowledge-base-api` 生成的接口主文件。
+>
+> **分类说明**：本案例中的 `API-order-page` 是工程扫描发现的对内 REST，格式参考 [`knowledge-base-api/references/demo_对内REST.md`](../../knowledge-base-api/references/demo_对内REST.md)。页面只有在代码实际调用开放地址时才关联对外 API，不能因“订单查询”名称相似而关联 `API-partner-order-query`。
 
 ## 一、前端应用与路由来源
 

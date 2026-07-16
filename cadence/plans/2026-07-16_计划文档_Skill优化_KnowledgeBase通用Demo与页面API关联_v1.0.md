@@ -1,5 +1,7 @@
 # KnowledgeBase 通用 Demo 与页面 API 关联实施计划
 
+> **修订说明**：默认 API Demo 的分类设计已由 `2026-07-16_计划文档_Skill修正_KnowledgeBase对外与对内APIDemo拆分_v1.0.md` 修正。当前 `demo.md` 表示对外能力，原 `API-order-page` 案例已迁移为独立的 `demo_对内REST.md`，本计划中的默认文件映射不再作为现行约束。
+>
 > **执行要求**：按任务顺序内联执行，每个任务完成后运行对应静态检查，再进入下一任务。
 
 **目标**：将 KnowledgeBase API 案例完整改造成不含真实项目特征的通用订单案例，并让页面案例、模板和 Skill 明确关联接口知识库中的 REST API 主文件。
