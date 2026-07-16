@@ -21,7 +21,8 @@ description: "Use when 需要为 Vue 或 React 存量前端分析页面、静态
 
 - `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
 - `cadence/knowledge-base/base-information.md`
-- `cadence/knowledge-base/interfaces/` 下的接口主文件
+- `cadence/knowledge-base/interfaces/README.md` 接口总索引
+- `cadence/knowledge-base/interfaces/` 下与页面调用匹配的接口主文件
 - 用户提供的路由、菜单、角色和权限资料
 - Vue/React 路由、页面、状态管理和请求模块代码
 
@@ -32,7 +33,9 @@ Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base
 - 为页面和路由分别生成稳定 ID。
 - 区分静态路由、动态路由、后端下发路由和运行时注入路由。
 - 区分路由存在、组件存在、页面可达和用户有权访问。
-- 页面调用的 API 必须关联到 `interfaces/` 下对应接口主文件中的 API ID；未登记接口先标记候选。
+- 页面调用的 API 必须使用接口知识库中的稳定 API ID，并以 Markdown 相对链接指向 `interfaces/` 下对应接口主文件。
+- 页面与 REST API 映射必须记录 HTTP Method、规范化 Path、前端调用位置和请求封装链路。
+- 未登记或无法唯一匹配的接口使用 `API-CANDIDATE-*`，不得生成不存在的接口主文件链接。
 - 权限结论必须结合路由元数据、守卫、菜单、状态和后端鉴权资料。
 - 测试页面、Storybook、Demo 和开发工具页面单独标记。
 - 动态 Import、别名和懒加载路径必须解析到实际组件或标记未知。
@@ -142,7 +145,15 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 - 同一 API 被多个页面复用
 - 页面只消费 Store，而 Store 发起 API 请求
 
-无法唯一映射时列出候选并标记待确认。
+按以下顺序完成 REST API 匹配：
+
+1. 从页面逐层追踪到实际请求函数，保留 Store、Hook、Composable、Thunk、Service 和请求封装链路。
+2. 合并请求客户端 `baseURL`、统一前缀、开发代理、BFF 和网关重写规则。
+3. 将运行时路径参数规范化为 `{参数名}`，得到 `HTTP Method + 标准 Path`。
+4. 先在 `interfaces/README.md` 中按 Method + Path 查找稳定 API ID，再读取对应接口主文件核对分类、状态和后端服务。
+5. 匹配成功时，在页面文档中使用稳定 API ID，并以 Markdown 相对链接指向对应接口主文件。
+6. 同一页面调用多个 API 时逐条建立关系，不合并为无法独立导航的文本列表。
+7. 无法唯一匹配时列出候选，使用 `API-CANDIDATE-*` 并标记待确认；不根据函数名、按钮名或页面文案补造正式接口。
 
 ### 8. 识别异常项
 
@@ -167,6 +178,8 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 - `cadence/knowledge-base/manifest.yaml`
 - `cadence/knowledge-base/open-questions.md`
 
+页面索引、单页面文档和追溯矩阵中的 API 节点必须使用同一稳定 ID。单页面文档中的已匹配 API 必须能够直接导航到 `../interfaces/` 下的接口主文件。
+
 ## 禁止行为
 
 - 不把文件目录直接当成路由结构。
@@ -189,6 +202,7 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 
 - 所有已发现路由均有来源和状态。
 - 页面和路由使用独立稳定 ID。
-- 页面、API、服务和数据之间能够导航。
+- 页面、API、服务和数据之间能够导航；已匹配 REST API 具有 Method、标准 Path 和接口主文件链接。
+- 所有页面 API 调用均已匹配稳定 API ID，或以 `API-CANDIDATE-*` 进入待确认清单。
 - 动态、权限和运行时限制已经明确。
 - 孤立、不可达和冲突项进入待确认清单。
