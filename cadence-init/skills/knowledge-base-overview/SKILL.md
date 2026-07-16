@@ -138,6 +138,7 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 <!-- cadence-knowledge-base:start -->
 ## 项目 KnowledgeBase
 
+需求澄清、Design、Plan、Coding、Testing、Review 或 Debug 前，先使用 `knowledge-base-context` 获取最小任务上下文。
 修改代码前读取 `cadence/knowledge-base/README.md`，并按任务范围读取相关文档。
 <!-- cadence-knowledge-base:end -->
 ```

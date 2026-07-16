@@ -6,7 +6,7 @@
 
 新增 `knowledge-base-context` Skill，负责从用户任务出发，同时读取 KnowledgeBase 与当前源码，按任务需要渐进扩展知识范围，最终生成最小任务上下文包。
 
-该 Skill 属于 `cadence-init`，与 `cadence-workflow` 没有依赖、调用或流程关系。它不执行需求、设计、计划、编码、测试、评审或调试，只为这些任务提供经过组织和校验的项目上下文。
+该 Skill 属于 `cadence-init`，与 `cadence-workflow` 没有依赖、调用或流程关系。它作为需求、设计、计划、编码、测试、评审或调试的前置上下文阶段，只为这些任务提供经过组织和校验的项目上下文；上下文准备完成后由调用方继续用户原始任务。
 
 ## 2. 目标
 
@@ -28,6 +28,7 @@
 - 不在 Manifest 缺失时回退成普通全仓分析。
 - 不建立自定义画像、画像插件或运行时画像注册机制。
 - 不自动持久化每次任务上下文，避免形成第二套易过期知识库。
+- 不因自动命中而终止或替代用户原始任务。
 
 ## 4. 与现有 cadence-init 保持一致
 
@@ -65,6 +66,7 @@ cadence-init/skills/knowledge-base-context/
 
 - `knowledge-base-overview/assets/knowledge-base-usage-template.md`：要求七类任务先使用 `knowledge-base-context` 获取上下文。
 - `knowledge-base-overview/references/rules-integration-guide.md`：说明 Claude Code 与 Codex 的手动调用方式。
+- `knowledge-base-overview/SKILL.md`：让写入 CLAUDE.md 与 AGENTS.md 的稳定区块包含七类任务前置提示。
 - `cadence-init/.claude-plugin/plugin.json`：描述中补充 KnowledgeBase 消费能力，并按仓库发布规则更新版本。
 
 不新增显式 Skill 注册表。沿用当前插件对 `cadence-init/skills/*/SKILL.md` 的发现方式。
@@ -80,7 +82,7 @@ cadence-init/skills/knowledge-base-context/
 ```yaml
 ---
 name: knowledge-base-context
-description: "Use when 当前项目存在 Schema 3.0 KnowledgeBase，且用户正在进行需求澄清、功能或技术设计、实施计划、编码、测试、评审或调试，需要从 KnowledgeBase 与源码、DDL、配置中渐进获取任务相关上下文；也用于用户明确要求加载、获取或整理项目 KnowledgeBase 上下文。"
+description: "Use before any project-specific 需求澄清、Design/技术设计、Plan/实施计划、Coding/编码、Testing/测试、Review/评审或 Debug/调试 task when Schema 3.0 KnowledgeBase exists and the task must be grounded in both KnowledgeBase and current source code, DDL, and configuration; also use when the user asks to load, retrieve, or organize project KnowledgeBase context."
 ---
 ```
 
@@ -105,8 +107,10 @@ description: "Use when 当前项目存在 Schema 3.0 KnowledgeBase，且用户�
 
 ### 5.2 手动触发
 
-- Claude Code：`/knowledge-base-context`
-- Codex：`$knowledge-base-context`
+- Claude Code 插件：`/cadence-init:knowledge-base-context`
+- Codex（Skill 已安装或被项目发现）：`$knowledge-base-context`
+
+`agents/openai.yaml` 提供 Codex 的展示和默认提示元数据，不承担安装、发现或触发注册职责。Codex 与 Claude Code 一样，必须先能够发现该 Skill，之后才支持自动选择和手动调用。
 
 Codex `agents/openai.yaml` 建议内容：
 
@@ -141,7 +145,7 @@ interface:
 
 Manifest 不替代 KnowledgeBase 内容，也不替代源码。Manifest 缺失或 Schema 不是 `3.0` 时停止，报告缺失原因并引导使用 `knowledge-base-bootstrap`。
 
-当前 Git 提交晚于 Manifest 基线时继续读取当前源码，同时在上下文包中标记基线漂移。受影响实体已经发生变化时，记录 KnowledgeBase 结论与当前实现的差异，不静默选择一方。
+当前 Git 提交晚于 Manifest 基线时继续读取当前源码，并在任务元数据中记录基线较旧。只有任务相关文件或符号在基线后发生变化时才标记 `基线漂移`，并记录 KnowledgeBase 结论与当前实现的差异，不静默选择一方。
 
 ## 7. 固定任务画像
 
@@ -274,6 +278,8 @@ Skill 不要求特定 MCP，不连接数据库、中间件、配置中心或远�
 
 Skill 不输出完整源码副本，也不复制整个 KnowledgeBase 文档。使用摘要、稳定 ID、精确文件或符号位置和必要的短片段组织上下文。
 
+上下文包生成后，控制权返回当前调用方。若原始请求是 Design、Plan、Coding、Testing、Review 或 Debug，调用方继续该请求；只有用户明确只要求加载、整理或保存上下文时才结束。
+
 ## 11. 持久化规则
 
 默认不写文件。用户明确要求复用、交接或审计时，保存到：
@@ -304,7 +310,7 @@ YYYY-MM-DD_任务上下文_任务名称_v1.0.md
 | KnowledgeBase 文档缺失 | 继续读取相关源码，同时标记知识库缺口 |
 | 源码路径失效 | 使用稳定 ID、关系矩阵和文本检索定位候选，无法确认时记录冲突 |
 | KnowledgeBase 与源码冲突 | 同时保留两侧证据；影响方向时询问用户 |
-| 当前提交晚于基线 | 标记知识库漂移，重点核对受影响实体 |
+| 当前提交晚于基线 | 比较任务相关文件和符号；只有发生变化才标记知识库漂移，无相关变化只记录基线较旧 |
 | 同名实体无法唯一匹配 | 列出候选并询问用户，不按名称猜测 |
 | 继续扩展将超出 Manifest 范围 | 停止并说明需要新的用户授权范围 |
 | 工作区存在未提交修改 | 将其视为当前源码状态，不清理、不覆盖、不恢复 |
@@ -350,7 +356,7 @@ Claude Code 使用 `AskUserQuestion`；Codex 工具可用时使用 `request_user
 
 ### 14.3 手动触发验证
 
-- Claude Code `/knowledge-base-context` 能读取 Skill。
+- Claude Code `/cadence-init:knowledge-base-context` 能读取 Skill。
 - Codex `$knowledge-base-context` 能读取 Skill。
 - Codex Skill 列表展示 `agents/openai.yaml` 中的名称和描述。
 
@@ -384,3 +390,4 @@ Claude Code 使用 `AskUserQuestion`；Codex 工具可用时使用 `request_user
 - 默认不产生任务文件；明确要求时生成符合命名规则的任务快照。
 - Manifest 只承担 Schema、范围和基线职责，不参与 Skill 触发。
 - 新 Skill 不依赖、不调用、不修改 `cadence-workflow`。
+- 自动命中后能够完成上下文前置阶段并继续用户原始任务。

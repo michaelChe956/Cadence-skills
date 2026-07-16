@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "cadence-init",
-      "description": "项目初始化与存量项目知识库插件 - 包含环境检查、项目分析、规则配置、MCP配置及 Java + Vue/React KnowledgeBase 生成能力",
-      "version": "0.0.2",
+      "description": "项目初始化与存量项目知识库插件 - 包含环境检查、项目分析、规则配置、MCP配置、Java + Vue/React KnowledgeBase 生成及渐进式任务上下文消费能力",
+      "version": "0.0.3",
       "source": "./cadence-init",
       "author": {
         "name": "michaelChe",

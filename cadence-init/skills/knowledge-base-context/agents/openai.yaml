@@ -1,0 +1,4 @@
+interface:
+  display_name: "KnowledgeBase 任务上下文"
+  short_description: "从 KnowledgeBase 与源码渐进获取当前任务所需上下文"
+  default_prompt: "使用 $knowledge-base-context 识别当前任务画像，同时读取 Schema 3.0 KnowledgeBase 与相关源码，生成最小任务上下文包。"
