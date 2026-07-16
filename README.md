@@ -119,7 +119,7 @@ Cadence 由两个独立插件组成：
 
 | 插件 | 说明 |
 |------|------|
-| **cadence-init** | 项目初始化 — 环境检查、项目分析、规则配置、MCP 配置、Skill 创建 |
+| **cadence-init** | 项目初始化 — 环境检查、项目分析、规则配置、MCP 配置、Skill 创建及 KnowledgeBase 生成与消费 |
 | **cadence-workflow** | 开发工作流 — 完整/快速/探索流程、TDD、代码审查、进度追踪 |
 
 ### 方式 1: 通过插件市场安装（推荐）
@@ -225,6 +225,63 @@ git pull
 | `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
+
+### KnowledgeBase Skills
+
+`cadence-init` 可以根据用户提供的工程、DDL、中间件、对外能力和页面范围，为 Java 与 Vue/React 存量项目建立 Schema 3.0 KnowledgeBase，并在后续任务中渐进获取相关知识。
+
+| Skill | 作用 |
+|------|------|
+| `knowledge-base-bootstrap` | 校验 `cadence/knowledge-base/user-input/`，自动生成 Manifest 3.0 并编排领域分析 |
+| `knowledge-base-base-info` | 生成工程、数据配置、中间件和开发方式信息 |
+| `knowledge-base-api` | 按用户对外能力清单和工程范围分析对外、对内 API 及集成能力 |
+| `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 REST API 关联 |
+| `knowledge-base-overview` | 生成 KnowledgeBase 入口、关系导航和 Coding Agent 使用规则 |
+| `knowledge-base-update` | 根据 Git 与增量资料安全更新现有 KnowledgeBase |
+| [`knowledge-base-context`](readmes/skills/knowledge-base-context.md) | 在需求、设计、计划、编码、测试、评审或调试前，同时读取 KnowledgeBase 与当前实现，生成最小任务上下文 |
+
+#### Schema 3.0 Manifest
+
+Manifest 是 KnowledgeBase 自动生成的目录卡、分析范围和 Git 基线，不是数据库 Schema，也不需要用户手工配置。
+
+用户需要维护：
+
+```text
+cadence/knowledge-base/user-input/
+├── base-info.md
+├── project-scope.md
+├── database-ddl.sql
+├── middleware-scope.md
+├── api-scope.md
+└── page-scope.md
+```
+
+其中 `base-info.md` 是强制入口。`knowledge-base-bootstrap` 校验这些输入后自动生成：
+
+```text
+cadence/knowledge-base/input-inventory.md
+cadence/knowledge-base/manifest.yaml
+```
+
+Manifest 不参与 Skill 自动触发，只在 Skill 触发后提供 Schema 版本、用户授权范围和 KnowledgeBase 基线。
+
+#### KnowledgeBase 任务上下文
+
+Claude Code 插件手动调用：
+
+```text
+/cadence-init:knowledge-base-context
+```
+
+Codex 在 Skill 已安装或被项目发现后手动调用：
+
+```text
+$knowledge-base-context
+```
+
+当目标项目已有 Schema 3.0 KnowledgeBase，并且项目规则已经接入时，需求澄清、Design、Plan、Coding、Testing、Review 和 Debug 任务可以通过自然语言自动触发该 Skill。
+
+完整用法、任务画像、双轨读取和输出说明见 [knowledge-base-context 使用指南](readmes/skills/knowledge-base-context.md)。
 
 ### 强制无交互模式（no-interrupt）
 

@@ -16,7 +16,7 @@
 - KnowledgeBase 与源码、DDL、配置每次都同时参与，不存在主从或降级关系。
 - Manifest 只承担 Schema、范围和基线职责，不参与 Skill 触发。
 - 默认不写任务上下文文件，只有用户明确要求时才保存。
-- 不增加脚本、README、安装指南或其他无关文件。
+- 不增加脚本或无关文件；按用户后续确认增加独立 Skill README，并更新现有 README 导航。
 - 不修改、不调用、不依赖 `cadence-workflow`。
 - 设计依据：`cadence/designs/2026-07-16_技术方案_KnowledgeBase渐进式任务上下文Skill_v1.0.md`。
 
@@ -365,6 +365,103 @@ Run:
 ```bash
 git status --short --branch
 git log -1 --oneline --decorate
+```
+
+Expected: 工作区干净，`HEAD` 与 `origin/main` 指向同一提交。
+
+### Task 7: 补充 KnowledgeBase Context README
+
+**Files:**
+
+- Create: `readmes/skills/knowledge-base-context.md`
+- Modify: `readmes/skills/README.md`
+- Modify: `README.md`
+
+**Interfaces:**
+
+- Consumes: `knowledge-base-context`、`knowledge-base-bootstrap`、Manifest 3.0 输入契约和双端真实调用方式。
+- Produces: 面向使用者的独立指南，以及根 README 和 Skills 导航入口。
+
+- [ ] **Step 1: 编写独立 Skill 使用文档**
+
+文档固定包含：
+
+1. Skill 定位与非目标。
+2. 自动触发前提和七类画像。
+3. Claude Code `/cadence-init:knowledge-base-context` 与 Codex `$knowledge-base-context` 手动入口。
+4. Schema 3.0 Manifest 的用途、自动生成方式和用户输入责任。
+5. KnowledgeBase 与源码、DDL、配置双轨读取流程。
+6. 固定十节输出、就绪状态和默认不持久化规则。
+7. Coding + Testing、Review、Debug 使用案例。
+8. 常见问题、升级说明和相关 Skills。
+
+- [ ] **Step 2: 更新 Skills README 导航**
+
+增加 KnowledgeBase Skills 分类和“从现有项目知识开始任务”的快速导航，链接到 `knowledge-base-context.md`。不重写已有 Cadence Workflow 分类。
+
+- [ ] **Step 3: 更新根 README**
+
+在 `cadence-init` 能力说明中增加 KnowledgeBase 初始化与任务上下文消费说明，并增加独立指南链接。明确 Manifest 由 Bootstrap 自动生成，用户只维护 `cadence/knowledge-base/user-input/`。
+
+- [ ] **Step 4: 验证文档一致性**
+
+Run:
+
+```bash
+test -f readmes/skills/knowledge-base-context.md
+rg -n "knowledge-base-context|Schema 3.0 Manifest|/cadence-init:knowledge-base-context|\$knowledge-base-context" README.md readmes/skills/README.md readmes/skills/knowledge-base-context.md
+rg -n "base-info.md|manifest.yaml|KnowledgeBase 与源码、DDL、配置" readmes/skills/knowledge-base-context.md
+git diff --check
+```
+
+Expected: 独立文档存在，双端入口、Manifest 自动生成、用户输入责任、双轨读取和导航链接均可检索，格式检查通过。
+
+### Task 8: 提交并推送 README
+
+**Files:**
+
+- Commit: `README.md`
+- Commit: `readmes/skills/README.md`
+- Commit: `readmes/skills/knowledge-base-context.md`
+- Commit: `cadence/plans/2026-07-16_计划文档_Skill开发_KnowledgeBase渐进式任务上下文_v1.0.md`
+
+- [ ] **Step 1: 暂存 README 变更**
+
+Run:
+
+```bash
+git add README.md readmes/skills/README.md readmes/skills/knowledge-base-context.md cadence/plans/2026-07-16_计划文档_Skill开发_KnowledgeBase渐进式任务上下文_v1.0.md
+```
+
+- [ ] **Step 2: 核对 staged diff**
+
+Run:
+
+```bash
+git diff --cached --check
+git diff --cached --stat
+git diff --cached --name-status
+```
+
+Expected: 只有根 README、Skills README、独立 Skill README 和本计划发生变化。
+
+- [ ] **Step 3: 提交并推送**
+
+Run:
+
+```bash
+git commit -m "docs: 补充 KnowledgeBase 任务上下文使用指南"
+git push
+```
+
+- [ ] **Step 4: 验证同步状态**
+
+Run:
+
+```bash
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
 ```
 
 Expected: 工作区干净，`HEAD` 与 `origin/main` 指向同一提交。
