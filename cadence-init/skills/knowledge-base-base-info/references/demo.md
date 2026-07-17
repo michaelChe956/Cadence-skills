@@ -100,3 +100,7 @@ Mapper 的 `SELECT` 和手写 SQL 的 `INSERT` 可以证明代码引用这些字
 - Nacos 与开发配置的 Redis DB 不一致时分别记录环境并标记来源冲突，不选择单一值。
 - 后端构建命令来自 Maven Wrapper，前端命令来自 `package.json`；未发现安全的本地数据库初始化入口时不执行迁移。
 - `base-information.md` 的配置章节只保留当前快照、Profile、配置组、风险和 `configurations/README.md` 导航，不复制服务配置键清单。
+
+## Manifest 生命周期示例
+
+BaseInfo 分析前 Manifest 的 `generated_at` 为知识库首次生成时间。本次分析新增一个高优先级配置来源冲突，并解决一个中优先级字段问题：先更新 `open-questions.md` 的两条记录，再按全部未解决条目重算阻断、高、中、低计数。受影响领域文档、待确认文档和 Manifest 四级计数原子写入；`generated_at` 保持原值，不改为本次分析时间。

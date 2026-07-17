@@ -6,6 +6,15 @@
 
 Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 是领域 Skills 的唯一授权范围，不得重新解释原始输入或扩大范围。
 
+## 既有 Manifest 与重新初始化授权
+
+在校验六领域输入前先检查目标目录中的既有 Manifest：
+
+- 不存在 Manifest：按首次初始化继续。
+- 存在 Manifest 且 Schema 不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有版本和路径。
+- 存在 Schema 4.0 Manifest，但用户未显式授权重新初始化：立即停止，不修改现有 KnowledgeBase。
+- 只有用户明确表达“重新初始化现有 Schema 4.0 KnowledgeBase”时才允许重建；把授权原文或可定位来源写入输入清单。普通初始化、补文档或更新请求不构成重新初始化授权。
+
 ## 六领域输入
 
 | 领域 | 引用文件 | 适用说明 |
@@ -91,6 +100,6 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 - 配置快照基线写入 `evidence.configuration_snapshots.baseline`，并保留可审计范围摘要。
 - 首次初始化时 `update.last_change_package` 为空对象，`update.processed_packages` 为空列表。
 - `documents.data_models` 和 `documents.configurations` 分别登记领域文档。
-- `generated_at` 记录本次 Manifest 生成时间；`open_questions.blocking`、`high`、`medium`、`low` 初始化为 0，并在后续流程中按实际待确认项更新。
+- `generated_at` 记录本次新知识库的首次生成时间；`open_questions.blocking`、`high`、`medium`、`low` 按新生成的待确认文档初始化，并在后续流程中按实际待确认项更新。
 
 只生成 Schema 4.0，不读取、兼容或迁移其他版本知识库。

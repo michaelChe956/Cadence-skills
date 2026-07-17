@@ -66,6 +66,13 @@ Git Diff 和代码扫描只能验证包内代码声明，不能推断或替代�
 
 允许更新稳定管理区块、明确的自动生成表格、Manifest 和机器维护索引。禁止覆盖管理标记之外的自由文本、人工确认结论和历史说明。新证据与人工结论冲突时保留双方，并登记来源冲突。
 
+## Manifest 生命周期与待确认计数
+
+- `generated_at` 是当前 KnowledgeBase 首次生成时间，任何增量更新都必须保留原值。
+- 每次新增、解决、重新打开或调整待确认项优先级后，从 `open-questions.md` 的未解决条目重新计算阻断、高、中、低数量。
+- 计数分别写入 `open_questions.blocking`、`open_questions.high`、`open_questions.medium`、`open_questions.low`。
+- 受影响文档、`open-questions.md`、四级计数、变更历史和 Manifest 必须原子写入；失败时回到更新前状态，不保留部分结果。
+
 ## 幂等处理
 
 先完成五份主文档和全部附件的敏感信息门禁。只有门禁通过后，才以变更标识及包内文件相对路径和内容 SHA-256 有序清单生成幂等标识。执行前后都检查 Manifest 的 `update.processed_packages`：

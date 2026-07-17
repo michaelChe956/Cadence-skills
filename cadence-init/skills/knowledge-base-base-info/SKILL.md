@@ -46,7 +46,9 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 - Properties、YAML、运行时 XML、Nginx 配置和缓存文件属于配置证据；Mapper XML 归入数据模型；日志配置归入可观测性。
 - 部署、发布和启动脚本只作为配置来源、加载顺序与部署方式的只读证据，禁止执行，不能把脚本内容当作已生效配置。
 - 相同内容的配置文件合并分析并记录全部适用服务、环境、Profile 和来源位置。同名但内容或适用范围不同的文件不得合并。
-- 内容哈希只允许在当前运行中临时用于识别相同内容文件，不得写入 KnowledgeBase。Manifest 的 `evidence.configuration_snapshots` 只保存 Manifest 4.0 输入契约定义的最终快照指纹。
+- 内容哈希只允许在当前运行中临时用于识别相同内容文件，不得写入 KnowledgeBase。Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指纹、来源元数据和可审计范围摘要，包括 `scope_summary`、纳入文件数量或清单摘要、服务摘要与文件规则摘要；不保存原始快照、单文件内容哈希或敏感值哈希。
+- `generated_at` 是当前 KnowledgeBase 首次生成时间；BaseInfo 更新 Manifest 时必须保留原值，不得改写为本次分析或文档更新时间。
+- 每次新增、解决、重新打开或调整待确认项级别时，先更新 `open-questions.md`，再按未解决条目重新计算 `open_questions.blocking/high/medium/low`；文档与四级计数必须在同一次原子写入中保持一致。
 - 默认排除 `.idea`、`.gitkeep`、空文件和明确历史备份；无法判断是否为历史文件时标记 `待确认`，不得直接纳入当前基线。
 - 密码、Token、AccessKey、Secret、密钥、私钥、完整连接串、内部域名、IP 和 URL 等敏感配置只记录键、用途和值类型，实际值统一写为 `<redacted>`。不确定是否敏感时按敏感信息处理，不得保存敏感值哈希或其他可关联的确定性衍生物。
 - 测试、Mock、示例和生成代码必须单独标记，不能作为生产结构的唯一确认依据。
@@ -129,6 +131,8 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 
 `base-information.md` 的数据模型和配置章节只保存摘要与导航，不复制每张逻辑表的完整字段清单或每个服务的配置键清单。
 
+写入 Manifest 时保留 `generated_at`，并在本次分析新增、解决、重新打开或调整待确认项后，从 `open-questions.md` 的未解决条目重算 `open_questions.blocking/high/medium/low`。Manifest、受影响文档和待确认文档必须原子写入；任一步失败时不保留部分计数或部分文档结果。
+
 ## 异常与停止规则
 
 - 配置为 `全量` 或 `指定` 时，`evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空，必须在读取配置内容前停止。
@@ -144,7 +148,8 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 - 缺少中间件或生产配置时，只记录可定位候选和已知环境，不把依赖或开发配置升级为生产事实。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。
 - 配置总索引和范围内每个服务的配置文档均已生成，链接可达；配置为 `不适用` 时总索引已记录原因。
-- 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 只保存授权的最终快照指纹、范围摘要和来源元数据；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
+- 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 保存授权的最终快照指纹、来源元数据和 `scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
+- Manifest 的 `generated_at` 已保留为首次生成时间；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 的未解决条目完全一致，并与受影响文档原子写入。
 - 每张逻辑表都有字段清单、证据状态、证据位置、读写服务以及已发现的 Mapper/SQL 映射。
 - 实际索引、默认值和数据库约束只有在证据支持时记录；来源冲突和未覆盖对象已进入待确认项。
 - API、页面、服务、配置和逻辑表通过稳定 ID 关联；分片物理表没有被重复建模。

@@ -152,6 +152,8 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 - `update.processed_packages`：追加本次变更标识、幂等标识和处理时间。
 - Git 基线、文档更新时间、受影响文档、稳定 ID 映射、覆盖数量和待确认项。
 
+`generated_at` 始终保留为当前 KnowledgeBase 首次生成时间，不得改写为本次 Update 时间。每次新增、解决、重新打开或调整待确认项级别时，先更新 `open-questions.md`，再按未解决条目重算 `open_questions.blocking/high/medium/low`；受影响文档、待确认文档、四级计数、变更历史和 Manifest 必须在同一次原子写入中提交。
+
 写入前再次检查 `processed_packages`，防止重复执行并发追加相同历史。只有分母明确时才能更新覆盖率。
 
 ### 7. 输出报告
@@ -187,5 +189,6 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 - 五份主文档和全部附件在计算幂等标识前已通过敏感信息门禁。
 - 每个更新文档都能沿固定影响链追溯到变更包和实体。
 - `last_change_package`、`processed_packages`、新配置基线和变更历史一致。
+- `generated_at` 保持首次生成时间未变；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 未解决条目一致，并与本次变更原子写入。
 - 相同变更包重复执行不产生任何重复历史或实体。
 - 来源冲突、未验证项目、风险和未覆盖范围已经报告。

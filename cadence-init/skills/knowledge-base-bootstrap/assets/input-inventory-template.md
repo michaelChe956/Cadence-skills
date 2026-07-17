@@ -7,6 +7,9 @@
 - Base Info：`cadence/knowledge-base/user-input/base-info.md`
 - Git 仓库与分支：
 - 基线提交：
+- 初始化模式：首次初始化 / 显式授权重新初始化 Schema 4.0
+- 重新初始化授权来源：不适用 / 用户原文或可定位来源
+- 既有 Manifest 检查：不存在 / Schema 4.0 / 非 Schema 4.0 已停止
 - 校验结果：通过 / 未通过
 
 ## 六领域范围

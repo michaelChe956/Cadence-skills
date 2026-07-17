@@ -51,6 +51,12 @@
 
 处理结果：扫描前停止，报告冲突标识、已登记环境与目录、当前声明环境与目录；不重新解释为新快照，不覆盖 Manifest 基线。
 
+## 既有 Manifest 门禁
+
+1. 目标目录已有非 Schema 4.0 Manifest：立即停止，报告版本与路径，不覆盖、不迁移、不删除。
+2. 目标目录已有 Schema 4.0 Manifest，但用户只说“初始化 KnowledgeBase”：立即停止，要求用户明确是否重新初始化，不把普通初始化请求当作授权。
+3. 目标目录已有 Schema 4.0 Manifest，用户明确授权重新初始化：记录授权来源后，按六领域输入重建全新的 Schema 4.0 KnowledgeBase。
+
 ## 指定接口模式
 
 接口状态为 `指定`，`api-scope.md` 的指定能力为 `API-example-query`。

@@ -16,7 +16,7 @@ cadence/knowledge-base/user-input/updates/CHANGE-order-v2/
 CHANGE-order-v2 → !128 / abc1234..def5678 → OrderController#create、OrderEntity#remark → API-order-create、TABLE-order → 数据模型/API/页面 → 受影响文档
 ```
 
-成功后把目标配置快照写为新基线，并把变更包幂等标识写入 `update.last_change_package` 和 `update.processed_packages`。
+成功后把目标配置快照写为新基线，并把变更包幂等标识写入 `update.last_change_package` 和 `update.processed_packages`。保留原 `generated_at`；若本次新增、解决或调整待确认项，则从 `open-questions.md` 未解决条目重算四级计数，并与受影响文档、历史和 Manifest 原子写入。
 
 ## 场景二：缺少数据库文档而停止
 

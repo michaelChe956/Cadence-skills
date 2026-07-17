@@ -153,7 +153,7 @@
 5. 确认同一 `snapshot_id` 未映射到不同环境或不同外部目录；映射冲突时停止并登记来源冲突。
 6. 读取配置内容前按 Manifest 4.0 输入契约首次计算最终快照指纹。首次计算指纹必须等于 Manifest 授权指纹，否则立即停止，不得读取配置内容。
 7. 分析结束时再次计算最终快照指纹。写入任何配置结论前必须满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`；任一比较不一致时立即停止。
-8. Manifest 的 `evidence.configuration_snapshots` 只保存授权的最终快照指纹、范围摘要和来源元数据，不保存单文件内容哈希或敏感值哈希。
+8. Manifest 的 `evidence.configuration_snapshots.baseline` 保存授权的最终快照指纹、来源元数据和可审计范围摘要，包括 `scope_summary`、纳入文件数量或清单摘要、服务摘要与文件规则摘要；不保存原始快照、单文件内容哈希或敏感值哈希。
 
 ### 指纹异常与停止规则
 
@@ -214,6 +214,13 @@
 - `缺失`
 - `来源冲突`
 - `待确认`
+
+### Manifest 生命周期与待确认计数
+
+- `generated_at` 是当前 KnowledgeBase 首次生成时间，BaseInfo 只读并保留，不得使用分析结束时间覆盖。
+- 每次新增、解决、重新打开或调整待确认项优先级后，以 `open-questions.md` 中未解决的阻断、高、中、低条目为唯一计数来源。
+- 重算结果分别写入 `open_questions.blocking`、`open_questions.high`、`open_questions.medium`、`open_questions.low`。
+- 受影响领域文档、`open-questions.md` 与 Manifest 四级计数必须原子写入；失败时不得留下部分更新。
 
 ## 配置与代码、数据模型及中间件的关系
 

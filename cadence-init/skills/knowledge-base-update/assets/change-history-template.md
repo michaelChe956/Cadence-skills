@@ -58,6 +58,11 @@
 | 冲突领域 | 变更包声明 | 验证证据 | 影响 | 处理状态 |
 |----------|------------|----------|------|----------|
 
+- `generated_at` 保留值：
+- `open_questions.blocking/high/medium/low` 更新前计数：
+- `open_questions.blocking/high/medium/low` 更新后计数：
+- 与 `open-questions.md` 未解决条目核对：一致 / 不一致
+
 ### 验证与风险
 
 - 已执行验证：

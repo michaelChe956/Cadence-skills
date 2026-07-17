@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 初始化"
   short_description: "校验六领域输入并建立 Schema 4.0 KnowledgeBase"
-  default_prompt: "使用 $knowledge-base-bootstrap 校验当前项目的六领域输入、配置快照可审计范围摘要和快照标识唯一映射，并按 Schema 4.0 初始化 KnowledgeBase。"
+  default_prompt: "使用 $knowledge-base-bootstrap 先检查既有 Manifest 与显式重新初始化授权，再校验当前项目的六领域输入、配置快照可审计范围摘要和快照标识唯一映射，并按 Schema 4.0 初始化 KnowledgeBase。"

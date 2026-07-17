@@ -39,7 +39,7 @@
 | DR-13 | Overview 生成适用领域导航 | 读取 Manifest → 对适用领域输出链接 → 保持入口只含摘要和导航 | 可导航到字段级模型和服务配置 | Overview Skill 与项目概览模板 | PASS |
 | DR-14 | Mapper XML 出现在配置包 | BaseInfo 文件分类 → Mapper XML 转交数据模型 → 配置文档只保留关系 | 不作为普通配置键文件 | BaseInfo 分析指南 | PASS |
 | DR-15 | 重复执行相同变更包 | 全包敏感门禁通过 → 计算相同幂等标识 → 命中 `processed_packages` | 不重复历史、实体或基线 | Update Skill、增量指南、Demo 场景五 | PASS |
-| DR-16 | Manifest 不是 Schema 4.0 | 七个相关 Skill 执行前置版本校验 | 全部停止，不兼容或迁移 | 七个 `SKILL.md` | PASS |
+| DR-16 | 目标目录已有 Manifest | Bootstrap 先检查既有 Manifest：非 4.0 时停止；4.0 但无显式重新初始化授权时停止；仅显式授权重建 4.0 时继续。其他六个消费 Skill 仍拒绝非 4.0 | 不覆盖或迁移旧 Manifest，不把普通初始化请求当作重建授权 | Bootstrap Skill、输入契约与 Demo；其他六个 `SKILL.md` | PASS |
 | DR-17 | `scope.configurations.status` 为 `不适用` 的纯代码或数据库更新 | `configuration-change.md` 存在并声明无变更 → 原因与 Manifest 一致 → 快照字段为带原因不适用 → 跳过快照比较 | 不因缺少快照阻断；不创建配置基线 | Update Skill、模板、指南、Demo 场景六、Overview 说明 | PASS |
 | DR-18 | 配置范围适用但缺少 `scope_summary` 或文件/服务/规则摘要 | Bootstrap 或消费者读取可审计范围字段 → 发现缺失 | 扫描前停止，不自行推断范围 | Bootstrap、BaseInfo、Context、Update | PASS |
 | DR-19 | 同一 `snapshot_id` 对应不同环境或目录 | Bootstrap/BaseInfo/Update/Context 核对唯一映射 → 发现冲突 | 停止并记录来源冲突，不覆盖映射 | 四个 Skill 与 Bootstrap Demo | PASS |
@@ -48,7 +48,7 @@
 | DR-22 | 附件包含原始敏感配置或敏感值哈希 | 遍历附件门禁 → 命中禁止项 | 在幂等哈希前停止 | Update Skill、附件说明、增量指南 | PASS |
 | DR-23 | 接口或页面领域为 `不适用` 且说明性 README 不存在 | Overview 读取 Manifest 状态 → 输出无链接 `不适用（原因）` 条目 | 不生成失效链接，仍保留稳定导航位置 | Overview Skill、两个模板、Demo | PASS |
 | DR-24 | Context 未定位当前实现 | 证据矩阵状态选择固定枚举 | 统一使用设计枚举 `代码缺失`，不保留旧状态词 | Context Skill、模板、指南、用户说明 | PASS |
-| DR-25 | 新 Manifest 初始化 | Bootstrap 生成 Manifest → 写入 `generated_at` → 初始化四级待确认计数 | 时间字段存在；blocking/high/medium/low 默认均为 0 | Manifest 模板、Bootstrap Skill 与输入契约 | PASS |
+| DR-25 | Manifest 生命周期与待确认计数 | Bootstrap 写入知识库首次生成时间和初始四级计数 → BaseInfo/Update 保留 `generated_at` → 每次待确认项变化后按未解决条目重算四级计数并原子写入 | 时间字段不被后续写入者覆盖；blocking/high/medium/low 与待确认文档一致 | Manifest 模板、Bootstrap、BaseInfo、Update 与待确认模板 | PASS |
 
 ## 逐项核对结论
 
