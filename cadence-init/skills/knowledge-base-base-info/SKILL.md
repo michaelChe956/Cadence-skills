@@ -24,17 +24,20 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 2. 以 `scope.projects` 和 `scope.data_models` 作为工程与数据模型的唯一授权范围，不重新解释原始输入或扩大扫描范围。
 3. 从 `evidence.data_model_sources` 读取 DDL、迁移、Entity、Mapper、SQL 和人工资料清单。
 4. 以 `scope.configurations` 作为配置领域的唯一授权范围，从 `evidence.configuration_snapshots.baseline` 读取最终快照指纹、`scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要和来源元数据；不得重新解释输入、扩大服务或文件范围。配置为 `全量` 或 `指定` 时，上述范围摘要缺失、互相不一致，或 `evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空必须停止，且不得读取配置内容。
-5. 以 `scope.middleware` 作为唯一中间件授权范围，只消费 Manifest 中的状态和 `selected`；不得重新解释原始输入、从依赖清单扩大候选，或越过 `scope.projects` 补扫其他工程。
+5. 以 `scope.middleware` 作为 MIDDLEWARE 实体发现、建模和关系输出的唯一中间件授权范围，只消费 Manifest 中的状态和 `selected`；不得重新解释原始输入、从依赖清单扩大候选，或越过 `scope.projects` 补扫其他工程。项目内本地横切机制的基础分析由 `scope.projects` 授权，不由 `scope.middleware` 扩大或收缩。
 
 ## 强制规则
 
 - 分析前读取项目规则；重要叙述事实继续区分代码、DDL、配置、用户资料、合理推断和来源冲突，字段清单则只使用本节规定的证据状态。
 - `cadence/knowledge-base/data-models/` 始终保留并生成 `README.md`。数据模型为 `不适用` 时，在总索引记录状态和原因，不扫描逻辑表。
 - `cadence/knowledge-base/configurations/` 始终保留并生成 `README.md`。配置为 `不适用` 时，在总索引记录状态和原因，不读取配置快照；配置为 `全量` 或 `指定` 时，为配置范围内每个服务固定生成一个配置文档，即使未发现配置键也记录缺失与待确认项。
-- `cadence/knowledge-base/services/` 始终保留并生成 `README.md`，并为 `scope.projects` 内识别出的每个服务固定生成一个 `<SERVICE-ID>.md`；全部服务文档必须登记到 Manifest 的 `documents.services`。
-- 中间件为 `不适用` 时，只在 `base-information.md` 和 `services/README.md` 记录状态与原因，不扫描中间件候选。
-- 中间件为 `指定` 时，只分析 `scope.middleware.selected` 及完成 `SERVICE/MODULE → MIDDLEWARE → CONFIGURATION` 关系链所需的必要依赖；必要依赖只用于解释已授权对象，不得扩展为新的中间件候选。
-- 中间件为 `全量` 时，只在 `scope.projects` 内分析全部中间件与横切机制，不得扫描范围外仓库、服务或模块。
+- `cadence/knowledge-base/services/` 始终保留并生成 `README.md`，并为 `scope.projects` 内识别出的每个服务固定生成一个 `<SERVICE-ID>.md` 骨架；全部服务文档必须登记到 Manifest 的 `documents.services`。
+- BaseInfo 负责完成服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证和证据导航区块。API 或 Pages 适用但对应阶段尚未执行时，相关区块的 `阶段状态` 必须分别写为 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）`，不得生成虚假链接。
+- 设置服务文档的 API/页面阶段状态时，只读取 Manifest 的 `scope.api.status`、`scope.pages.status` 和 `coverage.initialization.completed_stages`；这些字段只用于生命周期判定，不授权 BaseInfo 扫描 API 或页面。
+- 项目内本地认证、事务、异常、审计、幂等和可观测性等横切机制的基础分析由 `scope.projects` 授权；`scope.middleware` 只授权 MIDDLEWARE 实体发现、建模和关系输出。
+- 中间件为 `不适用` 时，只在 `base-information.md` 和 `services/README.md` 记录状态与原因，不得扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体。仍可分析 `scope.projects` 内本地认证、事务、异常、审计等横切机制；遇到中间件式证据不得扩大范围或进入 MIDDLEWARE 输出。
+- 中间件为 `指定` 时，只能创建或关联 `scope.middleware.selected` 中的 MIDDLEWARE 实体；与 `selected` 无关的中间件式证据不进入分析输出。完成 `SERVICE/MODULE → MIDDLEWARE → CONFIGURATION` 关系链所需的必要依赖只用于解释 `selected`，不得新增授权对象。
+- 中间件为 `全量` 时，才在 `scope.projects` 内完整发现和建模中间件实体，不得扫描范围外仓库、服务或模块。
 - 数据模型为 `全量` 或 `指定` 时，每张纳入范围的逻辑表必须有一个字段级文档；每个数据库或 Schema 必须有一个索引。
 - 一张逻辑表只对应一个文档。物理分片仅记录命名、路由和范围规则，不为每个物理分片重复生成业务表文档。
 - 禁止用单个 `data-model-overview.md` 或 `base-information.md` 摘要代替 `data-models/README.md`、Schema 索引和字段级逻辑表文档。
@@ -85,9 +88,12 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 1. 为 `scope.projects` 内识别出的每个服务生成稳定 `SERVICE-ID`，并明确服务与模块、入口的归属关系。
 2. 生成 `services/README.md`。服务索引至少包含 ID、名称、职责、模块、入口、状态、文档和证据；中间件为 `不适用` 时，同时在索引中记录原因。
-3. 为每个服务生成 `services/<SERVICE-ID>.md`。单服务文档至少包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航。
-4. 服务索引和单服务文档只保存摘要、稳定 ID 与领域文档链接，不复制字段清单、配置键、接口明细、页面明细或原始证据；后续领域文档尚未生成时明确状态和待补链接，不推测内容。
-5. 将 `services/README.md` 和全部 `services/<SERVICE-ID>.md` 登记到 Manifest 的 `documents.services`。
+3. 为每个服务生成 `services/<SERVICE-ID>.md` 骨架。单服务文档至少包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航；BaseInfo 当期完整填写其拥有的区块。
+4. API 适用且 `api` 尚未进入 `coverage.initialization.completed_stages` 时，API 区块固定写 `阶段状态：待后续阶段补齐（api）`；Pages 适用且 `pages` 尚未完成时，页面区块固定写 `阶段状态：待后续阶段补齐（pages）`。对应领域为 `不适用` 时固定写 `阶段状态：不适用（api）` 或 `阶段状态：不适用（pages）` 并记录原因。占位状态不得附带推测链接。
+5. 服务索引和单服务文档只保存摘要、稳定 ID 与领域文档链接，不复制字段清单、配置键、接口明细、页面明细或原始证据。
+6. 将 `services/README.md` 和全部 `services/<SERVICE-ID>.md` 登记到 Manifest 的 `documents.services`。
+7. 后续 `knowledge-base-api` 必须把服务文档中的 `待后续阶段补齐（api）` 原子替换为已验证的 API 导航；`knowledge-base-pages` 必须把 `待后续阶段补齐（pages）` 原子替换为已验证的页面导航。该操作是对已完成 BaseInfo 产物的授权增补，不重新扫描 BaseInfo，不移除 `base-info` 完成状态。
+8. `global-validation` 必须拒绝适用领域仍存在 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）` 的知识库；Task 4 负责在 API/Pages 领域输出中落实上述所有权接口。
 
 ### 4. 生成字段级数据模型
 
@@ -108,14 +114,15 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 代码、数据模型与配置分别生成自己的一级文档；Mapper XML 转交数据模型文档，配置文档只保留它与逻辑表、数据源或分片规则的关系，不复制字段清单。
 
-### 6. 分析中间件与横切机制
+### 6. 分析横切机制与中间件
 
-- `scope.middleware.status` 为 `不适用`：只在基础信息和服务索引记录原因，不扫描中间件候选。
-- `scope.middleware.status` 为 `指定`：只分析 `selected` 及完成关系链所需必要依赖，不把必要依赖登记为额外授权对象。
-- `scope.middleware.status` 为 `全量`：只在 `scope.projects` 内分析全部中间件与横切机制。
-- 在上述授权分支内记录中间件用途、配置组、装配状态和 `SERVICE/MODULE → MIDDLEWARE → CONFIGURATION` 关系。
-- 梳理认证、事务、缓存、幂等、重试、异常、审计和可观测性，并关联配置与实现位置。
-- 依赖声明只能证明可能使用，必须结合配置、装配和调用证据判断实际使用。
+1. 先在 `scope.projects` 授权范围内分析项目本地实现的认证、事务、异常、审计、幂等、重试和可观测性等横切机制，并关联配置与实现位置；不得仅因横切机制使用了中间件式术语就创建 MIDDLEWARE 实体。
+2. 再按 `scope.middleware.status` 执行 MIDDLEWARE 实体分支：
+   - `不适用`：不得扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体；遇到中间件式证据不得扩大范围，且不得进入 MIDDLEWARE 分析输出。
+   - `指定`：只能创建或关联 `selected` 中的 MIDDLEWARE 实体；与 `selected` 无关的中间件式证据不进入分析输出，必要依赖只解释 `selected` 关系链，不新增授权对象。
+   - `全量`：才在 `scope.projects` 内完整发现和建模中间件实体。
+3. 对已授权的 MIDDLEWARE 实体记录用途、配置组、装配状态和 `SERVICE/MODULE → MIDDLEWARE → CONFIGURATION` 关系。
+4. 依赖声明只能证明可能使用，必须结合配置、装配和调用证据判断实际使用。
 
 ### 7. 生成开发指南
 
@@ -155,7 +162,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - `cadence/knowledge-base/manifest.yaml`
 - `cadence/knowledge-base/open-questions.md`
 
-`base-information.md` 的服务、数据模型和配置章节只保存摘要与导航，不复制单服务领域明细、每张逻辑表的完整字段清单或每个服务的配置键清单。写入 Manifest 时，将服务总索引和全部单服务文档登记到 `documents.services`。
+`base-information.md` 的服务、数据模型和配置章节只保存摘要与导航，不复制单服务领域明细、每张逻辑表的完整字段清单或每个服务的配置键清单。写入 Manifest 时，将服务总索引和全部单服务文档登记到 `documents.services`。API/Pages 后续阶段对服务文档的原子导航增补不改变这些文档的登记，也不移除 `base-info` 完成状态。
 
 写入 Manifest 时保留 `generated_at`，并在本次分析新增、解决、重新打开或调整待确认项后，从 `open-questions.md` 的未解决条目重算 `open_questions.blocking/high/medium/low`。Manifest、受影响文档和待确认文档必须原子写入；任一步失败时不保留部分计数或部分文档结果。
 
@@ -172,8 +179,10 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 - 缺少 DDL 时，依据 Entity、Mapper、SQL、迁移和人工资料生成文档；字段未知属性写 `待确认`，并明确完整性限制。
 - 中间件为 `全量` 或 `指定` 但缺少装配或生产证据时，只记录授权对象的可定位证据和已知环境，不把依赖声明或开发配置升级为生产事实。
-- `services/README.md` 和 `scope.projects` 内全部服务的 `services/<SERVICE-ID>.md` 均已生成且链接可达；索引包含 ID、名称、职责、模块、入口、状态、文档和证据，单服务文档包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航。
-- 全部服务文档已登记到 Manifest 的 `documents.services`；中间件为 `不适用` 时，`base-information.md` 与 `services/README.md` 均已记录原因且未扫描中间件候选。
+- `services/README.md` 和 `scope.projects` 内全部服务的 `services/<SERVICE-ID>.md` 骨架均已生成；索引包含 ID、名称、职责、模块、入口、状态、文档和证据，单服务文档包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航。
+- BaseInfo 当期完成条件只检查其拥有的服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证、证据导航区块，以及 API/页面区块的明确阶段状态；不要求未来 API/Page 链接可达。全部服务文档已登记到 Manifest 的 `documents.services`。
+- API/Pages 适用但阶段尚未执行时，服务文档分别存在机器可判定的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`，且没有虚假链接。后续对应阶段必须原子补齐导航；`global-validation` 必须拒绝适用领域仍保留上述待后续阶段状态。
+- 横切机制基础分析只覆盖 `scope.projects` 内本地实现。中间件为 `不适用` 时，`base-information.md` 与 `services/README.md` 均已记录原因，且未扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体；中间件为 `指定` 时，输出只包含 `selected` 实体及其关系，必要依赖未新增授权对象；中间件为 `全量` 时，中间件实体发现和建模仍未越过 `scope.projects`。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。
 - 配置总索引和范围内每个服务的配置文档均已生成，链接可达；配置为 `不适用` 时总索引已记录原因。
 - 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 保存授权的最终快照指纹、来源元数据和 `scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
