@@ -228,19 +228,19 @@ git pull
 
 ### KnowledgeBase Skills
 
-`cadence-init` 可以根据用户提供的工程、DDL、中间件、对外能力和页面范围，为 Java 与 Vue/React 存量项目建立 Schema 3.0 KnowledgeBase，并在后续任务中渐进获取相关知识。
+`cadence-init` 可以根据用户提供的工程、DDL、中间件、对外能力和页面范围，为 Java 与 Vue/React 存量项目建立 Schema 4.0 KnowledgeBase，并在后续任务中渐进获取相关知识。
 
 | Skill | 作用 |
 |------|------|
-| `knowledge-base-bootstrap` | 校验 `cadence/knowledge-base/user-input/`，自动生成 Manifest 3.0 并编排领域分析 |
-| `knowledge-base-base-info` | 生成工程、数据配置、中间件和开发方式信息 |
-| `knowledge-base-api` | 按用户对外能力清单和工程范围分析对外、对内 API 及集成能力 |
-| `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 REST API 关联 |
+| [`knowledge-base-bootstrap`](readmes/skills/knowledge-base-bootstrap.md) | 校验 `cadence/knowledge-base/user-input/`，自动生成 Manifest 4.0，按固定顺序编排领域分析并跟踪初始化进度；支持首次初始化、未完成续跑、已完成保护和显式重新初始化 |
+| `knowledge-base-base-info` | 生成工程、服务索引与单服务文档、数据配置、中间件和开发方式信息 |
+| `knowledge-base-api` | 按用户对外能力清单和工程范围分析对外、对内 API 及集成能力，并补齐服务文档的 API 导航 |
+| `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 REST API 关联，并补齐服务文档的页面导航 |
 | `knowledge-base-overview` | 生成 KnowledgeBase 入口、关系导航和 Coding Agent 使用规则 |
-| `knowledge-base-update` | 根据 Git 与增量资料安全更新现有 KnowledgeBase |
+| [`knowledge-base-update`](readmes/skills/knowledge-base-update.md) | 在初始化已完成的知识库上，根据变更包与 Git 基线安全更新现有 KnowledgeBase |
 | [`knowledge-base-context`](readmes/skills/knowledge-base-context.md) | 在需求、设计、计划、编码、测试、评审或调试前，同时读取 KnowledgeBase 与当前实现，生成最小任务上下文 |
 
-#### Schema 3.0 Manifest
+#### Schema 4.0 Manifest
 
 Manifest 是 KnowledgeBase 自动生成的目录卡、分析范围和 Git 基线，不是数据库 Schema，也不需要用户手工配置。
 
@@ -250,10 +250,12 @@ Manifest 是 KnowledgeBase 自动生成的目录卡、分析范围和 Git 基线
 cadence/knowledge-base/user-input/
 ├── base-info.md
 ├── project-scope.md
-├── database-ddl.sql
+├── data-model-scope.md
+├── configuration-scope.md
 ├── middleware-scope.md
 ├── api-scope.md
-└── page-scope.md
+├── page-scope.md
+└── database-ddl.sql（可选）
 ```
 
 其中 `base-info.md` 是强制入口。`knowledge-base-bootstrap` 校验这些输入后自动生成：
@@ -264,6 +266,23 @@ cadence/knowledge-base/manifest.yaml
 ```
 
 Manifest 不参与 Skill 自动触发，只在 Skill 触发后提供 Schema 版本、用户授权范围和 KnowledgeBase 基线。
+
+#### 初始化生命周期
+
+`knowledge-base-bootstrap` 根据 Manifest 的 `coverage.initialization` 进度自动判定当前状态：
+
+- **首次初始化**：未发现任何 KnowledgeBase 产物时，按 `base-info → api → pages → overview → global-validation` 固定顺序编排执行；`api`、`pages` 不适用时登记跳过原因。
+- **未完成续跑**：上次初始化中断（`status: in_progress`）时，从首个未完成阶段继续，已完成阶段直接复用，不重复扫描。
+- **已完成保护**：初始化已完成（`status: complete`）时不再重复初始化，引导使用 `knowledge-base-context` 查询知识库，或使用 `knowledge-base-update` 处理变更。
+- **显式重新初始化**：只有用户明确请求"重新初始化 Schema 4.0"时才清理旧产物全量重建；执行前会列出清理路径与风险并取得明确授权，普通初始化、修复或更新请求不会触发清理。
+
+完整生命周期判定、状态不变量、配置快照安全和 user-input 填写案例见 [knowledge-base-bootstrap 使用指南](readmes/skills/knowledge-base-bootstrap.md)。
+
+#### 变更更新（knowledge-base-update）
+
+Update 只接受初始化已完成的知识库。变更前由用户在 `cadence/knowledge-base/user-input/updates/CHANGE-变更标识/` 准备完整变更包（五份固定文档），`knowledge-base-update` 校验变更包、Git 基线和影响链后统一更新各领域文档；任一环节失败时丢弃全部暂存结果，不产生部分写入。
+
+五份文档字段说明、敏感信息红线和完整变更案例见 [knowledge-base-update 使用指南](readmes/skills/knowledge-base-update.md)。
 
 #### KnowledgeBase 任务上下文
 
@@ -279,7 +298,7 @@ Codex 在 Skill 已安装或被项目发现后手动调用：
 $knowledge-base-context
 ```
 
-当目标项目已有 Schema 3.0 KnowledgeBase，并且项目规则已经接入时，需求澄清、Design、Plan、Coding、Testing、Review 和 Debug 任务可以通过自然语言自动触发该 Skill。
+当目标项目已有 Schema 4.0 KnowledgeBase，并且项目规则已经接入时，需求澄清、Design、Plan、Coding、Testing、Review 和 Debug 任务可以通过自然语言自动触发该 Skill。
 
 完整用法、任务画像、双轨读取和输出说明见 [knowledge-base-context 使用指南](readmes/skills/knowledge-base-context.md)。
 
