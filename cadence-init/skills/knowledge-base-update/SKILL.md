@@ -45,6 +45,17 @@ cadence-init/skills/knowledge-base-update/user-input/change-package/
 
 先读取 `cadence/knowledge-base/manifest.yaml`，只接受 `schema_version: "4.0"`。Manifest 缺失、版本不是 4.0，或缺少 `update.last_change_package`、`update.processed_packages` 与领域授权范围时立即停止。`scope.configurations.status` 为 `全量` 或 `指定` 时必须存在完整配置基线；为 `不适用` 时必须存在非空 `not_applicable_reason`，允许配置基线为空。不得兼容、迁移或覆盖其他版本；需要重建时引导使用 `knowledge-base-bootstrap`。
 
+在读取变更包、执行敏感信息门禁、计算幂等标识、扫描代码或写入任何文件前，必须对 `coverage.initialization` 执行以下完整初始化不变量只读验证：
+
+1. 整个 `coverage.initialization` 块缺失：立即停止且不修改 KnowledgeBase；引导使用 `knowledge-base-bootstrap` 执行兼容分支的完整 `global-validation` 并回填初始化块。Update 不得自行推断或回填完成状态。
+2. 初始化块存在时，字段必须完整且类型正确：`status` 只能是 `in_progress|complete`，`global_validation` 只能是 `pending|failed|passed`，`completed_stages` 必须是无重复字符串列表，`skipped_stages` 必须是无重复对象列表，`completed_at` 必须存在。
+3. `completed_stages` 元素只能是 `base-info`、`api`、`pages`、`overview`、`global-validation`，保持固定顺序；结合合法跳过项后必须是固定序列的合法前缀或子序列，前置阶段未完成或未合法跳过时不得出现后续阶段，`global-validation` 只能最后。
+4. `skipped_stages` 每项只能有 `stage`、`reason`，`stage` 只能是 `api` 或 `pages`，`reason` 必须是非空字符串；阶段不得重复，不得与 `completed_stages` 重叠。`base-info`、`overview`、`global-validation` 永不可跳过。
+5. 领域适用性必须一致：`scope.api.status: 不适用` 时 `api` 必须跳过且不得完成，接口适用时不得跳过；`pages` 使用同一规则。
+6. 合法 `status: in_progress` 必须满足：`completed_at` 为空，`global_validation` 只能是 `pending` 或 `failed`，`completed_stages` 不含 `global-validation`。Update 立即停止且不修改，并引导使用 `knowledge-base-bootstrap` 从首个未完成阶段续跑。
+7. Update 只接受合法 complete。`status: complete` 当且仅当：`base-info`、`overview`、`global-validation` 已完成，适用的 `api`、`pages` 已完成，不适用的 `api`、`pages` 已正确跳过，`global_validation: passed`，`completed_at` 非空，且实际适用文档、索引、Manifest 登记、服务导航和证据满足所有阶段完成条件。
+8. 任一字段缺失、类型错误、值非法、重复、重叠、逆序、适用性矛盾或 complete 与实际产物矛盾时，立即停止且不修改 KnowledgeBase；一次性报告异常字段实际值、违反的初始化不变量、影响和 Bootstrap 修复入口。不得把损坏状态当作 in_progress，不得自动补齐、去重、重排或改写。
+
 ### 2. 变更包完整性门禁
 
 逐一校验五份文档存在、可读且字段非空。任何缺失文档、缺失字段、空值、占位值或互相冲突的状态都必须停止。字段不适用时必须填写 `不适用（具体原因）`，不得留空。

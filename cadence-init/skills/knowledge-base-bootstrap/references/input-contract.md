@@ -14,11 +14,12 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 
 1. 检测集合全部不存在：按首次初始化继续。
 2. 任一固定产物存在，但 Manifest 缺失、不可解析、缺少 `schema_version` 或版本不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有产物、Manifest 状态和影响。
-3. Manifest 为 Schema 4.0，且 `coverage.initialization.status != complete`：判定为未完成初始化；重新核对六领域输入范围、已登记阶段、实际文档和证据后继续初始化。
-4. Manifest 为 Schema 4.0，且 `coverage.initialization.status == complete`：保护已完成知识库，停止重复初始化，并引导使用 Context 或 Update。
-5. 用户明确授权“重新初始化 Schema 4.0”：清理前一次性列出精确路径、人工内容丢失风险、Git/配置/变更历史基线失效风险和全新生成范围，取得用户对范围与风险的授权并写入输入清单，再清理固定产物并全新重建。
+3. Manifest 为 Schema 4.0：先执行下述完整初始化不变量只读校验。整个初始化块缺失时进入唯一兼容分支；块存在但字段损坏或矛盾时停止且不修改。
+4. 初始化块合法且 `status: in_progress`：判定为未完成初始化；重新核对六领域输入范围、已登记阶段、实际文档和证据后继续初始化。
+5. 初始化块合法且 `status: complete`：确认实际产物仍满足 complete 等价条件，保护已完成知识库，停止重复初始化，并引导使用 Context 或 Update。
+6. 用户明确授权“重新初始化 Schema 4.0”：Manifest 版本和初始化状态仍须合法；清理前一次性列出精确路径、人工内容丢失风险、Git/配置/变更历史基线失效风险和全新生成范围，取得用户对范围与风险的授权并写入输入清单，再清理固定产物并全新重建。
 
-第 3、4 项适用于没有显式重新初始化授权的请求；授权已明确时跳至第 5 项，不把重建降级为续跑或完成保护。
+第 4、5 项适用于没有显式重新初始化授权的请求；授权已明确且全部门禁通过时进入第 6 项，不把重建降级为续跑或完成保护。
 
 `coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物，也不得只凭文档登记或产物齐全推断完成。必须先执行当前完整 `global-validation`：
 
@@ -26,6 +27,30 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 - 验收失败：按未完成初始化续跑，回填 `status: in_progress`、已独立验证完成的阶段 ID、`global_validation: failed` 和空 `completed_at`，再从首个缺失或不一致阶段继续。
 
 重新初始化不读取旧 Manifest 字段进行映射，不迁移旧目录或兼容旧 Schema。普通初始化、补文档、修复、Context 或 Update 请求不构成清理重建授权。
+
+## 完整初始化不变量
+
+任何续跑、复用、领域调用、完成保护、清理或写入前，都必须只读验证 `coverage.initialization`；每次准备改变阶段状态或提交原子写入前必须重验。初始化块存在时，仅以下结构和状态合法：
+
+| 字段 | 不变量 |
+|------|--------|
+| `status` | 只能是 `in_progress` 或 `complete` |
+| `global_validation` | 只能是 `pending`、`failed` 或 `passed` |
+| `completed_stages` | 无重复字符串列表；元素只能是 `base-info`、`api`、`pages`、`overview`、`global-validation` |
+| `skipped_stages` | 无重复对象列表；每项仅有 `stage`、`reason`，`stage` 只能是 `api` 或 `pages`，`reason` 是非空字符串 |
+| `completed_at` | `in_progress` 时为空；`complete` 时非空 |
+
+阶段状态还必须同时满足：
+
+1. 固定顺序是 `base-info → api → pages → overview → global-validation`。将合法跳过的 `api`、`pages` 合并到时间线后，`completed_stages` 必须是该固定顺序的合法前缀或子序列；前置阶段未完成且未合法跳过时不能出现后续阶段，`global-validation` 只能最后出现。
+2. `completed_stages` 与 `skipped_stages` 不得重叠。`base-info`、`overview`、`global-validation` 永不可跳过。
+3. `scope.api.status: 不适用` 时必须跳过 `api` 且不得完成；接口适用时必须不跳过。`pages` 与 `scope.pages.status` 使用同一领域适用性一致规则。
+4. `status: in_progress` 时，`global_validation` 只能是 `pending` 或 `failed`，`completed_stages` 不含 `global-validation`，`completed_at` 为空。
+5. `status: complete` 当且仅当 `base-info`、`overview`、`global-validation` 完成，所有适用的 `api`、`pages` 完成，所有不适用的 `api`、`pages` 正确跳过，`global_validation: passed`，`completed_at` 非空，而且实际适用产物、文档索引、Manifest 登记、服务导航和证据满足全部阶段完成条件。
+
+初始化块存在但字段缺失、类型错误、非法 status、非法阶段 ID、重复、重叠、逆序、适用性冲突或 complete 与实际产物矛盾时，立即停止且不修改任何产物。一次性报告异常字段实际值、违反规则、影响阶段和风险；不得把它当成续跑，不得自动补齐、去重、重排、改写或通过显式重新初始化绕过。
+
+整个初始化块缺失不属于字段损坏，保留唯一兼容分支：先只读执行当前完整 `global-validation`。通过后一次性回填合法 complete 状态并进入完成保护；失败后一次性回填合法 in_progress 状态，再从首个缺失或不一致阶段续跑。全局验收完成和初始化块回填前不得修改其他产物。
 
 ## 六领域输入
 
@@ -119,7 +144,7 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 
 每个已执行或验证完成的阶段立即把字符串阶段 ID 写入 `coverage.initialization.completed_stages`，例如 `["base-info", "api"]`；不得写入 Skill 名。已经完成且 Manifest 登记、文档和证据一致的阶段复用，不重复扫描。
 
-`coverage.initialization.skipped_stages` 的唯一结构是对象列表，每项仅包含 `stage` 和 `reason`，例如 `[{stage: "api", reason: "接口范围不适用"}]`。`stage` 只能使用 `base-info`、`api`、`pages`、`overview`、`global-validation` 之一；不得增加 `status`、`skill`、`name` 或其他键。默认空列表 `[]` 与该结构兼容。
+`coverage.initialization.skipped_stages` 的唯一结构是对象列表，每项仅包含 `stage` 和 `reason`，例如 `[{stage: "api", reason: "接口范围不适用"}]`。`stage` 只能是 `api` 或 `pages`；不得增加 `status`、`skill`、`name` 或其他键。列表不得重复，也不得与 `completed_stages` 重叠；默认空列表 `[]` 仅在 API 与 Pages 都适用时合法。
 
 验收失败时将 `coverage.initialization.global_validation` 写为 `failed`，保持 `status: in_progress`；验收通过时写为 `passed`，将阶段 ID `global-validation` 加入 `completed_stages`，再将 `status` 写为 `complete` 并填写 `completed_at`。
 
