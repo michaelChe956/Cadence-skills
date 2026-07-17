@@ -47,7 +47,9 @@ cadence/knowledge-base/user-input/updates/CHANGE-order-status-field/
 └── verification.md
 ```
 
-五份固定文件不得合并或省略，附件不能替代它们。本例若数据库结构没有变化，`database-change.md` 仍保留并记录“无数据库变更”及当前结构证据；若配置没有变化，`configuration-change.md` 仍保留并记录“无配置变更”及当前快照依据。契约完整后，使用 `knowledge-base-update` 执行 Update。
+五份固定文件不得合并或省略，附件不能替代它们。本例配置范围为 `指定`；若数据库结构没有变化，`database-change.md` 仍保留并记录“无数据库变更”及当前结构证据；若配置没有变化，`configuration-change.md` 仍保留并记录“无配置变更”及同环境双快照依据。契约完整后，使用 `knowledge-base-update` 执行 Update。
+
+若另一个项目的 `scope.pages.status` 为 `不适用`，一级导航中的页面条目输出无链接纯文本 `pages：不适用（无前端页面领域）`，不生成 `pages/README.md` 链接。若 `scope.configurations.status` 为 `不适用`，变更包仍保留 `configuration-change.md`，声明无变更并填写与 Manifest 一致的原因；快照字段填写 `不适用（Manifest 配置领域不适用）`，Update 跳过快照比较。
 
 ## 术语示例
 

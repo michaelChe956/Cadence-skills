@@ -23,7 +23,7 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 1. 读取 `cadence/knowledge-base/manifest.yaml`，只接受 `schema_version: "4.0"`。Manifest 缺失或版本不是 4.0 时停止，并引导重新执行 `knowledge-base-bootstrap`；不读取、兼容或迁移其他版本。
 2. 以 `scope.projects` 和 `scope.data_models` 作为工程与数据模型的唯一授权范围，不重新解释原始输入或扩大扫描范围。
 3. 从 `evidence.data_model_sources` 读取 DDL、迁移、Entity、Mapper、SQL 和人工资料清单。
-4. 以 `scope.configurations` 作为配置领域的唯一授权范围，从 `evidence.configuration_snapshots.baseline` 读取最终快照指纹和来源元数据；不得重新解释输入、扩大服务或文件范围。配置为 `全量` 或 `指定` 时，`evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空必须停止，且不得读取配置内容。
+4. 以 `scope.configurations` 作为配置领域的唯一授权范围，从 `evidence.configuration_snapshots.baseline` 读取最终快照指纹、`scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要和来源元数据；不得重新解释输入、扩大服务或文件范围。配置为 `全量` 或 `指定` 时，上述范围摘要缺失、互相不一致，或 `evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空必须停止，且不得读取配置内容。
 
 ## 强制规则
 
@@ -35,6 +35,8 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 - 禁止用单个 `data-model-overview.md` 或 `base-information.md` 摘要代替 `data-models/README.md`、Schema 索引和字段级逻辑表文档。
 - 合并 DDL、迁移、Entity、Mapper、SQL、配置和用户资料；来源冲突不得擅自裁决。
 - 原始配置快照是外部不可变证据，只读且不得复制进 KnowledgeBase。不得写入、重命名、删除、格式化快照文件，也不得跟随符号链接、挂载点或外部引用越过授权目录。
+- 同一 `snapshot_id` 必须始终对应同一环境和同一外部目录；Manifest、输入清单或当前资料出现映射冲突时停止，不得选择其中一个覆盖另一个。
+- 读取配置内容前，先核对 `scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要与 `scope.configurations` 授权一致；摘要不能证明范围时停止。
 - 读取配置内容前按 Manifest 4.0 输入契约首次计算最终快照指纹，并与非空的 `evidence.configuration_snapshots.baseline.fingerprint` 比较；不一致时立即停止，不得读取配置内容。
 - 配置分析结束时再次计算最终快照指纹。写入任何配置结论前必须满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`；任一比较不一致或目录内容变化时立即停止，不得写入配置结论。
 - 没有 DDL 时仍生成字段级文档，但不得把代码映射当成实际数据库结构，不得推断实际索引、默认值、主外键、唯一约束或可空性。
@@ -75,7 +77,7 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 
 ### 4. 生成配置快照知识
 
-1. 按 `scope.configurations` 识别当前基线、环境、发布批次、服务范围和文件规则，并从 `evidence.configuration_snapshots.baseline` 读取来源元数据与授权指纹。配置为 `全量` 或 `指定` 时，先确认 `fingerprint` 存在且非空；缺失或为空时停止。
+1. 按 `scope.configurations` 识别当前基线、环境、发布批次、服务范围和文件规则，并从 `evidence.configuration_snapshots.baseline` 读取来源元数据、授权指纹、`scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要。配置为 `全量` 或 `指定` 时，先确认这些字段完整、互相一致，且 `fingerprint` 存在非空；缺失或不一致时停止。
 2. 在读取配置内容前首次计算最终快照指纹，并与 `evidence.configuration_snapshots.baseline.fingerprint` 比较。只有两者相等时，才在授权的外部不可变快照中分类和读取配置文件；不复制快照或访问远程配置源。
 3. 按分析指南区分配置证据、Mapper XML、日志配置、脚本证据和默认排除项。相同内容文件仅在当前运行中用临时哈希去重，合并后保留全部适用服务、环境、Profile 与来源。
 4. 逐服务记录配置来源与加载顺序、Profile、配置键、代码绑定、生效条件、数据源、分片、中间件和外部系统关系；来源冲突不得擅自裁决。
@@ -130,6 +132,8 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 ## 异常与停止规则
 
 - 配置为 `全量` 或 `指定` 时，`evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空，必须在读取配置内容前停止。
+- 配置为 `全量` 或 `指定` 时，`scope_summary`、纳入文件数量或清单摘要、服务摘要或文件规则摘要缺失、互相冲突，必须在读取配置内容前停止。
+- 同一 `snapshot_id` 对应不同环境或不同外部目录时，必须在读取配置内容前停止并登记来源冲突。
 - 首次计算指纹与 Manifest 授权指纹不一致，必须在读取配置内容前停止。
 - 分析结束指纹与首次计算指纹或 Manifest 授权指纹任一不一致，必须在写入配置结论前停止；不得生成或更新配置总索引、服务配置文档、Base Info 配置摘要、开发指南配置基线或 `documents.configurations`。
 - 不得用重新计算的指纹覆盖 Manifest 授权指纹来绕过校验。停止时只报告缺失项或不一致项及影响，不输出部分配置结论。
@@ -140,7 +144,7 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目生成可�
 - 缺少中间件或生产配置时，只记录可定位候选和已知环境，不把依赖或开发配置升级为生产事实。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。
 - 配置总索引和范围内每个服务的配置文档均已生成，链接可达；配置为 `不适用` 时总索引已记录原因。
-- 配置为 `全量` 或 `指定` 时，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 只保存授权的最终快照指纹和来源元数据；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
+- 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 只保存授权的最终快照指纹、范围摘要和来源元数据；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
 - 每张逻辑表都有字段清单、证据状态、证据位置、读写服务以及已发现的 Mapper/SQL 映射。
 - 实际索引、默认值和数据库约束只有在证据支持时记录；来源冲突和未覆盖对象已进入待确认项。
 - API、页面、服务、配置和逻辑表通过稳定 ID 关联；分片物理表没有被重复建模。

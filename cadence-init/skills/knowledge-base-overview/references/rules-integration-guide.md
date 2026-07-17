@@ -56,7 +56,7 @@ configuration-change.md
 verification.md
 ```
 
-附件不能替代固定文件。即使数据库或配置没有变化，`database-change.md` 和 `configuration-change.md` 仍必须存在，分别记录无变更结论及当前结构证据或配置快照依据。契约不完整时不得执行 Update。
+附件不能替代固定文件。即使数据库没有变化，`database-change.md` 仍必须存在并记录无变更结论及当前结构证据。`configuration-change.md` 始终必须存在：配置范围适用时无变更仍需双快照依据；配置范围不适用时必须记录无变更结论和原因，快照字段填写带原因的不适用并跳过比较。契约不完整时不得执行 Update。
 
 ## 管理区块
 
@@ -129,8 +129,8 @@ verification.md
 ```text
 base-information.md
 development-guide.md
-interfaces/README.md
-pages/README.md
+interfaces/README.md（接口适用时；不适用时输出无链接原因）
+pages/README.md（页面适用时；不适用时输出无链接原因）
 services/
 data-models/README.md
 configurations/README.md

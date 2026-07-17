@@ -41,8 +41,15 @@
 1. 生成 `schema_version: "4.0"` 的 Manifest 和输入清单。
 2. 初始化 `data-models/`、`configurations/` 等固定目录。
 3. 领域 Skills 只消费 Manifest 的六个 `scope` 范围。
-4. 配置基线写入 `evidence.configuration_snapshots`。
+4. 配置基线写入 `evidence.configuration_snapshots.baseline`，包含最终指纹、`scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要。
 5. 首次初始化的 `update.processed_packages` 为空列表。
+6. `generated_at` 写入生成时间，`open_questions` 四级默认计数为 0。
+
+## 快照标识映射冲突
+
+`configuration-scope.md` 使用已经登记的快照标识 `test-release-20260717`，但声明了不同环境或不同外部目录。
+
+处理结果：扫描前停止，报告冲突标识、已登记环境与目录、当前声明环境与目录；不重新解释为新快照，不覆盖 Manifest 基线。
 
 ## 指定接口模式
 

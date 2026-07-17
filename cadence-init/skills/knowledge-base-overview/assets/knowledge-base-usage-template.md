@@ -20,8 +20,8 @@
 
 - `base-information.md`
 - `development-guide.md`
-- `interfaces/README.md`
-- `pages/README.md`
+- 接口：Manifest 适用时为 `interfaces/README.md`；`scope.api.status` 为 `不适用` 时输出无链接 `interfaces：不适用（原因）`
+- 页面：Manifest 适用时为 `pages/README.md`；`scope.pages.status` 为 `不适用` 时输出无链接 `pages：不适用（原因）`
 - `services/`
 - `data-models/README.md`
 - `configurations/README.md`
@@ -47,8 +47,8 @@
 | SQL/Mapper 变更 | 字段级表文档、SQL/Mapper 当前证据、服务调用关系和验证指南 |
 | 配置键变更 | `configurations/README.md`、服务配置文档、当前快照证据和验证指南 |
 | Profile/Feature Flag | 服务配置文档、环境差异、当前快照证据和启用条件 |
-| API 参数变更 | `interfaces/README.md`、对应接口主文件、调用方、服务和数据模型文档 |
-| 页面字段变更 | `pages/README.md`、页面主文档、API 参数和字段映射文档 |
+| API 参数变更 | 接口适用时读取 `interfaces/README.md`、对应接口主文件、调用方、服务和数据模型文档；不适用时记录原因 |
+| 页面字段变更 | 页面适用时读取 `pages/README.md`、页面主文档、API 参数和字段映射文档；不适用时记录原因 |
 | 中间件配置变化 | `configurations/README.md`、服务配置文档、中间件当前证据和依赖服务文档 |
 | 跨模块流程 | `README.md`、相关服务、接口、页面、表、配置和证据文档 |
 
@@ -70,4 +70,4 @@ configuration-change.md
 verification.md
 ```
 
-附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并写明无变更及判断依据；即使配置无变更，`configuration-change.md` 仍必须存在并写明无变更及判断依据。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。
+附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并写明无变更及判断依据。`configuration-change.md` 始终必须存在：配置范围适用时无变更仍需双快照，配置范围不适用时必须写无变更和原因，快照字段可填写带原因的不适用并跳过比较。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。

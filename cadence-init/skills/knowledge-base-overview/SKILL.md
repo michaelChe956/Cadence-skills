@@ -25,8 +25,8 @@ description: "Use when 需要将 Schema 4.0 KnowledgeBase 的基础信息、接�
 - `cadence/knowledge-base/manifest.yaml`（必须为 Schema 4.0）
 - `cadence/knowledge-base/base-information.md`
 - `cadence/knowledge-base/development-guide.md`
-- `cadence/knowledge-base/interfaces/README.md`
-- `cadence/knowledge-base/pages/README.md`
+- `cadence/knowledge-base/interfaces/README.md`（仅 `scope.api.status` 不是 `不适用` 时要求存在）
+- `cadence/knowledge-base/pages/README.md`（仅 `scope.pages.status` 不是 `不适用` 时要求存在）
 - `cadence/knowledge-base/services/`
 - `cadence/knowledge-base/data-models/README.md`
 - `cadence/knowledge-base/configurations/README.md`
@@ -68,7 +68,7 @@ Manifest 不存在或 Schema 不是 4.0 时停止并引导使用 `knowledge-base
 
 ### 2. 建立导航
 
-README 必须直接提供以下一级导航，顺序保持稳定：
+README 必须直接提供以下一级导航条目，顺序保持稳定。`scope.api.status` 或 `scope.pages.status` 为 `不适用` 时，对应条目输出无链接纯文本 `不适用（原因）`，不得生成指向不存在文件的链接；适用时才输出链接：
 
 ```text
 base-information.md
@@ -174,8 +174,10 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 - 概览、术语、待确认和项目规则文档
 - 当前分支与基线
 - 执行模式和覆盖范围
-- 待确认项数量
+- `open_questions.blocking`、`open_questions.high`、`open_questions.medium`、`open_questions.low` 四级待确认项数量
 - 大型项目子文档索引
+
+保留 Bootstrap 写入的 `generated_at`，不得把 Overview 更新时间覆盖为 Manifest 生成时间。
 
 ## Coding Agent 使用原则
 
@@ -208,7 +210,7 @@ configuration-change.md
 verification.md
 ```
 
-附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并说明无变更及判断依据；即使配置无变更，`configuration-change.md` 仍必须存在并说明无变更及判断依据。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。
+附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并说明无变更及判断依据。`configuration-change.md` 始终必须存在：配置范围为 `全量` 或 `指定` 时，无变更仍需双快照和判断依据；配置范围为 `不适用` 时，必须声明无变更和原因，快照字段可填写带原因的不适用并跳过比较。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。
 
 ## 禁止行为
 
@@ -222,8 +224,8 @@ verification.md
 
 ## 完成条件
 
-- Coding Agent 能从 README 导航到全部核心文档。
-- README 直接提供 Schema 4.0 的十个一级导航入口，且只保留摘要和导航。
+- Coding Agent 能从 README 导航到全部适用的核心文档；接口或页面不适用时能从无链接条目看到原因。
+- README 直接提供 Schema 4.0 的十个稳定一级条目；适用领域使用链接，接口或页面不适用时使用无链接说明，且只保留摘要和导航。
 - 核心流程支持 `PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE` 稳定链路和证据。
 - 术语区分用户定义与代码推断。
 - 待确认项按优先级整理。

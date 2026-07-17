@@ -43,15 +43,17 @@ cadence-init/skills/knowledge-base-update/user-input/change-package/
 
 ### 1. Manifest 门禁
 
-先读取 `cadence/knowledge-base/manifest.yaml`，只接受 `schema_version: "4.0"`。Manifest 缺失、版本不是 4.0，或缺少 `update.last_change_package`、`update.processed_packages`、领域授权范围与配置基线时立即停止。不得兼容、迁移或覆盖其他版本；需要重建时引导使用 `knowledge-base-bootstrap`。
+先读取 `cadence/knowledge-base/manifest.yaml`，只接受 `schema_version: "4.0"`。Manifest 缺失、版本不是 4.0，或缺少 `update.last_change_package`、`update.processed_packages` 与领域授权范围时立即停止。`scope.configurations.status` 为 `全量` 或 `指定` 时必须存在完整配置基线；为 `不适用` 时必须存在非空 `not_applicable_reason`，允许配置基线为空。不得兼容、迁移或覆盖其他版本；需要重建时引导使用 `knowledge-base-bootstrap`。
 
 ### 2. 变更包完整性门禁
 
 逐一校验五份文档存在、可读且字段非空。任何缺失文档、缺失字段、空值、占位值或互相冲突的状态都必须停止。字段不适用时必须填写 `不适用（具体原因）`，不得留空。
 
+在计算包幂等标识前，先对五份主文档和 `attachments/` 下全部文件执行敏感信息门禁。发现真实配置值、密码、Token、AccessKey、Secret、密钥、私钥、完整连接串、未脱敏内部域名/IP/URL、原始敏感配置文件或敏感值哈希时立即停止；无法确认附件可安全检查且已经脱敏时同样停止。不得计算或保存包含这些内容的哈希。只允许保留配置键、变更类型、用途和固定脱敏值 `<redacted>`。
+
 `change-summary.md` 的代码、数据模型、配置、中间件、接口和页面六行必须齐全，状态只允许 `有变更` 或 `无变更`。每个 `无变更` 声明必须给出可审计的判断依据；“应该没变”“Git 没看到”“暂不清楚”不构成依据。
 
-`database-change.md` 和 `configuration-change.md` 始终强制存在。即使声明无变更，也必须填写所有字段及无变更判断依据。
+`database-change.md` 和 `configuration-change.md` 始终强制存在。数据库声明无变更时必须填写所有字段及无变更判断依据。配置字段按 `scope.configurations.status` 分支校验：`全量` 或 `指定` 仍要求完整双快照；`不适用` 时必须声明 `无变更` 并填写配置领域不适用原因，快照字段允许填写 `不适用（具体原因）`。
 
 ### 3. 代码变更门禁
 
@@ -62,25 +64,31 @@ cadence-init/skills/knowledge-base-update/user-input/change-package/
 - 起始提交和结束提交
 - 修改工程
 - 修改文件与符号
+- 代码变更说明
 - 本地可验证范围
 
 起始与结束提交必须能在本地仓库解析，提交顺序和分支归属必须与包内声明一致。只在声明的工程、分支和起止提交范围内读取 Git Diff 与符号；本地无法验证完整范围时停止，不得用当前工作区差异替代。
 
-`code-change.md` 声明 `无变更` 时，Merge Request、分支、提交和修改范围字段仍需明确填写 `不适用（无代码变更）`，并提供独立的无变更判断依据。
+`code-change.md` 声明 `无变更` 时，Merge Request、分支、提交、修改范围和代码变更说明字段仍需明确填写带原因的 `不适用（无代码变更）`，并提供独立的无变更判断依据。
 
 ### 4. 数据库与配置门禁
 
 数据库声明 `有变更` 时，数据库或 Schema、逻辑表、字段、索引、约束、DDL 或迁移路径、上线状态、兼容性和回滚方式必须完整。DDL 和迁移只读，不得执行；资料不可定位或与代码字段变化冲突时停止。
 
-配置文档必须同时提供基线与目标快照标识、发布批次、生成或获取时间、来源类型、两个外部目录、两个最终快照指纹、环境、纳入文件范围、涉及服务、配置组和已知差异。还必须满足：
+先读取 `scope.configurations.status`，只允许 `全量`、`指定`、`不适用`。
+
+配置为 `全量` 或 `指定` 时，配置文档必须同时提供基线与目标快照标识、发布批次、生成或获取时间、来源类型、两个外部目录、两个最终快照指纹、环境、范围摘要、纳入文件数量或文件清单摘要、服务摘要、文件规则摘要、涉及服务、配置组和已知差异。还必须满足：
 
 1. 基线与目标快照属于同一环境，两个外部目录均可读且为锁定的不可变快照。
-2. 基线快照的标识、环境、发布批次、生成或获取时间、来源类型、外部目录和纳入范围与 Manifest 的 `evidence.configuration_snapshots.baseline` 及 `scope.configurations` 授权一致，最终指纹必须与 `evidence.configuration_snapshots.baseline.fingerprint` 一致。
+2. 基线快照的标识、环境、发布批次、生成或获取时间、来源类型、外部目录、`scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要与 Manifest 的 `evidence.configuration_snapshots.baseline` 及 `scope.configurations` 授权一致，最终指纹必须与 `evidence.configuration_snapshots.baseline.fingerprint` 一致。
 3. 目标快照沿用同一授权环境、服务和文件纳入范围，不得借更新扩大 Manifest 授权边界。
 4. 按 Manifest 4.0 固定算法在比较前后验证快照指纹；目录变化、指纹不匹配或范围越界时立即停止。
 5. 配置声明 `无变更` 时，基线与目标快照必须证明纳入范围无差异；若快照指纹或内容比较存在差异，停止并要求修正声明或说明冲突。
+6. 同一 `snapshot_id` 不得对应不同环境或不同外部目录；发现重复标识映射冲突时停止并登记来源冲突。
 
-附件只允许保存脱敏 DDL 差异、迁移说明、配置差异摘要、MR 导出说明和验证记录。发现明文凭证、完整生产配置、完整连接串或未脱敏内部地址时停止，不读取或写入 KnowledgeBase。
+配置为 `不适用` 时，`configuration-change.md` 仍必须存在，配置变更状态只能为 `无变更`，并填写与 Manifest 一致的配置领域不适用原因。环境、双快照、目录、指纹、范围摘要、文件数量或清单摘要、服务与规则摘要等字段允许填写 `不适用（具体原因）`；此分支跳过目录可读性、指纹和快照差异比较，不得因此阻断纯代码或数据库更新，也不得创建配置基线。
+
+附件只允许保存脱敏 DDL 差异、迁移说明、不含真实配置值的配置差异摘要、MR 导出说明和验证记录。五份主文档和附件中的配置差异只允许记录配置键、变更类型、用途和 `<redacted>`。发现明文凭证、真实配置值、完整生产配置、完整连接串、未脱敏内部地址或敏感值哈希时停止，不计算包幂等标识，不读取或写入 KnowledgeBase。
 
 ## 缺失与冲突响应
 
@@ -94,9 +102,9 @@ cadence-init/skills/knowledge-base-update/user-input/change-package/
 
 ## 执行流程
 
-### 1. 锁定输入与幂等标识
+### 1. 锁定输入、执行敏感门禁与计算幂等标识
 
-读取显式指定的变更包，不访问其他 `CHANGE-*` 目录。以变更标识、包内全部文件的相对路径和内容 SHA-256 有序清单生成包幂等标识；不得包含外部快照原文或敏感配置值。
+读取显式指定的变更包，不访问其他 `CHANGE-*` 目录。先校验五份主文档和全部附件均通过敏感信息门禁；只有门禁通过后，才以变更标识、包内全部文件的相对路径和内容 SHA-256 有序清单生成包幂等标识。不得对包含外部快照原文、真实配置值、敏感凭证、未脱敏内部地址或敏感值哈希的包计算幂等标识。
 
 执行前检查 Manifest 的 `update.processed_packages`：
 
@@ -132,7 +140,7 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 
 ### 5. 更新配置基线
 
-配置有变更且验证通过时，把目标快照的标识、环境、外部目录、获取时间、发布批次、来源类型和最终指纹写为新的 `evidence.configuration_snapshots.baseline`。配置无变更时保留 Manifest 授权基线。任何情况下都不复制快照、敏感值或单文件敏感哈希到 KnowledgeBase。
+`scope.configurations.status` 为 `全量` 或 `指定` 且配置有变更、验证通过时，把目标快照的标识、环境、外部目录、获取时间、发布批次、来源类型、最终指纹、范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要写为新的 `evidence.configuration_snapshots.baseline`。该范围下配置无变更时保留 Manifest 授权基线。配置为 `不适用` 时跳过配置基线更新并保持空基线或既有不适用状态。任何情况下都不复制快照、敏感值或单文件敏感哈希到 KnowledgeBase。
 
 ### 6. 更新历史与 Manifest
 
@@ -140,7 +148,7 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 
 成功后原子地更新：
 
-- `update.last_change_package`：本次变更标识、路径、幂等标识、处理时间、MR、提交范围和目标配置快照指纹。
+- `update.last_change_package`：本次变更标识、路径、幂等标识、处理时间、MR、提交范围和目标配置快照指纹；配置不适用时目标指纹记录为 `不适用（Manifest 配置领域不适用）`。
 - `update.processed_packages`：追加本次变更标识、幂等标识和处理时间。
 - Git 基线、文档更新时间、受影响文档、稳定 ID 映射、覆盖数量和待确认项。
 
@@ -175,7 +183,8 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 - Manifest 为 4.0，且唯一变更包路径由用户显式指定。
 - 五份文档、全部字段、无变更依据和领域状态已通过校验。
 - 代码有变更时 MR、分支、起止提交和本地可验证范围完整且一致。
-- 数据库资料与配置同环境新旧快照已验证，配置基线符合 Manifest 授权。
+- 数据库资料已验证；配置为 `全量` 或 `指定` 时，同环境新旧快照及可审计范围摘要已验证，配置基线符合 Manifest 授权；配置为 `不适用` 时，无变更声明和原因与 Manifest 一致且已跳过快照比较。
+- 五份主文档和全部附件在计算幂等标识前已通过敏感信息门禁。
 - 每个更新文档都能沿固定影响链追溯到变更包和实体。
 - `last_change_package`、`processed_packages`、新配置基线和变更历史一致。
 - 相同变更包重复执行不产生任何重复历史或实体。

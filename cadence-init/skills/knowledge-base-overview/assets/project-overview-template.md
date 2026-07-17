@@ -15,12 +15,14 @@
 
 ## 一级导航
 
+> 按 Manifest 条件渲染：`scope.api.status` 或 `scope.pages.status` 为 `不适用` 时，对应行的入口使用无链接纯文本 `interfaces：不适用（原因）` 或 `pages：不适用（原因）`；适用时才使用下方链接。不得生成指向不存在 README 的链接。
+
 | 入口 | 内容 |
 |------|------|
 | [`base-information.md`](base-information.md) | 项目基础信息与系统边界 |
 | [`development-guide.md`](development-guide.md) | 开发、验证与运行指南 |
-| [`interfaces/README.md`](interfaces/README.md) | 对外、对内和服务间接口 |
-| [`pages/README.md`](pages/README.md) | 页面、路由、权限和字段映射 |
+| {{接口入口：适用时为 [`interfaces/README.md`](interfaces/README.md)，不适用时为无链接文本}} | 对外、对内和服务间接口，或不适用原因 |
+| {{页面入口：适用时为 [`pages/README.md`](pages/README.md)，不适用时为无链接文本}} | 页面、路由、权限和字段映射，或不适用原因 |
 | [`services/`](services/) | 服务与模块导航 |
 | [`data-models/README.md`](data-models/README.md) | 字段级数据模型与表导航 |
 | [`configurations/README.md`](configurations/README.md) | 服务配置、Profile、Feature Flag 与中间件配置导航 |
@@ -46,8 +48,8 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 | SQL/Mapper 变更 | 字段级表文档、SQL/Mapper 证据、服务文档 | TABLE、MAPPER、SERVICE/MODULE | 字段映射、事务、查询调用方 | `development-guide.md` |
 | 配置键变更 | `configurations/README.md`、服务配置文档、当前快照证据 | CONFIGURATION | Profile、Feature Flag、服务和中间件 | `development-guide.md` |
 | Profile/Feature Flag | 服务配置文档、当前快照证据 | PROFILE、FEATURE_FLAG | 环境差异、默认值、启用条件 | `development-guide.md` |
-| API 参数变更 | `interfaces/README.md`、接口主文档、服务和数据模型文档 | API、PARAMETER | 调用方、页面、服务、表 | `development-guide.md` |
-| 页面字段变更 | `pages/README.md`、页面文档、接口和数据模型文档 | PAGE、FIELD | API 参数、字段映射、校验 | `development-guide.md` |
+| API 参数变更 | 接口适用时读取 `interfaces/README.md`、接口主文档、服务和数据模型文档；不适用时记录原因 | API、PARAMETER | 调用方、页面、服务、表 | `development-guide.md` |
+| 页面字段变更 | 页面适用时读取 `pages/README.md`、页面文档、接口和数据模型文档；不适用时记录原因 | PAGE、FIELD | API 参数、字段映射、校验 | `development-guide.md` |
 | 中间件配置变化 | 配置文档、中间件证据、依赖服务文档 | MIDDLEWARE、CONFIGURATION | 连接、路由、消费和部署环境 | `development-guide.md` |
 
 ## 高风险区域

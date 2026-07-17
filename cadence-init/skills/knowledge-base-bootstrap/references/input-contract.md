@@ -55,7 +55,9 @@ Mapper XML 和迁移文件归入数据模型证据；结构来源冲突时不擅
 3. `指定` 状态必须提供非空服务清单或文件匹配规则。
 4. 快照目录全程只读，不得复制到 `cadence/knowledge-base/`，不得连接配置中心或远程环境补取资料。
 5. 配置仓库作为来源时必须固定到明确提交、标签或导出快照，不得指向持续变化的工作目录。
-6. 分析开始和结束时必须按固定算法分别计算最终快照指纹；两次指纹不一致或目录内容变化时立即停止，不得生成配置结论。
+6. 必须填写 `scope_summary` 对应的范围摘要，以及纳入文件数量或文件清单摘要、服务摘要和文件规则摘要；这些摘要必须能与纳入服务和文件规则逐项核对。
+7. 同一 `snapshot_id` 不得映射到不同环境或不同外部目录。当前输入、Manifest 已登记基线或同批次资料出现同名快照时，环境和目录必须完全一致，否则停止并报告冲突。
+8. 分析开始和结束时必须按固定算法分别计算最终快照指纹；两次指纹不一致、范围摘要不一致或目录内容变化时立即停止，不得生成配置结论。
 
 默认排除 `.idea`、`.gitkeep`、空文件和明确历史备份。部署脚本、发布脚本和启动脚本只能作为配置加载链路的只读证据，不得执行。只记录敏感配置键、用途和值类型，不复制实际值。
 
@@ -68,7 +70,7 @@ Mapper XML 和迁移文件归入数据模型证据；结构来源冲突时不擅
 3. 形成 `相对路径 + 制表符 + 文件 SHA-256` 的有序清单。
 4. 对该清单计算最终 SHA-256。
 
-Manifest 的 `evidence.configuration_snapshots` 只保存最终快照指纹和来源元数据，不保存单个敏感配置值的哈希。重复文件哈希只允许在当前分析过程中临时使用。
+Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指纹、来源元数据、`scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要，不保存原始配置内容或单个敏感配置值的哈希。重复文件哈希只允许在当前分析过程中临时使用。
 
 ## 对外能力与缺失处理
 
@@ -86,8 +88,9 @@ Manifest 的 `evidence.configuration_snapshots` 只保存最终快照指纹和�
 
 - 初始化 `data-models/` 和 `configurations/`，即使对应领域为 `不适用` 也保留固定空目录。
 - 数据模型来源写入 `evidence.data_model_sources`。
-- 配置快照基线写入 `evidence.configuration_snapshots`。
+- 配置快照基线写入 `evidence.configuration_snapshots.baseline`，并保留可审计范围摘要。
 - 首次初始化时 `update.last_change_package` 为空对象，`update.processed_packages` 为空列表。
 - `documents.data_models` 和 `documents.configurations` 分别登记领域文档。
+- `generated_at` 记录本次 Manifest 生成时间；`open_questions.blocking`、`high`、`medium`、`low` 初始化为 0，并在后续流程中按实际待确认项更新。
 
 只生成 Schema 4.0，不读取、兼容或迁移其他版本知识库。

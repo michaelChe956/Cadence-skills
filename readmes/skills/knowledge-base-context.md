@@ -127,7 +127,7 @@ Context 必读区域：
 | `scope.data_models` | 数据库、Schema、逻辑表和排除范围 |
 | `scope.configurations` | 环境、服务和配置文件授权范围 |
 | `evidence.data_model_sources` | DDL、迁移、Entity、Mapper、SQL 和人工资料状态 |
-| `evidence.configuration_snapshots.baseline` | 当前配置快照、外部目录、环境、发布批次和授权指纹 |
+| `evidence.configuration_snapshots.baseline` | 当前配置快照、外部目录、环境、发布批次、授权指纹和可审计范围摘要 |
 | `update.last_change_package` | 最近处理变更包 |
 | `update.processed_packages` | 已进入 KnowledgeBase 基线的变更包 |
 | `git.repositories` | 仓库、分支和 Git 基线 |
@@ -171,10 +171,12 @@ DDL 缺失不会自动阻断。Skill 会继续使用字段级文档、迁移、M
 
 - 配置范围包含目标环境、服务和文件。
 - `evidence.configuration_snapshots.baseline.fingerprint` 存在并符合授权基线。
+- `scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且与授权一致。
+- 同一快照标识没有映射到不同环境或不同外部目录。
 - 外部目录存在、可读、只读使用且没有越界或变化。
 - 目标配置键可定位到来源文件、绑定代码和生效条件。
 
-配置目录失效、授权指纹失配或快照变化时，如果任务依赖实际配置，任务上下文状态为 `阻断`。Skill 不会连接远程配置中心补取。
+配置为 `不适用` 时记录原因并停止配置方向，不要求基线或外部目录。配置目录失效、授权指纹失配、范围摘要冲突、快照标识映射冲突或快照变化时，如果任务依赖实际配置，任务上下文状态为 `阻断`。Skill 不会连接远程配置中心补取。
 
 配置键存在不等于已生效。必须结合环境、Profile、覆盖顺序、条件装配、绑定代码和实际调用判断。敏感配置只返回键、用途、状态和绑定位置，值写为 `<redacted>`。
 
@@ -199,7 +201,7 @@ Skill 每次读取 `last_change_package`、`processed_packages` 和 Git 基线�
 
 - `一致`
 - `KnowledgeBase 缺失`
-- `源码缺失`
+- `代码缺失`
 - `数据模型证据缺失`
 - `配置证据缺失`
 - `基线漂移`

@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 任务上下文"
   short_description: "从四类证据渐进获取 Schema 4.0 任务上下文"
-  default_prompt: "使用 $knowledge-base-context 读取 Schema 4.0 KnowledgeBase、当前代码、数据模型和配置快照，生成最小任务上下文包。"
+  default_prompt: "使用 $knowledge-base-context 读取 Schema 4.0 KnowledgeBase、当前代码、数据模型，以及通过指纹和可审计范围摘要门禁的配置快照，生成最小任务上下文包。"

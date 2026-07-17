@@ -2,6 +2,7 @@ schema_version: "4.0"
 generator:
   skill: "knowledge-base-bootstrap"
   version: "4.0"
+generated_at: ""
 git:
   repositories: []
 input:
@@ -23,6 +24,9 @@ scope:
     status: ""
     source: "cadence/knowledge-base/user-input/configuration-scope.md"
     selected: []
+    scope_summary: ""
+    service_summary: []
+    file_rule_summary: []
     not_applicable_reason: ""
   middleware:
     status: ""
@@ -59,6 +63,11 @@ evidence:
       generated_or_acquired_at: ""
       fingerprint: ""
       source_type: ""
+      scope_summary: ""
+      included_file_count: 0
+      included_files_summary: []
+      service_summary: []
+      file_rule_summary: []
 update:
   last_change_package: {}
   processed_packages: []
@@ -70,4 +79,8 @@ documents:
   data_models: []
   configurations: []
 coverage: {}
-open_questions: {}
+open_questions:
+  blocking: 0
+  high: 0
+  medium: 0
+  low: 0
