@@ -1,43 +1,51 @@
-# KnowledgeBase 初始化案例
+# KnowledgeBase Schema 4.0 初始化案例
 
-## 输入缺失
+## 无 DDL，但有代码结构证据
 
-目标项目没有 `cadence/knowledge-base/user-input/base-info.md`。
-
-处理结果：
-
-1. 停止扫描。
-2. 报告缺失路径。
-3. 指向 Skill 的 `user-input/` 模板目录。
-4. 列出需要复制的六个文件。
-
-## 全量模式
-
-`base-info.md` 中五个领域均为 `全量`，引用文件有效。
+数据模型状态为 `全量`，`data-model-scope.md` 登记了 Entity、Mapper XML 和迁移文件，未提供 `database-ddl.sql`。
 
 处理结果：
 
-1. 解析工程范围。
-2. 生成 Manifest 3.0。
-3. 在工程范围内分析全部基础信息、中间件、对外与对内能力、页面和路由。
-4. 用户接口清单中的能力归为对外，其余发现能力归为对内。
+1. 校验可定位证据和纳入范围。
+2. 允许继续初始化。
+3. 将来源写入 `evidence.data_model_sources`，并在结论中标记证据限制。
+4. Manifest 使用 `scope.data_models`，不把 DDL 缺失视为阻断。
+
+## 配置快照缺失
+
+配置状态为 `指定`，但 `configuration-scope.md` 中的外部目录不存在或不可读。
+
+处理结果：
+
+1. 在扫描前停止。
+2. 报告缺失目录、模板路径和对 `scope.configurations` 的影响。
+3. 不连接配置中心补取资料，不生成 Manifest 或半成品知识库。
+
+## 配置不适用
+
+配置状态为 `不适用`，原因是本次没有可授权的配置快照。
+
+处理结果：
+
+- Manifest 记录 `scope.configurations` 的状态与原因。
+- `evidence.configuration_snapshots` 保持空基线。
+- 初始化固定 `configurations/` 目录，但不分析配置内容。
+- 其他领域继续执行。
+
+## 六领域全部通过
+
+工程信息、数据模型、配置、中间件、接口和页面均声明合法状态，引用文件有效；数据模型至少有一种结构证据，适用的配置快照目录可读。
+
+处理结果：
+
+1. 生成 `schema_version: "4.0"` 的 Manifest 和输入清单。
+2. 初始化 `data-models/`、`configurations/` 等固定目录。
+3. 领域 Skills 只消费 Manifest 的六个 `scope` 范围。
+4. 配置基线写入 `evidence.configuration_snapshots`。
+5. 首次初始化的 `update.processed_packages` 为空列表。
 
 ## 指定接口模式
 
 接口状态为 `指定`，`api-scope.md` 的指定能力为 `API-example-query`。
 
-处理结果：
-
-1. 只深挖该能力。
-2. 允许追踪完成调用链所需的内部依赖。
-3. 不额外盘点无关接口。
-
-## 页面不适用
-
-页面状态为 `不适用`，原因是项目没有前端应用。
-
-处理结果：
-
-- Manifest 记录跳过原因。
-- 不调用页面领域分析。
-- 其他领域继续执行。
+处理结果：只深挖该能力和完成调用链所需的内部依赖，不额外盘点无关接口。

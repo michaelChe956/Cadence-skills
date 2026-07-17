@@ -1,38 +1,73 @@
-schema_version: "3.0"
+schema_version: "4.0"
 generator:
-  skill: knowledge-base-bootstrap
-  version: "3.0"
-mode: full-or-scoped
-generated_at: ""
+  skill: "knowledge-base-bootstrap"
+  version: "4.0"
 git:
-  branch: ""
-  baseline_commit: ""
+  repositories: []
 input:
-  root: cadence/knowledge-base/user-input
-  base_info: cadence/knowledge-base/user-input/base-info.md
-  inventory: cadence/knowledge-base/input-inventory.md
+  root: "cadence/knowledge-base/user-input"
+  base_info: "cadence/knowledge-base/user-input/base-info.md"
+  inventory: "cadence/knowledge-base/input-inventory.md"
 scope:
   projects:
-    status: full-or-scoped
+    status: ""
+    source: "cadence/knowledge-base/user-input/project-scope.md"
     items: []
-  database:
-    status: full-or-scoped-or-not-applicable
-    source: ""
+    not_applicable_reason: ""
+  data_models:
+    status: ""
+    source: "cadence/knowledge-base/user-input/data-model-scope.md"
+    selected: []
+    not_applicable_reason: ""
+  configurations:
+    status: ""
+    source: "cadence/knowledge-base/user-input/configuration-scope.md"
+    selected: []
+    not_applicable_reason: ""
   middleware:
-    status: full-or-scoped-or-not-applicable
-    source: ""
+    status: ""
+    source: "cadence/knowledge-base/user-input/middleware-scope.md"
+    selected: []
+    not_applicable_reason: ""
   api:
-    status: full-or-scoped-or-not-applicable
-    external_registry: ""
+    status: ""
+    source: "cadence/knowledge-base/user-input/api-scope.md"
+    external_registry: "cadence/knowledge-base/user-input/api-scope.md"
     selected: []
+    not_applicable_reason: ""
   pages:
-    status: full-or-scoped-or-not-applicable
-    source: ""
+    status: ""
+    source: "cadence/knowledge-base/user-input/page-scope.md"
     selected: []
-documents: []
+    not_applicable_reason: ""
+evidence:
+  code:
+    source_index: "cadence/knowledge-base/evidence/source-index.md"
+  data_model_sources:
+    ddl: []
+    migrations: []
+    entities: []
+    mappers: []
+    sql: []
+    manual: []
+  configuration_snapshots:
+    baseline:
+      snapshot_id: ""
+      environment: ""
+      release_batch: ""
+      external_directory: ""
+      generated_or_acquired_at: ""
+      fingerprint: ""
+      source_type: ""
+update:
+  last_change_package: {}
+  processed_packages: []
+documents:
+  core: []
+  interfaces: []
+  pages: []
+  services: []
+  data_models: []
+  configurations: []
 coverage: {}
-open_questions:
-  blocking: 0
-  high: 0
-  medium: 0
-  low: 0
+open_questions: {}

@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 初始化"
-  short_description: "校验用户输入范围并编排 Schema 3.0 KnowledgeBase 初始化"
-  default_prompt: "使用 $knowledge-base-bootstrap 读取当前项目 cadence/knowledge-base/user-input/base-info.md；输入缺失时停止并返回对应模板，完整时按声明范围建立 KnowledgeBase。"
+  short_description: "校验六领域输入并建立 Schema 4.0 KnowledgeBase"
+  default_prompt: "使用 $knowledge-base-bootstrap 校验当前项目的六领域输入，并按 Schema 4.0 初始化 KnowledgeBase。"
