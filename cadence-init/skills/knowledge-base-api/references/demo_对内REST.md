@@ -102,23 +102,27 @@ PAGE-order-list
 └─ orderApi.queryPage(request)
    └─ POST /api/admin/orders/query
       └─ API Gateway → order-query-service
-         └─ OrderQueryController.queryPage(request)
-            └─ OrderQueryApplicationService.queryPage(command)
-               ├─ PermissionContext.requireTenantAccess(tenantId)
-               ├─ OrderRegionRouter.route(tenantId)
-               │  ├─ [远端单元] OrderQueryFacade.queryPage(command) → Dubbo RPC
-               │  └─ [本地单元] OrderQueryService.query(criteria)
-               │     └─ OrderQueryRepository.findPage(criteria)
-               │        ├─ [精确筛选] Redis 查询缓存
-               │        │  └─ miss → OrderQueryMapper.selectPage(criteria)
-               │        │           ├─ order_db.t_order
-               │        │           └─ order_db.t_order_item
-               │        └─ [全文搜索] Elasticsearch order_index
-               │           └─ 订单 ID 列表 → OrderQueryMapper.selectByIds(ids)
-               ├─ CustomerProfileClient.getProfiles(customerIds) → Dubbo RPC
-               ├─ FulfillmentClient.getStatusBatch(orderIds) → HTTP
-               ├─ OrderRiskCache.getBatch(orderIds) → Caffeine 本地缓存
-               └─ [审计开启] OrderQueryAuditPublisher.publish(event) → Kafka
+         └─ API-order-page
+            └─ SERVICE-order-query / OrderQueryController.queryPage(request)
+               └─ OrderQueryApplicationService.queryPage(command)
+                  ├─ PermissionContext.requireTenantAccess(tenantId)
+                  ├─ OrderRegionRouter.route(tenantId)
+                  │  ├─ [远端单元] OrderQueryFacade.queryPage(command) → Dubbo RPC
+                  │  └─ [本地单元] OrderQueryService.query(criteria)
+                  │     └─ OrderQueryRepository.findPage(criteria)
+                  │        ├─ [精确筛选] Redis 查询缓存
+                  │        │  └─ miss → OrderQueryMapper.selectPage(criteria)
+                  │        │           ├─ TABLE-order → status/total_amount/created_at → Mapper SQL
+                  │        │           └─ TABLE-order-item → sku_name/quantity → 聚合 SQL
+                  │        └─ [全文搜索] Elasticsearch order_index
+                  │           └─ 订单 ID 列表 → OrderQueryMapper.selectByIds(ids) → TABLE-order
+                  ├─ CustomerProfileClient.getProfiles(customerIds) → Dubbo RPC
+                  ├─ FulfillmentClient.getStatusBatch(orderIds) → HTTP
+                  ├─ OrderRiskCache.getBatch(orderIds) → Caffeine 本地缓存
+                  ├─ CONFIG-order-query
+                  │  ├─ order.query.full-text-enabled → 全文查询分支
+                  │  └─ order.query.enrichment-enabled → 响应补充字段
+                  └─ [审计开启] OrderQueryAuditPublisher.publish(event) → Kafka
 ```
 
 ### 6.2 分支与触发条件
@@ -184,19 +188,32 @@ return orderSummaryAssembler.enrich(page, command);
 - Fulfillment HTTP：批量查询配送状态，超时降级为 `UNKNOWN`。
 - Risk Caffeine：读取本地风险摘要；本地缓存由 Kafka 和定时任务刷新。
 
-## 七、数据库与表
+## 七、数据模型与配置依赖
+
+### 7.1 数据模型影响
 
 本案例的数据库结论仅来自用户提供的 DDL、Mapper SQL 和数据源配置，不连接数据库，也不查询在线元数据。
 
-| 数据库或 Schema | 表名 | 用途 | 操作 | Mapper/DAO/SQL | 证据 |
-|------------------|------|------|------|----------------|------|
-| `order_db` | `t_order` | 订单主数据、状态、金额、客户和创建时间 | R | `OrderQueryMapper.selectPage/selectByIds` | `inputs/ddl/order.sql`、`OrderQueryMapper.xml:18-96` |
-| `order_db` | `t_order_item` | 商品名称、数量和订单商品摘要 | R | `OrderQueryMapper.selectItemSummary` | `inputs/ddl/order_item.sql`、`OrderQueryMapper.xml:98-131` |
-| `order_db` | `t_order_payment` | 支付方式与支付状态 | R | `OrderPaymentMapper.selectByOrderIds` | `inputs/ddl/order_payment.sql`、`OrderPaymentMapper.xml:12-39` |
-| `customer_db` | `t_customer_profile` | 客户等级与客户标签 | 间接 R | 由 `customer-profile-service` 访问，本工程不直连 | `inputs/ddl/customer_profile.sql`、`CustomerProfileClient.java:20-37` |
-| 待确认 | `t_order_risk_snapshot` | 风险快照的离线来源候选 | 未发现本接口直查 | 无当前工程 Mapper | 用户 DDL 存在该表，但当前调用链未发现引用 |
+| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 证据状态 | 表文档链接 |
+|---------------|---------------|------|----------|--------------|----------------|----------|------------|
+| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`customer_id`、`created_at` | `orderId/orderNo/status/amount/customerId/createdAt` 由 Mapper resultMap 和 Assembler 映射 | `OrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
+| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 映射 | `OrderQueryMapper.selectItemSummary` | DDL 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
+| `TABLE-order-payment` | `order_db.t_order_payment` | R | `order_id`、`payment_method`、`payment_status` | `paymentMethod/paymentStatus` 由 Mapper 与 Assembler 映射 | `OrderPaymentMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
+| `TABLE-customer-profile` | `customer_db.t_customer_profile` | 间接 R | `customer_id`、`level`、`tags` | `customerLevel/tags` 由 `CustomerProfileClient` 响应映射，当前服务不直连表 | 由 `customer-profile-service` 访问 | 代码可推导 | [`TABLE-customer-profile`](../data-models/SCHEMA-customer/TABLE-customer-profile.md) |
+| 待确认 | `t_order_risk_snapshot` | 未发现直读 | 待确认 | 无 API 字段到表字段证据 | 当前工程未发现 Mapper | 待确认 | 待确认 |
 
 > `t_order_risk_snapshot` 不能仅因名称相似就认定为本接口数据源；当前只记录为待确认候选。
+
+### 7.2 配置依赖
+
+| 配置组稳定 ID | 服务配置实体 | 配置键 | 直接影响 | 环境/Profile | 生效条件与绑定 | 证据状态 | 配置文档链接 |
+|----------------|--------------|--------|----------|--------------|--------------|----------|--------------|
+| `CONFIG-order-query` | `SERVICE-order-query` | `order.query.full-text-enabled` | 请求的全文搜索分支和能力未启用错误 | 生产、测试；具体值不记录 | `OrderQueryProperties#fullTextEnabled` 被 Repository 分支读取 | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+| `CONFIG-order-query` | `SERVICE-order-query` | `order.query.enrichment-enabled` | 响应是否补充客户、履约和风险字段 | 环境/Profile 待确认 | `OrderQueryProperties#enrichmentEnabled` 被 `OrderSummaryAssembler` 读取 | 待确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+| `CONFIG-order-query` | `SERVICE-order-query` | `order.query.audit-enabled` | 查询后的 Kafka 审计副作用 | 生产 Profile | 属性绑定为 true 时调用 `OrderQueryAuditPublisher` | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+| `CONFIG-order-region` | `SERVICE-order-query` | `order.query.region-route-enabled` | 请求路由到本地或远端单元 | 生产 Profile | 全局开关开启且租户路由目标为远端 | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+
+> 仅记录直接改变请求、响应、副作用或路由的配置；内部地址、凭证和连接信息的值一律写 `<redacted>`。
 
 ## 八、中间件使用明细
 
@@ -313,6 +330,8 @@ return orderSummaryAssembler.enrich(page, command);
 | 仓储分支 | `order-query-infrastructure/src/main/java/com/example/order/infrastructure/repository/OrderQueryRepository.java:42-98` |
 | MyBatis SQL | `order-query-infrastructure/src/main/resources/mapper/OrderQueryMapper.xml:18-131` |
 | 用户 DDL | `inputs/ddl/order.sql`、`inputs/ddl/order_item.sql`、`inputs/ddl/order_payment.sql` |
+| 字段级表文档 | `data-models/SCHEMA-order/TABLE-order.md`、`data-models/SCHEMA-order/TABLE-order-item.md` |
+| 服务配置实体 | `configurations/SERVICE-order-query.md` |
 | Redis 缓存 | `order-query-infrastructure/src/main/java/com/example/order/infrastructure/cache/OrderQueryCache.java:25-58` |
 | 搜索索引 | `order-query-infrastructure/src/main/java/com/example/order/infrastructure/search/OrderSearchRepository.java:30-106` |
 | Kafka 消费 | `order-query-infrastructure/src/main/java/com/example/order/infrastructure/messaging/OrderChangedConsumer.java:24-79` |

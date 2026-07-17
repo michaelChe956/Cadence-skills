@@ -115,8 +115,8 @@
       ├─ SignatureVerifyFilter：签名、时间窗、Nonce 防重放
       ├─ PartnerRateLimitFilter：合作方 + 能力维度限流
       └─ HTTP → Dubbo 协议转换
-         └─ PartnerOrderQueryFacade.queryOrders(request)
-            └─ PartnerOrderQueryFacadeImpl.queryOrders(request)
+         └─ API-partner-order-query
+            └─ SERVICE-order-openapi / PartnerOrderQueryFacadeImpl.queryOrders(request)
                ├─ PartnerPermissionService.requireOrderQuery(partnerCode)
                │  ├─ Redis PARTNER_API_PERMISSION:{partnerCode}
                │  └─ miss → partner_db.t_partner_api_permission
@@ -126,12 +126,16 @@
                │     └─ PartnerOrderRepository.findPage(criteria)
                │        ├─ Redis PARTNER_ORDER_QUERY:{partnerCode}:{digest}
                │        ├─ [精确查询] PartnerOrderQueryMapper.selectPage(criteria)
-               │        │  ├─ order_db.t_partner_order_mapping
-               │        │  ├─ order_db.t_order
-               │        │  └─ order_db.t_order_item
+               │        │  ├─ TABLE-partner-order-mapping → external_order_no/order_id → Mapper SQL
+               │        │  ├─ TABLE-order → status/total_amount/created_at → Mapper SQL
+               │        │  └─ TABLE-order-item → sku_name/quantity → 聚合 SQL
                │        └─ [全文条件] Elasticsearch partner_order_index
                │           └─ 候选 orderId → Mapper 回查数据库
                ├─ PartnerOrderAssembler.maskAndConvert(page)
+               ├─ CONFIG-partner-api-security
+               │  └─ partner.api.signature-window-seconds → 网关签名时间窗
+               ├─ CONFIG-partner-order-query
+               │  └─ partner.order.query.full-text-enabled → 全文查询分支
                └─ PartnerApiAuditPublisher.publish(event) → Kafka
 ```
 
@@ -190,20 +194,33 @@ public PartnerOrderQueryResponse queryOrders(PartnerOrderQueryRequest request) {
 - Elasticsearch 只返回候选订单 ID；最终金额、状态和时间均回查 MySQL。
 - `PartnerOrderAssembler` 将内部状态转换为对外枚举，移除内部备注、风控明细和未授权字段。
 
-## 七、数据库与表
+## 七、数据模型与配置依赖
+
+### 7.1 数据模型影响
 
 本案例的数据库结论只使用用户提供的 DDL、Mapper SQL、Entity 和数据源配置，不连接数据库，也不查询在线元数据。
 
-| 数据库或 Schema | 表名 | 用途 | 操作 | Mapper/DAO/SQL | 证据 |
-|------------------|------|------|------|----------------|------|
-| `partner_db` | `t_partner_api_permission` | 合作方能力授权和数据范围 | R | `PartnerPermissionMapper.selectPermission` | `inputs/ddl/partner_api_permission.sql`、`PartnerPermissionMapper.xml:12-48` |
-| `order_db` | `t_partner_order_mapping` | 外部订单号、合作方与内部订单映射 | R | `PartnerOrderQueryMapper.selectPage` | `inputs/ddl/partner_order_mapping.sql`、`PartnerOrderQueryMapper.xml:18-97` |
-| `order_db` | `t_order` | 订单主数据、状态、金额和时间 | R | `PartnerOrderQueryMapper.selectPage/selectByIds` | `inputs/ddl/order.sql`、`PartnerOrderQueryMapper.xml:18-132` |
-| `order_db` | `t_order_item` | 对外允许展示的商品摘要 | R | `PartnerOrderItemMapper.selectByOrderIds` | `inputs/ddl/order_item.sql`、`PartnerOrderItemMapper.xml:10-45` |
-| `order_db` | `t_order_payment` | 对外支付状态摘要 | 条件 R | `PartnerOrderPaymentMapper.selectByOrderIds` | `inputs/ddl/order_payment.sql`、`PartnerOrderPaymentMapper.xml:12-39` |
-| 待确认 | `t_partner_api_call_log` | 审计落库候选 | 主链路未直写 | 当前工程未发现 Mapper | 用户 DDL 存在，但审计消费者不在当前工程范围 |
+| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 证据状态 | 表文档链接 |
+|---------------|---------------|------|----------|--------------|----------------|----------|------------|
+| `TABLE-partner-api-permission` | `partner_db.t_partner_api_permission` | R | `partner_code`、`capability_code`、`data_scope` | 服务端 `partnerCode` 与能力 ID → 权限条件 | `PartnerPermissionMapper.selectPermission` | DDL 已确认 | [`TABLE-partner-api-permission`](../data-models/SCHEMA-partner/TABLE-partner-api-permission.md) |
+| `TABLE-partner-order-mapping` | `order_db.t_partner_order_mapping` | R | `partner_code`、`external_order_no`、`order_id` | `externalOrderNo` → `external_order_no` → `order_id` | `PartnerOrderQueryMapper.selectPage` | DDL 已确认 | [`TABLE-partner-order-mapping`](../data-models/SCHEMA-order/TABLE-partner-order-mapping.md) |
+| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`created_at` | `orderId/status/amount/createdAt` 由 SQL 别名与 `PartnerOrderAssembler` 映射 | `PartnerOrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
+| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 与 Assembler 映射 | `PartnerOrderItemMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
+| `TABLE-order-payment` | `order_db.t_order_payment` | 条件 R | `order_id`、`payment_status` | `paymentStatus` 由 Mapper 结果与对外枚举转换映射 | `PartnerOrderPaymentMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
+| 待确认 | `t_partner_api_call_log` | 未确认 | 待确认 | 无同步写入映射证据 | 当前工程未发现 Mapper | 待确认 | 待确认 |
 
 > 不能仅因 DDL 中存在 `t_partner_api_call_log` 就认定本接口同步写表；当前证据只能证明 Kafka 审计事件已生产。
+
+### 7.2 配置依赖
+
+| 配置组稳定 ID | 服务配置实体 | 配置键 | 直接影响 | 环境/Profile | 生效条件与绑定 | 证据状态 | 配置文档链接 |
+|----------------|--------------|--------|----------|--------------|--------------|----------|--------------|
+| `CONFIG-partner-api-security` | `SERVICE-order-openapi` | `partner.api.signature-window-seconds` | 请求签名时间窗与防重放校验 | 生产、联调；具体值不记录 | `PartnerApiSecurityProperties#signatureWindowSeconds` 被 `SignatureVerifyFilter` 调用 | 已确认 | [`SERVICE-order-openapi`](../configurations/SERVICE-order-openapi.md) |
+| `CONFIG-partner-api-security` | `SERVICE-order-openapi` | `partner.api.signing-secret` | 请求签名鉴权 | 生产、联调；值 `<redacted>` | 安全配置引用绑定 `PartnerSecretProvider`，由签名过滤器读取 | 已确认 | [`SERVICE-order-openapi`](../configurations/SERVICE-order-openapi.md) |
+| `CONFIG-partner-order-query` | `SERVICE-order-openapi` | `partner.order.query.full-text-enabled` | 请求是否允许进入全文查询分支 | 环境/Profile 待确认 | `PartnerOrderQueryProperties#fullTextEnabled` 且合作方能力已开通 | 待确认 | [`SERVICE-order-openapi`](../configurations/SERVICE-order-openapi.md) |
+| `CONFIG-partner-order-query` | `SERVICE-order-openapi` | `partner.order.query.audit-enabled` | 查询成功后的 Kafka 审计副作用 | 生产 Profile | `PartnerOrderQueryProperties#auditEnabled=true` 时调用 Publisher | 已确认 | [`SERVICE-order-openapi`](../configurations/SERVICE-order-openapi.md) |
+
+> 本节不收录同一服务中的线程池、日志级别等无直接行为影响配置；Demo 不记录任何真实环境值。
 
 ## 八、中间件使用明细
 
@@ -316,6 +333,8 @@ public PartnerOrderQueryResponse queryOrders(PartnerOrderQueryRequest request) {
 | 仓储分支 | `order-openapi-infrastructure/src/main/java/com/example/order/openapi/repository/PartnerOrderRepository.java:48-105` |
 | MyBatis SQL | `order-openapi-infrastructure/src/main/resources/mapper/PartnerOrderQueryMapper.xml:18-132` |
 | 用户 DDL | `inputs/ddl/partner_api_permission.sql`、`inputs/ddl/partner_order_mapping.sql`、`inputs/ddl/order.sql` |
+| 字段级表文档 | `data-models/SCHEMA-partner/TABLE-partner-api-permission.md`、`data-models/SCHEMA-order/TABLE-order.md` |
+| 服务配置实体 | `configurations/SERVICE-order-openapi.md` |
 | Redis 与防重放 | `PartnerPermissionCache.java:22-58`、`NonceReplayGuard.java:26-61` |
 | Elasticsearch | `PartnerOrderSearchRepository.java:30-112` |
 | Kafka 审计 | `PartnerApiAuditPublisher.java:28-59` |

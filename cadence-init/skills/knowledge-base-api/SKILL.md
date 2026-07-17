@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-api
-description: "Use when 需要按用户提供的对外能力清单和工程范围，全量盘点或指定深挖 REST、RPC、消息、Redis 队列、文件交换、定时任务与批处理能力。"
+description: "Use when an agent needs to inventory or deeply analyze project REST, RPC, messaging, queue, file exchange, scheduled task, or batch capabilities within a validated KnowledgeBase scope."
 ---
 
 # KnowledgeBase API 与集成能力
@@ -22,12 +22,15 @@ description: "Use when 需要按用户提供的对外能力清单和工程范围
 必须读取：
 
 - `cadence/knowledge-base/manifest.yaml`
+- `cadence/knowledge-base/base-information.md` 中的服务、模块、数据模型、配置组关系矩阵
 - Manifest 中登记的工程范围
 - Manifest 中登记的对外能力清单
 - Manifest 中登记的 API 状态、执行模式和指定能力
+- Manifest 授权的 `data-models/README.md`、字段级表文档和 TABLE 稳定 ID
+- Manifest 授权的 `configurations/README.md`、服务配置实体和配置组稳定 ID
 - 用户提供的 DDL、中间件和页面范围
 
-Manifest 不存在、Schema 不是 `3.0` 或 API 输入未通过 Bootstrap 校验时停止，并引导执行 `knowledge-base-bootstrap`。
+只接受 `schema_version: "4.0"`。Manifest 不存在、Schema 不是 4.0、API 输入未通过 Bootstrap 校验，或所需领域不在 Manifest 授权范围时停止，并引导执行 `knowledge-base-bootstrap`；不得读取、兼容或迁移旧版 KnowledgeBase。
 
 ## 对外与对内分类
 
@@ -141,6 +144,20 @@ Mapper XML、配置和资源目录必须根据项目结构探测，不假设固�
 
 间接调用必须逐跳追踪。无法唯一映射时列出候选并标记待确认。
 
+每项能力必须分别建立以下可导航关系链：
+
+```text
+API → SERVICE/MODULE → TABLE → 字段/Mapper/SQL
+API → SERVICE/MODULE → CONFIGURATION → 配置键/生效条件
+```
+
+- `SERVICE/MODULE` 优先使用 Base Info 关系矩阵中的稳定 ID；矩阵缺失时记录代码符号和 `待确认`，不得跳过证据缺口。
+- `TABLE` 必须使用 `data-models/` 中的稳定 ID 并链接字段级表文档；同时记录读写类型、涉及字段、Mapper/SQL 和证据状态。
+- API 模型字段与表字段的关系必须由请求/响应映射、Assembler、Entity、Mapper 或 SQL 逐跳证明；字段同名不能作为关联依据。
+- `CONFIGURATION` 必须链接 `configurations/` 中的服务配置实体，记录配置组稳定 ID、配置键、环境、绑定、生效条件和证据状态。
+- 只有直接影响请求、响应、副作用、路由、鉴权、中间件或外部系统的配置才进入 API 文档。仅因同属服务、文件中出现或名称相似的配置不得关联。
+- 只有配置键或默认值、但缺少绑定与生效条件时标记 `待确认`，不得断言配置已生效。
+
 ### 4. 核实数据库证据
 
 只使用：
@@ -152,7 +169,19 @@ Mapper XML、配置和资源目录必须根据项目结构探测，不假设固�
 
 禁止连接数据库或查询在线元数据。无法确认 Schema、表归属或环境时标记待确认，不使用工程名代替数据库名。
 
-### 5. 生成能力文档
+字段、索引和约束以 `data-models/` 字段级文档及其证据状态为准。API 文档只摘录与当前能力直接相关的字段影响并链接原表文档，不复制完整表结构。
+
+### 5. 核实配置证据
+
+先从 API 入口、服务/模块稳定 ID、属性绑定、条件装配、网关、鉴权、中间件客户端和外部系统客户端定位直接配置关系，再读取对应服务配置实体：
+
+1. 核对配置组稳定 ID、配置键、环境/Profile 和来源文件。
+2. 核对 `@ConfigurationProperties`、`@Value`、Bean 工厂、条件注解或调用代码。
+3. 记录配置影响的请求、响应、副作用、路由、鉴权、中间件或外部系统行为。
+4. 核对加载顺序与生效条件；证据不足时写 `待确认`。
+5. 密码、Token、密钥、完整连接串、内部域名、IP、URL 等敏感值统一写 `<redacted>`。
+
+### 6. 生成能力文档
 
 请求响应能力生成：
 
@@ -171,7 +200,7 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - 不适用于能力：填写 `不适用`。
 - 单个字段缺失不阻断文档生成。
 
-### 6. 更新关系与进度
+### 7. 更新关系与进度
 
 更新：
 
@@ -200,8 +229,10 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - 不把依赖声明视为能力实际使用。
 - 不把同 JVM 本地调用误写成网络 RPC。
 - 不根据 DAO 名猜表名，必须核对 SQL 或 DDL。
+- 不根据 API 模型字段与数据库字段同名建立映射，必须核对转换代码、Mapper 或 SQL。
+- 不把与当前能力没有直接行为影响的服务配置写入 API 文档。
 - 不连接数据库、中间件或远程环境。
-- 不输出凭证、完整连接串和未脱敏敏感值。
+- 不输出凭证、完整连接串和未脱敏敏感值；敏感值统一写 `<redacted>`。
 - 不把定时任务内部方法当成 REST API。
 - 不自动写入 `cadence/project-rules/`。
 
@@ -212,5 +243,7 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - 全量或指定模式符合 Manifest。
 - REST、RPC、消息、队列、文件和任务按范围纳入。
 - 核心能力具有稳定 ID、状态、证据和可信度。
+- 数据影响能够链接 `data-models/` 中的 TABLE 稳定 ID、相关字段、读写、Mapper/SQL 和证据状态。
+- 直接配置依赖能够链接 `configurations/` 中的服务配置实体，并记录配置键、环境、生效条件和证据状态。
 - 数据副作用能够关联 DDL、代码和配置证据。
 - 不确定项进入待确认清单。

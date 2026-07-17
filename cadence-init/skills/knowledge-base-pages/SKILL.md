@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-pages
-description: "Use when 需要为 Vue 或 React 存量前端分析页面、静态与动态路由、菜单、权限守卫、状态管理、API 调用及后端数据映射，并生成 KnowledgeBase 页面能力文档。"
+description: "Use when an agent needs to analyze existing Vue or React pages, routes, navigation, permissions, state, API calls, and evidence-backed backend data or configuration relationships."
 ---
 
 # KnowledgeBase 页面能力
@@ -19,14 +19,16 @@ description: "Use when 需要为 Vue 或 React 存量前端分析页面、静态
 
 优先读取：
 
-- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
-- `cadence/knowledge-base/base-information.md`
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 4.0）
+- `cadence/knowledge-base/base-information.md` 中的 PAGE、API、SERVICE/MODULE、TABLE 和配置组关系矩阵
 - `cadence/knowledge-base/interfaces/README.md` 接口总索引
 - `cadence/knowledge-base/interfaces/` 下与页面调用匹配的接口主文件
+- `cadence/knowledge-base/data-models/README.md` 与目标 TABLE 字段级文档
+- `cadence/knowledge-base/configurations/README.md` 与目标服务配置实体
 - 用户提供的路由、菜单、角色和权限资料
 - Vue/React 路由、页面、状态管理和请求模块代码
 
-Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base-bootstrap`。页面状态为 `不适用` 时记录跳过原因并结束。API 文档缺失或页面调用无法定位时，记录待确认，不得根据按钮名称猜测后端接口。
+只接受 `schema_version: "4.0"`。Manifest 不存在、Schema 不是 4.0 或页面领域未授权时停止并引导使用 `knowledge-base-bootstrap`；不得读取、兼容或迁移旧版 KnowledgeBase。页面状态为 `不适用` 时记录跳过原因并结束。API 文档缺失或页面调用无法定位时，记录待确认，不得根据按钮名称猜测后端接口。
 
 ## 强制规则
 
@@ -35,6 +37,9 @@ Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base
 - 区分路由存在、组件存在、页面可达和用户有权访问。
 - 页面调用的 API 必须使用接口知识库中的稳定 API ID，并以 Markdown 相对链接指向 `interfaces/` 下对应接口主文件。
 - 页面与 REST API 映射必须记录 HTTP Method、规范化 Path、前端调用位置和请求封装链路。
+- 页面到 TABLE 和 CONFIGURATION 的关系必须经过已匹配 API 与后端 SERVICE/MODULE 证据，不得从页面直接跳到数据库或配置实体。
+- TABLE 关系必须使用 `data-models/` 稳定 ID 和文档链接，记录页面字段、API 字段、表字段、读写和证据状态。
+- 配置关系必须链接 `configurations/` 服务配置实体，记录配置组稳定 ID、配置键、环境/Profile、生效条件、页面影响和证据状态。
 - 未登记或无法唯一匹配的接口使用 `API-CANDIDATE-*`，不得生成不存在的接口主文件链接。
 - 页面 REST 默认匹配对内能力；只有前端调用链实际指向对外地址且 Method + Path 能与对外接口主文件核对时，才关联对外能力，不能按业务名称相似度匹配。
 - 权限结论必须结合路由元数据、守卫、菜单、状态和后端鉴权资料。
@@ -131,10 +136,10 @@ Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base
 
 ### 7. 关联 API 和数据
 
-按调用链建立：
+按调用链渐进建立：
 
 ```text
-ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
+PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 ```
 
 需要考虑：
@@ -153,8 +158,11 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 3. 将运行时路径参数规范化为 `{参数名}`，得到 `HTTP Method + 标准 Path`。
 4. 先在 `interfaces/README.md` 中按 Method + Path 查找稳定 API ID，再读取对应接口主文件核对分类、状态和后端服务。
 5. 匹配成功时，在页面文档中使用稳定 API ID，并以 Markdown 相对链接指向对应接口主文件。
-6. 同一页面调用多个 API 时逐条建立关系，不合并为无法独立导航的文本列表。
-7. 无法唯一匹配时列出候选，使用 `API-CANDIDATE-*` 并标记待确认；不根据函数名、按钮名或页面文案补造正式接口。
+6. 从接口主文件取得后端 SERVICE/MODULE、TABLE 稳定 ID、字段映射和配置依赖，再回到 API 模型、前端请求代码或后端映射证据核对页面关系。
+7. 页面字段 → API 字段 → TABLE 字段必须逐跳取证；即使字段同名，也不得直接关联表。缺少 API 模型、请求代码或后端证据时写 `待确认`。
+8. 页面 Feature Flag、环境变量或菜单配置必须核对配置键、绑定、目标环境和生效条件，并链接服务配置实体；敏感值写 `<redacted>`。
+9. 同一页面调用多个 API 时逐条建立关系，不合并为无法独立导航的文本列表。
+10. 无法唯一匹配时列出候选，使用 `API-CANDIDATE-*` 并标记待确认；不根据函数名、按钮名或页面文案补造正式接口。
 
 ### 8. 识别异常项
 
@@ -187,6 +195,10 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 - 不把组件存在视为页面可达。
 - 不把前端权限控制视为后端鉴权证明。
 - 不根据按钮文字猜测 API 路径。
+- 不根据页面字段、API 字段和表字段同名建立 TABLE 关系。
+- 不绕过 API 模型、请求代码或后端证据直接把页面关联到表。
+- 不把存在于前端构建文件或后端服务中的配置都写成页面依赖，只记录直接控制页面、路由、权限、请求或展示行为的配置。
+- 不输出配置敏感值；统一写 `<redacted>`。
 - 不把开发工具、Demo 和 Storybook 页面混入生产页面。
 - 不为动态路由补造运行时返回结果。
 - 不复制大段组件源码到知识库。
@@ -203,7 +215,9 @@ ROUTE → PAGE → API → SERVICE/MODULE → TABLE/MIDDLEWARE
 
 - 所有已发现路由均有来源和状态。
 - 页面和路由使用独立稳定 ID。
-- 页面、API、服务和数据之间能够导航；已匹配 REST API 具有 Method、标准 Path 和接口主文件链接。
+- 页面、API、服务、字段级 TABLE 和配置实体之间能够导航；已匹配 REST API 具有 Method、标准 Path 和接口主文件链接。
+- TABLE 关系记录页面字段、API 字段、表字段、读写、证据状态和 `data-models/` 链接。
+- Feature Flag 与环境配置记录配置组、配置键、环境/Profile、生效条件、证据状态和 `configurations/` 链接。
 - 所有页面 API 调用均已匹配稳定 API ID，或以 `API-CANDIDATE-*` 进入待确认清单。
 - 动态、权限和运行时限制已经明确。
 - 孤立、不可达和冲突项进入待确认清单。

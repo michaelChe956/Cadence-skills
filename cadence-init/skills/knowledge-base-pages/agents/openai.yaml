@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 页面能力"
   short_description: "分析 Vue 与 React 页面路由权限状态及后端接口映射关系"
-  default_prompt: "使用 $knowledge-base-pages 按 Manifest 3.0 声明的页面范围生成页面索引和能力文档。"
+  default_prompt: "使用 $knowledge-base-pages 按 Manifest 4.0 页面范围，沿 PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION 关联字段级 data-models/ 和 configurations/ 配置实体，生成页面索引和能力文档。"
