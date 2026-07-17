@@ -1,7 +1,7 @@
 {
   "name": "cadence-init",
-  "description": "项目初始化与存量项目知识库插件 - 包含环境检查、项目分析、规则配置、MCP配置、Java + Vue/React KnowledgeBase 生成及渐进式任务上下文消费能力",
-  "version": "0.0.3",
+  "description": "项目初始化与存量项目知识库插件 - 包含环境检查、项目分析、规则配置、MCP配置、Java + Vue/React Schema 4.0 KnowledgeBase、字段级数据模型、配置快照、强制变更包和渐进式任务上下文能力",
+  "version": "0.0.4",
   "author": {
     "name": "michaelChe",
     "email": "michaelChe956@gmail.com"

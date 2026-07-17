@@ -9,26 +9,51 @@
 - 覆盖范围：
 - 未覆盖范围：
 
-## 1. 项目定位与系统边界
+## 项目摘要
 
-## 2. 仓库、服务与应用
+用简短文字说明项目定位、系统边界、主要仓库或应用、当前基线和覆盖范围。这里只保留摘要，不复制字段清单、全部配置键或领域文档正文。
 
-## 3. 核心业务流程
+## 一级导航
 
-## 4. 技术与数据导航
+| 入口 | 内容 |
+|------|------|
+| [`base-information.md`](base-information.md) | 项目基础信息与系统边界 |
+| [`development-guide.md`](development-guide.md) | 开发、验证与运行指南 |
+| [`interfaces/README.md`](interfaces/README.md) | 对外、对内和服务间接口 |
+| [`pages/README.md`](pages/README.md) | 页面、路由、权限和字段映射 |
+| [`services/`](services/) | 服务与模块导航 |
+| [`data-models/README.md`](data-models/README.md) | 字段级数据模型与表导航 |
+| [`configurations/README.md`](configurations/README.md) | 服务配置、Profile、Feature Flag 与中间件配置导航 |
+| [`evidence/`](evidence/) | 当前源码、结构和配置快照证据 |
+| [`change-history.md`](change-history.md) | KnowledgeBase 变更历史 |
+| [`open-questions.md`](open-questions.md) | 待确认项 |
 
-## 5. API 与集成导航
+## 核心业务流程
 
-## 6. 页面与权限导航
+稳定主链：
 
-## 7. 开发与验证入口
+```text
+PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
+```
 
-## 8. 常见修改场景
+每条流程只保留稳定 ID、摘要和领域文档链接；步骤、字段、配置键和证据明细留在对应领域文档。
+
+## 常见修改场景
 
 | 场景 | 必读文档 | 主要实体 | 影响检查 | 验证入口 |
 |------|----------|----------|----------|----------|
+| 字段变更 | `data-models/README.md`、字段级表文档、当前结构证据 | TABLE、COLUMN | API、页面、SQL/Mapper、服务 | `development-guide.md` |
+| SQL/Mapper 变更 | 字段级表文档、SQL/Mapper 证据、服务文档 | TABLE、MAPPER、SERVICE/MODULE | 字段映射、事务、查询调用方 | `development-guide.md` |
+| 配置键变更 | `configurations/README.md`、服务配置文档、当前快照证据 | CONFIGURATION | Profile、Feature Flag、服务和中间件 | `development-guide.md` |
+| Profile/Feature Flag | 服务配置文档、当前快照证据 | PROFILE、FEATURE_FLAG | 环境差异、默认值、启用条件 | `development-guide.md` |
+| API 参数变更 | `interfaces/README.md`、接口主文档、服务和数据模型文档 | API、PARAMETER | 调用方、页面、服务、表 | `development-guide.md` |
+| 页面字段变更 | `pages/README.md`、页面文档、接口和数据模型文档 | PAGE、FIELD | API 参数、字段映射、校验 | `development-guide.md` |
+| 中间件配置变化 | 配置文档、中间件证据、依赖服务文档 | MIDDLEWARE、CONFIGURATION | 连接、路由、消费和部署环境 | `development-guide.md` |
 
-## 9. 高风险区域
+## 高风险区域
 
-## 10. 待确认项
+仅摘要列出高风险入口，详情链接到对应领域文档和证据。
 
+## 待确认项
+
+仅列出数量和最高优先级摘要，完整内容见 [`open-questions.md`](open-questions.md)。

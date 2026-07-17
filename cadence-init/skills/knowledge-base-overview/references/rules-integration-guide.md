@@ -31,10 +31,12 @@ cadence/project-rules/knowledge-base-usage.md
 - Codex 在 Skill 已安装或被项目发现后使用手动入口：`$knowledge-base-context`。
 - `agents/openai.yaml` 只提供 Codex 展示和默认提示元数据，不是触发注册表。
 - `manifest.yaml` 只在 Skill 触发后提供 Schema、用户授权范围和知识库基线，不参与 Skill 发现或触发。
-- Skill 同时读取 KnowledgeBase 与当前源码、DDL、配置，不把任一方作为另一方的替代。
+- Skill 只接受 Schema 4.0，并按 `README.md` 的一级导航渐进读取任务相关文档。
+- 表相关任务同时读取字段级表文档和当前结构证据；配置相关任务同时读取服务配置文档和当前快照证据。
+- Skill 同时读取 KnowledgeBase 与当前源码、DDL、有效配置和证据，不把任一方作为另一方的替代。
 - Skill 只负责原始任务的前置上下文阶段，不调用 `cadence-workflow`；上下文准备完成后，调用方继续用户原始任务。
 
-已存在 Schema 3.0 KnowledgeBase 的项目升级到包含本 Skill 的插件版本后，应重新执行 `knowledge-base-overview` 刷新稳定管理区块；也可以在下一次 `knowledge-base-update` 编排 Overview 时完成刷新。不得直接覆盖管理区块外的人工规则。
+Schema 4.0 KnowledgeBase 安装或升级到包含本 Skill 的插件版本后，应重新执行 `knowledge-base-overview` 刷新入口与稳定管理区块；也可以在下一次 `knowledge-base-update` 消费完整变更包时完成刷新。不得直接覆盖管理区块外的人工规则。
 
 ## 管理区块
 
@@ -60,6 +62,8 @@ cadence/project-rules/knowledge-base-usage.md
 
 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug 前，先使用 `knowledge-base-context` 获取最小任务上下文。
 修改代码前读取 `cadence/knowledge-base/README.md`。
+表相关任务读取字段级表文档和当前结构证据；配置相关任务读取服务配置文档和当前快照证据。
+变更完成后准备完整变更包，并使用 `knowledge-base-update` 执行 Update。
 详细规则见 `cadence/project-rules/knowledge-base-usage.md`。
 <!-- cadence-knowledge-base:end -->
 ```
@@ -94,9 +98,25 @@ cadence/project-rules/knowledge-base-usage.md
 
 - 知识库入口路径
 - 七类任务优先使用 `knowledge-base-context`
-- 修改前读取要求
+- Schema 4.0 一级导航的摘要入口
+- 表和配置任务的证据读取要求
 - 按任务加载相关文档的要求
 - 知识库冲突时回到源码验证
-- 增量更新触发条件
+- 完整变更包和 `knowledge-base-update` Update 要求
 
-不要放入完整模块、API、表或页面清单。
+项目 KnowledgeBase README 的一级导航必须包含：
+
+```text
+base-information.md
+development-guide.md
+interfaces/README.md
+pages/README.md
+services/
+data-models/README.md
+configurations/README.md
+evidence/
+change-history.md
+open-questions.md
+```
+
+代理入口和 README 都只保留摘要与导航，不要放入完整模块、API、表、字段、配置键或页面清单。

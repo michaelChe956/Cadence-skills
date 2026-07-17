@@ -4,18 +4,37 @@
 
 该项目是订单管理 B/S 系统，由 `admin-web`、`order-service` 和 `user-service` 组成。订单创建通过内部管理页面发起，也向合作方提供受限外部 API。订单创建后写入订单库并发布 Kafka 事件。
 
+入口只保留上述摘要和导航，不复制订单字段清单或全部配置键。
+
+## 一级导航
+
+- [`base-information.md`](base-information.md)
+- [`development-guide.md`](development-guide.md)
+- [`interfaces/README.md`](interfaces/README.md)
+- [`pages/README.md`](pages/README.md)
+- [`services/`](services/)
+- [`data-models/README.md`](data-models/README.md)
+- [`configurations/README.md`](configurations/README.md)
+- [`evidence/`](evidence/)
+- [`change-history.md`](change-history.md)
+- [`open-questions.md`](open-questions.md)
+
 ## 核心流程
 
 ```text
-ROUTE-admin-orders-create
-→ PAGE-order-create
+PAGE-order-create
 → API-order-create
-→ SERVICE-order-service
+→ SERVICE-order-service/MODULE-order-write
 → TABLE-order
-→ EVENT-order-created
+→ CONFIGURATION-order-write/PROFILE-production
+→ MIDDLEWARE-kafka
 ```
 
 每个 ID 链接到对应领域文档和证据索引。
+
+## 修改示例
+
+订单状态字段调整前，先使用 `knowledge-base-context`，再读取字段级订单表文档、API 与页面字段映射及当前结构证据。若同时调整 Kafka Topic 配置，还需读取订单服务配置文档和当前配置快照。实现与验证完成后，准备包含字段、SQL/Mapper、配置、证据、验证结果和文档目标的完整变更包，并使用 `knowledge-base-update` 执行 Update。
 
 ## 术语示例
 
@@ -32,4 +51,3 @@ ROUTE-admin-orders-create
 ## 规则合并示例
 
 已有 `AGENTS.md` 包含测试和提交规则。技能保留原文，只在文件末尾追加一个 KnowledgeBase 管理区块。再次执行时只更新该区块，不产生第二份内容。
-

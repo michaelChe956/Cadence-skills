@@ -1,13 +1,13 @@
 ---
 name: knowledge-base-overview
-description: "Use when 需要将项目基础信息、API、页面、核心业务流程和行业术语整理成 Coding Agent 项目导航，或安全接入 CLAUDE.md、AGENTS.md 与项目级 KnowledgeBase 使用规则。"
+description: "Use when 需要将 Schema 4.0 KnowledgeBase 的基础信息、接口、页面、服务、字段级数据模型、配置快照、证据和变更历史整理成 Coding Agent 项目导航，或安全接入 CLAUDE.md、AGENTS.md 与项目级 KnowledgeBase 使用规则。"
 ---
 
 # KnowledgeBase 项目概览
 
 ## 概述
 
-把领域技能产物整理成 Coding Agent 的首选入口，提供项目边界、核心流程、模块导航、领域术语、常见修改场景和待确认项。只维护稳定标记内的代理入口，不覆盖目标项目已有规则。
+把 Schema 4.0 领域技能产物整理成 Coding Agent 的首选入口，提供项目边界、核心流程、一级导航、领域术语、常见修改场景和待确认项。入口只保留摘要与导航；只维护稳定标记内的代理入口，不覆盖目标项目已有规则。
 
 ## 必读资源
 
@@ -20,23 +20,33 @@ description: "Use when 需要将项目基础信息、API、页面、核心业务
 
 ## 前置输入
 
-优先读取：
+只接受 Schema 4.0 KnowledgeBase，优先读取：
 
-- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 3.0）
+- `cadence/knowledge-base/manifest.yaml`（必须为 Schema 4.0）
 - `cadence/knowledge-base/base-information.md`
+- `cadence/knowledge-base/development-guide.md`
 - `cadence/knowledge-base/interfaces/README.md`
 - `cadence/knowledge-base/pages/README.md`
-- `cadence/knowledge-base/development-guide.md`
+- `cadence/knowledge-base/services/`
+- `cadence/knowledge-base/data-models/README.md`
+- `cadence/knowledge-base/configurations/README.md`
+- `cadence/knowledge-base/evidence/`
+- `cadence/knowledge-base/change-history.md`
+- `cadence/knowledge-base/open-questions.md`
 - 用户提供的术语、架构和业务流程资料
 
-Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base-bootstrap`。缺少某个适用领域文档时，不得把概览技能变成重复的全仓分析技能；记录缺失并引导执行对应领域技能。不适用领域按 Manifest 跳过。
+Manifest 不存在或 Schema 不是 4.0 时停止并引导使用 `knowledge-base-bootstrap`。缺少某个适用领域文档时，不得把概览技能变成重复的全仓分析技能；记录缺失并引导执行对应领域技能。不适用领域按 Manifest 跳过。
 
 ## 强制规则
 
 - 概览是导航与摘要，不复制领域文档全文。
-- 业务流程必须能够追踪到页面、API、服务、表或中间件证据。
+- 项目入口不得复制字段清单、全部配置键或领域文档明细。
+- 业务流程必须能够追踪到页面、API、服务或模块、表、配置或中间件证据。
 - 用户提供的术语与代码候选术语分开标记。
 - 知识库与源码冲突时，概览必须引导回到来源验证。
+- 任务开始前必须先使用 `knowledge-base-context` 获取渐进式任务上下文。
+- 表相关任务必须读取字段级表文档和当前结构证据；配置相关任务必须读取服务配置文档和当前快照证据。
+- 变更完成后必须准备完整变更包，并由 `knowledge-base-update` 消费后执行 Update。
 - 只更新 `CLAUDE.md`、`AGENTS.md` 中的稳定管理区块。
 - 管理标记损坏、重复或嵌套时停止覆盖并写入待确认项。
 - 用户自定义详细规则写入 `cadence/project-rules/knowledge-base-usage.md`。
@@ -58,28 +68,32 @@ Manifest 不存在或 Schema 不是 3.0 时停止并引导使用 `knowledge-base
 
 ### 2. 建立导航
 
-为以下内容提供链接：
+README 必须直接提供以下一级导航，顺序保持稳定：
 
-- 服务和模块
-- 数据模型
-- 配置与中间件
-- 对外、对内和服务间 API
-- 页面、路由和权限
-- 开发与验证指南
-- 领域术语
-- 变更历史和待确认项
+```text
+base-information.md
+development-guide.md
+interfaces/README.md
+pages/README.md
+services/
+data-models/README.md
+configurations/README.md
+evidence/
+change-history.md
+open-questions.md
+```
 
-大型项目链接到 `services/`、`interfaces/`、`pages/` 和 `data-models/` 子文档。
+一级入口下面可以链接到服务、接口、页面、表、配置和证据子文档，但不得把子文档明细复制到 README。
 
 ### 3. 整理核心业务流程
 
 优先选择三到五条对项目最重要且证据充分的流程，使用稳定 ID 串联：
 
 ```text
-ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
+PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 ```
 
-记录入口、主要步骤、数据变化、异步边界、失败处理和证据。证据不足的流程放入待确认清单，不用推测补齐。
+允许根据实际项目省略不适用节点或补充 ROUTE、EVENT 等旁路节点，但稳定主链必须支持 PAGE、API、SERVICE/MODULE、TABLE 和 CONFIGURATION/MIDDLEWARE。记录入口、主要步骤、数据变化、配置影响、异步边界、失败处理和证据。证据不足的流程放入待确认清单，不用推测补齐。
 
 ### 4. 整理领域术语
 
@@ -98,13 +112,13 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 
 至少覆盖：
 
-- 修改页面或路由
-- 修改 REST API
-- 修改数据表或 Mapper
-- 修改配置或 Profile
-- 修改消息生产或消费
-- 修改鉴权和权限
-- 新增服务或模块
+- 字段变更：读取字段级表文档、关联 API/页面和当前结构证据。
+- SQL/Mapper 变更：读取表文档、SQL/Mapper 证据和服务调用关系。
+- 配置键变更：读取服务配置文档、配置索引和当前快照证据。
+- Profile/Feature Flag 变更：读取环境差异、启用条件和当前快照证据。
+- API 参数变更：读取接口主文档、调用方、服务和数据模型影响关系。
+- 页面字段变更：读取页面文档、API 参数和字段映射关系。
+- 中间件配置变化：读取配置文档、中间件证据、依赖服务和验证入口。
 
 每个场景列出必读文档、主要入口、影响关系和验证指南链接。不得为项目不存在的工具创造命令。
 
@@ -128,7 +142,7 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 - `cadence/knowledge-base/open-questions.md`
 - `cadence/project-rules/knowledge-base-usage.md`
 
-`README.md` 作为 Coding Agent 首选入口，保持短小，只提供读取顺序、覆盖范围和导航。
+`README.md` 作为 Coding Agent 首选入口，保持短小，只提供项目摘要、读取顺序、覆盖范围和一级导航，不复制字段清单、全部配置键或领域文档正文。
 
 ### 8. 更新 CLAUDE.md 与 AGENTS.md
 
@@ -140,6 +154,8 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 
 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug 前，先使用 `knowledge-base-context` 获取最小任务上下文。
 修改代码前读取 `cadence/knowledge-base/README.md`，并按任务范围读取相关文档。
+表相关任务读取字段级表文档和当前结构证据；配置相关任务读取服务配置文档和当前快照证据。
+变更完成后准备完整变更包，并使用 `knowledge-base-update` 执行 Update。
 <!-- cadence-knowledge-base:end -->
 ```
 
@@ -166,17 +182,20 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 项目规则至少表达：
 
 1. 修改代码前先读知识库入口。
-2. 按任务读取相关领域文档，不一次加载全部大型文档。
-3. 知识库是事实索引，不替代源码、DDL 和有效配置。
-4. `[合理推断]` 与 `[待人工确认]` 不能当作确定事实。
-5. 知识库与当前实现冲突时回到来源验证并更新知识库。
-6. 影响 API、页面、DDL、配置或中间件后执行增量更新技能。
+2. 每个任务开始前先使用 `knowledge-base-context`，按任务渐进读取相关领域文档，不一次加载全部大型文档。
+3. 表相关任务读取 `data-models/README.md`、字段级表文档及 `evidence/` 中的当前结构证据。
+4. 配置相关任务读取 `configurations/README.md`、服务配置文档及 `evidence/` 中的当前快照证据。
+5. 知识库是事实索引，不替代源码、DDL、有效配置和当前证据。
+6. `[合理推断]` 与 `[待人工确认]` 不能当作确定事实。
+7. 知识库与当前实现冲突时回到来源验证并更新知识库。
+8. 影响字段、SQL/Mapper、配置、Profile/Feature Flag、API 参数、页面字段或中间件后，必须准备包含变更范围、实现证据、验证结果和文档目标的完整变更包，并使用 `knowledge-base-update` 执行 Update。
 
 ## 禁止行为
 
 - 不覆盖或重写用户现有代理规则。
 - 不在 `.claude/rules/` 等框架内置规则目录写入用户规则。
 - 不把所有领域文档拼接成一个超长 README。
+- 不在 README 中复制字段清单或全部配置键。
 - 不根据类名和表名编造项目定位或业务流程。
 - 不将低可信度术语定义写成正式业务定义。
 - 不删除已解决问题的历史记录；应更新状态或转入变更历史。
@@ -184,8 +203,9 @@ ROUTE → PAGE → API → SERVICE → TABLE/EVENT/MIDDLEWARE
 ## 完成条件
 
 - Coding Agent 能从 README 导航到全部核心文档。
-- 核心流程具有稳定 ID 链路和证据。
+- README 直接提供 Schema 4.0 的十个一级导航入口，且只保留摘要和导航。
+- 核心流程支持 `PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE` 稳定链路和证据。
 - 术语区分用户定义与代码推断。
 - 待确认项按优先级整理。
 - `CLAUDE.md`、`AGENTS.md` 只修改稳定区块。
-- 项目规则明确知识库的读取和更新方式。
+- 项目规则明确 Context 前置、表与配置证据读取以及完整变更包 Update。
