@@ -98,7 +98,7 @@ cadence/knowledge-base/
 - 增量包状态写入 `update.processed_packages`；首次初始化为空列表。
 - 固定产物检测、Manifest 完整性/版本门禁和显式重新初始化授权已经通过；需要清理重建时已记录精确清理范围与风险授权，未经授权时没有覆盖或删除任何 KnowledgeBase 文件。
 - `global-validation` 必须核对 Manifest 与输入清单的六领域范围、适用领域文档登记、索引与链接、稳定 ID、对外能力分类、`open_questions` 四级计数、模板占位符和敏感信息；同时确认同一快照标识的环境与目录映射唯一，重要结论具有可信度与可定位证据。
-- `global-validation` 必须显式检索全部服务文档中的 `待后续阶段补齐（api）` 和 `待后续阶段补齐（pages）`。`scope.api.status != 不适用` 时任何 `待后续阶段补齐（api）` 遗留均判定失败；`scope.pages.status != 不适用` 时任何 `待后续阶段补齐（pages）` 遗留均判定失败。对应领域为 `不适用` 时，BaseInfo 不应生成该领域待补状态；如仍发现同名状态同样判定失败。
+- `global-validation` 必须显式检索全部服务文档中的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`、`阶段状态：已验证为空（api）` 和 `阶段状态：已验证为空（pages）`。API/Pages 领域适用时，范围内每个服务的对应导航区块必须是已验证稳定 ID 与主文件链接，或对应的唯一 `已验证为空` 状态且同区块同时具有非空 `原因` 和可定位 `证据`；任何待补状态、空原因、缺失原因、空证据或缺失证据均判定失败。对应领域为 `不适用` 时，BaseInfo 不应生成该领域的待补或 `已验证为空` 状态；如仍发现任一状态同样判定失败。
 - 全局验收通过时，将 `coverage.initialization.global_validation` 写为 `passed`，将 `coverage.initialization.status` 写为 `complete`，并填写 `coverage.initialization.completed_at`。
 - 任一全局检查失败时，将 `coverage.initialization.global_validation` 写为 `failed`，保持 `coverage.initialization.status: in_progress` 和空 `completed_at`；只报告缺失项、影响和继续初始化入口，不要求删除现有 Schema 4.0 产物。
 

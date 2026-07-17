@@ -32,7 +32,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - `cadence/knowledge-base/data-models/` 始终保留并生成 `README.md`。数据模型为 `不适用` 时，在总索引记录状态和原因，不扫描逻辑表。
 - `cadence/knowledge-base/configurations/` 始终保留并生成 `README.md`。配置为 `不适用` 时，在总索引记录状态和原因，不读取配置快照；配置为 `全量` 或 `指定` 时，为配置范围内每个服务固定生成一个配置文档，即使未发现配置键也记录缺失与待确认项。
 - `cadence/knowledge-base/services/` 始终保留并生成 `README.md`，并为 `scope.projects` 内识别出的每个服务固定生成一个 `<SERVICE-ID>.md` 骨架；全部服务文档必须登记到 Manifest 的 `documents.services`。
-- BaseInfo 负责完成服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证和证据导航区块。API 或 Pages 适用但对应阶段尚未执行时，相关区块的 `阶段状态` 必须分别写为 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）`，不得生成虚假链接。
+- BaseInfo 负责完成服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证和证据导航区块。API 或 Pages 适用但对应阶段尚未执行时，相关区块的 `阶段状态` 必须分别写为 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）`，不得生成虚假链接。BaseInfo 不得扫描 API/Page，也不得提前判空或写入 `阶段状态：已验证为空（api）`、`阶段状态：已验证为空（pages）`。
 - 设置服务文档的 API/页面阶段状态时，只读取 Manifest 的 `scope.api.status`、`scope.pages.status` 和 `coverage.initialization.completed_stages`；这些字段只用于生命周期判定，不授权 BaseInfo 扫描 API 或页面。
 - 项目内本地认证、事务、异常、审计、幂等和可观测性等横切机制的基础分析由 `scope.projects` 授权；`scope.middleware` 只授权 MIDDLEWARE 实体发现、建模和关系输出。
 - 中间件为 `不适用` 时，只在 `base-information.md` 和 `services/README.md` 记录状态与原因，不得扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体。仍可分析 `scope.projects` 内本地认证、事务、异常、审计等横切机制；遇到中间件式证据不得扩大范围或进入 MIDDLEWARE 输出。
@@ -92,8 +92,8 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 4. API 适用且 `api` 尚未进入 `coverage.initialization.completed_stages` 时，API 区块固定写 `阶段状态：待后续阶段补齐（api）`；Pages 适用且 `pages` 尚未完成时，页面区块固定写 `阶段状态：待后续阶段补齐（pages）`。对应领域为 `不适用` 时固定写 `阶段状态：不适用（api）` 或 `阶段状态：不适用（pages）` 并记录原因。占位状态不得附带推测链接。
 5. 服务索引和单服务文档只保存摘要、稳定 ID 与领域文档链接，不复制字段清单、配置键、接口明细、页面明细或原始证据。
 6. 将 `services/README.md` 和全部 `services/<SERVICE-ID>.md` 登记到 Manifest 的 `documents.services`。
-7. 后续 `knowledge-base-api` 必须把服务文档中的 `待后续阶段补齐（api）` 原子替换为已验证的 API 导航；`knowledge-base-pages` 必须把 `待后续阶段补齐（pages）` 原子替换为已验证的页面导航。该操作是对已完成 BaseInfo 产物的授权增补，不重新扫描 BaseInfo，不移除 `base-info` 完成状态。
-8. `global-validation` 必须拒绝适用领域仍存在 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）` 的知识库；Task 4 负责在 API/Pages 领域输出中落实上述所有权接口。
+7. 后续 `knowledge-base-api` 必须把服务文档中的 `待后续阶段补齐（api）` 原子替换为已验证的 API 稳定 ID 与主文件链接，或在完整范围分析确认该服务无 API 时替换为 `阶段状态：已验证为空（api）` 并在同一导航区块记录非空 `原因` 和可定位 `证据`；`knowledge-base-pages` 必须以相同规则把 `待后续阶段补齐（pages）` 替换为已验证的 PAGE/ROUTE 稳定 ID 与页面主文件链接，或 `阶段状态：已验证为空（pages）`、非空 `原因` 和可定位 `证据`。该操作是对已完成 BaseInfo 产物的授权增补，不重新扫描 BaseInfo，不移除 `base-info` 完成状态。
+8. `global-validation` 必须拒绝适用领域仍存在 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）` 的知识库；`已验证为空` 只有在对应领域适用且原因与证据完整时才是合法终态。BaseInfo 自己不得生成 `已验证为空`。
 
 ### 4. 生成字段级数据模型
 
@@ -181,7 +181,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 中间件为 `全量` 或 `指定` 但缺少装配或生产证据时，只记录授权对象的可定位证据和已知环境，不把依赖声明或开发配置升级为生产事实。
 - `services/README.md` 和 `scope.projects` 内全部服务的 `services/<SERVICE-ID>.md` 骨架均已生成；索引包含 ID、名称、职责、模块、入口、状态、文档和证据，单服务文档包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航。
 - BaseInfo 当期完成条件只检查其拥有的服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证、证据导航区块，以及 API/页面区块的明确阶段状态；不要求未来 API/Page 链接可达。全部服务文档已登记到 Manifest 的 `documents.services`。
-- API/Pages 适用但阶段尚未执行时，服务文档分别存在机器可判定的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`，且没有虚假链接。后续对应阶段必须原子补齐导航；`global-validation` 必须拒绝适用领域仍保留上述待后续阶段状态。
+- API/Pages 适用但阶段尚未执行时，服务文档分别存在机器可判定的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`，且没有虚假链接。后续对应阶段必须原子替换为已验证链接，或合法的 `已验证为空`、非空原因和可定位证据；`global-validation` 必须拒绝适用领域仍保留上述待后续阶段状态。
 - 横切机制基础分析只覆盖 `scope.projects` 内本地实现。中间件为 `不适用` 时，`base-information.md` 与 `services/README.md` 均已记录原因，且未扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体；中间件为 `指定` 时，输出只包含 `selected` 实体及其关系，必要依赖未新增授权对象；中间件为 `全量` 时，中间件实体发现和建模仍未越过 `scope.projects`。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。
 - 配置总索引和范围内每个服务的配置文档均已生成，链接可达；配置为 `不适用` 时总索引已记录原因。
@@ -189,5 +189,5 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - Manifest 的 `generated_at` 已保留为首次生成时间；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 的未解决条目完全一致，并与受影响文档原子写入。
 - 每张逻辑表都有字段清单、证据状态、证据位置、读写服务以及已发现的 Mapper/SQL 映射。
 - 实际索引、默认值和数据库约束只有在证据支持时记录；来源冲突和未覆盖对象已进入待确认项。
-- 已完成或不适用的 API、页面、服务、配置和逻辑表按领域状态建立稳定 ID 关联；不适用领域只关联状态与原因，不创建虚假实体 ID。API/Pages 适用但尚未执行时只要求固定的机器可判定阶段状态，不得提前扫描或生成未经验证的 API/Page ID；最终关联由对应阶段原子补齐并由 `global-validation` 验收。分片物理表没有被重复建模。
+- 已完成或不适用的 API、页面、服务、配置和逻辑表按领域状态建立稳定 ID 关联；不适用领域只关联状态与原因，不创建虚假实体 ID。API/Pages 适用但尚未执行时只要求固定的机器可判定阶段状态，BaseInfo 不得提前扫描、判空或生成未经验证的 API/Page ID；最终关联由对应阶段原子补齐为已验证链接或带非空原因与可定位证据的合法空结果，并由 `global-validation` 验收。分片物理表没有被重复建模。
 - 开发指南中的命令均有来源，配置变更验证方式不执行部署、发布或启动脚本，全部输出未包含明文敏感值和敏感内部地址。

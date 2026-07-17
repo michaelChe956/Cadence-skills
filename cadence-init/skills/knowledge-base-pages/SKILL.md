@@ -195,7 +195,9 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 
 页面索引、单页面文档和追溯矩阵中的 API 节点必须使用同一稳定 ID。单页面文档中的已匹配 API 必须能够直接导航到 `../interfaces/` 下的接口主文件。
 
-页面文档生成或更新后，必须在同一次原子写入中更新范围内 `services/<SERVICE-ID>.md`：只将页面导航区块中的 `阶段状态：待后续阶段补齐（pages）` 替换为已验证的 PAGE/ROUTE 稳定 ID 和页面主文件相对链接。该授权增补不得重新扫描 BaseInfo，不得改写服务文档其他区块，也不得从 `coverage.initialization.completed_stages` 移除 `base-info`。任一页面文档、服务导航、索引、证据或 Manifest 写入失败时，不保留部分结果。页面领域适用时，只要任一范围内服务文档仍保留 `待后续阶段补齐（pages）`，就不得把 `pages` 加入 `coverage.initialization.completed_stages`。
+完成授权范围内每个服务的完整页面分析后，必须在同一次原子写入中更新范围内 `services/<SERVICE-ID>.md` 的页面导航区块：发现页面的服务，将 `阶段状态：待后续阶段补齐（pages）` 替换为已验证的 PAGE/ROUTE 稳定 ID 和页面主文件相对链接；经完整范围分析确认无页面的服务，将其替换为唯一空结果 `阶段状态：已验证为空（pages）`，并在同一导航区块记录非空 `原因` 和可定位 `证据`。两种结果都必须与页面文档、索引、证据和 Manifest 原子写入。未分析、证据不足或无法确认时不得使用 `已验证为空（pages）`，必须保留待补状态并进入待确认，且阶段不得完成。
+
+该授权增补不得重新扫描 BaseInfo，不得改写服务文档其他区块，也不得从 `coverage.initialization.completed_stages` 移除 `base-info`。任一页面文档、服务导航、索引、证据或 Manifest 写入失败时，不保留部分结果。页面领域适用时，只要任一范围内服务文档仍保留 `待后续阶段补齐（pages）`，就不得把 `pages` 加入 `coverage.initialization.completed_stages`。
 
 ## 禁止行为
 
@@ -228,7 +230,7 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 - TABLE 关系记录页面字段、API 字段、表字段、读写、证据状态和 `data-models/` 链接。
 - 后端 Feature Flag 与环境配置分别记录 API ID、SERVICE/MODULE、配置组、配置键、环境/Profile、生效条件、证据状态和 `configurations/` 链接。
 - 前端直接配置已在独立补充表记录，且没有被误写为后端服务配置实体关系。
-- 范围内服务文档的页面导航已在同一次原子写入中补齐 PAGE/ROUTE 稳定 ID 和页面主文件链接，且不再遗留 `待后续阶段补齐（pages）`；`base-info` 完成状态保持不变。
+- 范围内每个服务的页面导航均已在同一次原子写入中形成已验证 PAGE/ROUTE 稳定 ID 与页面主文件链接，或合法的 `阶段状态：已验证为空（pages）`、非空 `原因` 和可定位 `证据`；没有遗留 `待后续阶段补齐（pages）`，`base-info` 完成状态保持不变。
 - 所有页面 API 调用均已匹配稳定 API ID，或以 `API-CANDIDATE-*` 进入待确认清单。
 - 动态、权限和运行时限制已经明确。
 - 孤立、不可达和冲突项进入待确认清单。

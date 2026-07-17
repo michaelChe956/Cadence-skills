@@ -216,7 +216,9 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - `evidence/traceability-matrix.md`
 - `open-questions.md`
 
-接口主文件生成或更新后，必须在同一次原子写入中更新范围内 `services/<SERVICE-ID>.md`：只将 API 导航区块中的 `阶段状态：待后续阶段补齐（api）` 替换为已验证的 API 稳定 ID 和接口主文件相对链接。该授权增补不得重新扫描 BaseInfo，不得改写服务文档其他区块，也不得从 `coverage.initialization.completed_stages` 移除 `base-info`。任一接口文档、服务导航、索引、证据或 Manifest 写入失败时，不保留部分结果。
+完成当前模式授权范围内每个服务的完整 API 分析后，必须在同一次原子写入中更新范围内 `services/<SERVICE-ID>.md` 的 API 导航区块：发现接口的服务，将 `阶段状态：待后续阶段补齐（api）` 替换为已验证的 API 稳定 ID 和接口主文件相对链接；经完整范围分析确认无接口的服务，将其替换为唯一空结果 `阶段状态：已验证为空（api）`，并在同一导航区块记录非空 `原因` 和可定位 `证据`。两种结果都必须与接口文档、索引、证据和 Manifest 原子写入。未分析、证据不足或无法确认时不得使用 `已验证为空（api）`，必须保留待补状态并进入待确认，且阶段不得完成。
+
+该授权增补不得重新扫描 BaseInfo，不得改写服务文档其他区块，也不得从 `coverage.initialization.completed_stages` 移除 `base-info`。任一接口文档、服务导航、索引、证据或 Manifest 写入失败时，不保留部分结果。
 
 进度只记录在 Manifest 和索引中，不使用运行时任务或记忆目录。API 领域适用时，只要任一范围内服务文档仍保留 `待后续阶段补齐（api）`，就不得把 `api` 加入 `coverage.initialization.completed_stages`。
 
@@ -253,6 +255,6 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - 核心能力具有稳定 ID、状态、证据和可信度。
 - 数据影响能够链接 `data-models/` 中的 TABLE 稳定 ID、相关字段、读写和 Mapper/SQL，并分别记录表字段证据状态与端到端映射状态。
 - 直接配置依赖能够链接 `configurations/` 中的服务配置实体，并记录配置键、环境、生效条件和证据状态。
-- 范围内服务文档的 API 导航已在同一次原子写入中补齐稳定 API ID 和接口主文件链接，且不再遗留 `待后续阶段补齐（api）`；`base-info` 完成状态保持不变。
+- 范围内每个服务的 API 导航均已在同一次原子写入中形成已验证 API 稳定 ID 与接口主文件链接，或合法的 `阶段状态：已验证为空（api）`、非空 `原因` 和可定位 `证据`；没有遗留 `待后续阶段补齐（api）`，`base-info` 完成状态保持不变。
 - 数据副作用能够关联 DDL、代码和配置证据。
 - 不确定项进入待确认清单。
