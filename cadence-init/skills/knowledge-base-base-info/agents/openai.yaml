@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 基础信息"
-  short_description: "生成基础信息、字段级数据模型、配置快照知识与开发指南"
-  default_prompt: "使用 $knowledge-base-base-info 读取 Manifest 4.0，并严格校验工程范围、字段级数据模型范围、配置快照指纹及可审计范围摘要后，生成基础信息、开发指南、数据模型文档、configurations/README.md 及范围内每个服务的配置文档。"
+  short_description: "生成技术栈、服务模块、中间件、数据模型、配置与开发指南"
+  default_prompt: "使用 $knowledge-base-base-info 读取 Manifest 4.0，严格消费 scope.projects、scope.data_models、scope.configurations 和 scope.middleware，并在校验配置快照指纹及可审计范围摘要后，生成基础信息、services/README.md、services/<SERVICE-ID>.md、开发指南、数据模型与配置文档，并将全部服务文档登记到 documents.services。"

@@ -6,16 +6,64 @@
 
 Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 是领域 Skills 的唯一授权范围，不得重新解释原始输入或扩大范围。
 
-## 既有 Manifest 与重新初始化授权
+## 初始化生命周期与重新初始化授权
 
 在校验六领域输入前检查整个 `cadence/knowledge-base/`，不能只检查 Manifest。检测集合为：`manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`domain-glossary.md`、`open-questions.md`、`change-history.md`。
 
-- 检测集合全部不存在：按首次初始化继续。
-- 任一固定产物存在：不得按首次初始化继续，必须校验 Manifest 和重新初始化授权。
-- 固定产物存在但 Manifest 缺失、不可解析、缺少 `schema_version` 或版本不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有产物、Manifest 状态和影响。
-- Manifest 为 Schema 4.0，但用户未显式授权“重新初始化 Schema 4.0”：立即停止，不修改现有 KnowledgeBase。
-- 只有用户明确授权“重新初始化 Schema 4.0”时才允许清理固定产物并全新重建。清理前一次性列出精确路径、人工内容丢失风险、Git/配置/变更历史基线失效风险和重新生成范围，取得用户对范围与风险的授权并写入输入清单。
-- 重新初始化不读取旧 Manifest 字段进行映射，不迁移旧目录或兼容旧 Schema。普通初始化、补文档、修复或 Update 请求不构成清理重建授权。
+按以下顺序得到唯一判定：
+
+1. 检测集合全部不存在：按首次初始化继续。
+2. 任一固定产物存在，但 Manifest 缺失、不可解析、缺少 `schema_version` 或版本不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有产物、Manifest 状态和影响。
+3. Manifest 为 Schema 4.0：先执行下述完整初始化不变量只读校验。整个初始化块缺失时进入唯一兼容分支；块存在但字段损坏或矛盾时普通请求停止且不修改，明确的重新初始化请求按第 6 项进入独立破坏性授权流程。
+4. 初始化块合法且 `status: in_progress`：判定为未完成初始化；重新核对六领域输入范围、已登记阶段、实际文档和证据后继续初始化。
+5. 初始化块合法且 `status: complete`：确认实际产物仍满足 complete 等价条件，保护已完成知识库，停止重复初始化，并引导使用 Context 或 Update。
+6. 用户明确请求“重新初始化 Schema 4.0”：Manifest 必须可解析且版本为 4.0。初始化状态合法时按普通破坏性授权流程处理；初始化块损坏或矛盾时，允许进入独立恢复流程，但必须先报告损坏实际值和状态不可被信任，再列出拟清理路径、人工内容丢失风险、Git/配置/变更历史基线失效风险和全量重建范围，取得用户针对这些内容的再次明确授权。授权只允许进入下述清理前门禁，不允许立即删除旧产物。
+
+第 4、5 项适用于没有显式重新初始化请求的普通路径；Manifest 可解析且版本为 4.0、用户明确请求重建时进入第 6 项，不把重建降级为续跑或完成保护。
+
+`coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物，也不得只凭文档登记或产物齐全推断完成。必须先执行当前完整 `global-validation`：
+
+- 验收通过：按已完成知识库保护，并回填 `status: complete`、包含阶段 ID `global-validation` 的 `completed_stages`、适用的 `skipped_stages`、`global_validation: passed` 和 `completed_at`。
+- 验收失败：按未完成初始化续跑，回填 `status: in_progress`、已独立验证完成的阶段 ID、`global_validation: failed` 和空 `completed_at`，再从首个缺失或不一致阶段继续。
+
+重新初始化不读取旧 Manifest 字段进行映射，不迁移旧目录或兼容旧 Schema。普通初始化、补文档、修复、Context 或 Update 请求不构成清理重建授权。
+
+## 完整初始化不变量
+
+任何续跑、复用、领域调用、完成保护、清理或写入前，都必须只读验证 `coverage.initialization`；每次准备改变阶段状态或提交原子写入前必须重验。初始化块存在时，仅以下结构和状态合法：
+
+| 字段 | 不变量 |
+|------|--------|
+| `status` | 只能是 `in_progress` 或 `complete` |
+| `global_validation` | 只能是 `pending`、`failed` 或 `passed` |
+| `completed_stages` | 无重复字符串列表；元素只能是 `base-info`、`api`、`pages`、`overview`、`global-validation` |
+| `skipped_stages` | 无重复对象列表；每项仅有 `stage`、`reason`，`stage` 只能是 `api` 或 `pages`，`reason` 是非空字符串 |
+| `completed_at` | `in_progress` 时为空；`complete` 时非空 |
+
+阶段状态还必须同时满足：
+
+1. 固定顺序是 `base-info → api → pages → overview → global-validation`。将合法跳过的 `api`、`pages` 合并到时间线后，`completed_stages` 必须是该固定顺序的合法前缀或子序列；前置阶段未完成且未合法跳过时不能出现后续阶段，`global-validation` 只能最后出现。
+2. `completed_stages` 与 `skipped_stages` 不得重叠。`base-info`、`overview`、`global-validation` 永不可跳过。
+3. `scope.api.status: 不适用` 时必须跳过 `api` 且不得完成；接口适用时必须不跳过。`pages` 与 `scope.pages.status` 使用同一领域适用性一致规则。
+4. `status: in_progress` 时，`global_validation` 只能是 `pending` 或 `failed`，`completed_stages` 不含 `global-validation`，`completed_at` 为空。
+5. `status: complete` 当且仅当 `base-info`、`overview`、`global-validation` 完成，所有适用的 `api`、`pages` 完成，所有不适用的 `api`、`pages` 正确跳过，`global_validation: passed`，`completed_at` 非空，而且实际适用产物、文档索引、Manifest 登记、服务导航和证据满足全部阶段完成条件。
+
+初始化块存在但字段缺失、类型错误、非法 status、非法阶段 ID、重复、重叠、逆序、适用性冲突或 complete 与实际产物矛盾时，普通初始化、续跑、领域 Skill 和 Update 立即停止且不修改任何产物。一次性报告异常字段实际值、违反规则、影响阶段和风险；不得把它当成续跑，不得自动补齐、去重、重排或改写。
+
+破坏性重建是唯一例外：Manifest 可解析且 `schema_version: "4.0"`，并且用户明确请求重新初始化时，可以在报告损坏实际值和状态不可被信任后，列出拟清理路径、人工内容/基线/历史风险和全量重建范围；只有用户针对该范围和风险再次明确授权后才可进入清理前门禁。此例外只绕过 initialization 不变量，不解释、不修复、不迁移损坏字段。Manifest 不可解析、缺版本或非 4.0 时禁止清理。
+
+整个初始化块缺失不属于字段损坏，保留唯一兼容分支：先只读执行当前完整 `global-validation`。通过后一次性回填合法 complete 状态并进入完成保护；失败后一次性回填合法 in_progress 状态，再从首个缺失或不一致阶段续跑。全局验收完成和初始化块回填前不得修改其他产物。
+
+## 显式重新初始化清理前门禁
+
+生命周期判定、损坏值报告和二次破坏性授权可以先完成，但此时必须在不修改旧 KnowledgeBase 的前提下继续。清理前必须按本契约只读完成：
+
+1. 六领域状态、引用文件、指定范围非空、不适用原因、工程路径全部合法；不从旧 Manifest 损坏字段补值。
+2. 数据模型为 `全量|指定` 时至少一种可定位结构证据有效。
+3. 配置为 `全量|指定` 时，锁定批次的不可变快照目录可读，范围摘要、纳入文件数量或清单摘要、服务摘要、文件规则摘要完整一致，快照标识映射唯一，并完成清理前首次最终指纹核对。
+4. 在内存中锁定待写输入清单及全部引用，或在紧邻清理前重新读取并逐项证明输入未漂移；二次授权仍覆盖实际清理范围和风险。
+
+全部扫描前门禁通过后才允许清理。任一输入、指定范围、结构证据、快照目录、范围摘要、指纹前置条件或授权失败/漂移时立即停止，旧 KnowledgeBase 保持不变。首次初始化与未完成续跑仍使用原有语义，不需要破坏性清理授权。
 
 ## 六领域输入
 
@@ -87,13 +135,31 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 
 `api-scope.md` 是全部对外能力的权威清单。清单内能力保持对外分类；工程内发现但未登记的能力归入对内能力；清单与代码冲突时保留用户分类并登记待确认项。
 
-任一输入缺失或冲突时停止，不生成 Manifest、输入清单或半成品目录。一次性返回：
+任一输入缺失或冲突时停止。首次初始化不生成 Manifest、输入清单或半成品目录；未完成初始化续跑时保留现有 Schema 4.0 产物和 `coverage.initialization.status: in_progress`。一次性返回：
 
 - 缺失项和影响
 - 目标项目期望路径
 - 对应插件模板路径
 - 最小填写示例
 - 补齐后重新执行方式
+
+## 领域编排与初始化进度
+
+六领域输入完整后，必须按固定顺序调用 Skill 或执行内置阶段。Skill 名只用于调用，Manifest 只使用阶段 ID：
+
+| 顺序 | 调用或动作 | 阶段 ID | 条件 |
+|------|------------|---------|------|
+| 1 | 调用 `knowledge-base-base-info` | `base-info` | 始终执行或验证完成 |
+| 2 | 调用 `knowledge-base-api` | `api` | `scope.api.status != 不适用` 时执行 |
+| 3 | 调用 `knowledge-base-pages` | `pages` | `scope.pages.status != 不适用` 时执行 |
+| 4 | 调用 `knowledge-base-overview` | `overview` | 所有适用领域完成后执行 |
+| 5 | 执行当前完整全局验收 | `global-validation` | 通过后才允许完成初始化 |
+
+每个已执行或验证完成的阶段立即把字符串阶段 ID 写入 `coverage.initialization.completed_stages`，例如 `["base-info", "api"]`；不得写入 Skill 名。已经完成且 Manifest 登记、文档和证据一致的阶段复用，不重复扫描。
+
+`coverage.initialization.skipped_stages` 的唯一结构是对象列表，每项仅包含 `stage` 和 `reason`，例如 `[{stage: "api", reason: "接口范围不适用"}]`。`stage` 只能是 `api` 或 `pages`；不得增加 `status`、`skill`、`name` 或其他键。列表不得重复，也不得与 `completed_stages` 重叠；默认空列表 `[]` 仅在 API 与 Pages 都适用时合法。
+
+验收失败时将 `coverage.initialization.global_validation` 写为 `failed`，保持 `status: in_progress`；验收通过时写为 `passed`，将阶段 ID `global-validation` 加入 `completed_stages`，再将 `status` 写为 `complete` 并填写 `completed_at`。
 
 ## Schema 4.0 输出契约
 
@@ -102,6 +168,7 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 - 配置快照基线写入 `evidence.configuration_snapshots.baseline`，并保留可审计范围摘要。
 - 首次初始化时 `update.last_change_package` 为空对象，`update.processed_packages` 为空列表。
 - `documents.data_models` 和 `documents.configurations` 分别登记领域文档。
+- `coverage.initialization` 只使用 `status`、`completed_stages`、`skipped_stages`、`global_validation` 和 `completed_at` 跟踪初始化进度。
 - `generated_at` 记录本次新知识库的首次生成时间；`open_questions.blocking`、`high`、`medium`、`low` 按新生成的待确认文档初始化，并在后续流程中按实际待确认项更新。
 
 只生成 Schema 4.0，不读取、兼容或迁移其他版本知识库。
