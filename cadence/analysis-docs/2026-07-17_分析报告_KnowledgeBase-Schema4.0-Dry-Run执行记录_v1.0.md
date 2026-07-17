@@ -5,7 +5,7 @@
 - 文档类型：分析报告
 - 日期：2026-07-17
 - 版本：v1.0
-- 验证提交：`9ef6cc913a1aae7fc1af5f148eedc52bb2af6f5a`
+- 验证提交：`4e20433f72e15207ee870a4ecaf19733c2a09a57`
 - 执行方式：当前 worktree 内逐条只读断言，不使用测试脚本
 - 总结果：25/25 PASS
 
@@ -109,8 +109,8 @@
 
 ### DR-16 既有 Manifest 与 Schema 门禁
 
-- 命令：在 Bootstrap 主 Skill 中分别断言“非 4.0 立即停止”“4.0 但未显式授权立即停止”“仅显式授权可重建”；再断言 BaseInfo、API、Pages、Overview、Update、Context 六个消费 Skill 拒绝非 4.0。
-- 目标证据：Bootstrap 既有 Manifest 门禁与六个消费者版本门禁。
+- 命令：在 Bootstrap 主 Skill 中分别断言“Manifest 或任一固定产物存在时不得当作首次初始化”“固定产物存在但 Manifest 缺失/损坏/非 4.0 时停止”“仅显式授权重新初始化 Schema 4.0 时可清理全新重建”“清理前报告精确路径和风险”；再断言 BaseInfo、API、Pages、Overview、Update、Context 六个消费 Skill 拒绝非 4.0。
+- 目标证据：Bootstrap 固定产物检测、Manifest 完整性/版本门禁、清理重建授权与六个消费者版本门禁。
 - 实际输出：`DR-16 PASS`
 
 ### DR-17 配置领域不适用 Update
@@ -170,7 +170,7 @@
 ## 原始输出摘要
 
 ```text
-9ef6cc913a1aae7fc1af5f148eedc52bb2af6f5a
+4e20433f72e15207ee870a4ecaf19733c2a09a57
 DR-01 PASS
 DR-02 PASS
 DR-03 PASS
@@ -200,4 +200,4 @@ DR-25 PASS
 
 ## 结论
 
-验证提交上的 25 项规则级 dry-run 均有可复核的只读断言、目标文件证据和实际 PASS 输出。执行记录不包含真实配置值、敏感文件或外部系统操作。
+验证提交上的 25 项规则级 dry-run 均有可复核的只读断言、目标文件证据和实际 PASS 输出，其中 DR-16 覆盖 Manifest 缺失或损坏但固定产物已存在的情形。执行记录不包含真实配置值、敏感文件或外部系统操作。
