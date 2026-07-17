@@ -46,7 +46,7 @@ cadence/knowledge-base/user-input/
    - `status: in_progress` 时，`completed_at` 必须为空，`global_validation` 只能是 `pending` 或 `failed`，`completed_stages` 不得包含 `global-validation`；已完成和已跳过阶段仍须满足固定顺序。
    - `status: complete` 当且仅当：`base-info`、`overview`、`global-validation` 已完成，适用的 `api`、`pages` 已完成，不适用的 `api`、`pages` 已正确跳过，`global_validation: passed`，`completed_at` 非空，并且所有实际适用产物、索引、Manifest 登记、服务导航和证据满足对应阶段及 `global-validation` 完成条件。
 3. 初始化块存在但任一字段缺失、类型错误、值非法、重复、重叠、逆序、适用性不一致或完成状态与实际产物矛盾时，视为损坏状态。普通初始化、续跑、复用、领域调用、完成保护和 Update 必须立即停止且不修改任何产物；一次性报告每个异常字段的实际值、违反的不变量、受影响阶段和继续执行风险。不得把损坏状态当作续跑，不得自动补字段、重排、去重、改写状态。
-4. 可解析且 `schema_version: "4.0"` 的 Manifest 存在损坏初始化块时，只有用户明确请求“重新初始化 Schema 4.0”才允许进入独立破坏性授权流程。先报告损坏字段实际值、无法信任现有初始化状态的影响，再列出将清理的精确路径、人工内容丢失、Git/配置/变更历史基线失效风险和全量重建范围；必须取得用户针对上述精确范围与风险的再次明确授权后才能清理重建。此例外只绕过 initialization 不变量，不解释、不修复、不迁移损坏字段。Manifest 不可解析、缺少版本或版本不是 4.0 时仍禁止清理。
+4. 可解析且 `schema_version: "4.0"` 的 Manifest 存在损坏初始化块时，只有用户明确请求“重新初始化 Schema 4.0”才允许进入独立破坏性授权流程。先报告损坏字段实际值、无法信任现有初始化状态的影响，再列出拟清理的精确路径、人工内容丢失、Git/配置/变更历史基线失效风险和全量重建范围；必须取得用户针对上述精确范围与风险的再次明确授权。授权只允许继续执行清理前门禁，不能立即清理；此例外只绕过 initialization 不变量，不解释、不修复、不迁移损坏字段。Manifest 不可解析、缺少版本或版本不是 4.0 时仍禁止清理。
 5. 除第 4 项的破坏性重建例外外，每次阶段状态变化及任何原子写入前重新执行本门禁；只有当前状态合法且待写入的新状态也满足不变量时才可提交。
 
 ## 工作流程
@@ -58,15 +58,16 @@ cadence/knowledge-base/user-input/
    3. Manifest 为 `4.0`：先执行“初始化状态不变量门禁”。整个初始化块缺失时只进入兼容 `global-validation` 分支；块存在但损坏或矛盾时，普通请求停止且不修改，只有明确的重新初始化请求可进入独立二次破坏性授权流程；完整合法时才读取 `status` 判定普通后续分支。
    4. 合法 `status: in_progress`：判定为未完成初始化；核对输入范围、Manifest 登记、实际文档和证据后，从固定顺序中的首个未完成阶段继续初始化。
    5. 合法 `status: complete`：确认 complete 的等价完成条件仍与实际产物一致后，停止重复初始化，不修改既有产物，并引导使用 Context 查询现有知识库或使用 Update 处理变更包。
-   6. 用户显式请求“重新初始化 Schema 4.0”：Manifest 必须可解析且版本为 4.0。初始化状态合法时，报告精确清理路径与风险并取得明确授权；初始化状态损坏时，先额外报告损坏实际值和状态不可被信任，再列出相同的清理范围、风险与全量重建范围，取得针对这些内容的再次明确授权。授权覆盖所报范围后才清理固定产物并全新重建。
+   6. 用户显式请求“重新初始化 Schema 4.0”：Manifest 必须可解析且版本为 4.0。初始化状态合法时，报告拟清理路径与风险并取得明确授权；初始化状态损坏时，先额外报告损坏实际值和状态不可被信任，再列出相同的清理范围、风险与全量重建范围，取得针对这些内容的再次明确授权。此时只记录待执行的破坏性授权，不清理任何旧 KnowledgeBase 产物，继续执行第 3 至第 6 步的清理前门禁。
    - 第 4、5 项适用于没有显式重新初始化请求的普通路径；存在明确重建请求时进入第 6 项，不把重建降级为续跑或完成保护，也不解释、修复或迁移损坏字段。
    - 显式重新初始化是对既有 Schema 4.0 的例外入口，不读取旧字段做兼容或迁移；普通初始化、补文档、修复、Context 或 Update 请求均不构成清理授权。
-3. 按 `references/input-contract.md` 校验六领域状态、资料引用和指定范围。
-4. 数据模型为 `全量` 或 `指定` 时，确认至少一种可定位结构证据；DDL 可缺省，其他证据有效时继续，没有任何结构证据时停止或要求改为 `不适用`。
-5. 配置为 `全量` 或 `指定` 时，确认来源是锁定发布批次的不可变快照且外部目录可读。配置仓库必须固定到明确提交、标签或导出快照，不得使用持续变化的工作目录。校验范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且相互一致；同一 `snapshot_id` 不得映射到不同环境或不同外部目录。分析开始和结束时分别计算最终快照指纹；指纹不一致、范围摘要不一致或目录内容变化时停止，且不得连接配置中心或远程环境补取。
-6. 首次初始化或显式重新初始化时生成 `input-inventory.md` 与 `manifest.yaml`；未完成初始化续跑时核对并复用现有文件。只接受 `schema_version: "4.0"`，不兼容、不迁移其他版本；首次写入前根据 `scope.api`、`scope.pages` 适用性初始化合法的 `skipped_stages`，不得先写入与适用性矛盾的空跳过列表。首次建立时 `generated_at` 写入本次生成时间，显式重新初始化时写入新知识库的首次生成时间；`open_questions.blocking/high/medium/low` 按待确认文档维护可审计计数。
-7. 以 Manifest 的 `scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 作为领域 Skills 的唯一授权范围。
-8. 初始化或核对固定目录，然后严格执行下列 REQUIRED 子 Skill/阶段顺序。Skill 名只用于调用，Manifest 只登记对应阶段 ID。每个阶段完成后立即将字符串阶段 ID 写入 `coverage.initialization.completed_stages`；不适用领域写入 `coverage.initialization.skipped_stages`。已经在 Manifest 登记为完成，且文档、索引和证据一致的阶段直接复用，不重复扫描。
+3. 按 `references/input-contract.md` 校验六领域状态、资料引用、指定范围非空和不适用原因。显式重新初始化时，在不修改旧 KnowledgeBase 的前提下只读校验当前用户输入，不从待清理 Manifest 的损坏字段补值或扩大范围。
+4. 数据模型为 `全量` 或 `指定` 时，确认至少一种可定位结构证据；DDL 可缺省，其他证据有效时继续，没有任何结构证据时停止或要求改为 `不适用`。显式重新初始化的结构证据门禁失败时保留旧 KnowledgeBase，不清理任何路径。
+5. 配置为 `全量` 或 `指定` 时，确认来源是锁定发布批次的不可变快照且外部目录可读。配置仓库必须固定到明确提交、标签或导出快照，不得使用持续变化的工作目录。校验范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且相互一致；同一 `snapshot_id` 不得映射到不同环境或不同外部目录。清理前完成首次最终快照指纹计算并核对输入声明，确认指纹前置条件成立；后续分析结束时再次计算，任一指纹不一致、范围摘要不一致或目录内容变化时停止，且不得连接配置中心或远程环境补取。
+6. 显式重新初始化时，根据已通过的六领域、数据模型证据和配置快照门禁在内存中锁定待写 `input-inventory.md` 内容及全部引用来源；紧邻清理动作前必须锁定输入清单或重新核对输入未漂移。只有全部扫描前门禁通过、二次授权仍覆盖实际清理范围、输入清单已锁定或重新核对无漂移时，才允许清理旧固定产物。任一输入、证据、快照、范围摘要、指纹前置条件或授权发生变化时停止并保留旧 KnowledgeBase。
+7. 首次初始化或已通过第 6 步清理门禁的显式重新初始化生成 `input-inventory.md` 与 `manifest.yaml`；未完成初始化续跑时核对并复用现有文件。只接受 `schema_version: "4.0"`，不兼容、不迁移其他版本；首次写入前根据 `scope.api`、`scope.pages` 适用性初始化合法的 `skipped_stages`，不得先写入与适用性矛盾的空跳过列表。首次建立时 `generated_at` 写入本次生成时间，显式重新初始化时写入新知识库的首次生成时间；`open_questions.blocking/high/medium/low` 按待确认文档维护可审计计数。
+8. 以 Manifest 的 `scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 作为领域 Skills 的唯一授权范围。
+9. 初始化或核对固定目录，然后严格执行下列 REQUIRED 子 Skill/阶段顺序。Skill 名只用于调用，Manifest 只登记对应阶段 ID。每个阶段完成后立即将字符串阶段 ID 写入 `coverage.initialization.completed_stages`；不适用领域写入 `coverage.initialization.skipped_stages`。已经在 Manifest 登记为完成，且文档、索引和证据一致的阶段直接复用，不重复扫描。
    1. 调用 `knowledge-base-base-info`，阶段 ID 为 `base-info`：始终执行或验证完成，消费工程、数据模型、配置和中间件范围。
    2. 调用 `knowledge-base-api`，阶段 ID 为 `api`：仅当 `scope.api.status != 不适用` 时执行；否则登记跳过原因。
    3. 调用 `knowledge-base-pages`，阶段 ID 为 `pages`：仅当 `scope.pages.status != 不适用` 时执行；否则登记跳过原因。
@@ -111,7 +112,7 @@ cadence/knowledge-base/
 - 不输出密码、Token、AccessKey、Secret、密钥、私钥、完整连接串，以及内部域名、IP、URL 等敏感内部地址。Manifest 可以记录用户授权的本地文件系统路径；配置值中的内部端点必须脱敏，实际值统一写为 `<redacted>`，不得保存敏感值哈希或其他可关联的确定性衍生物。
 - 配置证据写入 `evidence.configuration_snapshots.baseline`，最终快照指纹固定写入 `evidence.configuration_snapshots.baseline.fingerprint`；同时保存 `scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要，不保存原始配置内容。
 - 增量包状态写入 `update.processed_packages`；首次初始化为空列表。
-- 固定产物检测、Manifest 完整性/版本门禁和显式重新初始化授权已经通过；需要清理重建时已记录精确清理范围与风险授权，未经授权时没有覆盖或删除任何 KnowledgeBase 文件。
+- 固定产物检测、Manifest 完整性/版本门禁和显式重新初始化授权已经通过；需要清理重建时，六领域输入、指定范围、数据模型结构证据、配置不可变快照可读性、范围摘要与首次指纹前置条件也已只读通过，输入清单已锁定或清理前复核无漂移。全部扫描前门禁通过后才允许清理，未经授权或任一门禁失败时没有覆盖或删除任何 KnowledgeBase 文件。
 - `global-validation` 必须核对 Manifest 与输入清单的六领域范围、适用领域文档登记、索引与链接、稳定 ID、对外能力分类、`open_questions` 四级计数、模板占位符和敏感信息；同时确认同一快照标识的环境与目录映射唯一，重要结论具有可信度与可定位证据。
 - `global-validation` 必须显式检索全部服务文档中的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`、`阶段状态：已验证为空（api）` 和 `阶段状态：已验证为空（pages）`。API/Pages 领域适用时，范围内每个服务的对应导航区块必须是已验证稳定 ID 与主文件链接，或对应的唯一 `已验证为空` 状态且同区块同时具有非空 `原因` 和可定位 `证据`；任何待补状态、空原因、缺失原因、空证据或缺失证据均判定失败。对应领域为 `不适用` 时，BaseInfo 不应生成该领域的待补或 `已验证为空` 状态；如仍发现任一状态同样判定失败。
 - 全局验收通过时，将 `coverage.initialization.global_validation` 写为 `passed`，将 `coverage.initialization.status` 写为 `complete`，并填写 `coverage.initialization.completed_at`。
