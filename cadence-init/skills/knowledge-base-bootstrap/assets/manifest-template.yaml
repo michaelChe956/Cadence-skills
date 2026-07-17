@@ -78,7 +78,13 @@ documents:
   services: []
   data_models: []
   configurations: []
-coverage: {}
+coverage:
+  initialization:
+    status: "in_progress"
+    completed_stages: []
+    skipped_stages: []
+    global_validation: "pending"
+    completed_at: ""
 open_questions:
   blocking: 0
   high: 0

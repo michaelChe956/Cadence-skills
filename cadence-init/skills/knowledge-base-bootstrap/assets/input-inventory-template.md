@@ -7,6 +7,12 @@
 - Base Info：`cadence/knowledge-base/user-input/base-info.md`
 - Git 仓库与分支：
 - 基线提交：
+- 初始化判定：首次初始化 / 未完成初始化续跑 / 已完成知识库 / 显式重新初始化
+- 初始化状态：in_progress / complete
+- 已完成阶段：
+- 已跳过阶段及原因：
+- 全局验收：pending / passed / failed
+- 续跑依据：不适用 / Manifest 状态与缺失产物摘要
 - 初始化模式：首次初始化 / 显式授权重新初始化 Schema 4.0
 - 重新初始化授权来源：不适用 / 用户原文或可定位来源
 - 已发现固定产物：无 / 精确路径清单
