@@ -34,7 +34,20 @@ PAGE-order-create
 
 ## 修改示例
 
-订单状态字段调整前，先使用 `knowledge-base-context`，再读取字段级订单表文档、API 与页面字段映射及当前结构证据。若同时调整 Kafka Topic 配置，还需读取订单服务配置文档和当前配置快照。实现与验证完成后，准备包含字段、SQL/Mapper、配置、证据、验证结果和文档目标的完整变更包，并使用 `knowledge-base-update` 执行 Update。
+订单状态字段调整前，先使用 `knowledge-base-context`，再读取字段级订单表文档、API 与页面字段映射及当前结构证据。若同时调整 Kafka Topic 配置，还需读取订单服务配置文档和当前配置快照。
+
+实现与验证完成后，用户显式指定唯一变更标识 `order-status-field`，完整变更包只能写入：
+
+```text
+cadence/knowledge-base/user-input/updates/CHANGE-order-status-field/
+├── change-summary.md
+├── code-change.md
+├── database-change.md
+├── configuration-change.md
+└── verification.md
+```
+
+五份固定文件不得合并或省略，附件不能替代它们。本例若数据库结构没有变化，`database-change.md` 仍保留并记录“无数据库变更”及当前结构证据；若配置没有变化，`configuration-change.md` 仍保留并记录“无配置变更”及当前快照依据。契约完整后，使用 `knowledge-base-update` 执行 Update。
 
 ## 术语示例
 

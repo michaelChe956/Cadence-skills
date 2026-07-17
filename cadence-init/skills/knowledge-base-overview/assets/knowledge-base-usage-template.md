@@ -9,7 +9,7 @@
 5. 配置相关任务必须读取 `cadence/knowledge-base/configurations/README.md`、服务配置文档和 `cadence/knowledge-base/evidence/` 中的当前快照证据。
 6. KnowledgeBase 与当前源码、DDL、有效配置和当前证据同等重要；冲突时同时保留双方证据，以可验证实现描述当前行为，不静默覆盖业务语义。
 7. `[合理推断]`、`[来源冲突]` 和 `[待人工确认]` 不得作为确定事实使用。
-8. 修改字段、SQL/Mapper、配置、Profile/Feature Flag、API 参数、页面字段、中间件或核心流程后，必须准备包含变更范围、实现证据、验证结果和文档目标的完整变更包，并由 `knowledge-base-update` 消费后执行 Update。
+8. 修改字段、SQL/Mapper、配置、Profile/Feature Flag、API 参数、页面字段、中间件或核心流程后，必须由用户显式指定唯一变更标识，在 `cadence/knowledge-base/user-input/updates/CHANGE-变更标识/` 准备符合固定契约的完整变更包，并由 `knowledge-base-update` 消费后执行 Update。
 9. 大型知识库按导航渐进加载，不一次读取全部子文档或全仓源码。
 
 ## 知识库定位
@@ -54,12 +54,20 @@
 
 ## Update 变更包
 
-完整变更包至少包含：
+完整变更包的变更标识必须由用户显式指定，唯一合法根目录为：
 
-- 变更范围和受影响的稳定 ID
-- 当前实现、DDL、SQL/Mapper 或配置快照证据
-- 已执行的验证及其结果
-- 需要更新的 KnowledgeBase 文档
-- 尚未确认的冲突或风险
+```text
+cadence/knowledge-base/user-input/updates/CHANGE-变更标识/
+```
 
-没有完整变更包时不得把 Update 标记为完成。
+根目录始终包含以下五份固定文件，文件之间不得合并，也不得省略：
+
+```text
+change-summary.md
+code-change.md
+database-change.md
+configuration-change.md
+verification.md
+```
+
+附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并写明无变更及判断依据；即使配置无变更，`configuration-change.md` 仍必须存在并写明无变更及判断依据。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。

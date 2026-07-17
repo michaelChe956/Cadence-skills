@@ -46,7 +46,7 @@ Manifest 不存在或 Schema 不是 4.0 时停止并引导使用 `knowledge-base
 - 知识库与源码冲突时，概览必须引导回到来源验证。
 - 任务开始前必须先使用 `knowledge-base-context` 获取渐进式任务上下文。
 - 表相关任务必须读取字段级表文档和当前结构证据；配置相关任务必须读取服务配置文档和当前快照证据。
-- 变更完成后必须准备完整变更包，并由 `knowledge-base-update` 消费后执行 Update。
+- 变更完成后必须由用户显式指定唯一变更标识，并在唯一合法目录 `cadence/knowledge-base/user-input/updates/CHANGE-变更标识/` 准备完整变更包，再由 `knowledge-base-update` 消费后执行 Update。
 - 只更新 `CLAUDE.md`、`AGENTS.md` 中的稳定管理区块。
 - 管理标记损坏、重复或嵌套时停止覆盖并写入待确认项。
 - 用户自定义详细规则写入 `cadence/project-rules/knowledge-base-usage.md`。
@@ -155,7 +155,7 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug 前，先使用 `knowledge-base-context` 获取最小任务上下文。
 修改代码前读取 `cadence/knowledge-base/README.md`，并按任务范围读取相关文档。
 表相关任务读取字段级表文档和当前结构证据；配置相关任务读取服务配置文档和当前快照证据。
-变更完成后准备完整变更包，并使用 `knowledge-base-update` 执行 Update。
+变更完成后，由用户显式指定唯一变更标识，在 `cadence/knowledge-base/user-input/updates/CHANGE-变更标识/` 准备五份不可合并或省略的固定文件，再使用 `knowledge-base-update` 执行 Update。
 <!-- cadence-knowledge-base:end -->
 ```
 
@@ -188,7 +188,27 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 5. 知识库是事实索引，不替代源码、DDL、有效配置和当前证据。
 6. `[合理推断]` 与 `[待人工确认]` 不能当作确定事实。
 7. 知识库与当前实现冲突时回到来源验证并更新知识库。
-8. 影响字段、SQL/Mapper、配置、Profile/Feature Flag、API 参数、页面字段或中间件后，必须准备包含变更范围、实现证据、验证结果和文档目标的完整变更包，并使用 `knowledge-base-update` 执行 Update。
+8. 影响字段、SQL/Mapper、配置、Profile/Feature Flag、API 参数、页面字段或中间件后，必须由用户显式指定唯一变更标识，在 `cadence/knowledge-base/user-input/updates/CHANGE-变更标识/` 准备符合固定契约的完整变更包，并使用 `knowledge-base-update` 执行 Update。
+
+## 强制变更包契约
+
+完整变更包的变更标识必须由用户显式指定，唯一合法根目录为：
+
+```text
+cadence/knowledge-base/user-input/updates/CHANGE-变更标识/
+```
+
+该根目录始终包含以下五份固定文件，文件之间不得合并，也不得省略：
+
+```text
+change-summary.md
+code-change.md
+database-change.md
+configuration-change.md
+verification.md
+```
+
+附件只能提供补充证据，不能替代任何固定文件。即使数据库无变更，`database-change.md` 仍必须存在并说明无变更及判断依据；即使配置无变更，`configuration-change.md` 仍必须存在并说明无变更及判断依据。目录、文件和依据不完整时，不得调用 `knowledge-base-update` 或把 Update 标记为完成。
 
 ## 禁止行为
 
@@ -208,4 +228,4 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 - 术语区分用户定义与代码推断。
 - 待确认项按优先级整理。
 - `CLAUDE.md`、`AGENTS.md` 只修改稳定区块。
-- 项目规则明确 Context 前置、表与配置证据读取以及完整变更包 Update。
+- 项目规则明确 Context 前置、表与配置证据读取，以及唯一变更包目录、五份不可合并或省略的固定文件和 Update 要求。
