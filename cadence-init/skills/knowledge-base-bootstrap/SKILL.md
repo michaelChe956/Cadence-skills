@@ -73,7 +73,7 @@ cadence/knowledge-base/
 - 只分析用户声明的本地工程、结构证据和外部快照目录，不连接外部系统。
 - 不修改业务代码、DDL、运行配置或生产系统。
 - 迁移文件、部署脚本、发布脚本和启动脚本只能作为只读证据，不得执行。
-- 不输出密码、Token、AccessKey、Secret、密钥、私钥、完整连接串，以及内部域名、IP、URL 等敏感内部地址。Manifest 可以记录用户授权的本地文件系统路径；配置值中的内部端点必须脱敏。
-- 配置证据写入 `evidence.configuration_snapshots`，只保存最终快照指纹和来源元数据。
+- 不输出密码、Token、AccessKey、Secret、密钥、私钥、完整连接串，以及内部域名、IP、URL 等敏感内部地址。Manifest 可以记录用户授权的本地文件系统路径；配置值中的内部端点必须脱敏，实际值统一写为 `<redacted>`，不得保存敏感值哈希或其他可关联的确定性衍生物。
+- 配置证据写入 `evidence.configuration_snapshots.baseline`，最终快照指纹固定写入 `evidence.configuration_snapshots.baseline.fingerprint`；只保存最终快照指纹和来源元数据。
 - 增量包状态写入 `update.processed_packages`；首次初始化为空列表。
 - Manifest、输入清单、固定目录和六领域范围必须一致，重要结论必须有可信度与可定位证据。
