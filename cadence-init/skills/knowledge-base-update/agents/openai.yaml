@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 增量更新"
-  short_description: "根据 Git 与增量资料安全幂等地更新现有项目知识库内容"
-  default_prompt: "使用 $knowledge-base-update 根据本次迭代变更更新现有 Schema 3.0 KnowledgeBase。"
+  short_description: "使用完整变更包幂等更新 Manifest 4.0 KnowledgeBase"
+  default_prompt: "使用 $knowledge-base-update，并要求我显式指定目标项目的 CHANGE-* 完整变更包路径；只在 Manifest 4.0、五份强制文档、MR 与本地提交范围、数据库资料和同环境配置新旧快照全部通过门禁后更新 KnowledgeBase。"
