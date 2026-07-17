@@ -38,7 +38,8 @@
 | 页面经 API 调用订单导出服务 | 页面、API 和服务关系矩阵 | `order.ts#exportOrders → OrderExportController#create → OrderExportService#createTask` | 无直接结构结论 | 无直接配置结论 | `一致` | 可限定失败调用链 |
 | 导出查询读取订单逻辑表 | `TABLE-order` 与服务读关系 | `OrderMapper#selectForExport` | 字段级文档、`OrderMapper.xml#selectForExport`、迁移 `V214__order_export_index.sql`；无完整 DDL | 数据源组绑定 `SCHEMA-commerce` | `一致` | 后续需检查 SQL、索引与数据源路由 |
 | 测试环境超时键进入导出客户端 | 服务配置文档记录配置组 | `OrderExportProperties#timeoutMs → ExportClientFactory` | 与表字段无直接关系 | `application-test.yml` 中键存在；用途为导出等待；状态为存在；绑定位置为 `OrderExportProperties#timeoutMs`；值 `<redacted>`；`test` Profile 生效 | `一致` | 后续可验证客户端超时位置 |
-| 用户点名变更包调整超时和查询字段 | KnowledgeBase 尚未登记该包 | 当前提交包含包声明的两个相关符号 | `database-change.md` 声明字段无变化，但代码新增 `finished_at` 查询 | `configuration-change.md` 声明测试快照变化 | `基线漂移` | Review/Debug 必须保留声明与代码差异，不能视为已纳入基线 |
+| 用户点名变更包调整测试环境超时 | KnowledgeBase 尚未登记该包 | 当前提交包含包声明的超时配置绑定变化 | `database-change.md` 声明无数据模型变化 | `configuration-change.md` 声明测试快照变化 | `基线漂移` | 该包未进入 `processed_packages`，不能视为已纳入 KnowledgeBase 基线 |
+| 数据库文档声明无字段变化，但代码新增 `finished_at` 查询 | 未处理变更包尚未进入 KnowledgeBase | Mapper SQL 新增读取 `finished_at` | `database-change.md` 声明字段无变化，且无 DDL/迁移证明该字段变化 | 与配置变化无直接关系 | `来源冲突` | Review/Debug 必须分别保留数据库声明和当前代码证据，不能静默选择一侧 |
 | `finished_at` 的数据库类型和可空性 | 字段级文档只登记字段名 | Mapper SQL 引用 `finished_at` | 无 DDL；迁移未定义该字段属性，Entity 只能证明映射 | 无直接配置关系 | `数据模型证据缺失` | 不能据此断言真实类型或可空性 |
 
 ## 5. 关系与影响面
