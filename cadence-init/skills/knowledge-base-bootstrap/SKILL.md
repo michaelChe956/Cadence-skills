@@ -36,10 +36,11 @@ cadence/knowledge-base/user-input/
 ## 工作流程
 
 1. 读取目标项目适用的代理规则，定位唯一输入入口。
-2. 在读取六领域输入前检查目标目录中的既有 `cadence/knowledge-base/manifest.yaml`：
-   - Manifest 存在且 `schema_version` 不是 `4.0` 时立即停止，不覆盖、不迁移、不删除。
-   - Manifest 为 `4.0` 但用户未显式授权“重新初始化”时立即停止，不修改现有 KnowledgeBase。
-   - 只有用户显式授权重新初始化现有 Schema 4.0 KnowledgeBase 时才可继续重建，并在输入清单记录授权来源；不得把普通初始化请求推断为重建授权。
+2. 在读取六领域输入前检查目标目录 `cadence/knowledge-base/`：只要存在 `manifest.yaml`，或存在 `input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`domain-glossary.md`、`open-questions.md`、`change-history.md` 中任一固定产物，就不得当作首次初始化。
+   - 未发现任何固定产物：按首次初始化继续。
+   - 已有固定产物但 Manifest 缺失、不可解析、缺少版本字段或版本不是 `4.0`：立即停止，不覆盖、不迁移、不删除。
+   - Manifest 为 `4.0` 但用户未显式授权“重新初始化 Schema 4.0”时立即停止，不修改现有 KnowledgeBase。
+   - 只有用户显式授权“重新初始化 Schema 4.0”时才可清理固定产物并全新重建。执行清理前必须一次性报告将删除或替换的精确路径、人工内容丢失风险、现有基线与历史失效风险及重新生成范围，并记录用户对该范围和风险的授权来源。该流程是清理后全新重建，不读取旧字段做兼容或迁移；不得把普通初始化、修复或更新请求推断为清理授权。
 3. 按 `references/input-contract.md` 校验六领域状态、资料引用和指定范围。
 4. 数据模型为 `全量` 或 `指定` 时，确认至少一种可定位结构证据；DDL 可缺省，其他证据有效时继续，没有任何结构证据时停止或要求改为 `不适用`。
 5. 配置为 `全量` 或 `指定` 时，确认来源是锁定发布批次的不可变快照且外部目录可读。配置仓库必须固定到明确提交、标签或导出快照，不得使用持续变化的工作目录。校验范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且相互一致；同一 `snapshot_id` 不得映射到不同环境或不同外部目录。分析开始和结束时分别计算最终快照指纹；指纹不一致、范围摘要不一致或目录内容变化时停止，且不得连接配置中心或远程环境补取。
@@ -80,5 +81,5 @@ cadence/knowledge-base/
 - 不输出密码、Token、AccessKey、Secret、密钥、私钥、完整连接串，以及内部域名、IP、URL 等敏感内部地址。Manifest 可以记录用户授权的本地文件系统路径；配置值中的内部端点必须脱敏，实际值统一写为 `<redacted>`，不得保存敏感值哈希或其他可关联的确定性衍生物。
 - 配置证据写入 `evidence.configuration_snapshots.baseline`，最终快照指纹固定写入 `evidence.configuration_snapshots.baseline.fingerprint`；同时保存 `scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要，不保存原始配置内容。
 - 增量包状态写入 `update.processed_packages`；首次初始化为空列表。
-- 既有 Manifest 的版本门禁和显式重新初始化授权已经通过；未经授权时没有覆盖任何 KnowledgeBase 文件。
+- 固定产物检测、Manifest 完整性/版本门禁和显式重新初始化授权已经通过；需要清理重建时已记录精确清理范围与风险授权，未经授权时没有覆盖或删除任何 KnowledgeBase 文件。
 - Manifest、输入清单、固定目录和六领域范围必须一致；同一快照标识的环境与目录映射唯一，重要结论必须有可信度与可定位证据。

@@ -8,12 +8,14 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 
 ## 既有 Manifest 与重新初始化授权
 
-在校验六领域输入前先检查目标目录中的既有 Manifest：
+在校验六领域输入前检查整个 `cadence/knowledge-base/`，不能只检查 Manifest。检测集合为：`manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`domain-glossary.md`、`open-questions.md`、`change-history.md`。
 
-- 不存在 Manifest：按首次初始化继续。
-- 存在 Manifest 且 Schema 不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有版本和路径。
-- 存在 Schema 4.0 Manifest，但用户未显式授权重新初始化：立即停止，不修改现有 KnowledgeBase。
-- 只有用户明确表达“重新初始化现有 Schema 4.0 KnowledgeBase”时才允许重建；把授权原文或可定位来源写入输入清单。普通初始化、补文档或更新请求不构成重新初始化授权。
+- 检测集合全部不存在：按首次初始化继续。
+- 任一固定产物存在：不得按首次初始化继续，必须校验 Manifest 和重新初始化授权。
+- 固定产物存在但 Manifest 缺失、不可解析、缺少 `schema_version` 或版本不是 4.0：立即停止，不覆盖、不迁移、不删除，并报告现有产物、Manifest 状态和影响。
+- Manifest 为 Schema 4.0，但用户未显式授权“重新初始化 Schema 4.0”：立即停止，不修改现有 KnowledgeBase。
+- 只有用户明确授权“重新初始化 Schema 4.0”时才允许清理固定产物并全新重建。清理前一次性列出精确路径、人工内容丢失风险、Git/配置/变更历史基线失效风险和重新生成范围，取得用户对范围与风险的授权并写入输入清单。
+- 重新初始化不读取旧 Manifest 字段进行映射，不迁移旧目录或兼容旧 Schema。普通初始化、补文档、修复或 Update 请求不构成清理重建授权。
 
 ## 六领域输入
 
