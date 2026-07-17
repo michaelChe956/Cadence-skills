@@ -194,15 +194,15 @@ return orderSummaryAssembler.enrich(page, command);
 
 本案例的数据库结论仅来自用户提供的 DDL、Mapper SQL 和数据源配置，不连接数据库，也不查询在线元数据。
 
-| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 证据状态 | 表文档链接 |
-|---------------|---------------|------|----------|--------------|----------------|----------|------------|
-| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`customer_id`、`created_at` | `orderId/orderNo/status/amount/customerId/createdAt` 由 Mapper resultMap 和 Assembler 映射 | `OrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
-| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 映射 | `OrderQueryMapper.selectItemSummary` | DDL 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
-| `TABLE-order-payment` | `order_db.t_order_payment` | R | `order_id`、`payment_method`、`payment_status` | `paymentMethod/paymentStatus` 由 Mapper 与 Assembler 映射 | `OrderPaymentMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
-| `TABLE-customer-profile` | `customer_db.t_customer_profile` | 间接 R | `customer_id`、`level`、`tags` | `customerLevel/tags` 由 `CustomerProfileClient` 响应映射，当前服务不直连表 | 由 `customer-profile-service` 访问 | 代码可推导 | [`TABLE-customer-profile`](../data-models/SCHEMA-customer/TABLE-customer-profile.md) |
-| 待确认 | `t_order_risk_snapshot` | 未发现直读 | 待确认 | 无 API 字段到表字段证据 | 当前工程未发现 Mapper | 待确认 | 待确认 |
+| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 表字段证据状态 | 端到端映射状态 | 表文档链接 |
+|---------------|---------------|------|----------|--------------|----------------|------------------|------------------|------------|
+| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`customer_id`、`created_at` | `orderId/orderNo/status/amount/customerId/createdAt` 由 Mapper resultMap 和 Assembler 映射 | `OrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
+| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 映射 | `OrderQueryMapper.selectItemSummary` | DDL 已确认 | 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
+| `TABLE-order-payment` | `order_db.t_order_payment` | R | `order_id`、`payment_method`、`payment_status` | `paymentMethod/paymentStatus` 由 Mapper 与 Assembler 映射 | `OrderPaymentMapper.selectByOrderIds` | DDL 已确认 | 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
+| `TABLE-customer-profile` | `customer_db.t_customer_profile` | 间接 R | `customer_id`、`level`、`tags` | `customerLevel/tags` 由 `CustomerProfileClient` 响应映射；下游表到服务响应的映射未核实 | 当前服务仅有 `CustomerProfileClient`，未取得 `customer-profile-service` 的 Mapper/SQL | DDL 已确认 | 待确认 | [`TABLE-customer-profile`](../data-models/SCHEMA-customer/TABLE-customer-profile.md) |
+| 待确认 | `t_order_risk_snapshot` | 未发现直读 | 待确认 | 无 API 字段到表字段证据 | 当前工程未发现 Mapper | 待确认 | 待确认 | 待确认 |
 
-> `t_order_risk_snapshot` 不能仅因名称相似就认定为本接口数据源；当前只记录为待确认候选。
+> `TABLE-customer-profile` 的 DDL 只能确认字段定义；当前没有下游服务 Mapper/SQL，不能证明 `API-order-page` 到该表字段的端到端映射，因此映射状态为待确认。`t_order_risk_snapshot` 不能仅因名称相似就认定为本接口数据源。
 
 ### 7.2 配置依赖
 

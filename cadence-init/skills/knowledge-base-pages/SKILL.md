@@ -39,7 +39,8 @@ description: "Use when an agent needs to analyze existing Vue or React pages, ro
 - 页面与 REST API 映射必须记录 HTTP Method、规范化 Path、前端调用位置和请求封装链路。
 - 页面到 TABLE 和 CONFIGURATION 的关系必须经过已匹配 API 与后端 SERVICE/MODULE 证据，不得从页面直接跳到数据库或配置实体。
 - TABLE 关系必须使用 `data-models/` 稳定 ID 和文档链接，记录页面字段、API 字段、表字段、读写和证据状态。
-- 配置关系必须链接 `configurations/` 服务配置实体，记录配置组稳定 ID、配置键、环境/Profile、生效条件、页面影响和证据状态。
+- 后端配置关系必须严格沿 `PAGE/ROUTE → API → SERVICE/MODULE → CONFIGURATION` 取证，分别记录 API ID 与 SERVICE/MODULE，并链接 `configurations/` 服务配置实体。
+- 前端代码直接读取的环境变量、构建时 Feature Flag 或静态菜单配置单独记录为“前端直接配置”；不得据此建立后端服务配置实体关系。
 - 未登记或无法唯一匹配的接口使用 `API-CANDIDATE-*`，不得生成不存在的接口主文件链接。
 - 页面 REST 默认匹配对内能力；只有前端调用链实际指向对外地址且 Method + Path 能与对外接口主文件核对时，才关联对外能力，不能按业务名称相似度匹配。
 - 权限结论必须结合路由元数据、守卫、菜单、状态和后端鉴权资料。
@@ -160,9 +161,10 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 5. 匹配成功时，在页面文档中使用稳定 API ID，并以 Markdown 相对链接指向对应接口主文件。
 6. 从接口主文件取得后端 SERVICE/MODULE、TABLE 稳定 ID、字段映射和配置依赖，再回到 API 模型、前端请求代码或后端映射证据核对页面关系。
 7. 页面字段 → API 字段 → TABLE 字段必须逐跳取证；即使字段同名，也不得直接关联表。缺少 API 模型、请求代码或后端证据时写 `待确认`。
-8. 页面 Feature Flag、环境变量或菜单配置必须核对配置键、绑定、目标环境和生效条件，并链接服务配置实体；敏感值写 `<redacted>`。
-9. 同一页面调用多个 API 时逐条建立关系，不合并为无法独立导航的文本列表。
-10. 无法唯一匹配时列出候选，使用 `API-CANDIDATE-*` 并标记待确认；不根据函数名、按钮名或页面文案补造正式接口。
+8. 后端 Feature Flag 或配置必须核对页面调用的 API ID、接口所属 SERVICE/MODULE、配置键、绑定、目标环境和生效条件，再链接服务配置实体；缺少任一节点时写 `待确认`。
+9. 前端直读环境变量、构建时 Feature Flag 或静态菜单配置写入独立补充表，只记录前端应用/模块、配置键、页面影响、环境、绑定和证据状态，不链接后端配置实体；敏感值写 `<redacted>`。
+10. 同一页面调用多个 API 时逐条建立关系，不合并为无法独立导航的文本列表。
+11. 无法唯一匹配时列出候选，使用 `API-CANDIDATE-*` 并标记待确认；不根据函数名、按钮名或页面文案补造正式接口。
 
 ### 8. 识别异常项
 
@@ -198,6 +200,7 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 - 不根据页面字段、API 字段和表字段同名建立 TABLE 关系。
 - 不绕过 API 模型、请求代码或后端证据直接把页面关联到表。
 - 不把存在于前端构建文件或后端服务中的配置都写成页面依赖，只记录直接控制页面、路由、权限、请求或展示行为的配置。
+- 不用“前端绑定”替代后端配置关系中的 API ID 或 SERVICE/MODULE，不把前端环境变量链接为后端服务配置实体。
 - 不输出配置敏感值；统一写 `<redacted>`。
 - 不把开发工具、Demo 和 Storybook 页面混入生产页面。
 - 不为动态路由补造运行时返回结果。
@@ -217,7 +220,8 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 - 页面和路由使用独立稳定 ID。
 - 页面、API、服务、字段级 TABLE 和配置实体之间能够导航；已匹配 REST API 具有 Method、标准 Path 和接口主文件链接。
 - TABLE 关系记录页面字段、API 字段、表字段、读写、证据状态和 `data-models/` 链接。
-- Feature Flag 与环境配置记录配置组、配置键、环境/Profile、生效条件、证据状态和 `configurations/` 链接。
+- 后端 Feature Flag 与环境配置分别记录 API ID、SERVICE/MODULE、配置组、配置键、环境/Profile、生效条件、证据状态和 `configurations/` 链接。
+- 前端直接配置已在独立补充表记录，且没有被误写为后端服务配置实体关系。
 - 所有页面 API 调用均已匹配稳定 API ID，或以 `API-CANDIDATE-*` 进入待确认清单。
 - 动态、权限和运行时限制已经明确。
 - 孤立、不可达和冲突项进入待确认清单。

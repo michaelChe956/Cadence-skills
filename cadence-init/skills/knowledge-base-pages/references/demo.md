@@ -55,17 +55,27 @@ APP-ops-console
 
 > `riskStatus` 即使与某个表字段同名，也不能直接关联 TABLE；当前缺少 API 模型到 Mapper/SQL 的后端证据，因此保留待确认。
 
-### 4.3 页面配置依赖
+### 4.3 后端服务配置依赖
 
-| PAGE/ROUTE ID | API ID 或前端绑定 | 配置组稳定 ID | 服务配置实体 | 配置键 | 页面影响 | 环境/Profile | 生效条件与绑定 | 证据状态 | 配置文档链接 |
-|---------------|-------------------|----------------|--------------|--------|----------|--------------|--------------|----------|--------------|
-| `PAGE-order-list` | `API-order-page` | `CONFIG-order-query` | `SERVICE-order-query` | `order.query.full-text-enabled` | 全文检索条件是否可提交；关闭时 API 返回能力未启用错误 | 生产、测试；具体值不记录 | `OrderQueryProperties#fullTextEnabled` 被查询分支读取，页面按接口能力错误禁用条件 | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
-| `PAGE-order-list` | `API-order-export` | `CONFIG-order-export` | `SERVICE-order-export` | `order.export.enabled` | 导出按钮对应能力是否可执行 | 生产 Profile | `OrderExportProperties#enabled` 参与 Controller 条件装配；页面能力清单读取 API 状态 | 已确认 | [`SERVICE-order-export`](../configurations/SERVICE-order-export.md) |
-| `PAGE-order-detail` | `API-order-detail` | `CONFIG-order-detail` | `SERVICE-order-query` | `order.detail.manual-retry-enabled` | 控制“人工重试”操作是否展示 | 生产、测试；具体值不记录 | `OrderDetailProperties#manualRetryEnabled` → `OrderDetailResponse.features.manualRetry` → `useOrderDetail` | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+| PAGE/ROUTE ID | API ID | SERVICE/MODULE | 配置组稳定 ID | 服务配置实体 | 配置键 | 页面影响 | 环境/Profile | 生效条件与绑定 | 证据状态 | 配置文档链接 |
+|---------------|--------|----------------|----------------|--------------|--------|----------|--------------|--------------|----------|--------------|
+| `PAGE-order-list` | `API-order-page` | `SERVICE-order-query` | `CONFIG-order-query` | `SERVICE-order-query` | `order.query.full-text-enabled` | 全文检索条件是否可提交；关闭时 API 返回能力未启用错误 | 生产、测试；具体值不记录 | `OrderQueryProperties#fullTextEnabled` → API 能力错误 → `orderStore` 禁用全文条件 | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
+| `PAGE-order-list` | `API-order-export` | `SERVICE-order-export` | `CONFIG-order-export` | `SERVICE-order-export` | `order.export.enabled` | 导出按钮对应能力是否可执行 | 生产 Profile | `OrderExportProperties#enabled` → Controller 条件装配/`ORDER_EXPORT_DISABLED` → `useOrderExport` → `orderCapabilityStore.exportEnabled=false` → `OrderListToolbar` 按钮禁用绑定 | 已确认 | [`SERVICE-order-export`](../configurations/SERVICE-order-export.md) |
+| `PAGE-order-detail` | `API-order-detail` | `SERVICE-order-query` | `CONFIG-order-detail` | `SERVICE-order-query` | `order.detail.manual-retry-enabled` | 控制“人工重试”操作是否展示 | 生产、测试；具体值不记录 | `OrderDetailProperties#manualRetryEnabled` → `OrderDetailResponse.features.manualRetry` → `useOrderDetail` | 已确认 | [`SERVICE-order-query`](../configurations/SERVICE-order-query.md) |
 
 Feature Flag 证据链：`PAGE-order-detail → API-order-detail → SERVICE-order-query → CONFIG-order-detail → order.detail.manual-retry-enabled → OrderDetailResponse.features.manualRetry → useOrderDetail → 页面操作显隐`。该链证明页面能力受开关控制，但不记录真实环境值。
 
-### 4.4 未匹配接口候选
+导出开关证据链：`PAGE-order-list → API-order-export → SERVICE-order-export → CONFIG-order-export → order.export.enabled → OrderExportController`。开关关闭时接口返回 `ORDER_EXPORT_DISABLED`；`src/composables/useOrderExport.ts:41-58` 将该错误写入 `orderCapabilityStore.exportEnabled=false`，`src/views/order/components/OrderListToolbar.vue:22-31` 通过 `:disabled="!orderCapabilityStore.exportEnabled"` 绑定按钮状态，因此后端配置到页面行为的端到端证据完整。
+
+### 4.4 前端直接配置
+
+| PAGE/ROUTE ID | 前端应用或模块 | 配置键 | 页面影响 | 环境/构建模式 | 前端绑定与生效条件 | 证据状态 | 来源 |
+|---------------|----------------|--------|----------|---------------|--------------------|----------|------|
+| `PAGE-order-detail` | `APP-ops-console` | `VITE_ORDER_DETAIL_HINTS` | 控制测试环境的详情辅助提示 | 测试构建；具体值不记录 | `import.meta.env.VITE_ORDER_DETAIL_HINTS` → `featureFlags.detailHints` → `OrderDetailHints` | 已确认 | `apps/ops-console/.env.example:12`、`src/config/featureFlags.ts:8-17` |
+
+该前端变量只属于构建时页面配置，不链接 `configurations/` 服务配置实体，也不用于推导 `SERVICE-order-query` 的后端配置。
+
+### 4.5 未匹配接口候选
 
 | PAGE ID | 候选 API ID | 已知方法与路径 | 调用位置 | 接口主文件 | 状态 | 可信度 | 待确认项 |
 |---------|-------------|----------------|----------|------------|------|--------|----------|

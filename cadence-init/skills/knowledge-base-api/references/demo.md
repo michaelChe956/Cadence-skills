@@ -200,16 +200,16 @@ public PartnerOrderQueryResponse queryOrders(PartnerOrderQueryRequest request) {
 
 本案例的数据库结论只使用用户提供的 DDL、Mapper SQL、Entity 和数据源配置，不连接数据库，也不查询在线元数据。
 
-| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 证据状态 | 表文档链接 |
-|---------------|---------------|------|----------|--------------|----------------|----------|------------|
-| `TABLE-partner-api-permission` | `partner_db.t_partner_api_permission` | R | `partner_code`、`capability_code`、`data_scope` | 服务端 `partnerCode` 与能力 ID → 权限条件 | `PartnerPermissionMapper.selectPermission` | DDL 已确认 | [`TABLE-partner-api-permission`](../data-models/SCHEMA-partner/TABLE-partner-api-permission.md) |
-| `TABLE-partner-order-mapping` | `order_db.t_partner_order_mapping` | R | `partner_code`、`external_order_no`、`order_id` | `externalOrderNo` → `external_order_no` → `order_id` | `PartnerOrderQueryMapper.selectPage` | DDL 已确认 | [`TABLE-partner-order-mapping`](../data-models/SCHEMA-order/TABLE-partner-order-mapping.md) |
-| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`created_at` | `orderId/status/amount/createdAt` 由 SQL 别名与 `PartnerOrderAssembler` 映射 | `PartnerOrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
-| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 与 Assembler 映射 | `PartnerOrderItemMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
-| `TABLE-order-payment` | `order_db.t_order_payment` | 条件 R | `order_id`、`payment_status` | `paymentStatus` 由 Mapper 结果与对外枚举转换映射 | `PartnerOrderPaymentMapper.selectByOrderIds` | DDL 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
-| 待确认 | `t_partner_api_call_log` | 未确认 | 待确认 | 无同步写入映射证据 | 当前工程未发现 Mapper | 待确认 | 待确认 |
+| TABLE 稳定 ID | Schema/逻辑表 | 读写 | 涉及字段 | API 模型映射 | Mapper/DAO/SQL | 表字段证据状态 | 端到端映射状态 | 表文档链接 |
+|---------------|---------------|------|----------|--------------|----------------|------------------|------------------|------------|
+| `TABLE-partner-api-permission` | `partner_db.t_partner_api_permission` | R | `partner_code`、`capability_code`、`data_scope` | 服务端 `partnerCode` 与能力 ID → 权限条件 | `PartnerPermissionMapper.selectPermission` | DDL 已确认 | 已确认 | [`TABLE-partner-api-permission`](../data-models/SCHEMA-partner/TABLE-partner-api-permission.md) |
+| `TABLE-partner-order-mapping` | `order_db.t_partner_order_mapping` | R | `partner_code`、`external_order_no`、`order_id` | `externalOrderNo` → `external_order_no` → `order_id` | `PartnerOrderQueryMapper.selectPage` | DDL 已确认 | 已确认 | [`TABLE-partner-order-mapping`](../data-models/SCHEMA-order/TABLE-partner-order-mapping.md) |
+| `TABLE-order` | `order_db.t_order` | R | `id`、`order_no`、`status`、`total_amount`、`created_at` | `orderId/status/amount/createdAt` 由 SQL 别名与 `PartnerOrderAssembler` 映射 | `PartnerOrderQueryMapper.selectPage/selectByIds` | DDL 已确认 | 已确认 | [`TABLE-order`](../data-models/SCHEMA-order/TABLE-order.md) |
+| `TABLE-order-item` | `order_db.t_order_item` | R | `order_id`、`sku_name`、`quantity` | `itemSummary/itemCount` 由聚合 SQL 与 Assembler 映射 | `PartnerOrderItemMapper.selectByOrderIds` | DDL 已确认 | 已确认 | [`TABLE-order-item`](../data-models/SCHEMA-order/TABLE-order-item.md) |
+| `TABLE-order-payment` | `order_db.t_order_payment` | 条件 R | `order_id`、`payment_status` | `paymentStatus` 由 Mapper 结果与对外枚举转换映射 | `PartnerOrderPaymentMapper.selectByOrderIds` | DDL 已确认 | 已确认 | [`TABLE-order-payment`](../data-models/SCHEMA-order/TABLE-order-payment.md) |
+| 待确认 | `t_partner_api_call_log` | 未确认 | 待确认 | 无同步写入映射证据 | 当前工程未发现 Mapper | 待确认 | 待确认 | 待确认 |
 
-> 不能仅因 DDL 中存在 `t_partner_api_call_log` 就认定本接口同步写表；当前证据只能证明 Kafka 审计事件已生产。
+> 不能仅因 DDL 中存在 `t_partner_api_call_log` 就认定本接口同步写表；当前证据只能证明 Kafka 审计事件已生产。表结构或 DDL 证据与端到端 API 映射证据必须分开判断。
 
 ### 7.2 配置依赖
 

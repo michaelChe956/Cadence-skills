@@ -105,9 +105,11 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE → 字段/Mapper/SQL
 PAGE/ROUTE → API → SERVICE/MODULE → CONFIGURATION → 配置键/生效条件
 ```
 
-前端 Feature Flag、环境变量、菜单配置或后端开关只有在直接控制页面、路由、权限、请求或展示行为时才记录。每项依赖包含配置组稳定 ID、服务配置实体、配置键、环境/Profile、绑定位置、生效条件、证据状态和 `configurations/` 链接。
+后端服务配置必须严格沿该链逐跳证明。每项依赖分别记录页面/路由 ID、API ID、SERVICE/MODULE、配置组稳定 ID、服务配置实体、配置键、环境/Profile、后端绑定与生效条件、API 响应或错误到前端行为的绑定、证据状态和 `configurations/` 链接。不得用前端绑定替代 API ID 或 SERVICE/MODULE。
 
 配置键存在不等于页面当前可用；只有默认值或键名、但缺少加载与生效证据时写 `待确认`。密码、Token、密钥、完整连接串、内部域名、IP 和 URL 等敏感值统一写 `<redacted>`。
+
+前端代码直接读取的环境变量、构建时 Feature Flag 或静态菜单配置必须放入独立“前端直接配置”表，只记录前端应用/模块、配置键、页面影响、环境或构建模式、读取绑定和证据状态。该补充关系不得链接 `configurations/` 后端服务配置实体，也不能用于推导后端 SERVICE/MODULE 或 CONFIGURATION。
 
 ## 页面状态
 
