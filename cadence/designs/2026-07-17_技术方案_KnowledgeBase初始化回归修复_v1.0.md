@@ -118,6 +118,8 @@ Overview 完成后，Bootstrap 必须统一验证：
 - `cadence-init/skills/knowledge-base-base-info/SKILL.md`
 - `cadence-init/skills/knowledge-base-base-info/assets/base-information-template.md`
 - `cadence-init/skills/knowledge-base-base-info/agents/openai.yaml`
+- `cadence-init/skills/knowledge-base-api/SKILL.md`
+- `cadence-init/skills/knowledge-base-pages/SKILL.md`
 - `cadence-init/skills/knowledge-base-overview/SKILL.md`
 - `cadence-init/skills/knowledge-base-overview/assets/project-overview-template.md`
 - `cadence-init/skills/knowledge-base-overview/agents/openai.yaml`
