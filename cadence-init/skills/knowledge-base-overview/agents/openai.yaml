@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 项目概览"
-  short_description: "生成 Schema 4.0 项目导航、字段级数据模型与配置入口"
-  default_prompt: "使用 $knowledge-base-overview 汇总 Schema 4.0 KnowledgeBase，生成数据模型和配置一级导航、核心流程、常见修改场景与 Coding Agent 使用规则。"
+  short_description: "汇总 Schema 4.0 服务文档与项目场景导航"
+  default_prompt: "使用 $knowledge-base-overview 汇总 Schema 4.0 KnowledgeBase 及服务文档，生成数据模型和配置一级导航、核心流程，以及路由、消息、权限和新增服务或模块的常见修改场景导航与 Coding Agent 使用规则。"

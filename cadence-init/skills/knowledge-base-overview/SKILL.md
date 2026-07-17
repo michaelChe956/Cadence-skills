@@ -119,6 +119,10 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 - API 参数变更：读取接口主文档、调用方、服务和数据模型影响关系。
 - 页面字段变更：读取页面文档、API 参数和字段映射关系。
 - 中间件配置变化：读取配置文档、中间件证据、依赖服务和验证入口。
+- 页面或路由变更：读取页面索引、页面或路由文档、接口文档、`services/README.md` 或具体服务文档，使用 PAGE、ROUTE、API 和 SERVICE/MODULE 稳定 ID 检查导航、守卫、菜单与调用链，并链接验证入口。
+- 消息生产/消费或异步任务变更：读取接口索引、消息或任务能力主文件、`services/README.md` 或具体服务文档、配置与证据，使用 API/EVENT/JOB 和 SERVICE/MODULE 稳定 ID 检查生产者、消费者、调度、重试、事务与幂等影响，并链接验证入口。
+- 鉴权/权限/数据权限变更：读取页面与路由文档、接口主文件、`services/README.md` 或具体服务文档、配置与鉴权证据，使用 PAGE、ROUTE、API 和 SERVICE/MODULE 稳定 ID 检查前端控制、后端鉴权、数据范围与调用方影响，并链接验证入口。
+- 新增服务或模块：读取 `services/README.md`、具体服务文档、基础信息、开发指南及关联接口、页面、数据模型、配置与证据，使用 SERVICE/MODULE 及其关联稳定 ID 检查入口、依赖、注册、导航和验证方式。
 
 每个场景列出必读文档、主要入口、影响关系和验证指南链接。不得为项目不存在的工具创造命令。
 
@@ -227,6 +231,7 @@ verification.md
 - Coding Agent 能从 README 导航到全部适用的核心文档；接口或页面不适用时能从无链接条目看到原因。
 - README 直接提供 Schema 4.0 的十个稳定一级条目；适用领域使用链接，接口或页面不适用时使用无链接说明，且只保留摘要和导航。
 - 核心流程支持 `PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE` 稳定链路和证据。
+- 常见修改场景覆盖原有七类以及页面或路由、消息或异步任务、鉴权或权限、服务或模块新增，并提供稳定 ID、服务文档和验证入口导航。
 - 术语区分用户定义与代码推断。
 - 待确认项按优先级整理。
 - `CLAUDE.md`、`AGENTS.md` 只修改稳定区块。

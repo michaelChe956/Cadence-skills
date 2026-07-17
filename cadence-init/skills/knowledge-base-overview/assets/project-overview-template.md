@@ -51,6 +51,10 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 | API 参数变更 | 接口适用时读取 `interfaces/README.md`、接口主文档、服务和数据模型文档；不适用时记录原因 | API、PARAMETER | 调用方、页面、服务、表 | `development-guide.md` |
 | 页面字段变更 | 页面适用时读取 `pages/README.md`、页面文档、接口和数据模型文档；不适用时记录原因 | PAGE、FIELD | API 参数、字段映射、校验 | `development-guide.md` |
 | 中间件配置变化 | 配置文档、中间件证据、依赖服务文档 | MIDDLEWARE、CONFIGURATION | 连接、路由、消费和部署环境 | `development-guide.md` |
+| 页面或路由变更 | 页面适用时读取 [`pages/README.md`](pages/README.md)、页面或路由文档、接口文档、[`services/README.md`](services/README.md) 或具体服务文档；不适用时记录原因 | PAGE、ROUTE、API、SERVICE/MODULE | 导航、守卫、菜单、调用链和服务映射 | [`development-guide.md`](development-guide.md) |
+| 消息生产/消费或异步任务变更 | 接口索引、消息或任务能力主文件、[`services/README.md`](services/README.md) 或具体服务文档、配置与证据 | API/EVENT/JOB、SERVICE/MODULE | 生产者、消费者、调度、重试、事务和幂等 | [`development-guide.md`](development-guide.md) |
+| 鉴权/权限/数据权限变更 | 页面与路由文档、接口主文件、[`services/README.md`](services/README.md) 或具体服务文档、配置与鉴权证据 | PAGE、ROUTE、API、SERVICE/MODULE | 前端控制、后端鉴权、数据范围和调用方 | [`development-guide.md`](development-guide.md) |
+| 新增服务或模块 | [`services/README.md`](services/README.md)、具体服务文档、`base-information.md`、`development-guide.md` 及关联接口、页面、数据模型、配置与证据 | SERVICE/MODULE、API、PAGE、TABLE、CONFIGURATION | 入口、依赖、注册、领域导航和上下游影响 | [`development-guide.md`](development-guide.md) |
 
 ## 高风险区域
 
