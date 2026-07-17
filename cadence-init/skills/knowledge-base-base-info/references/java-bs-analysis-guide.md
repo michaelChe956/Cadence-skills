@@ -149,8 +149,24 @@
 1. 外部原始快照全程只读，不复制进 KnowledgeBase，不写入、重命名、删除或格式化源文件。
 2. 不连接配置中心、远程环境或在线元数据源补取配置。
 3. 不跟随符号链接、挂载点或文件内引用越过授权快照目录；越界项登记为 `待确认`。
-4. 分析开始和结束时按 Manifest 4.0 输入契约计算最终快照指纹。只有前后指纹一致时才能写入配置结论；不一致时立即停止。
-5. Manifest 的 `evidence.configuration_snapshots` 只保存最终快照指纹和来源元数据，不保存单文件内容哈希或敏感值哈希。
+4. 配置为 `全量` 或 `指定` 时，先读取 `evidence.configuration_snapshots.baseline.fingerprint` 并确认存在且非空；缺失或为空时必须在读取配置内容前停止。
+5. 读取配置内容前按 Manifest 4.0 输入契约首次计算最终快照指纹。首次计算指纹必须等于 Manifest 授权指纹，否则立即停止，不得读取配置内容。
+6. 分析结束时再次计算最终快照指纹。写入任何配置结论前必须满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`；任一比较不一致时立即停止。
+7. Manifest 的 `evidence.configuration_snapshots` 只保存授权的最终快照指纹和来源元数据，不保存单文件内容哈希或敏感值哈希。
+
+### 指纹异常与停止规则
+
+| 异常 | 停止时机 | 禁止行为 |
+|------|----------|----------|
+| `evidence.configuration_snapshots.baseline.fingerprint` 缺失或为空 | 读取配置内容前 | 不得扫描或读取配置内容，不得输出配置结论 |
+| 首次计算指纹与 Manifest 授权指纹不一致 | 读取配置内容前 | 不得继续分类、去重或分析配置内容 |
+| 分析结束指纹与首次计算指纹或 Manifest 授权指纹任一不一致 | 写入配置结论前 | 不得生成或更新配置总索引、服务配置文档、Base Info 配置摘要、开发指南配置基线或 `documents.configurations` |
+
+不得用重新计算的指纹覆盖 Manifest 授权指纹来绕过校验。停止时只报告缺失项或不一致项、预期授权位置和影响，不生成部分配置知识。
+
+### 指纹门禁完成条件
+
+配置为 `全量` 或 `指定` 时，只有 `evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`，配置快照门禁才算完成。配置为 `不适用` 时不读取快照，只在配置总索引记录状态和原因。
 
 ### 文件分类
 
