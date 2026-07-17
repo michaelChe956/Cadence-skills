@@ -43,7 +43,7 @@
 3. 领域 Skills 只消费 Manifest 的六个 `scope` 范围。
 4. 配置基线写入 `evidence.configuration_snapshots.baseline`，包含最终指纹、`scope_summary`、纳入文件数量或清单摘要、服务摘要和文件规则摘要。
 5. 首次初始化的 `update.processed_packages` 为空列表。
-6. 按 `knowledge-base-base-info`、`knowledge-base-api`、`knowledge-base-pages`、`knowledge-base-overview`、`global-validation` 的顺序执行适用阶段；完成阶段写入 `completed_stages`，不适用阶段写入 `skipped_stages` 和原因。
+6. 按 `knowledge-base-base-info` → `base-info`、`knowledge-base-api` → `api`、`knowledge-base-pages` → `pages`、`knowledge-base-overview` → `overview`、内置验收 → `global-validation` 的映射顺序执行适用阶段；`completed_stages` 只写阶段 ID，不写 Skill 名。
 7. `global-validation` 通过后写入 `global_validation: passed`、`status: complete` 和 `completed_at`。
 8. `generated_at` 写入生成时间，`open_questions` 四级默认计数为 0。
 
@@ -57,18 +57,19 @@
 
 1. 目标目录已有非 Schema 4.0 Manifest：立即停止，报告版本与固定产物路径，不覆盖、不迁移、不删除。
 2. Manifest 缺失或不可解析，但 `data-models/`、`README.md` 或其他任一固定产物仍存在：不得按首次初始化继续；立即停止并报告已有产物与 Manifest 状态。
-3. 用户明确授权“重新初始化 Schema 4.0”：先列出将清理的固定路径、人工内容丢失、基线与历史失效风险及重新生成范围；记录用户对范围和风险的授权后，清理固定产物并按六领域输入全新重建，不迁移旧字段或目录。
+3. 仅当现有 Manifest 可解析且 `schema_version: "4.0"` 时，用户明确授权“重新初始化 Schema 4.0”才可进入重建：先列出将清理的固定路径、人工内容丢失、基线与历史失效风险及重新生成范围；记录用户对范围和风险的授权后，清理固定产物并按六领域输入全新重建，不迁移旧字段或目录。Manifest 无效或非 4.0 时，即使用户要求重建也必须停止。
 
 ## 未完成初始化续跑
 
-Manifest 为 Schema 4.0，`coverage.initialization.status: in_progress`；`completed_stages` 已登记 `knowledge-base-base-info`，接口领域适用但尚未完成。
+Manifest 为 Schema 4.0，`coverage.initialization.status: in_progress`；`completed_stages` 已登记阶段 ID `base-info`，接口领域适用但尚未完成。
 
 处理结果：
 
 1. 核对六领域范围没有变化，并确认已登记的基础信息文档、索引和证据一致。
-2. 复用 `knowledge-base-base-info`，不重复扫描。
-3. 从 `knowledge-base-api` 继续初始化，再按条件执行 `knowledge-base-pages`、`knowledge-base-overview` 和 `global-validation`。
-4. 每阶段完成后更新 `completed_stages`；全局验收失败时写入 `global_validation: failed`，保持 `status: in_progress`，完成报告只列缺失项和继续初始化入口。
+2. 复用阶段 ID `base-info` 对应的 `knowledge-base-base-info` 结果，不重复扫描。
+3. 调用 `knowledge-base-api` 继续初始化，完成后把阶段 ID `api` 加入 `completed_stages`；再按条件执行 `knowledge-base-pages` → `pages`、`knowledge-base-overview` → `overview` 和内置 `global-validation`。
+4. 接口不适用时，`skipped_stages` 写为 `[{stage: "api", reason: "接口范围不适用"}]`，不得写入 Skill 名或其他键。
+5. 全局验收失败时写入 `global_validation: failed`，保持 `status: in_progress`，完成报告只列缺失项和继续初始化入口。
 
 ## 完整初始化保护
 
@@ -76,7 +77,7 @@ Manifest 为 Schema 4.0，`coverage.initialization.status: complete`，用户只
 
 处理结果：停止重复初始化，不修改既有产物；引导使用 Context 查询知识库，或使用 Update 处理变更包。只有用户显式授权重新初始化的精确清理范围和风险后，才进入全新重建。
 
-如果 Schema 4.0 Manifest 缺少 `coverage.initialization`，则核对所有适用领域的文档登记和实际产物：全部一致时按完整初始化保护，否则按未完成初始化续跑，不要求删除现有产物。
+如果 Schema 4.0 Manifest 缺少 `coverage.initialization`，不得仅凭适用领域文档登记和实际产物齐全判定完成。先执行当前完整 `global-validation`：通过后按完整初始化保护并回填 `status: complete`、包含 `global-validation` 的阶段 ID 列表、跳过对象、`global_validation: passed` 和 `completed_at`；失败时回填 `status: in_progress`、`global_validation: failed` 和空 `completed_at`，再按未完成初始化续跑，不要求删除现有产物。
 
 ## 指定接口模式
 

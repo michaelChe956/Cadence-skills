@@ -43,19 +43,21 @@ cadence/knowledge-base/user-input/
    4. Manifest 为 `4.0`，且 `coverage.initialization.status == complete`：停止重复初始化，引导使用 Context 查询现有知识库，或使用 Update 处理变更包。
    5. 用户显式授权“重新初始化 Schema 4.0”：在执行任何清理前一次性报告将删除或替换的精确路径、人工内容丢失风险、现有基线与历史失效风险及全新生成范围，并记录用户对范围和风险的授权来源；授权覆盖所报范围后，清理固定产物并全新重建。
    - 第 3、4 项适用于没有显式重新初始化授权的请求；授权已明确时跳至第 5 项，不把重建降级为续跑或完成保护。
-   - `coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物。依据适用领域的 Manifest 文档登记和实际产物判断：全部适用领域均已完成且登记、文档、证据一致时按已完成知识库保护；否则按未完成初始化续跑。
+   - `coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物，也不得只凭文档登记或产物齐全推断完成。先执行当前完整 `global-validation`：通过后才按已完成知识库保护，并回填 `status: complete`、包含 `global-validation` 的阶段 ID 列表、适用的跳过对象、`global_validation: passed` 和 `completed_at`；未通过时回填 `status: in_progress`、已独立验证完成的阶段 ID、`global_validation: failed` 和空 `completed_at`，再从首个缺失或不一致阶段继续初始化。
    - 显式重新初始化是对既有 Schema 4.0 的例外入口，不读取旧字段做兼容或迁移；普通初始化、补文档、修复、Context 或 Update 请求均不构成清理授权。
 3. 按 `references/input-contract.md` 校验六领域状态、资料引用和指定范围。
 4. 数据模型为 `全量` 或 `指定` 时，确认至少一种可定位结构证据；DDL 可缺省，其他证据有效时继续，没有任何结构证据时停止或要求改为 `不适用`。
 5. 配置为 `全量` 或 `指定` 时，确认来源是锁定发布批次的不可变快照且外部目录可读。配置仓库必须固定到明确提交、标签或导出快照，不得使用持续变化的工作目录。校验范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且相互一致；同一 `snapshot_id` 不得映射到不同环境或不同外部目录。分析开始和结束时分别计算最终快照指纹；指纹不一致、范围摘要不一致或目录内容变化时停止，且不得连接配置中心或远程环境补取。
 6. 首次初始化或显式重新初始化时生成 `input-inventory.md` 与 `manifest.yaml`；未完成初始化续跑时核对并复用现有文件。只接受 `schema_version: "4.0"`，不兼容、不迁移其他版本；首次建立时 `generated_at` 写入本次生成时间，显式重新初始化时写入新知识库的首次生成时间；`open_questions.blocking/high/medium/low` 按待确认文档维护可审计计数。
 7. 以 Manifest 的 `scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 作为领域 Skills 的唯一授权范围。
-8. 初始化或核对固定目录，然后严格执行下列 REQUIRED 子 Skill/阶段顺序。每个阶段完成后立即将阶段名写入 `coverage.initialization.completed_stages`；不适用领域写入 `coverage.initialization.skipped_stages`，同时记录阶段名和原因。已经在 Manifest 登记为完成，且文档、索引和证据一致的阶段直接复用，不重复扫描。
-   1. `knowledge-base-base-info`：始终执行或验证完成，消费工程、数据模型、配置和中间件范围。
-   2. `knowledge-base-api`：仅当 `scope.api.status != 不适用` 时执行；否则登记跳过原因。
-   3. `knowledge-base-pages`：仅当 `scope.pages.status != 不适用` 时执行；否则登记跳过原因。
-   4. `knowledge-base-overview`：仅在所有适用领域已完成或验证完成后执行。
-   5. `global-validation`：统一验收通过后才能把 `coverage.initialization.status` 标记为 `complete`。
+8. 初始化或核对固定目录，然后严格执行下列 REQUIRED 子 Skill/阶段顺序。Skill 名只用于调用，Manifest 只登记对应阶段 ID。每个阶段完成后立即将字符串阶段 ID 写入 `coverage.initialization.completed_stages`；不适用领域写入 `coverage.initialization.skipped_stages`。已经在 Manifest 登记为完成，且文档、索引和证据一致的阶段直接复用，不重复扫描。
+   1. 调用 `knowledge-base-base-info`，阶段 ID 为 `base-info`：始终执行或验证完成，消费工程、数据模型、配置和中间件范围。
+   2. 调用 `knowledge-base-api`，阶段 ID 为 `api`：仅当 `scope.api.status != 不适用` 时执行；否则登记跳过原因。
+   3. 调用 `knowledge-base-pages`，阶段 ID 为 `pages`：仅当 `scope.pages.status != 不适用` 时执行；否则登记跳过原因。
+   4. 调用 `knowledge-base-overview`，阶段 ID 为 `overview`：仅在所有适用领域已完成或验证完成后执行。
+   5. 执行内置验收阶段，阶段 ID 为 `global-validation`：统一验收通过后才能把 `coverage.initialization.status` 标记为 `complete`。
+   - `completed_stages` 只能是阶段 ID 字符串列表，例如 `["base-info", "api"]`，不得写入 Skill 名。
+   - `skipped_stages` 只能是对象列表，每项仅包含 `stage` 和 `reason`，例如 `[{stage: "api", reason: "接口范围不适用"}]`；`stage` 使用上述阶段 ID，不得增加 `status`、`skill` 或其他键。
 9. 执行全局一致性检查并生成完成报告；验收失败时保留可续跑状态，不把部分产物报告为初始化完成。
 
 ## 固定输出

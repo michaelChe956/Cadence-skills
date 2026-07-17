@@ -20,7 +20,10 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 
 第 3、4 项适用于没有显式重新初始化授权的请求；授权已明确时跳至第 5 项，不把重建降级为续跑或完成保护。
 
-`coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物。依据适用领域的 Manifest 文档登记和实际产物判断：全部适用领域均完成且登记、文档、证据一致时按已完成知识库保护；否则按未完成初始化续跑。
+`coverage.initialization` 缺失时，不要求删除现有 Schema 4.0 产物，也不得只凭文档登记或产物齐全推断完成。必须先执行当前完整 `global-validation`：
+
+- 验收通过：按已完成知识库保护，并回填 `status: complete`、包含阶段 ID `global-validation` 的 `completed_stages`、适用的 `skipped_stages`、`global_validation: passed` 和 `completed_at`。
+- 验收失败：按未完成初始化续跑，回填 `status: in_progress`、已独立验证完成的阶段 ID、`global_validation: failed` 和空 `completed_at`，再从首个缺失或不一致阶段继续。
 
 重新初始化不读取旧 Manifest 字段进行映射，不迁移旧目录或兼容旧 Schema。普通初始化、补文档、修复、Context 或 Update 请求不构成清理重建授权。
 
@@ -104,15 +107,21 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 
 ## 领域编排与初始化进度
 
-六领域输入完整后，必须按固定顺序执行或验证阶段：
+六领域输入完整后，必须按固定顺序调用 Skill 或执行内置阶段。Skill 名只用于调用，Manifest 只使用阶段 ID：
 
-1. `knowledge-base-base-info`：始终执行或验证完成。
-2. `knowledge-base-api`：`scope.api.status != 不适用` 时执行，否则写入 `skipped_stages` 和原因。
-3. `knowledge-base-pages`：`scope.pages.status != 不适用` 时执行，否则写入 `skipped_stages` 和原因。
-4. `knowledge-base-overview`：所有适用领域完成后执行。
-5. `global-validation`：统一验收通过后才允许完成初始化。
+| 顺序 | 调用或动作 | 阶段 ID | 条件 |
+|------|------------|---------|------|
+| 1 | 调用 `knowledge-base-base-info` | `base-info` | 始终执行或验证完成 |
+| 2 | 调用 `knowledge-base-api` | `api` | `scope.api.status != 不适用` 时执行 |
+| 3 | 调用 `knowledge-base-pages` | `pages` | `scope.pages.status != 不适用` 时执行 |
+| 4 | 调用 `knowledge-base-overview` | `overview` | 所有适用领域完成后执行 |
+| 5 | 执行当前完整全局验收 | `global-validation` | 通过后才允许完成初始化 |
 
-每个已执行或验证完成的阶段立即写入 `coverage.initialization.completed_stages`。已经完成且 Manifest 登记、文档和证据一致的阶段复用，不重复扫描。验收失败时将 `coverage.initialization.global_validation` 写为 `failed`，保持 `status: in_progress`；验收通过时写为 `passed`，再将 `status` 写为 `complete` 并填写 `completed_at`。
+每个已执行或验证完成的阶段立即把字符串阶段 ID 写入 `coverage.initialization.completed_stages`，例如 `["base-info", "api"]`；不得写入 Skill 名。已经完成且 Manifest 登记、文档和证据一致的阶段复用，不重复扫描。
+
+`coverage.initialization.skipped_stages` 的唯一结构是对象列表，每项仅包含 `stage` 和 `reason`，例如 `[{stage: "api", reason: "接口范围不适用"}]`。`stage` 只能使用 `base-info`、`api`、`pages`、`overview`、`global-validation` 之一；不得增加 `status`、`skill`、`name` 或其他键。默认空列表 `[]` 与该结构兼容。
+
+验收失败时将 `coverage.initialization.global_validation` 写为 `failed`，保持 `status: in_progress`；验收通过时写为 `passed`，将阶段 ID `global-validation` 加入 `completed_stages`，再将 `status` 写为 `complete` 并填写 `completed_at`。
 
 ## Schema 4.0 输出契约
 
