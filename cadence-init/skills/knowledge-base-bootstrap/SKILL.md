@@ -74,7 +74,7 @@ cadence/knowledge-base/user-input/
    4. 调用 `knowledge-base-overview`，阶段 ID 为 `overview`：仅在所有适用领域已完成或验证完成后执行。
    5. 执行内置验收阶段，阶段 ID 为 `global-validation`：统一验收通过后才能把 `coverage.initialization.status` 标记为 `complete`。
    - `completed_stages` 与 `skipped_stages` 每次更新都必须重新通过初始化状态不变量门禁，不能只校验字段形状。
-9. 执行全局一致性检查并生成完成报告；验收失败时保留可续跑状态，不把部分产物报告为初始化完成。
+10. 执行全局一致性检查并生成完成报告；验收失败时保留可续跑状态，不把部分产物报告为初始化完成。
 
 ## 固定输出
 

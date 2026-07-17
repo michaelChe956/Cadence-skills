@@ -1,4 +1,4 @@
 interface:
   display_name: "KnowledgeBase 初始化"
   short_description: "校验输入、续跑未完成阶段并编排 Schema 4.0 初始化"
-  default_prompt: "使用 $knowledge-base-bootstrap 判定首次初始化、未完成初始化续跑、已完成保护或显式重新初始化；输入缺失时返回对应模板、缺失项和继续初始化入口，输入完整时按 knowledge-base-base-info、knowledge-base-api、knowledge-base-pages、knowledge-base-overview、global-validation 的 REQUIRED 顺序执行完整编排，未完成时复用一致的已完成阶段并继续初始化。"
+  default_prompt: "使用 $knowledge-base-bootstrap 判定首次初始化、未完成初始化续跑、已完成保护或显式重新初始化；显式重建只有六领域、数据模型证据和配置快照等扫描前门禁全部通过，且输入已锁定或复核无漂移后才清理旧 KnowledgeBase；输入缺失时返回模板与继续入口，输入完整时按 knowledge-base-base-info、knowledge-base-api、knowledge-base-pages、knowledge-base-overview、global-validation 的 REQUIRED 顺序执行。"
