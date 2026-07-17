@@ -32,13 +32,13 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 分析前读取项目规则；重要叙述事实继续区分代码、DDL、配置、用户资料、合理推断和来源冲突，字段清单则只使用本节规定的证据状态。
 - `cadence/knowledge-base/data-models/` 始终保留并生成 `README.md`。数据模型为 `不适用` 时，在总索引记录状态和原因，不扫描逻辑表。
 - `cadence/knowledge-base/configurations/` 始终保留并生成 `README.md`。配置为 `不适用` 时，在总索引记录状态和原因，不读取配置快照；配置为 `全量` 或 `指定` 时，为配置范围内每个服务固定生成一个配置文档，即使未发现配置键也记录缺失与待确认项。
-- `cadence/knowledge-base/services/` 始终保留并生成 `README.md`。首次生成或 API/Pages 尚未完成时，为 `scope.projects` 内识别出的每个服务固定生成一个 `<SERVICE-ID>.md`；下游阶段完成后发现新服务时按跨阶段冲突停止。全部既有服务文档必须登记到 Manifest 的 `documents.services`。
+- `cadence/knowledge-base/services/` 始终保留并生成 `README.md`。首次生成或 API/Pages 尚未完成时，为 `scope.projects` 内识别出的每个服务固定生成一个 `<SERVICE-ID>.md`；下游阶段完成后发现新服务时，普通路径按跨阶段冲突停止，只有已验证 Update 暂存例外可生成。全部既有服务文档必须登记到 Manifest 的 `documents.services`。
 - BaseInfo 负责完成服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证和证据导航区块。API 或 Pages 适用但对应阶段尚未执行时，相关区块的 `阶段状态` 必须分别写为 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）`，不得生成虚假链接。BaseInfo 不得扫描 API/Page，也不得提前判空或写入 `阶段状态：已验证为空（api）`、`阶段状态：已验证为空（pages）`。
 - 设置服务文档的 API/页面阶段状态时，只读取 Manifest 的 `scope.api.status`、`scope.pages.status` 和 `coverage.initialization.completed_stages`；这些字段只用于生命周期判定，不授权 BaseInfo 扫描 API 或页面。
 - BaseInfo 只能更新自己拥有的服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证和证据导航区块。API 导航区块归 `knowledge-base-api` 所有，页面导航区块归 `knowledge-base-pages` 所有；BaseInfo 不得因重入而重建、清空、格式化或改写下游拥有区块。
 - `api` 已进入 `completed_stages` 时，BaseInfo 必须原样保留对应服务导航区块。任一现有服务的 API 区块缺失、仍为 `待后续阶段补齐（api）`、既没有稳定 ID/主文件链接也没有非空原因与可定位证据的合法空结果，或与 `api` 完成状态冲突时，在任何写入前立即停止并引导 `knowledge-base-api` 修复；BaseInfo 不得代修。`pages` 已完成时对页面导航区块使用同一规则并引导 `knowledge-base-pages`。
 - `api` 或 `pages` 尚未完成且领域适用时，BaseInfo 才能为对应现有服务写入待补状态；领域不适用时只能写不适用状态与非空原因。不得在下游阶段已完成时把已验证导航降级为待补或不适用。
-- 在写入前只读比对当前 `scope.projects` 服务集合、`services/README.md`、`documents.services` 和现有单服务文档。若 `api` 或 `pages` 已完成后发现尚未登记的新服务、服务 ID 或服务文档，视为跨阶段冲突：立即停止且不修改任何产物，引导 Bootstrap/Update 重新建立 BaseInfo → API/Pages → Overview → global-validation 影响链；不得静默生成待补区块并保留下游完成状态。
+- 在写入前只读比对当前 `scope.projects` 服务集合、`services/README.md`、`documents.services` 和现有单服务文档。若 `api` 或 `pages` 已完成后发现尚未登记的新服务、服务 ID 或服务文档，普通 Bootstrap 重入或 BaseInfo 直接调用视为跨阶段冲突：立即停止且不修改任何产物；不得静默生成待补区块并保留下游完成状态。唯一例外是 `knowledge-base-update` 已通过合法 complete 门禁，并传递 `execution_context: knowledge-base-update`、已验证 change_package ID、具体新增 SERVICE/MODULE ID、证据路径和目标区块时，按 Update 专属暂存路径处理。
 - 项目内本地认证、事务、异常、审计、幂等和可观测性等横切机制的基础分析由 `scope.projects` 授权；`scope.middleware` 只授权 MIDDLEWARE 实体发现、建模和关系输出。
 - 中间件为 `不适用` 时，只在 `base-information.md` 和 `services/README.md` 记录状态与原因，不得扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体。仍可分析 `scope.projects` 内本地认证、事务、异常、审计等横切机制；遇到中间件式证据不得扩大范围或进入 MIDDLEWARE 输出。
 - 中间件为 `指定` 时，只能创建或关联 `scope.middleware.selected` 中的 MIDDLEWARE 实体；与 `selected` 无关的中间件式证据不进入分析输出。完成 `SERVICE/MODULE → MIDDLEWARE → CONFIGURATION` 关系链所需的必要依赖只用于解释 `selected`，不得新增授权对象。
@@ -91,8 +91,8 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 ### 3. 生成服务索引与单服务文档
 
-1. 在生成或更新服务文档前执行服务导航重入所有权门禁：只读比对现有服务集合、索引、Manifest 登记和 API/页面阶段完成状态。任何缺失、待补、非法空结果、导航冲突或完成后新增服务必须先停止，不能留下部分写入。
-2. 为 `scope.projects` 内识别出的每个服务生成稳定 `SERVICE-ID`，并明确服务与模块、入口的归属关系。若已完成 API/Pages 后识别出新服务，按跨阶段冲突停止，不执行生成。
+1. 在生成或更新服务文档前执行服务导航重入所有权门禁：只读比对现有服务集合、索引、Manifest 登记和 API/页面阶段完成状态。任何缺失、待补、非法空结果、导航冲突或完成后新增服务必须先停止，不能留下部分写入；仅已验证 Update 新服务上下文进入下述暂存例外。
+2. 为 `scope.projects` 内识别出的每个服务生成稳定 `SERVICE-ID`，并明确服务与模块、入口的归属关系。若已完成 API/Pages 后识别出新服务，普通调用按跨阶段冲突停止，不执行生成。
 3. 生成或更新 `services/README.md`。服务索引至少包含 ID、名称、职责、模块、入口、状态、文档和证据；中间件为 `不适用` 时，同时在索引中记录原因。
 4. 为每个服务生成或更新 `services/<SERVICE-ID>.md`。单服务文档至少包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航；BaseInfo 只更新其拥有的区块。
 5. `api` 已完成时逐字原样保留 API 导航区块，`pages` 已完成时逐字原样保留页面导航区块。API 适用且 `api` 尚未完成时，API 区块固定写 `阶段状态：待后续阶段补齐（api）`；Pages 适用且 `pages` 尚未完成时，页面区块固定写 `阶段状态：待后续阶段补齐（pages）`。对应领域为 `不适用` 时固定写 `阶段状态：不适用（api）` 或 `阶段状态：不适用（pages）` 并记录原因。占位状态不得附带推测链接。
@@ -100,6 +100,17 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 7. 将 `services/README.md` 和全部 `services/<SERVICE-ID>.md` 登记到 Manifest 的 `documents.services`。
 8. 后续 `knowledge-base-api` 必须把服务文档中的 `待后续阶段补齐（api）` 原子替换为已验证的 API 稳定 ID 与主文件链接，或在完整范围分析确认该服务无 API 时替换为 `阶段状态：已验证为空（api）` 并在同一导航区块记录非空 `原因` 和可定位 `证据`；`knowledge-base-pages` 必须以相同规则把 `待后续阶段补齐（pages）` 替换为已验证的 PAGE/ROUTE 稳定 ID 与页面主文件链接，或 `阶段状态：已验证为空（pages）`、非空 `原因` 和可定位 `证据`。该操作是对已完成 BaseInfo 产物的授权增补，不重新扫描 BaseInfo，不移除 `base-info` 完成状态。
 9. `global-validation` 必须拒绝适用领域仍存在 `待后续阶段补齐（api）` 或 `待后续阶段补齐（pages）` 的知识库；`已验证为空` 只有在对应领域适用且原因与证据完整时才是合法终态。BaseInfo 自己不得生成 `已验证为空`。
+
+#### Update 新服务暂存例外
+
+只有同时收到以下已验证上下文时，BaseInfo 才能在下游阶段已完成后处理新服务：`execution_context: knowledge-base-update`、非空 `change_package_id`、变更包明确授权的具体新增 `SERVICE/MODULE` 稳定 ID、每个实体的可定位证据路径和目标区块。缺一项即停止；BaseInfo 直接调用、普通 Bootstrap 重入或只提供口头新增服务说明均不得进入此路径。
+
+此路径中 BaseInfo：
+
+1. 只在 Update 本次变更包的暂存结果中，为明确授权的新服务生成 `services/<SERVICE-ID>.md` 骨架、服务索引增量和自身拥有区块；不扫描、不生成其他新服务。
+2. 按 Manifest 适用性在新服务 API/页面区块写入待本次 Update 后续步骤补齐的暂存状态或不适用状态；不得把这些暂存状态写入持久知识库。
+3. 不修改 `coverage.initialization.status/completed_stages/skipped_stages/global_validation/completed_at`，不降低既有 complete，不移除下游完成阶段。
+4. 将暂存结果交回 `knowledge-base-update`，由同一变更包上下文调用 API/Pages、Overview、证据和关系闭环。任一步失败时全部暂存结果丢弃；全部成功后才与 Update 历史和 Manifest 原子提交。
 
 ### 4. 生成字段级数据模型
 
@@ -187,7 +198,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 中间件为 `全量` 或 `指定` 但缺少装配或生产证据时，只记录授权对象的可定位证据和已知环境，不把依赖声明或开发配置升级为生产事实。
 - `services/README.md` 和 `scope.projects` 内全部服务的 `services/<SERVICE-ID>.md` 骨架均已生成；索引包含 ID、名称、职责、模块、入口、状态、文档和证据，单服务文档包含职责与边界、模块与入口、数据模型、配置、中间件、API、页面、横切机制、构建验证和证据导航。
 - BaseInfo 当期完成条件只检查其拥有的服务职责、模块、入口、数据模型、配置、中间件、横切机制、构建验证、证据导航区块，以及 API/页面区块的明确阶段状态；不要求未来 API/Page 链接可达。全部服务文档已登记到 Manifest 的 `documents.services`。
-- BaseInfo 重入时只更新自身拥有区块；已完成 API/Pages 对应的服务导航区块已逐字保留。导航缺失、仍待补、非法空结果、与完成状态冲突或完成后发现新服务时已在写入前停止，并交由对应 API/Pages 或 Bootstrap/Update 修复影响链，BaseInfo 没有代修或降级下游状态。
+- BaseInfo 重入时只更新自身拥有区块；已完成 API/Pages 对应的服务导航区块已逐字保留。导航缺失、仍待补、非法空结果或与完成状态冲突时已在写入前停止。完成后发现新服务时，普通调用停止；只有具备已验证 change_package ID、具体新 SERVICE/MODULE ID 和证据路径的 Update 专属暂存路径可以生成，且初始化块保持原合法 complete、失败零部分写入。
 - API/Pages 适用但阶段尚未执行时，服务文档分别存在机器可判定的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`，且没有虚假链接。后续对应阶段必须原子替换为已验证链接，或合法的 `已验证为空`、非空原因和可定位证据；`global-validation` 必须拒绝适用领域仍保留上述待后续阶段状态。
 - 横切机制基础分析只覆盖 `scope.projects` 内本地实现。中间件为 `不适用` 时，`base-information.md` 与 `services/README.md` 均已记录原因，且未扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体；中间件为 `指定` 时，输出只包含 `selected` 实体及其关系，必要依赖未新增授权对象；中间件为 `全量` 时，中间件实体发现和建模仍未越过 `scope.projects`。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。

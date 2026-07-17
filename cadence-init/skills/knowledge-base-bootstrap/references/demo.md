@@ -134,7 +134,16 @@ Manifest 为 Schema 4.0，`coverage.initialization.status: complete`，用户只
 
 现有 Manifest 为 Schema 4.0，初始化块完整合法；用户明确授权重新初始化，并确认精确清理路径、人工内容丢失、Git/配置/变更历史基线失效风险与全新生成范围。
 
-处理结果：记录授权来源后才清理并全新重建。若 Manifest 非 4.0、初始化块存在但损坏、授权未覆盖实际清理范围或只提出普通修复/更新请求，均立即停止；显式授权不能绕过版本和初始化不变量门禁。
+处理结果：记录授权来源后才清理并全新重建。若 Manifest 非 4.0、授权未覆盖实际清理范围或只提出普通修复/更新请求，均立即停止；合法初始化状态下的显式授权不改变普通门禁。
+
+## 损坏状态显式重建二次授权
+
+Manifest 可解析且 `schema_version: "4.0"`，但初始化块包含非法 status、重复阶段或 complete 与产物矛盾。
+
+- 普通初始化、续跑、领域 Skill 或 Update：报告损坏实际值并只读停止，不修改产物。
+- 用户明确请求“重新初始化 Schema 4.0”：先报告损坏实际值和现有状态无法信任，再列出精确清理路径、人工内容丢失、Git/配置/历史基线失效风险和全量重建范围。
+- 用户针对上述精确范围与风险再次明确授权后：允许清理并全新生成；不解释、不修复、不迁移损坏字段。
+- Manifest 不可解析、缺版本或非 4.0：即使用户请求重建也禁止清理。
 
 ## BaseInfo 在 API/Pages 完成后重入保留
 
@@ -147,6 +156,43 @@ Manifest 为 Schema 4.0，`coverage.initialization.status: complete`，用户只
 `api` 或 `pages` 已完成，但 BaseInfo 重入时在 `scope.projects` 中发现未登记的新服务。
 
 处理结果：视为跨阶段冲突，在写入前停止；不得生成新服务的待补导航并保留下游完成状态。引导 Bootstrap/Update 重新建立 BaseInfo → API/Pages → Overview → global-validation 影响链。
+
+## 新增 SERVICE-A 的 Update 全链成功
+
+现有初始化块为合法 complete。完整五文件变更包 `CHANGE-add-service-a` 明确授权新增 `SERVICE-A` / `MODULE-A`，并提供已验证提交范围、实体 ID 和证据路径。
+
+处理结果：Update 保存原 initialization 全块并建立专属暂存结果；BaseInfo 只为 `SERVICE-A` 生成骨架和自身区块，API/Pages 按各自适用性生成稳定 ID 与主文件链接、合法空结果或不适用状态，随后完成 Overview、证据、关系和全局一致性。全部通过后与 Update 历史和 Manifest 原子提交；`status: complete`、原 `completed_stages`、`skipped_stages`、`global_validation: passed` 和原 `completed_at` 全部保持不变。
+
+## 新增服务 Update 中间失败零部分写入
+
+`CHANGE-add-service-a` 的 BaseInfo 暂存骨架已生成，但 API 导航证据不足、Pages 写入失败或 Overview/全局一致性未通过。
+
+处理结果：丢弃本次变更包的全部暂存结果；不得写入 `SERVICE-A` 骨架、接口/页面文档、服务导航、证据、关系、Manifest 普通登记、Update 历史或 `processed_packages`。原合法 complete 初始化块和全部既有产物保持不变。
+
+## API/Pages 非法初始化状态拒绝
+
+初始化块缺失、字段损坏、阶段重复/重叠/逆序、适用性矛盾，或 API/Pages 前置阶段未完成却已出现后续阶段。
+
+处理结果：API 与 Pages 在任何写入前只读停止，不执行兼容回填、重建、状态修复或部分领域写入，并引导 Bootstrap 修复入口。
+
+## API/Pages 初始化正确阶段允许
+
+- API：合法 in_progress，`base-info` 已完成，API 适用且未完成/未跳过，没有后续阶段越序。
+- Pages：合法 in_progress，`base-info` 已完成，API 已完成或因不适用正确跳过，Pages 适用且未完成/未跳过，没有 Overview/global-validation 越序。
+
+处理结果：允许执行当前阶段；成功时分别只把 `api` 或 `pages` 原子加入 `completed_stages`，其他 initialization 字段不变。领域导航或证据失败时不完成阶段。
+
+## API/Pages Update complete 上下文允许
+
+初始化块为合法 complete，`knowledge-base-update` 传递 `execution_context: knowledge-base-update`、已验证变更包 ID、具体受影响实体 ID、证据路径和目标区块。
+
+处理结果：API/Pages 只更新授权影响链的领域文档、服务导航、证据、关系和普通 Manifest 登记。若为新增服务则只写暂存结果；无论成功或失败都不得修改 initialization 的 status、completed_stages、skipped_stages、global_validation 或 completed_at。
+
+## complete 直接调用 API/Pages 拒绝
+
+初始化块为合法 complete，但调用方没有 `knowledge-base-update` 的已验证变更包/实体/证据上下文。
+
+处理结果：立即停止且不修改，提示用户准备完整五文件变更包并使用 Update；不得把 complete 降级为 in_progress，也不得直接刷新 API/Pages 文档。
 
 ## Overview 注入文本不生效
 

@@ -141,13 +141,26 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 
 ### 4. 更新受影响实体
 
-按影响范围调用领域 Skills，并传递变更包标识、已验证提交范围、具体实体 ID、证据路径和目标章节。只更新自动管理区块，保留管理标记之外的人工内容。
+按影响范围调用领域 Skills，并传递不可省略的 Update 上下文：`execution_context: knowledge-base-update`、已验证 `change_package_id`、已验证提交范围、具体新增/修改实体 ID、证据路径和目标章节。领域 Skill 不得仅凭口头说明、当前 Git Diff 或缺少实体/证据的上下文进入 Update 写入路径。只更新自动管理区块，保留管理标记之外的人工内容。
 
 - 新增实体：生成稳定 ID 并登记来源关系。
 - 修改实体：保留稳定 ID，更新属性、状态和证据。
 - 移动实体：业务语义不变时保留 ID，只更新来源路径。
 - 重命名实体：证据充分时保留 ID 或登记旧新映射；证据不足时停止并登记冲突。
 - 删除实体：从活动清单移除，保留删除证据、旧关系和历史。
+
+#### 新增服务或模块的 Update 专属暂存编排
+
+当且仅当 Update 已通过合法 complete 初始化门禁，且五文件变更包明确声明并授权新增服务或模块时，执行以下闭环：
+
+1. 只读保存原合法 `coverage.initialization` 全块，建立本次变更包专属暂存结果；不得把持久 Manifest 改为 `in_progress`，不得提前写入服务、接口、页面、Overview、证据、关系、历史或 Manifest。
+2. 向 BaseInfo 传递 `execution_context: knowledge-base-update`、已验证 `change_package_id`、具体新增 `SERVICE/MODULE` 稳定 ID、证据路径和目标区块。BaseInfo 只能在暂存结果中为这些明确授权的新实体生成服务骨架和自身拥有区块，不得扫描或生成变更包范围外服务。
+3. API 适用时，以同一 Update 上下文在暂存结果中生成新服务的已验证 API 稳定 ID 与主文件链接，或带非空原因和可定位证据的合法空结果；API 不适用时写入不适用状态与 Manifest 原因。Pages 使用相同规则生成 PAGE/ROUTE 导航或合法空结果。
+4. 在暂存结果中完成 Overview 导航、证据索引、追溯关系、文档登记、待确认计数和全局一致性检查，确认新 `SERVICE/MODULE → API/Pages → 数据模型/配置/证据` 影响链闭合。
+5. 任一领域分析、导航、证据、关系、Overview 或全局一致性检查失败时，丢弃全部暂存结果，不写入任何部分产物，也不追加 Update 历史或 `processed_packages`。
+6. 全部通过后，将服务/接口/页面/Overview/证据/关系、普通 Manifest 登记、待确认项、Update 历史、`last_change_package` 和 `processed_packages` 在同一次原子提交中写入。`coverage.initialization` 必须逐字段保持原合法 complete，包括原 `status`、`completed_stages`、`skipped_stages`、`global_validation` 和原 `completed_at`，不得把 Update 编排伪装成重新初始化。
+
+若新增服务/模块没有五文件变更包明确授权，或缺少已验证 `change_package_id`、具体实体 ID、证据路径任一项，立即停止；不得让 BaseInfo、API 或 Pages 走暂存例外。
 
 ### 5. 更新配置基线
 
@@ -164,6 +177,8 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 - Git 基线、文档更新时间、受影响文档、稳定 ID 映射、覆盖数量和待确认项。
 
 `generated_at` 始终保留为当前 KnowledgeBase 首次生成时间，不得改写为本次 Update 时间。每次新增、解决、重新打开或调整待确认项级别时，先更新 `open-questions.md`，再按未解决条目重算 `open_questions.blocking/high/medium/low`；受影响文档、待确认文档、四级计数、变更历史和 Manifest 必须在同一次原子写入中提交。
+
+新增服务/模块走 Update 专属暂存编排时，本节原子提交还必须包含暂存闭环的全部服务导航、API/Pages 结果、Overview、证据和关系；提交前后 `coverage.initialization` 必须与原合法 complete 逐字段相同。
 
 写入前再次检查 `processed_packages`，防止重复执行并发追加相同历史。只有分母明确时才能更新覆盖率。
 
@@ -199,6 +214,7 @@ Git Diff、代码扫描、DDL 或迁移阅读、配置快照比较只能验证�
 - 数据库资料已验证；配置为 `全量` 或 `指定` 时，同环境新旧快照及可审计范围摘要已验证，配置基线符合 Manifest 授权；配置为 `不适用` 时，无变更声明和原因与 Manifest 一致且已跳过快照比较。
 - 五份主文档和全部附件在计算幂等标识前已通过敏感信息门禁。
 - 每个更新文档都能沿固定影响链追溯到变更包和实体。
+- 新增服务/模块时，BaseInfo、API、Pages、Overview、证据、关系和全局一致性已在同一暂存结果中闭环；失败时零部分写入，成功时与 Update 历史和 Manifest 原子提交，原合法 complete 初始化块逐字段保持不变。
 - `last_change_package`、`processed_packages`、新配置基线和变更历史一致。
 - `generated_at` 保持首次生成时间未变；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 未解决条目一致，并与本次变更原子写入。
 - 相同变更包重复执行不产生任何重复历史或实体。
