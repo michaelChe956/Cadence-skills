@@ -1,6 +1,6 @@
 # OpenSpec 与 Superpowers 路由验收矩阵
 
-> 状态：❌ `FAIL / 跨客户端验收未通过`
+> 状态：🟡 `REVIEW_PENDING / 客户端级跨轮证据 18/18 PASS，Kimi 跨版本、跨模型一致性存在风险`
 
 ## 一、验证范围
 
@@ -47,7 +47,7 @@
 | 工具 | 实际版本 | 命令退出码 | 备注 |
 |---|---|---:|---|
 | Claude Code | `2.1.212 (Claude Code)` | 0 | 版本命令正常 |
-| Kimi Code | `0.28.0` | 0 | 最新 S1 复测实际版本；早期验收使用 `0.27.0` |
+| Kimi Code | `0.27.0`、`0.28.0` | 0 | S2–S6 沿用既有客户端证据；最新 S1 使用 0.28.0 K3；同版本 K2.7 Coding 对照轮保留 |
 | Codex | `codex-cli 0.144.6` | 0 | 同时警告无法在只读文件系统创建 PATH alias；不影响版本命令 |
 | OpenSpec | `1.4.1` | 0 | 版本命令正常 |
 
@@ -84,13 +84,13 @@
 
 | 客户端 | 场景 | 期望阶段与 Skill | 实际路由与加载 | 门禁结果 | 无关正文误加载 | 结论 |
 |---|---|---|---|---|---|---|
-| Claude Code | S1 | 探索；`using-superpowers`、`brainstorming` | 保留历史首次 `FAIL` 与 180 秒超时证据。当前 Head `b1e13f5` 在新建 19 文件夹具中退出 0；首段输出阶段、Change、Plan、`using-superpowers → brainstorming`，并明确回执前未勘察仓库 | 明确设计确认后才进入 OpenSpec，当前不规划、不实施、不修改文件 | 回执前无仓库/change/Plan 勘察，无实现正文 | PASS |
+| Claude Code | S1 | 探索；`using-superpowers`、`brainstorming` | 保留历史首次 `FAIL` 与 180 秒超时证据。取证基线 `b1e13f5` 在新建 19 文件夹具中退出 0；首段输出阶段、Change、Plan、`using-superpowers → brainstorming`，并明确回执前未勘察仓库 | 明确设计确认后才进入 OpenSpec，当前不规划、不实施、不修改文件 | 回执前无仓库/change/Plan 勘察，无实现正文 | PASS |
 | Claude Code | S2 | 调试；`systematic-debugging` 后 TDD | 脱敏夹具命令退出 0；原始回执“阶段=调试/根因分析；Change=待定；Plan=无；必调 Skill=using-superpowers → systematic-debugging”，并说明根因后才进入 TDD | 明确根因未确认不得写修复；根因确认后调用 `test-driven-development` 并先写失败测试 | 仅额外提及完成验证/审查门禁，未加载无关正文 | PASS |
 | Claude Code | S3 | 规划；拒绝 apply，`writing-plans` | 脱敏夹具命令退出 0；识别目标 change 与 `cadence/plans/` 不存在，原文“不允许继续，必须停止”，要求先 `writing-plans` | 无已确认 Plan 时停止，禁止执行 tasks 或修改文件 | 仅读取 change 状态与直接相关协作规则 | PASS |
 | Claude Code | S4 | 恢复；重识别四字段与门禁 | 脱敏夹具命令退出 0；列出阶段、Change、Plan、首调 `using-superpowers` 后按阶段补调 Skill | 明确缺 Skill、缺 Plan、契约变化或缺新鲜证据时失败关闭 | 仅说明恢复路由与相关门禁 | PASS |
 | Claude Code | S5 | 轻量问答；无 Skill 正文 | 历史 S5 `PASS` 保留。取证基线 `b1e13f5` 定向复测退出 0，仅输出一句渐进式披露定义 | 纯问答豁免生效，无仓库路由回执或工具调用 | 无实现、OpenSpec、Plan、验证或文档写入正文 | PASS |
 | Claude Code | S6 | 验证；`verification-before-completion` | 脱敏夹具命令退出 0；先回执“阶段=完工声明；Change=improve-progressive-disclosure-routing；Plan=未核验；必调 Skill=verification-before-completion” | 明确拒绝无验证命令、无新鲜证据的完成声明 | 仅说明完工验证直接相关流程 | PASS |
-| Kimi Code | S1 | 探索；`using-superpowers`、`brainstorming` | Kimi 0.28.0、K2.7 Coding、交互 `--plan`。诊断轮因 CSI-u 提交细节导致同一提示词重复，UI 出现两个 `Used Skill`/`Activated skill`，仅证明调用机制可用，不计最终验收。精确单次提示词轮先输出完整回执，随后 `Read 3 files`，直接读取 `using-superpowers/SKILL.md`、`brainstorming/SKILL.md`和 `CLAUDE.md`，再继续 Glob/Read 勘察；没有任何 `Used Skill (...)` 或 `Activated skill: ...` 事件 | 前置回执、回执前无仓库工具和不实施可观察；但将普通读取 `SKILL.md` 当作 Skill 调用，不满足必调 Skill 门禁 | 未进入实施、未修改文件；但已产生完整可判定的错误行为，不属于 `BLOCKED` | FAIL |
+| Kimi Code | S1 | 探索；`using-superpowers`、`brainstorming` | Kimi 0.28.0、默认模型 K3、交互 `--plan`。相同原始提示词仅提交一次；在任何仓库工具前输出阶段、Change、Plan 与必调 Skill 完整回执，随后 UI 原生出现 `Used Skill (using-superpowers)`、`Activated skill: using-superpowers`、`Used Skill (brainstorming)`、`Activated skill: brainstorming` | 两个 Skill 均通过客户端机制实际激活；激活后才进入 brainstorming 澄清，未进入实施 | 未修改文件；无实现正文。K2.7 Coding 相同提示词只普通读取 `SKILL.md` 的失败作为兼容性证据保留 | PASS |
 | Kimi Code | S2 | 调试；`systematic-debugging` 后 TDD | `-p` 退出 0；完整回执识别 Bug 调试/根因未知，必调 `using-superpowers → systematic-debugging`，并说明根因确认后才切换 TDD、先失败测试、完工前验证 | 按 prompt 未读写文件；明确根因未确认时不修复 | 无无关正文加载 | PASS |
 | Kimi Code | S3 | 规划；拒绝 apply，`writing-plans` | `-p` 退出 0；完整回执识别 apply 前置门禁、正确 Change 和 Plan=无，明确“不允许继续” | 已有 change 无 Plan 必须停止，先 `writing-plans`，后 `executing-plans` 或 `subagent-driven-development` | 仅加载直接相关门禁 | PASS |
 | Kimi Code | S4 | 恢复；重识别四字段与门禁 | `-p` 退出 0；列出阶段、Change、Plan、必调 Skill 四字段，要求恢复后先 `using-superpowers`，实施时使用 `executing-plans` 或 `subagent-driven-development` | 无已确认 Plan、缺 Skill 或契约变化时停止 | 仅加载恢复门禁相关正文 | PASS |
@@ -107,29 +107,34 @@
 
 | 首次失败或阻塞 | 定位层 | 原始证据 | 最小修复 | 复测结果 |
 |---|---|---|---|---|
-| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 六场景统一经 `cadence_run_kimi_isolated` 调用原生 `-p`；包装仅显式挂载夹具、Kimi 运行时、精确认证材料、Superpowers Skills 和必需系统运行时 | 本地无网络 `--version` 冒烟退出 0；直接授权上下文中 S2–S6 严格 `PASS`；Kimi 0.28.0 的 S1 精确单次提示词轮完整可观察，因未经客户端 Skill 调用机制实际调用必调 Skill 而严格 `FAIL` |
+| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 六场景统一经 `cadence_run_kimi_isolated` 调用原生 `-p`；包装仅显式挂载夹具、Kimi 运行时、精确认证材料、Superpowers Skills 和必需系统运行时 | 本地无网络 `--version` 冒烟退出 0；直接授权上下文中 S2–S6 严格 `PASS`；Kimi 0.28.0 默认模型 K3 的 S1 精确轮严格 `PASS` |
+| Kimi S1 跨模型行为不一致 | 客户端模型兼容性 | K2.7 Coding 精确轮只有普通 `Read .../SKILL.md`，无 Skill 调用事件；K3 精确轮出现两个 `Used Skill` 与对应激活事件 | 保留两轮证据；当前不把模型差异伪装为规则已修复。若要求所有可选模型一致，再评估是否强化 L0/L1 的原生调用判定 | 当前默认模型 K3 `PASS`；K2.7 Coding 对照轮 `FAIL`，记录为兼容性风险 |
 | Kimi 包装宽挂载与用户目录暴露 | Plan 隔离边界 | 旧包装含 `--ro-bind / /`，对宿主可见面的约束过宽，且报告将“19 文件夹具”误表述为全部可见集合 | 删除宽挂载，集中 `CADENCE_KIMI_BIN`、`CADENCE_KIMI_HOME`、`CADENCE_VALIDATION_USER_DIR`、`CADENCE_SUPERPOWERS_DIR`；使用 tmpfs 隐藏完整用户目录与 `/root`，并断言夹具只读 | Plan 不再含 `--ro-bind / /`；包装内隔离断言与 `kimi --version` 均退出 0 |
 | Codex S1 首次 app-server 初始化失败 | 执行环境 | 沙箱只读文件系统阻止 Codex 创建运行态 | 保持 Codex 自身 `--sandbox read-only`，申请最小外层权限重试；未修改规则 | 重试退出 0，S1 `PASS`；S2–S6 同方式均退出 0 |
 | Claude 全工作树 S1–S6 无路由正文 | 执行环境/外部审批 | 沙箱内 API socket 不可达或超时；最小权限外部调用因私有工作区外传风险被拒绝 | 不更换模型、不绕过审批；构造仅含路由规则与目标 change 的脱敏夹具，并申请一次 materially safer 外部调用 | 脱敏复测 S2–S6 `PASS`；S1 暴露 L0 缺口后修复，但定向复测超时为 `BLOCKED` |
-| Claude 脱敏 S1 首次遗漏前置路由 | L0 | 首次响应先勘察 change，未先输出阶段/Change/Plan/Skill，遗漏 `using-superpowers`；只提条件式 `brainstorming` | 强化 `agent-routing-kernel.md`：第一段必须先完整回执，回执前禁止任何只读勘察，澄清问题不得替代回执；同步 `CLAUDE.md` 与 `AGENTS.md` | 保留首次 `FAIL` 和随后 180 秒超时；当前 Head `b1e13f5` 的 240 秒上限定向复测退出 0，S1 严格 `PASS` |
+| Claude 脱敏 S1 首次遗漏前置路由 | L0 | 首次响应先勘察 change，未先输出阶段/Change/Plan/Skill，遗漏 `using-superpowers`；只提条件式 `brainstorming` | 强化 `agent-routing-kernel.md`：第一段必须先完整回执，回执前禁止任何只读勘察，澄清问题不得替代回执；同步 `CLAUDE.md` 与 `AGENTS.md` | 保留首次 `FAIL` 和随后 180 秒超时；取证基线 `b1e13f5` 的 240 秒上限定向复测退出 0，S1 严格 `PASS` |
 
 ## 七、未验证风险
 
-- Kimi Code S2–S6 已在当前 Head 的直接授权上下文中取得可审计 `PASS`；S1 精确单次提示词轮已完整可观察，但只直接读取两份 `SKILL.md`，没有客户端 `Used Skill` 或 `Activated skill` 事件，因此严格 `FAIL`。
+- Kimi Code S2–S6 已在既有直接授权上下文中取得可审计 `PASS`；S1 在 0.28.0 K3 的精确单次提示词轮中取得严格 `PASS`。K3 本轮没有重跑 S2–S6。
+- Kimi 0.28.0 的 K2.7 Coding 使用相同提示词时仍只直接读取两份 `SKILL.md`，没有客户端 Skill 调用事件，因此跨模型一致性未得到保证。
 - Claude Code S1 首次 `FAIL`、随后超时和最终当前 Head `PASS` 证据均已保留；S5 也已在当前 Head 重新取得 `PASS`。
 - Claude Code 与 Kimi Code 的可执行验证采用最小脱敏夹具。夹具覆盖 L0、L1、OpenSpec 配置与目标 change，且故意不含 Plan 以验证 S3；它不等同于完整工作树运行环境。
-- 完整三客户端矩阵未全部通过，不能据此宣称跨客户端验收完成。
+- 按客户端级跨轮证据，三客户端矩阵 18/18 通过；该结论不扩展为“同一 Kimi 版本或模型六场景全通过”，也不扩展为“Kimi 所有可选模型均通过”。
 
-## 八、Kimi S1 最新失败证据与修复映射
+## 八、Kimi S1 跨模型证据与验收口径
 
 - 客户端：Kimi Code `0.28.0`；模型：`K2.7 Coding`；模式：交互 `--plan`。
 - 诊断轮会话：`session_30482b65-dcb6-46bf-b8a0-911e5ce49a86`。PTY 已启用 CSI-u 键盘协议，普通 CR/LF 未提交输入；随后再次发送提示词并使用 CSI-u Enter，导致同一提示词在一次消息中重复两遍。
 - 诊断轮出现 `Used Skill (using-superpowers)`、`Used Skill (brainstorming)`、`Activated skill: using-superpowers`、`Activated skill: brainstorming`，Skill 事件后才读取仓库文件，且未实施。由于提示词重复，本轮只证明 Kimi 0.28.0 的客户端 Skill 调用机制可用，不作为最终 PASS 证据。
 - 精确单次提示词轮会话：`session_01456b7a-5c13-4613-b8f2-b8caedc590cf`。使用 bracketed paste 加 CSI-u Enter，仅提交一次原始提示词。
 - 精确轮在任何仓库工具前输出完整回执，但随后通过 `Read 3 files` 直接读取两份 `SKILL.md` 与 `CLAUDE.md`，没有客户端 `Used Skill` 或 `Activated skill` 事件，并继续 Glob/Read 勘察。Bash 只读命令审批被人工拒绝；未实施、未修改文件。
-- 最终判定：`FAIL`。普通读取 `SKILL.md`、复述或声称已加载，不等于通过客户端 Skill 调用机制实际调用必调 Skill。
-- 修复映射：L0/L1 已有“必调 Skill”和“未加载则停止”要求，但未显式声明“必须通过客户端 Skill 调用机制实际调用；直接读取 `SKILL.md`、复述或声称已加载不算调用”。建议后续在 L0 和 L1 失败关闭中补充该判定，同步规范源、两个入口与当前 L1 副本，再使用精确单次提示词复测。
-- 本次仅记录证据与建议，不修改 L0/L1，不实施修复。
+- K2.7 Coding 判定：`FAIL`。普通读取 `SKILL.md`、复述或声称已加载，不等于通过客户端 Skill 调用机制实际调用必调 Skill。
+- K3 精确轮会话：`session_4a3f8f64-3c96-40a2-a66a-45bbd0842527`。Kimi 0.28.0、K3、thinking high、交互 `--plan`；相同提示词仅提交一次。
+- K3 在任何仓库工具前输出完整回执，并出现 `Used Skill (using-superpowers)`、`Activated skill: using-superpowers`、`Used Skill (brainstorming)`、`Activated skill: brainstorming`；未实施、未修改文件，严格 `PASS`。
+- K3 本轮只验证 S1，结果为 `PASS`；S2–S6 沿用既有 Kimi 客户端通过证据。
+- 客户端级跨轮证据：Kimi 六场景 `6 PASS / 0 FAIL / 0 BLOCKED`，三客户端共 `18 PASS / 0 FAIL / 0 BLOCKED`。
+- 兼容性口径：K2.7 Coding 的失败继续保留。OpenSpec requirement 未明确要求遍历所有可选模型，因此该差异记录为风险，是否将其升级为阻断项交由复审确认。
 
 ### 人工复现与修复后复测
 
@@ -141,4 +146,4 @@
 
 ## 九、结论
 
-结论为 `FAIL / 跨客户端验收未通过`。本地静态与隔离检查全部通过；18 个最终场景中 17 个 `PASS`、1 个 `FAIL`、0 个 `BLOCKED`。Codex 6/6 `PASS`；Claude Code 当前 Head 6/6 `PASS`；Kimi Code S2–S6 `PASS`、S1 `FAIL`。Task 5 不可关闭，OpenSpec 5.1 不勾选；本次不实施建议的 L0/L1 修复，必须在后续修复并使用精确单次提示词复测通过后，才能重新评估验收状态。
+客户端级跨轮验收结果为 `18 PASS / 0 FAIL / 0 BLOCKED`：Codex 与 Claude Code 各 6/6 `PASS`；Kimi S2–S6 沿用既有客户端通过证据，S1 由 0.28.0 K3 精确轮补齐为 `PASS`。Kimi 0.28.0 的 K2.7 Coding 对照轮仍为 S1 `FAIL`，因此本报告不声称同一 Kimi 版本或模型六场景全通过，也不声称跨模型稳定通过。Task 5 与 OpenSpec 5.1 暂不勾选，等待修正口径后的独立复审。
