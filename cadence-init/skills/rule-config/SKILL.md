@@ -42,6 +42,8 @@ disable-model-invocation: true
 | 模板与项目存在不同章节 | 保留模板章节，并按原顺序保留项目独有章节 |
 | 模板与项目存在同名章节 | 模板规范在前，项目独有内容去重后追加到该章节的“项目补充” |
 | CLAUDE.md / AGENTS.md 强制规则冲突 | 强制规则摘要和引用路径以 `rule-config` 为准，项目技术栈、命令、业务规则和其他章节保留 |
+| `openspec/config.yaml` 已存在 | 保留已有 `schema`、项目 context 和 proposal、design、specs、tasks 的额外规则，仅追加模板缺失内容；发现 `rules.apply` 时先备份再移除 |
+| OpenSpec YAML 无法可靠解析或目标字段结构/类型不兼容 | 先备份；无法证明可无损规范化时终止，保持原文件不变并报告冲突；备份成功不代表允许破坏性重写 |
 | 内容完全重复 | 只保留一份 |
 | Markdown 无法可靠解析 | 先备份，再写标准结构，并把原内容附加到“原项目补充” |
 
@@ -65,7 +67,7 @@ disable-model-invocation: true
 | 技术栈 | 自动检测并写入；未检测到的命令写为“未检测到” |
 | 历史产物迁移 | 无冲突时自动迁移；目标目录非空时跳过并报告 |
 | `cadence/` gitignore | 默认不加入 `.gitignore` |
-| 代码阅读规则 | Coding 项目默认启用，非 Coding 项目默认跳过 |
+| 代码阅读规则 | 所有项目创建；非 Coding 项目只跳过 CodeGraph 初始化 |
 | CodeGraph 初始化 | Coding 项目默认启用，非 Coding 项目默认跳过 |
 | Playwright 规则 | 默认跳过，仅用户明确要求时启用 |
 | 已存在文件 | 默认不覆盖，只补齐缺失文件、缺失摘要和缺失配置块 |
@@ -94,16 +96,17 @@ disable-model-invocation: true
 
 你必须为以下每个项目创建任务并按顺序完成：
 
-1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
-2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加核心规则摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
+1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，创建常规规则和 `openspec-superpowers-workflow.md`
+2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 从 `agent-routing-kernel.md` 向 CLAUDE.md、AGENTS.md 创建或升级版本化 L0 受管区块，并保留入口文件的其他内容（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
 4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，按检测结果继续
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
 6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，无冲突时自动迁移到 `cadence/`
 7. **cadence gitignore 决策** — 默认不将 `cadence/` 加入 `.gitignore`
-8. **代码阅读规则配置** — Coding 项目默认配置 `ast-grep outline` 与 CodeGraph 使用规则
+8. **代码阅读规则配置** — 所有项目创建 `code-reading.md`，Coding 项目默认配置并初始化 CodeGraph，非 Coding 项目保留规则但跳过 CodeGraph 初始化
 9. **CodeGraph 项目初始化** — Coding 项目默认项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`
 10. **Playwright Skills 规则配置** — 默认跳过，仅用户明确要求时配置 Playwright CLI 使用规则
+11. **配置 OpenSpec 契约冗余** — 定位 `references/openspec/config.yaml`，创建或保守合并 `openspec/config.yaml` 的 context 与 proposal、design、specs、tasks 规则，不改变已有 schema 和项目自定义规则
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -140,12 +143,12 @@ disable-model-invocation: true
 按以下优先级顺序查找模板目录：
 
 1. **在线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
-   - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
+   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
 
 2. **离线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
-   - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
+   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
 
 3. **回退搜索**（开发环境）：
    - 使用 Glob 工具搜索标识文件：
@@ -153,10 +156,10 @@ disable-model-invocation: true
    **/cadence-init/skills/rule-config/references/rules/language.md
    ```
    从返回结果中提取目录路径（去掉末尾 `language.md`），作为**模板根路径**。
-   如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，
+   验证每个路径下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md` 和 `document-storage.md`，并验证同一 `references/` 下的 `openspec/config.yaml` 存在。如果匹配多个，
    从通过验证的结果中取修改时间最新的。
 
-> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 10 的 playwright.md）。
+> **重要**：模板根路径与 OpenSpec 配置模板路径必须成对定位并在后续步骤中复用（包括步骤 8 的 code-reading.md、步骤 10 的 playwright.md 和步骤 11 的 OpenSpec 配置）；任一候选缺少 `references/openspec/config.yaml` 时不得选用该候选，所有候选均不完整时终止并报告缺失模板。
 
 **步骤 1c：创建目标目录**
 
@@ -172,13 +175,32 @@ mkdir -p .claude/rules
 |----------|---------|------|
 | `README.md` | `.claude/rules/README.md` | 必选 |
 | `language.md` | `.claude/rules/language.md` | 必选 |
+| `openspec-superpowers-workflow.md` | `.claude/rules/openspec-superpowers-workflow.md` | 必选、版本化框架规则 |
 | `document-storage.md` | `.claude/rules/document-storage.md` | 必选 |
 | `markdown-format.md` | `.claude/rules/markdown-format.md` | 必选 |
 | `mcp-servers.md` | `.claude/rules/mcp-servers.md` | 必选 |
+| `code-reading.md` | `.claude/rules/code-reading.md` | 必选；所有项目创建 |
 | `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
 | `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
 
+除 `openspec-superpowers-workflow.md` 外，普通规则继续遵循已有文件不覆盖策略。只有带 `cadence-framework-rule:openspec-superpowers-workflow` 标记的 L1 按“OpenSpec 与 Superpowers 协作规则增量处理”执行版本升级。
+
 ### 2. 添加 CLAUDE.md 与 AGENTS.md 规则引用
+
+#### L0 受管区块处理
+
+1. 读取规则模板根下 `agent-routing-kernel.md` 的完整内容。
+2. 对 CLAUDE.md 与 AGENTS.md 执行统一预检：在写入任一入口前识别两个入口各自的标记、版本、完整内容、普通模式交互结果、目标动作和全部备份需求。
+3. 在写入任一入口前创建本次所需的全部 L0 备份；仅当统一预检和全部必要备份成功后，才允许按各入口分支写入。
+4. 任一必要备份失败时立即终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入，两个入口的受管区块和区块外内容保持原样。
+5. 目标入口不存在时，创建基础入口并把 L0 放在文件说明之后、`## 强制规则` 之前。
+6. 当前 v1 开始和结束标记成对存在，且完整受管区块与规范源当前 v1 完全一致时跳过。
+7. 当前 v1 标记成对存在但完整受管区块与规范源当前 v1 不一致时，视为无法识别的本地修改；普通模式询问，无响应则保留并报告；确认替换时将该入口纳入本次备份屏障；`no-interrupt` 模式将该入口纳入本次备份屏障，屏障通过后替换为规范源当前 v1 并报告。
+8. 两个标记都不存在时，在首个 `## 强制规则` 前插入 L0；没有该标题时，在文件说明后插入。
+9. 存在成对的受支持旧版本标记时，将该入口纳入本次备份屏障，屏障通过后升级为规范源当前 v1 并报告。
+10. 只存在单侧标记或标记顺序错误时，普通模式询问后处理，无响应则保留并报告；确认处理时将该入口纳入本次备份屏障；`no-interrupt` 模式将该入口纳入本次备份屏障，屏障通过后写入单一 L0 区块并报告。
+11. 区块外项目技术栈、命令、业务规则和用户内容必须原样保留。
+12. CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义。
 
 **在 CLAUDE.md 中添加以下结构**：
 
@@ -226,7 +248,7 @@ Today's date is {当前日期}。
 **注意**：
 - 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 7（代码阅读）由步骤 8 添加（Coding 项目默认启用）
+- 规则 7（代码阅读）由步骤 8 添加（所有项目启用；非 Coding 项目仅跳过 CodeGraph 初始化）
 - CodeGraph 项目初始化由步骤 9 执行（Coding 项目默认启用）
 - Playwright 规则由步骤 10 添加（默认跳过，用户明确要求时启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
@@ -380,7 +402,7 @@ mkdir -p cadence/{prds,analysis,analysis-docs,docs,designs,designs-reviews,plans
 | `cadence/modaos/` | 界面原型 | 墨刀/Figma 原型截图、设计稿 |
 | `cadence/models/` | 数据模型 | 数据库表模型、ER 图、schema 定义 |
 | `cadence/architecture/` | 架构文档 | 系统架构分析、技术选型 |
-| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、TODO 列表 |
+| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、待办事项列表 |
 | `cadence/logs/` | 开发日志 | 问题追踪、Bug 记录、开发进度 |
 | `cadence/reports/` | 进度报告 | @report skill 生成的开发进度报告 |
 | `cadence/project-rules/` | 个性化规则 | 用户定制的模板和规范 |
@@ -463,10 +485,6 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 ### 8. 代码阅读规则配置
 
-**检测条件**：
-- 项目为 **Coding 项目**（基于步骤 1a 检测结果）
-- Coding 项目默认需要代码阅读辅助
-
 **创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `code-reading.md` 读取内容，写入 `.claude/rules/code-reading.md`
 
 **在 CLAUDE.md 和 AGENTS.md 中添加**：
@@ -477,8 +495,8 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 ```
 
 **无交互行为**：
-- 对 Coding 项目：默认启用代码阅读规则，创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要。
-- 对非 Coding 项目：默认跳过，仅在报告中记录“非 Coding 项目跳过代码阅读规则”。
+- 对所有项目：创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要，避免 L0 产生悬空引用。
+- 对非 Coding 项目：规则仍存在；仅步骤 9 的 CodeGraph 安装与初始化默认跳过。
 - 已存在规则文件时不覆盖；缺少摘要时只追加摘要。
 
 ### 9. CodeGraph 项目初始化
@@ -596,13 +614,15 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 |------|------|
 | 文件不存在 | 从模板根路径读取并创建 |
 | 文件已存在 | **不自动覆盖**，报告已存在 |
-| 新增规则模板（如 `code-reading.md`） | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| 新增 `code-reading.md` | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 |
+
+上表适用于普通规则，不改变已有的“不自动覆盖”语义；`openspec-superpowers-workflow.md` 仅按下述版本化框架规则特例处理。
 
 **检测命令示例**：
 
 ```bash
-for rule in README.md language.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
+for rule in README.md language.md openspec-superpowers-workflow.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
   if [ -e ".claude/rules/$rule" ]; then
     echo "已存在: .claude/rules/$rule"
   else
@@ -611,7 +631,70 @@ for rule in README.md language.md document-storage.md markdown-format.md mcp-ser
 done
 ```
 
-### CLAUDE.md / AGENTS.md 摘要增量处理
+### OpenSpec 配置处理
+
+1. 无论 `openspec/config.yaml` 不存在还是已有配置需要合并，都必须先在目标文件所在的同一文件系统创建候选配置和临时验证工作区，使 OpenSpec 在工作区中把候选作为 `openspec/config.yaml` 读取；此阶段不得直接创建、覆盖或修改目标文件。目标不存在时以 `references/openspec/config.yaml` 为候选基础，目标存在时以原配置为候选基础，禁止用模板整体覆盖已有配置。
+2. 候选必须完成 YAML 语法解析和结构预检：YAML 根必须为映射；`schema` 必须缺失或为可保留的标量；`context` 必须缺失或为字符串块/字符串标量；`rules` 必须缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 必须分别缺失或为字符串数组。除后续单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则必须原样保留。
+3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不发布候选；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。不得把备份成功当成可以破坏性重写的授权；任何必要备份失败时立即终止且不得修改原文件。
+4. 候选处理不得取消既有备份要求。发现需要备份的分支时，必须先成功创建备份，再对候选执行规范化、合并或无效键移除；必要备份失败时终止，候选不得发布，原文件保持不变。
+5. 结构预检通过后在候选中保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
+6. 在候选中将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
+7. 在候选的 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
+8. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份；备份成功后只在候选中移除。任何必要备份失败时立即终止，且不得修改原文件。
+9. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损构建候选时终止并保持原文件不变。必要备份失败时同样终止且不写入。
+10. 必须在临时验证工作区对候选运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`；四类命令必须全部成功，且输出必须能读取公共 context 与对应 artifact rules。不得以 `openspec instructions apply` 作为 artifact 验证。
+11. 只有候选通过全部语法、结构、合并和四类 instructions 验证后，才允许使用同一文件系统内的原子替换发布到 `openspec/config.yaml`；目标原本不存在时也必须以原子创建方式发布，不得先落入半成品。
+12. 任一候选验证失败时立即终止，报告失败 artifact、命令和错误；无论删除候选还是保留候选供排查，都必须报告候选处理结果，且原 `openspec/config.yaml` 保持不变。目标原本不存在时不得创建目标文件或留下半成品。
+13. 原子替换或原子创建失败时立即终止，并保持或恢复原文件；目标原本不存在时保持不存在。不得声称配置已创建、已合并或发布成功。
+
+OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
+
+| 场景 | 普通模式 | no-interrupt 模式 |
+|---|---|---|
+| 配置不存在 | 从模板构建候选，验证通过后原子创建 | 从模板构建候选，验证通过后原子创建 |
+| 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/字符串去重 | 在候选中保守合并，完整行/字符串去重 |
+| 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
+| 存在 `rules.apply` | 询问；无响应则保留并报告，确认并备份后在候选中移除 | 备份成功后在候选中移除并继续合并 |
+| YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
+| 任一候选 instructions 验证失败 | 终止并报告失败 artifact、命令和错误；原文件不变 | 终止并报告失败 artifact、命令和错误；原文件不变 |
+| 原子发布失败 | 终止并保持或恢复原文件，不得声称成功 | 终止并保持或恢复原文件，不得声称成功 |
+| 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
+
+完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其命令和错误、候选清理或保留结果、原子发布结果，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
+
+### OpenSpec 与 Superpowers 协作规则增量处理
+
+| 场景 | 普通模式 | no-interrupt 模式 |
+|---|---|---|
+| 文件不存在 | 创建 v1 | 创建 v1 |
+| 文件完整内容与当前框架 v1 一致 | 跳过 | 跳过 |
+| 版本标记受支持且完整文件内容与对应旧版规范逐字一致 | 备份后升级 | 备份后升级 |
+| 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
+| 当前 v1 标记存在但完整内容不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
+| 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 |
+| 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 终止且不得替换原文件 |
+
+备份名固定为 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`。`cadence-framework-rule:openspec-superpowers-workflow` 标记只用于候选版本定位；最终识别必须比较完整文件内容，不得仅凭标记把文件识别为当前或受支持旧版，也不得把无标记文件当作已知框架版本覆盖。
+
+### CLAUDE.md / AGENTS.md 入口增量处理
+
+写入入口文件前，必须先按“L0 受管区块处理”对 CLAUDE.md 与 AGENTS.md 完成统一预检，确定两个入口的状态、交互结果、目标动作和全部备份需求。在写入任一入口前先创建本次所需的全部 L0 备份；仅当全部必要备份成功后，才按下表执行各入口动作。任一必要备份失败时，CLAUDE.md 与 AGENTS.md 均不得写入。
+
+统一预检和全备份屏障通过后，再根据 `cadence-managed:openspec-superpowers-routing` 的版本、成对边界和完整受管区块内容处理每个入口：
+
+| 场景 | 普通模式 | no-interrupt 模式 |
+|------|----------|-------------------|
+| 入口不存在 | 创建基础入口并插入当前 v1 | 创建基础入口并插入当前 v1 |
+| 当前 v1 区块与规范源完整一致 | 跳过，不重复写入 | 跳过，不重复写入 |
+| 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，无响应则保留并报告 | 先备份，成功后替换为规范源当前 v1 并报告 |
+| 受支持旧版本标记成对 | 备份成功后升级到当前 v1 并报告 | 备份成功后升级到当前 v1 并报告 |
+| 无 L0 标记 | 插入当前 v1，入口原内容保留 | 插入当前 v1，入口原内容保留 |
+| 单侧标记或顺序错误 | 询问；无响应则保留并报告 | 先备份，成功后写入单一当前 v1 区块并报告 |
+| 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 |
+
+所有场景都必须保持 L0 受管区块外的项目技术栈、命令、业务规则和用户内容原样。
+
+其他规则摘要仍按以下策略增量处理：
 
 写入摘要引用前，先读取现有文件并检查每条规则摘要是否已存在：
 
@@ -628,7 +711,7 @@ done
 | 场景 | 行为 |
 |------|------|
 | 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 |
-| 代码阅读规则缺失 | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| 代码阅读规则缺失 | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
 | Playwright 规则缺失 | 默认跳过，用户明确要求时新增 |
 | 无法判断历史选择 | 按本节默认值处理，不询问 |
 
@@ -656,5 +739,8 @@ done
 
 - **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
 - **摘要引用** — CLAUDE.md 和 AGENTS.md 只保留摘要和引用，详细内容在规则文件中
+- **契约与行为分层** — OpenSpec 是契约层，Superpowers 是行为层，二者职责不可互相替代
+- **常驻路由、按需正文** — CLAUDE.md 与 AGENTS.md 常驻 L0 路由；L1/L2 正文仅在命中任务或阶段信号时读取
+- **失败关闭** — 必调 Skill、OpenSpec 契约、实施 Plan 或新鲜验证证据缺失时停止，不得降级绕过
 - **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
 - **无交互默认** — 初始化默认不等待用户确认；冲突项跳过并报告

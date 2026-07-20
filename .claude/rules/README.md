@@ -2,12 +2,14 @@
 
 ## 目录说明
 
-本目录存放 Cadence 框架的内置规则文件。这些规则由框架维护者管理，在项目初始化时自动创建到用户项目的 `.claude/rules/` 目录。
+本目录存放 Cadence 框架的内置规则文件。这些规则由框架维护者管理；除 `agent-routing-kernel.md` 仅作为受管区块插入业务项目的 `CLAUDE.md`/`AGENTS.md` 外，其余规则在项目初始化时自动创建到 `.claude/rules/`。
 
 ## 文件列表
 
 | 文件 | 内容概述 |
 |------|---------|
+| `agent-routing-kernel.md` | L0 Agent 入口受管区块模板，仅插入 CLAUDE.md/AGENTS.md，不复制到 `.claude/rules/` |
+| `openspec-superpowers-workflow.md` | OpenSpec 契约层与 Superpowers 行为层协作规则 |
 | `language.md` | 语言规则（中文回答要求） |
 | `code-usage-coding.md` | 代码使用规则（编码项目适用） |
 | `code-usage-noncoding.md` | 代码使用规则（非编码项目适用） |
@@ -25,11 +27,7 @@
 
 ## 从旧版迁移
 
-如果你之前使用旧版 cadence-init 初始化了项目（CLAUDE.md 中包含完整规则文本），可以：
-
-1. 重新运行 `/cadence:init:rule-config` 命令
-2. 命令将自动创建 `.claude/rules/` 目录并写入规则文件
-3. 手动将 CLAUDE.md 中的规则文本替换为摘要引用
+重新运行 `/cadence:init:rule-config` 会更新受管路由和已知版本框架规则。普通模式遇到无法识别的本地修改时会询问；无响应则保留并报告，确认替换后才备份。`no-interrupt` 模式会先备份，备份成功后再按框架规则替换。
 
 ## 相关目录
 
