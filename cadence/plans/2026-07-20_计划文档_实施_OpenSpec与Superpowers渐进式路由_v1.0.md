@@ -340,20 +340,24 @@ Expected: 显示 context 和四个 artifact；无 `apply`。
 
 ```markdown
 ### OpenSpec 配置处理
-1. `openspec/config.yaml` 不存在时，从模板创建。
-2. 文件存在时先解析 YAML 并执行结构预检：YAML 根必须为映射；`schema` 缺失或为可保留的标量；`context` 缺失或为字符串块/字符串标量；`rules` 缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 分别缺失或为字符串数组。除单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则原样保留。
-3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不写入；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。备份成功不是破坏性重写授权；必要备份失败时终止且不修改原文件。
-4. 结构预检通过后保留现有 `schema`；未设置时写入 `spec-driven`。
-5. 将四行 Cadence 协作 context 追加到现有 context，按完整行去重，不删除项目技术栈和领域上下文。
-6. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留项目额外规则。
-7. 禁止创建 `rules.apply`；发现已有 `rules.apply` 时普通模式先确认，`no-interrupt` 模式先备份再移除。
-8. YAML 无法可靠解析时，普通模式保留并报告；`no-interrupt` 模式先备份，仍无法无损合并则终止并保持原文件不变。
-9. 合并后运行 `openspec instructions proposal --json`、`design`、`specs`、`tasks` 验证。
+1. 无论目标不存在还是已有配置需要合并，都先在 `openspec/config.yaml` 所在的同一文件系统创建候选配置和临时验证工作区，使 OpenSpec 在工作区中把候选作为 `openspec/config.yaml` 读取；不得直接创建、覆盖或修改目标文件。目标不存在时以模板为候选基础，目标存在时以原配置为候选基础，禁止整体覆盖已有配置。
+2. 候选完成 YAML 语法和结构预检：YAML 根必须为映射；`schema` 缺失或为可保留的标量；`context` 缺失或为字符串块/字符串标量；`rules` 缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 分别缺失或为字符串数组。除单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则原样保留。
+3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不发布候选；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。备份成功不是破坏性重写授权；必要备份失败时终止且不修改原文件。
+4. 候选机制不得取消既有备份要求；需要备份的分支必须先成功创建备份，再对候选执行规范化、合并或 `rules.apply` 移除。必要备份失败时终止，候选不得发布且原文件不变。
+5. 结构预检通过后在候选中保留现有 `schema`；未设置时写入 `spec-driven`。
+6. 在候选中追加四行 Cadence 协作 context，按完整行去重，不删除项目技术栈和领域上下文。
+7. 在候选的 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留项目额外规则。
+8. 禁止创建 `rules.apply`；发现已有 `rules.apply` 时普通模式先确认，`no-interrupt` 模式先备份，备份成功后只在候选中移除。
+9. YAML 无法可靠解析时，普通模式保留并报告；`no-interrupt` 模式先备份，仍无法无损构建候选则终止并保持原文件不变。
+10. 在临时验证工作区对候选运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`；四类必须全部成功，且输出能够读取公共 context 与对应 artifact rules。
+11. 只有候选通过全部语法、结构、合并和四类 instructions 验证后，才以同一文件系统内的原子替换发布到 `openspec/config.yaml`；目标原本不存在时使用原子创建，不得先落入半成品。
+12. 任一候选验证失败时终止，报告失败 artifact、命令和错误；候选可以删除或保留供排查，但必须报告处理结果。原 `openspec/config.yaml` 保持不变，目标原本不存在时不得创建目标文件或留下半成品。
+13. 原子替换或原子创建失败时终止并保持或恢复原文件；目标原本不存在时保持不存在，不得声称合并或发布成功。
 ```
 
 - [ ] **Step 6: 更新 no-interrupt 合并表和完成报告**
 
-模板四行 context 和四组 artifact 规则是框架必需内容；现有 schema、项目 context 和额外 artifact 规则保留。报告必须列出新增 context、合并规则、无效键、备份路径和冲突。
+模板四行 context 和四组 artifact 规则是框架必需内容；现有 schema、项目 context 和额外 artifact 规则保留。报告必须列出新增 context、合并规则、无效键、备份路径、冲突、候选验证结果、失败 artifact、命令与错误、候选处理结果和原子发布结果。
 
 - [ ] **Step 7: 运行 OpenSpec 集成说明检查**
 
@@ -366,7 +370,7 @@ for file in cadence-init/skills/rule-config/SKILL.md cadence/plans/2026-07-20_�
   rg -n "rules.*缺失或为映射|rules.*必须缺失或为映射" "$file"
   rg -n "rules\\.proposal.*rules\\.design.*rules\\.specs.*rules\\.tasks.*字符串数组" "$file"
   rg -n "其他项目自定义键和 artifact 规则.*原样保留" "$file"
-  rg -n "字段路径、实际类型和冲突.*不写入" "$file"
+  rg -n "字段路径、实际类型和冲突.*不写入|字段路径、实际类型和冲突.*不发布候选" "$file"
   rg -n "普通模式保留原文件" "$file"
   rg -n "no-interrupt.*先创建可恢复备份.*无法证明可无损规范化.*终止.*原文件不变" "$file"
   rg -n "备份成功.*破坏性重写" "$file"
@@ -376,10 +380,17 @@ for file in cadence-init/skills/rule-config/SKILL.md cadence/plans/2026-07-20_�
   rg -n "完整行去重" "$file"
   rg -n "完整字符串去重" "$file"
   rg -n "openspec instructions proposal.*design.*specs.*tasks" "$file"
+  rg -n "同一文件系统.*候选配置.*临时验证工作区|候选配置.*临时验证工作区.*同一文件系统" "$file"
+  rg -n "四类.*全部成功.*公共 context.*artifact rules" "$file"
+  rg -n "失败 artifact.*命令.*错误" "$file"
+  rg -n "原文件.*保持不变|原文件不变" "$file"
+  rg -n "目标原本不存在.*不得创建目标文件.*半成品" "$file"
+  rg -n "原子替换.*失败.*保持或恢复原文件|原子替换或原子创建失败.*保持或恢复原文件" "$file"
+  rg -n "候选验证结果.*原子发布结果" "$file"
 done
 ```
 
-Expected: Plan 与 SKILL 均包含结构预检、字段路径/实际类型报告、普通模式保留、`no-interrupt` 备份后无法无损规范化则终止且原文件不变，并回归 `rules.apply`、不可解析 YAML、去重和四类 instructions 验证。
+Expected: Plan 与 SKILL 均包含结构预检、候选验证、四类 instructions 全成功门禁、失败 artifact 报告、原文件不变、目标不存在不落半成品和原子发布失败关闭，并回归 `rules.apply`、备份、不可解析 YAML 和去重规则。
 
 - [ ] **Step 8: 提交 L2 模板与合并规则**
 

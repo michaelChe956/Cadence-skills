@@ -636,28 +636,34 @@ done
 
 ### OpenSpec 配置处理
 
-1. `openspec/config.yaml` 不存在时，创建 `openspec/` 目录并从 `references/openspec/config.yaml` 模板创建配置；已存在时不得用模板整体覆盖。
-2. 文件存在时先可靠解析 YAML，再执行结构预检：YAML 根必须为映射；`schema` 必须缺失或为可保留的标量；`context` 必须缺失或为字符串块/字符串标量；`rules` 必须缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 必须分别缺失或为字符串数组。除后续单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则必须原样保留。
-3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不写入；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。不得把备份成功当成可以破坏性重写的授权；任何必要备份失败时立即终止且不得修改原文件。
-4. 结构预检通过后保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
-5. 将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
-6. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
-7. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份再移除。任何必要备份失败时立即终止，且不得修改原文件。
-8. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损合并时终止并保持原文件不变。必要备份失败时同样终止且不写入。
-9. 合并后必须运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`，确认四个 artifact instructions 均可读取；不得以 `openspec instructions apply` 作为 artifact 验证。
+1. 无论 `openspec/config.yaml` 不存在还是已有配置需要合并，都必须先在目标文件所在的同一文件系统创建候选配置和临时验证工作区，使 OpenSpec 在工作区中把候选作为 `openspec/config.yaml` 读取；此阶段不得直接创建、覆盖或修改目标文件。目标不存在时以 `references/openspec/config.yaml` 为候选基础，目标存在时以原配置为候选基础，禁止用模板整体覆盖已有配置。
+2. 候选必须完成 YAML 语法解析和结构预检：YAML 根必须为映射；`schema` 必须缺失或为可保留的标量；`context` 必须缺失或为字符串块/字符串标量；`rules` 必须缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 必须分别缺失或为字符串数组。除后续单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则必须原样保留。
+3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不发布候选；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。不得把备份成功当成可以破坏性重写的授权；任何必要备份失败时立即终止且不得修改原文件。
+4. 候选处理不得取消既有备份要求。发现需要备份的分支时，必须先成功创建备份，再对候选执行规范化、合并或无效键移除；必要备份失败时终止，候选不得发布，原文件保持不变。
+5. 结构预检通过后在候选中保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
+6. 在候选中将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
+7. 在候选的 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
+8. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份；备份成功后只在候选中移除。任何必要备份失败时立即终止，且不得修改原文件。
+9. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损构建候选时终止并保持原文件不变。必要备份失败时同样终止且不写入。
+10. 必须在临时验证工作区对候选运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`；四类命令必须全部成功，且输出必须能读取公共 context 与对应 artifact rules。不得以 `openspec instructions apply` 作为 artifact 验证。
+11. 只有候选通过全部语法、结构、合并和四类 instructions 验证后，才允许使用同一文件系统内的原子替换发布到 `openspec/config.yaml`；目标原本不存在时也必须以原子创建方式发布，不得先落入半成品。
+12. 任一候选验证失败时立即终止，报告失败 artifact、命令和错误；无论删除候选还是保留候选供排查，都必须报告候选处理结果，且原 `openspec/config.yaml` 保持不变。目标原本不存在时不得创建目标文件或留下半成品。
+13. 原子替换或原子创建失败时立即终止，并保持或恢复原文件；目标原本不存在时保持不存在。不得声称配置已创建、已合并或发布成功。
 
 OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
 
 | 场景 | 普通模式 | no-interrupt 模式 |
 |---|---|---|
-| 配置不存在 | 从模板创建 | 从模板创建 |
-| 配置可解析且无 `rules.apply` | 保守合并，完整行/字符串去重 | 保守合并，完整行/字符串去重 |
-| 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不写入 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
-| 存在 `rules.apply` | 询问；无响应则保留并报告，确认后备份并移除 | 备份成功后移除并继续合并 |
+| 配置不存在 | 从模板构建候选，验证通过后原子创建 | 从模板构建候选，验证通过后原子创建 |
+| 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/字符串去重 | 在候选中保守合并，完整行/字符串去重 |
+| 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
+| 存在 `rules.apply` | 询问；无响应则保留并报告，确认并备份后在候选中移除 | 备份成功后在候选中移除并继续合并 |
 | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
+| 任一候选 instructions 验证失败 | 终止并报告失败 artifact、命令和错误；原文件不变 | 终止并报告失败 artifact、命令和错误；原文件不变 |
+| 原子发布失败 | 终止并保持或恢复原文件，不得声称成功 | 终止并保持或恢复原文件，不得声称成功 |
 | 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
 
-完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
+完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其命令和错误、候选清理或保留结果、原子发布结果，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
 
 ### OpenSpec 与 Superpowers 协作规则增量处理
 
