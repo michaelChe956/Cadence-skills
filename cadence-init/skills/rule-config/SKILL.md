@@ -401,7 +401,7 @@ mkdir -p cadence/{prds,analysis,analysis-docs,docs,designs,designs-reviews,plans
 | `cadence/modaos/` | 界面原型 | 墨刀/Figma 原型截图、设计稿 |
 | `cadence/models/` | 数据模型 | 数据库表模型、ER 图、schema 定义 |
 | `cadence/architecture/` | 架构文档 | 系统架构分析、技术选型 |
-| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、TODO 列表 |
+| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、待办事项列表 |
 | `cadence/logs/` | 开发日志 | 问题追踪、Bug 记录、开发进度 |
 | `cadence/reports/` | 进度报告 | @report skill 生成的开发进度报告 |
 | `cadence/project-rules/` | 个性化规则 | 用户定制的模板和规范 |
