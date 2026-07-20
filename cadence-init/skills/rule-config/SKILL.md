@@ -94,8 +94,8 @@ disable-model-invocation: true
 
 你必须为以下每个项目创建任务并按顺序完成：
 
-1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，复制规则文件到 `.claude/rules/`
-2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 在 CLAUDE.md 中添加核心规则摘要引用，并参考 CLAUDE.md 同步生成 Codex 所需的 AGENTS.md（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
+1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，创建常规规则和 `openspec-superpowers-workflow.md`
+2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 从 `agent-routing-kernel.md` 向 CLAUDE.md、AGENTS.md 创建或升级版本化 L0 受管区块，并保留入口文件的其他内容（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
 3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
 4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，按检测结果继续
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
@@ -140,12 +140,12 @@ disable-model-invocation: true
 按以下优先级顺序查找模板目录：
 
 1. **在线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
-   - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`
+   - 如果同时存在，取该目录作为**模板根路径**
 
 2. **离线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/language.md` 是否存在
-   - 如果存在，取该路径（去掉末尾 `language.md`）作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`
+   - 如果同时存在，取该目录作为**模板根路径**
 
 3. **回退搜索**（开发环境）：
    - 使用 Glob 工具搜索标识文件：
@@ -153,7 +153,7 @@ disable-model-invocation: true
    **/cadence-init/skills/rule-config/references/rules/language.md
    ```
    从返回结果中提取目录路径（去掉末尾 `language.md`），作为**模板根路径**。
-   如果匹配多个，验证每个路径下是否同时存在 `document-storage.md`，
+   验证每个路径下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md` 和 `document-storage.md`。如果匹配多个，
    从通过验证的结果中取修改时间最新的。
 
 > **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 10 的 playwright.md）。
@@ -172,13 +172,28 @@ mkdir -p .claude/rules
 |----------|---------|------|
 | `README.md` | `.claude/rules/README.md` | 必选 |
 | `language.md` | `.claude/rules/language.md` | 必选 |
+| `openspec-superpowers-workflow.md` | `.claude/rules/openspec-superpowers-workflow.md` | 必选、版本化框架规则 |
 | `document-storage.md` | `.claude/rules/document-storage.md` | 必选 |
 | `markdown-format.md` | `.claude/rules/markdown-format.md` | 必选 |
 | `mcp-servers.md` | `.claude/rules/mcp-servers.md` | 必选 |
 | `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
 | `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
 
+除 `openspec-superpowers-workflow.md` 外，普通规则继续遵循已有文件不覆盖策略。只有带 `cadence-framework-rule:openspec-superpowers-workflow` 标记的 L1 按“OpenSpec 与 Superpowers 协作规则增量处理”执行版本升级。
+
 ### 2. 添加 CLAUDE.md 与 AGENTS.md 规则引用
+
+#### L0 受管区块处理
+
+1. 读取规则模板根下 `agent-routing-kernel.md` 的完整内容。
+2. 目标入口不存在时，创建基础入口并把 L0 放在文件说明之后、`## 强制规则` 之前。
+3. 同时存在 v1 开始和结束标记时，只替换两个标记之间的完整区块。
+4. 两个标记都不存在时，在首个 `## 强制规则` 前插入 L0；没有该标题时，在文件说明后插入。
+5. 只存在单侧标记或标记顺序错误时，普通模式询问后处理，无响应则跳过；`no-interrupt` 模式先创建时间戳备份，再写入单一 L0 区块。
+6. 区块外项目技术栈、命令、业务规则和用户内容必须原样保留。
+7. CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义。
+
+写入前比较完整受管区块；与当前 v1 完全一致时跳过，确保同版本重复运行不产生变更。识别到成对的受支持旧版本标记时，先创建时间戳备份，再把该受管区块升级为当前 v1；备份失败立即终止。
 
 **在 CLAUDE.md 中添加以下结构**：
 
@@ -599,10 +614,12 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 | 新增规则模板（如 `code-reading.md`） | Coding 项目默认新增，非 Coding 项目默认跳过 |
 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 |
 
+上表适用于普通规则，不改变已有的“不自动覆盖”语义；`openspec-superpowers-workflow.md` 仅按下述版本化框架规则特例处理。
+
 **检测命令示例**：
 
 ```bash
-for rule in README.md language.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
+for rule in README.md language.md openspec-superpowers-workflow.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
   if [ -e ".claude/rules/$rule" ]; then
     echo "已存在: .claude/rules/$rule"
   else
@@ -611,7 +628,32 @@ for rule in README.md language.md document-storage.md markdown-format.md mcp-ser
 done
 ```
 
-### CLAUDE.md / AGENTS.md 摘要增量处理
+### OpenSpec 与 Superpowers 协作规则增量处理
+
+| 场景 | 普通模式 | no-interrupt 模式 |
+|---|---|---|
+| 文件不存在 | 创建 v1 | 创建 v1 |
+| 文件与当前 v1 一致 | 跳过 | 跳过 |
+| 文件带受支持旧版本标记 | 备份后升级 | 备份后升级 |
+| 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 |
+| 备份失败 | 终止 | 终止 |
+
+备份名固定为 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`。版本判断必须读取 `cadence-framework-rule:openspec-superpowers-workflow` 标记；不得把无标记文件当作已知框架版本覆盖。
+
+### CLAUDE.md / AGENTS.md 入口增量处理
+
+写入入口文件前识别 `cadence-managed:openspec-superpowers-routing` 的版本和成对边界：
+
+| 场景 | 行为 |
+|------|------|
+| 入口不存在 | 创建基础入口并按 L0 受管区块处理规则插入当前 v1 |
+| 当前 v1 区块完整且内容一致 | 跳过，不重复写入 |
+| 当前 v1 标记成对但内容不同 | 只替换受管区块，区块外内容原样保留 |
+| 受支持旧版本标记成对 | 备份后升级到当前 v1；备份失败终止 |
+| 无 L0 标记 | 按 L0 受管区块处理规则插入，入口原内容保留 |
+| 单侧标记或顺序错误 | 普通模式询问且无响应则跳过；`no-interrupt` 模式备份后写入单一当前 v1 区块 |
+
+其他规则摘要仍按以下策略增量处理：
 
 写入摘要引用前，先读取现有文件并检查每条规则摘要是否已存在：
 
@@ -656,5 +698,8 @@ done
 
 - **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
 - **摘要引用** — CLAUDE.md 和 AGENTS.md 只保留摘要和引用，详细内容在规则文件中
+- **契约与行为分层** — OpenSpec 是契约层，Superpowers 是行为层，二者职责不可互相替代
+- **常驻路由、按需正文** — CLAUDE.md 与 AGENTS.md 常驻 L0 路由；L1/L2 正文仅在命中任务或阶段信号时读取
+- **失败关闭** — 必调 Skill、OpenSpec 契约、实施 Plan 或新鲜验证证据缺失时停止，不得降级绕过
 - **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
 - **无交互默认** — 初始化默认不等待用户确认；冲突项跳过并报告
