@@ -637,12 +637,13 @@ done
 |---|---|---|
 | 文件不存在 | 创建 v1 | 创建 v1 |
 | 文件完整内容与当前框架 v1 一致 | 跳过 | 跳过 |
-| 文件带受支持旧版本标记 | 备份后升级 | 备份后升级 |
+| 版本标记受支持且完整文件内容与对应旧版规范逐字一致 | 备份后升级 | 备份后升级 |
+| 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
 | 当前 v1 标记存在但完整内容不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
 | 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 |
 | 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 终止且不得替换原文件 |
 
-备份名固定为 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`。版本判断必须读取 `cadence-framework-rule:openspec-superpowers-workflow` 标记；不得把无标记文件当作已知框架版本覆盖。
+备份名固定为 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`。`cadence-framework-rule:openspec-superpowers-workflow` 标记只用于候选版本定位；最终识别必须比较完整文件内容，不得仅凭标记把文件识别为当前或受支持旧版，也不得把无标记文件当作已知框架版本覆盖。
 
 ### CLAUDE.md / AGENTS.md 入口增量处理
 
