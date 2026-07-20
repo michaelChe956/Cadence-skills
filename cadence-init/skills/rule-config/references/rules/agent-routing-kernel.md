@@ -1,11 +1,11 @@
 <!-- cadence-managed:openspec-superpowers-routing:v1:start -->
 ## OpenSpec 与 Superpowers 任务路由（强制）
 
-> 命中任务或阶段信号时，必须先读规则、再调 Skill、最后执行；“按需查看”不能替代本表。
+> 仅当任务需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，必须先路由、再读规则、再调 Skill、最后执行。
 
 | 任务或阶段信号 | 必读规则 | 必调 Superpowers Skill | 门禁 |
 |---|---|---|---|
-| 会话开始、新任务、resume/clear/compact 后 | `openspec-superpowers-workflow.md` | `using-superpowers` | 第一段先输出完整路由回执，回执前禁止仓库勘察 |
+| 会话开始且任务需要仓库操作，或 resume/clear/compact 后恢复仓库任务 | `openspec-superpowers-workflow.md` | `using-superpowers` | 第一段先输出完整路由回执，回执前禁止仓库勘察 |
 | 新功能、行为变化、方案讨论 | 协作规则；产物相关文档规则 | `brainstorming` | 设计确认后写入 OpenSpec |
 | OpenSpec 书面契约获批 | 协作规则、文档规则 | `writing-plans` | Plan 写入 `cadence/plans/` |
 | 读代码、架构摸底、影响面分析 | `code-reading.md` | 按任务选择 | 摸底完成后重新路由 |
@@ -18,7 +18,9 @@
 | 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `finishing-a-development-branch` | 选择分支集成方式 |
 
-阶段切换必须重新路由：新任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
-命中新任务或阶段信号时，第一段响应必须先完整输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。在该回执之前，禁止读取、搜索、列出或推断任何仓库文件、目录、change 状态或 Plan；只读勘察也不例外，澄清问题不得替代路由回执。
+阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
+需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，第一段响应必须先完整输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`；回执前禁止读取、搜索、列出或推断仓库文件、目录、change 状态或 Plan。
+纯概念问答必须直接回答，不输出路由回执，不加载无关规则或 Skill 正文；一旦转为仓库操作，必须先重新路由。
+需要仓库勘察的新功能或行为变化，回执必须先于 change、Plan、目录或文件勘察，必调 Skill 至少列出 `using-superpowers`、`brainstorming`；澄清问题不得替代回执。
 失败关闭：必调 Skill 未加载则停止；强制 OpenSpec 未确认则不规划；已有 change 无 Plan 则不实施；契约变化先更新 OpenSpec；无验证证据不得声称完成。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->

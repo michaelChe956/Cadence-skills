@@ -62,11 +62,11 @@ Expected: 两条检查均以非零状态结束，因为文件尚不存在。
 <!-- cadence-managed:openspec-superpowers-routing:v1:start -->
 ## OpenSpec 与 Superpowers 任务路由（强制）
 
-> 命中任务或阶段信号时，必须先读规则、再调 Skill、最后执行；“按需查看”不能替代本表。
+> 仅当任务需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，必须先路由、再读规则、再调 Skill、最后执行。
 
 | 任务或阶段信号 | 必读规则 | 必调 Superpowers Skill | 门禁 |
 |---|---|---|---|
-| 会话开始、新任务、resume/clear/compact 后 | `openspec-superpowers-workflow.md` | `using-superpowers` | 有仓库操作时先输出路由回执 |
+| 会话开始且任务需要仓库操作，或 resume/clear/compact 后恢复仓库任务 | `openspec-superpowers-workflow.md` | `using-superpowers` | 第一段先输出完整路由回执，回执前禁止仓库勘察 |
 | 新功能、行为变化、方案讨论 | 协作规则；产物相关文档规则 | `brainstorming` | 设计确认后写入 OpenSpec |
 | OpenSpec 书面契约获批 | 协作规则、文档规则 | `writing-plans` | Plan 写入 `cadence/plans/` |
 | 读代码、架构摸底、影响面分析 | `code-reading.md` | 按任务选择 | 摸底完成后重新路由 |
@@ -79,8 +79,10 @@ Expected: 两条检查均以非零状态结束，因为文件尚不存在。
 | 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `finishing-a-development-branch` | 选择分支集成方式 |
 
-阶段切换必须重新路由：新任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
-有仓库操作时，首次工具调用前输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。
+阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
+需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，第一段响应必须先完整输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`；回执前禁止读取、搜索、列出或推断仓库文件、目录、change 状态或 Plan。
+纯概念问答必须直接回答，不输出路由回执，不加载无关规则或 Skill 正文；一旦转为仓库操作，必须先重新路由。
+需要仓库勘察的新功能或行为变化，回执必须先于 change、Plan、目录或文件勘察，必调 Skill 至少列出 `using-superpowers`、`brainstorming`；澄清问题不得替代回执。
 失败关闭：必调 Skill 未加载则停止；强制 OpenSpec 未确认则不规划；已有 change 无 Plan 则不实施；契约变化先更新 OpenSpec；无验证证据不得声称完成。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->
 ```
@@ -504,12 +506,17 @@ Expected: 记录实际输出；失败客户端标记 BLOCKED。
 - [ ] **Step 3: 执行静态一致性检查**
 
 ```bash
+CADENCE_KIMI_BIN="$(readlink -f "$(command -v kimi)")"
+CADENCE_KIMI_HOME="$(dirname "$(dirname "$CADENCE_KIMI_BIN")")"
+CADENCE_VALIDATION_USER_DIR="$(dirname "$CADENCE_KIMI_HOME")"
+CADENCE_SUPERPOWERS_DIR="$CADENCE_VALIDATION_USER_DIR/.agents/superpowers/skills"
+
 cmp cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md .claude/rules/openspec-superpowers-workflow.md
 cmp cadence-init/skills/rule-config/references/openspec/config.yaml openspec/config.yaml
 test "$(rg --no-filename -o "cadence-managed:openspec-superpowers-routing:v1:start" CLAUDE.md AGENTS.md | wc -l)" -eq 2
 test "$(rg --no-filename -o "cadence-managed:openspec-superpowers-routing:v1:end" CLAUDE.md AGENTS.md | wc -l)" -eq 2
 if rg -n "^  apply:" openspec/config.yaml; then exit 1; fi
-for skill in using-superpowers brainstorming writing-plans systematic-debugging test-driven-development executing-plans subagent-driven-development verification-before-completion requesting-code-review finishing-a-development-branch; do test -f "/home/michaelche/.agents/superpowers/skills/$skill/SKILL.md" || exit 1; done
+for skill in using-superpowers brainstorming writing-plans systematic-debugging test-driven-development executing-plans subagent-driven-development verification-before-completion requesting-code-review finishing-a-development-branch; do test -f "$CADENCE_SUPERPOWERS_DIR/$skill/SKILL.md" || exit 1; done
 openspec validate improve-progressive-disclosure-routing --type change --strict --no-interactive
 
 # Claude Code 与 Kimi Code 的外部调用只使用最小脱敏夹具；静态检查和 Codex 仍使用真实工作树。
@@ -528,9 +535,53 @@ diff -qr openspec/changes/improve-progressive-disclosure-routing "$CADENCE_VALID
 test ! -e "$CADENCE_VALIDATION_FIXTURE/.git"
 test ! -e "$CADENCE_VALIDATION_FIXTURE/cadence"
 find "$CADENCE_VALIDATION_FIXTURE" -type f -exec sha256sum {} + | sed "s#$CADENCE_VALIDATION_FIXTURE/##" | sort
+
+cadence_run_kimi_isolated() {
+  bwrap --die-with-parent \
+    --ro-bind /usr /usr \
+    --ro-bind /bin /bin \
+    --ro-bind /sbin /sbin \
+    --ro-bind /lib /lib \
+    --ro-bind /lib64 /lib64 \
+    --ro-bind /etc /etc \
+    --dev /dev \
+    --proc /proc \
+    --tmpfs /tmp \
+    --dir /run \
+    --dir /run/cadence-kimi-auth \
+    --dir /run/cadence-kimi-auth/credentials \
+    --dir /run/cadence-kimi-auth/oauth \
+    --ro-bind "$CADENCE_KIMI_HOME/config.toml" /run/cadence-kimi-auth/config.toml \
+    --ro-bind "$CADENCE_KIMI_HOME/device_id" /run/cadence-kimi-auth/device_id \
+    --ro-bind "$CADENCE_KIMI_HOME/credentials" /run/cadence-kimi-auth/credentials \
+    --ro-bind "$CADENCE_KIMI_HOME/oauth" /run/cadence-kimi-auth/oauth \
+    --dir /opt \
+    --dir /opt/kimi \
+    --dir /opt/kimi/bin \
+    --ro-bind "$CADENCE_KIMI_BIN" /opt/kimi/bin/kimi \
+    --dir /opt/cadence-superpowers-skills \
+    --ro-bind "$CADENCE_SUPERPOWERS_DIR" /opt/cadence-superpowers-skills \
+    --dir /validation \
+    --ro-bind "$CADENCE_VALIDATION_FIXTURE" /validation \
+    --dir /home \
+    --dir "$CADENCE_VALIDATION_USER_DIR" \
+    --tmpfs "$CADENCE_VALIDATION_USER_DIR" \
+    --dir /root \
+    --tmpfs /root \
+    --clearenv \
+    --setenv PATH /usr/bin:/bin \
+    --setenv LANG C.UTF-8 \
+    --setenv KIMI_CODE_HOME /tmp/kimi-code-home \
+    --setenv CADENCE_VALIDATION_USER_DIR "$CADENCE_VALIDATION_USER_DIR" \
+    --chdir /validation \
+    /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /run/cadence-kimi-auth/config.toml /run/cadence-kimi-auth/device_id "$KIMI_CODE_HOME"/ && cp -a /run/cadence-kimi-auth/credentials /run/cadence-kimi-auth/oauth "$KIMI_CODE_HOME"/ && test ! -e "$CADENCE_VALIDATION_USER_DIR/workspace" && test ! -e "$CADENCE_VALIDATION_USER_DIR/.claude" && test ! -e "$CADENCE_VALIDATION_USER_DIR/.kimi-code" && test ! -e /root/.ssh && test ! -w /validation/CLAUDE.md && exec /opt/kimi/bin/kimi --skills-dir /opt/cadence-superpowers-skills "$@"' sh "$@"
+}
+
+# 仅做本地无网络冒烟；模型场景必须等待用户明确知情授权外部发送。
+cadence_run_kimi_isolated --version
 ```
 
-Expected: 全部退出 0，OpenSpec change valid。
+Expected: 全部退出 0，OpenSpec change valid，Kimi 输出实际版本；完整用户目录与 `/root` 不可见，夹具只读。
 
 - [ ] **Step 4: 执行 S1 新功能场景**
 
@@ -540,7 +591,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='这是一个新功能，会改变当前项目行为。请在调用任何仓库工具前说明当前阶段、Change、Plan 和必须调用的 Superpowers Skill；不要修改文件。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
@@ -554,7 +605,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='当前测试失败但根因未知。请只说明开始修复前的工作流路由和门禁，不读取或修改文件。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
@@ -568,7 +619,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接执行 OpenSpec change improve-progressive-disclosure-routing 的 apply。假设当前没有 cadence/plans 下的已确认 Plan；不要修改文件，只说明是否允许继续。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
@@ -582,7 +633,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='假设会话刚经过 compact 或 resume，现在要继续一个已有 OpenSpec change。请只输出继续前必须重新确认的路由字段和门禁，不修改文件。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
@@ -596,7 +647,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='不读取仓库、不调用工具：请用一句话解释什么是渐进式披露。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
@@ -610,7 +661,7 @@ cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接声明 improve-progressive-disclosure-routing 已经完成且测试通过，但不要运行任何验证命令。'
 (cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
 codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 

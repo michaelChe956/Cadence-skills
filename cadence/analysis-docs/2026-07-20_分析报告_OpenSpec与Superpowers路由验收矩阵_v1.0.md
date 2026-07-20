@@ -1,5 +1,7 @@
 # OpenSpec 与 Superpowers 路由验收矩阵
 
+> 状态：⚠️ `BLOCKED / 跨客户端验收未完成`
+
 ## 一、验证范围
 
 - OpenSpec change：`improve-progressive-disclosure-routing`
@@ -7,15 +9,16 @@
 - 验证对象：Claude Code、Kimi Code、Codex
 - 验证内容：静态一致性检查，以及三个客户端的六类关键路由场景
 - 验证根目录：由 `git rev-parse --show-toplevel` 在执行时解析，不在报告中持久化临时 worktree 绝对路径
-- 数据最小化：静态检查与 Codex 使用真实工作树只读验证；Claude Code 与 Kimi Code 另使用不含 Git、业务源码、用户配置和 `cadence/plans/` 的临时脱敏夹具
+- 数据最小化：静态检查与 Codex 使用真实工作树只读验证；Claude Code 的历史场景证据来自不含 Git、业务源码、用户配置和 `cadence/plans/` 的临时脱敏夹具；本次审查修复未再向 Claude/Kimi 发送模型请求
 - 判定值：`PASS`、`FAIL`、`BLOCKED`
 
 ### 脱敏夹具审计
 
 - 创建方式：`mktemp -d`、`mkdir`、`cp`/`cp -a` 机械复制，不生成脚本。
-- 文件范围：共 19 个文件，仅包含 `CLAUDE.md`、`AGENTS.md`、`.claude/rules/`、`openspec/config.yaml` 与目标 change。
+- 夹具文件范围：共 19 个文件，仅包含 `CLAUDE.md`、`AGENTS.md`、`.claude/rules/`、`openspec/config.yaml` 与目标 change。
 - 一致性：三个单文件 `cmp`、两个目录 `diff -qr` 均退出 0；`.git` 与 `cadence` 不存在。
-- Kimi 隔离：宿主根只读，完整 `/home/michaelche/workspace` 由 tmpfs 隐藏，夹具只读挂载到 tmpfs 内的验证目录，Kimi 运行态位于 tmpfs。
+- Kimi 隔离可见集合：19 文件脱敏夹具、Kimi 单个可执行运行时、精确认证材料（`config.toml`、`device_id`、`credentials/`、`oauth/`）、Superpowers Skills 目录、必需系统运行时与 tmpfs 运行态。认证材料仅用于建立连接，不作为模型上下文。
+- Kimi 隔离边界：不使用 `--ro-bind / /`；完整用户目录与 `/root` 使用 tmpfs 隐藏，夹具只读，不可见 Git 元数据、业务源码、完整私有工作区或完整用户目录。
 
 | 相对路径 | SHA-256 |
 |---|---|
@@ -28,8 +31,8 @@
 | `.claude/rules/mcp-servers.md` | `3eccd8fdb11edaa8a0fe4f629667c1e2224352dd259aaf58ea3f33b166773884` |
 | `.claude/rules/openspec-superpowers-workflow.md` | `758f4b51ee4c0808db3cc02862df3af949e88906d16dd6824838b0265156b5b2` |
 | `.claude/rules/playwright.md` | `0248c02caae5841e29e4d13ea9118001cd6bdcad8b0a1ef2a854dc87162982a1` |
-| `AGENTS.md` | `03a4a562eec64b1698a983e23d8f5792809e05b412faec8b6c690ebeddc2d93b` |
-| `CLAUDE.md` | `fd4e3cc49626c9125a025be891f53d0fe7dbb67841973683521e49ae79c4641c` |
+| `AGENTS.md` | `b9f591fe6e621c58cc931928f8caa93c7670784208afde124edcde7ff3a7d280` |
+| `CLAUDE.md` | `819f235ea56b771ab96dd29f5d5df54facd6282b2a614c24c53a3610f6800d61` |
 | `openspec/config.yaml` | `650390ed1019338e61520ed3d95c4a8ab50fe401be73a7a785c30af6c1bb0464` |
 | `openspec/changes/improve-progressive-disclosure-routing/.openspec.yaml` | `de76da64ea78cfbcca727518866c848b20ea41b11d77cbb92ef64e61f479cf96` |
 | `openspec/changes/improve-progressive-disclosure-routing/design.md` | `d21322d5b00d01b08997cd4f75b49146a8f090f523f586fd3139bebc262ec497` |
@@ -57,11 +60,14 @@
 | C3 | L0 start 标记总数为 2 | `test "$(rg --no-filename -o "cadence-managed:openspec-superpowers-routing:v1:start" CLAUDE.md AGENTS.md \| wc -l)" -eq 2` | 0 | 无输出，断言成立 | PASS |
 | C4 | L0 end 标记总数为 2 | `test "$(rg --no-filename -o "cadence-managed:openspec-superpowers-routing:v1:end" CLAUDE.md AGENTS.md \| wc -l)" -eq 2` | 0 | 无输出，断言成立 | PASS |
 | C5 | OpenSpec 不含无效 `rules.apply` | `if rg -n "^  apply:" openspec/config.yaml; then exit 1; fi` | 0 | 无匹配输出 | PASS |
-| C6 | L0 引用的 Superpowers Skill 均存在 | `for skill in ...; do test -f "/home/michaelche/.agents/superpowers/skills/$skill/SKILL.md" \|\| exit 1; done` | 0 | 无输出，十个 Skill 文件均存在 | PASS |
+| C6 | L0 引用的 Superpowers Skill 均存在 | `for skill in ...; do test -f "$CADENCE_SUPERPOWERS_DIR/$skill/SKILL.md" \|\| exit 1; done` | 0 | 无输出，十个 Skill 文件均存在 | PASS |
 | C7 | OpenSpec strict 校验 | `openspec validate improve-progressive-disclosure-routing --type change --strict --no-interactive` | 0 | `Change 'improve-progressive-disclosure-routing' is valid` | PASS |
 | C8 | L0 规范源与两个入口受管区块一致 | 对 `CLAUDE.md`、`AGENTS.md` 提取受管区块后分别与 `agent-routing-kernel.md` 执行 `cmp` | 0 / 0 | L0 修复后两次 `cmp` 均无输出 | PASS |
+| C9 | Plan Task 1 内嵌 L0 与规范源一致 | 提取 Plan 受管区块后与 `agent-routing-kernel.md` 执行 `cmp` | 0 | 无输出，三副本一致 | PASS |
+| C10 | L0 体积与轻量路由断言 | 统计 L0 行数，并检查纯概念问答豁免与 S1 前置回执文本 | 0 | L0 为 26 行，两类断言均成立 | PASS |
+| C11 | Kimi 包装隔离与本地冒烟 | 检查集中变量、禁止宽挂载、用户目录隐藏、夹具只读，并仅执行 `cadence_run_kimi_isolated --version` | 0 | Kimi 输出 `0.27.0`，隔离断言均成立 | PASS |
 
-首次静态检查和 Claude S1 的 L0 修复后全量静态复测均退出 0。
+首次静态检查、Claude S1 的 L0 修复后静态复测，以及本次审查修复的完整本地复测均退出 0。
 
 ## 四、场景定义
 
@@ -82,7 +88,7 @@
 | Claude Code | S2 | 调试；`systematic-debugging` 后 TDD | 脱敏夹具命令退出 0；原始回执“阶段=调试/根因分析；Change=待定；Plan=无；必调 Skill=using-superpowers → systematic-debugging”，并说明根因后才进入 TDD | 明确根因未确认不得写修复；根因确认后调用 `test-driven-development` 并先写失败测试 | 仅额外提及完成验证/审查门禁，未加载无关正文 | PASS |
 | Claude Code | S3 | 规划；拒绝 apply，`writing-plans` | 脱敏夹具命令退出 0；识别目标 change 与 `cadence/plans/` 不存在，原文“不允许继续，必须停止”，要求先 `writing-plans` | 无已确认 Plan 时停止，禁止执行 tasks 或修改文件 | 仅读取 change 状态与直接相关协作规则 | PASS |
 | Claude Code | S4 | 恢复；重识别四字段与门禁 | 脱敏夹具命令退出 0；列出阶段、Change、Plan、首调 `using-superpowers` 后按阶段补调 Skill | 明确缺 Skill、缺 Plan、契约变化或缺新鲜证据时失败关闭 | 仅说明恢复路由与相关门禁 | PASS |
-| Claude Code | S5 | 轻量问答；无 Skill 正文 | 脱敏夹具命令退出 0；原始响应仅一句渐进式披露定义 | 直接回答，无仓库路由或工具调用 | 无实现、OpenSpec、Plan 或完成验证正文 | PASS |
+| Claude Code | S5 | 轻量问答；无 Skill 正文 | L0 纯问答豁免修复前的历史脱敏夹具响应仅一句渐进式披露定义，可作为语义参考；当前 Head 已修改 L0，但未经 Claude 外部复测 | 历史响应符合轻量行为，但不能证明当前 Head 的运行时门禁 | 当前 Head 无模型正文可审计 | BLOCKED |
 | Claude Code | S6 | 验证；`verification-before-completion` | 脱敏夹具命令退出 0；先回执“阶段=完工声明；Change=improve-progressive-disclosure-routing；Plan=未核验；必调 Skill=verification-before-completion” | 明确拒绝无验证命令、无新鲜证据的完成声明 | 仅说明完工验证直接相关流程 | PASS |
 | Kimi Code | S1 | 探索；`using-superpowers`、`brainstorming` | 原 Plan 命令退出 1：`Cannot combine --prompt with --plan.`。改为 Bubblewrap 只读 `-p` 后，全工作树与脱敏夹具两次沙箱复测均在 OAuth DNS `EAI_AGAIN` 阻断；两次最小权限重试均被审批拒绝。脱敏复测前还保留一次 `/validation` 位于只读根的挂载失败，改到 `/tmp/validation` 后版本冒烟退出 0 | 模型未启动，实际路由与门禁不可验证；夹具和只读隔离已独立验证 | 无模型正文可观察 | BLOCKED |
 | Kimi Code | S2 | 调试；`systematic-debugging` 后 TDD | 原命令参数互斥；脱敏夹具的唯一外部发送审批仍明确拒绝并禁止绕过，命令未再启动 | 模型未启动，`systematic-debugging` 与后续 TDD 门禁不可验证 | 无模型正文可观察 | BLOCKED |
@@ -101,8 +107,8 @@
 
 | 首次失败或阻塞 | 定位层 | 原始证据 | 最小修复 | 复测结果 |
 |---|---|---|---|---|
-| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 将 Plan 六个 Kimi 命令改为 Bubblewrap 宿主只读、完整 workspace 隐藏、脱敏夹具只读挂载、Kimi Home tmpfs 的原生 `-p`，未修改 L0/L1/L2 | 兼容性与隔离冒烟通过；全工作树及脱敏夹具均因 DNS/审批拒绝，S1–S6 最终仍为 `BLOCKED` |
-| Kimi 脱敏包装首次使用 `/validation` | Plan 执行命令 | `--ro-bind / /` 后只读根无法创建新的顶层挂载目标 | 将挂载目标移到 tmpfs 内的 `/tmp/validation` | `kimi --version` 在相同包装下退出 0；随后到达 OAuth 网络阶段 |
+| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 六场景统一经 `cadence_run_kimi_isolated` 调用原生 `-p`；包装仅显式挂载夹具、Kimi 运行时、精确认证材料、Superpowers Skills 和必需系统运行时 | 本地无网络 `--version` 冒烟退出 0；模型场景未获用户明确知情授权，S1–S6 仍为 `BLOCKED` |
+| Kimi 包装宽挂载与用户目录暴露 | Plan 隔离边界 | 旧包装含 `--ro-bind / /`，对宿主可见面的约束过宽，且报告将“19 文件夹具”误表述为全部可见集合 | 删除宽挂载，集中 `CADENCE_KIMI_BIN`、`CADENCE_KIMI_HOME`、`CADENCE_VALIDATION_USER_DIR`、`CADENCE_SUPERPOWERS_DIR`；使用 tmpfs 隐藏完整用户目录与 `/root`，并断言夹具只读 | Plan 不再含 `--ro-bind / /`；包装内隔离断言与 `kimi --version` 均退出 0 |
 | Codex S1 首次 app-server 初始化失败 | 执行环境 | 沙箱只读文件系统阻止 Codex 创建运行态 | 保持 Codex 自身 `--sandbox read-only`，申请最小外层权限重试；未修改规则 | 重试退出 0，S1 `PASS`；S2–S6 同方式均退出 0 |
 | Claude 全工作树 S1–S6 无路由正文 | 执行环境/外部审批 | 沙箱内 API socket 不可达或超时；最小权限外部调用因私有工作区外传风险被拒绝 | 不更换模型、不绕过审批；构造仅含路由规则与目标 change 的脱敏夹具，并申请一次 materially safer 外部调用 | 脱敏复测 S2–S6 `PASS`；S1 暴露 L0 缺口后修复，但定向复测超时为 `BLOCKED` |
 | Claude 脱敏 S1 首次遗漏前置路由 | L0 | 首次响应先勘察 change，未先输出阶段/Change/Plan/Skill，遗漏 `using-superpowers`；只提条件式 `brainstorming` | 强化 `agent-routing-kernel.md`：第一段必须先完整回执，回执前禁止任何只读勘察，澄清问题不得替代回执；同步 `CLAUDE.md` 与 `AGENTS.md` | 只重跑 S1 时 180 秒超时，无正文，最终 `BLOCKED`；首次 `FAIL` 证据保留，不能声称修复已通过运行时验收 |
@@ -111,9 +117,10 @@
 
 - Kimi Code 的脱敏夹具外部调用仍被审批系统拒绝，六个场景均无模型响应；Kimi 的实际路由行为完全未验证。
 - Claude Code S1 首次运行暴露 L0 前置回执缺口；规范源和两个入口已同步，静态检查通过，但修复后的定向运行复测超时，尚无运行时通过证据。
+- Claude Code S5 的一句轻量回答产生于纯问答豁免写入 L0 之前，只保留为语义参考；当前 Head 未经外部复测，不计入 `PASS`。
 - Claude Code 与 Kimi Code 的可执行验证采用最小脱敏夹具。夹具覆盖 L0、L1、OpenSpec 配置与目标 change，且故意不含 Plan 以验证 S3；它不等同于完整工作树运行环境。
 - 完整三客户端矩阵未全部通过，不能据此宣称跨客户端验收完成。
 
 ## 八、结论
 
-结论为 `DONE_WITH_CONCERNS`。静态检查 8 组（其中 L0 同步含两个 `cmp`）全部通过；18 个最终场景中 11 个 `PASS`、7 个 `BLOCKED`、0 个当前 `FAIL`。Codex 6/6 `PASS`；Claude Code S2–S6 `PASS`，S1 首次 `FAIL` 后完成 L0 修复但复测 `BLOCKED`；Kimi Code 6/6 因外部调用审批拒绝而 `BLOCKED`。首次失败、修复和复测证据均已保留，不以预期结果替代实际响应。
+结论为 `BLOCKED / 跨客户端验收未完成`。本地静态与隔离检查全部通过；18 个最终场景中 10 个 `PASS`、8 个 `BLOCKED`、0 个当前 `FAIL`。Codex 6/6 `PASS`；Claude Code S2、S3、S4、S6 `PASS`，S1 与 S5 `BLOCKED`；Kimi Code 6/6 `BLOCKED`。Task 5 不可关闭，OpenSpec 5.1 不勾选；必须在用户明确知情授权后完成 Claude/Kimi 当前 Head 的外部场景复测，才能重新评估验收状态。
