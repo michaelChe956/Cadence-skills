@@ -572,11 +572,7 @@ rg -n "OpenSpec mapping:" cadence/plans/2026-07-20_计划文档_实施_OpenSpec�
 
 Expected: 16 个 requirements 均能映射到 Task 1-6；发现缺口时增加验证，不得只改勾选状态。
 
-- [ ] **Step 2: 标记高层工作包 1.1 至 5.1**
-
-只有 Task 1-5 的文件、提交和证据均存在时，使用 `apply_patch` 将 OpenSpec `tasks.md` 中 1.1 至 5.1 改为 `- [x]`；保留 6.1 未完成。
-
-- [ ] **Step 3: 运行完整静态与格式验证**
+- [ ] **Step 2: 运行完整静态与格式验证**
 
 ```bash
 git diff --check
@@ -585,15 +581,29 @@ openspec instructions apply --change improve-progressive-disclosure-routing --js
 rg -n "T[B]D|T[O]DO|implement[[:space:]]+later|fill[[:space:]]+in[[:space:]]+details" cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md cadence-init/skills/rule-config/SKILL.md cadence/plans/2026-07-20_计划文档_实施_OpenSpec与Superpowers渐进式路由_v1.0.md
 ```
 
-Expected: diff 和 OpenSpec 校验退出 0；apply 显示前 5 个工作包完成；占位符扫描无输出。
+Expected: diff 和 OpenSpec 校验退出 0；apply 指令成功返回当前实际进度且状态不为 `blocked`；占位符扫描无输出。本步骤不要求 1.1 至 5.1 已完成。
 
-- [ ] **Step 4: 调用完成前验证和审查流程**
+- [ ] **Step 3: 调用完成前验证和审查流程**
 
-调用 `superpowers:verification-before-completion`，重新运行 Step 3 并读取输出。随后调用 `superpowers:requesting-code-review` 检查规范符合性、渐进披露开销、升级安全和三客户端证据；问题修复后重新验证。
+调用 `superpowers:verification-before-completion`，重新运行 Step 2 并读取输出。随后调用 `superpowers:requesting-code-review` 检查规范符合性、渐进披露开销、升级安全和三客户端证据。发现问题时先修复，再重新执行 Step 2 并重新请求审查，直至验证和审查均通过；在此之前不得修改 OpenSpec 工作包勾选状态。
 
-- [ ] **Step 5: 标记工作包 6.1 并验证状态**
+- [ ] **Step 4: 标记高层工作包 1.1 至 5.1**
 
-将 6.1 改为 `- [x]`，运行：
+只有 Task 1-5 的文件、提交、证据以及 Step 3 的审查通过结论均存在时，使用 `apply_patch` 将 OpenSpec `tasks.md` 中 1.1 至 5.1 改为 `- [x]`；保留 6.1 未完成。
+
+- [ ] **Step 5: 验证前五个工作包状态**
+
+```bash
+openspec validate improve-progressive-disclosure-routing --type change --strict --no-interactive
+openspec status --change improve-progressive-disclosure-routing --json
+openspec instructions apply --change improve-progressive-disclosure-routing --json
+```
+
+Expected: change valid，4/4 artifacts complete，apply progress 5/6，唯一剩余工作包为 6.1，state `ready`。
+
+- [ ] **Step 6: 标记工作包 6.1 并验证最终状态**
+
+Step 5 通过后，将 6.1 改为 `- [x]`，运行：
 
 ```bash
 openspec validate improve-progressive-disclosure-routing --type change --strict --no-interactive
@@ -603,13 +613,13 @@ openspec instructions apply --change improve-progressive-disclosure-routing --js
 
 Expected: change valid，4/4 artifacts complete，apply progress 6/6，state `all_done`。
 
-- [ ] **Step 6: 提交最终状态**
+- [ ] **Step 7: 提交最终状态**
 
 ```bash
 git add openspec/changes/improve-progressive-disclosure-routing/tasks.md cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md
 git commit -m "docs: complete progressive routing verification"
 ```
 
-- [ ] **Step 7: 交付归档前状态**
+- [ ] **Step 8: 交付归档前状态**
 
 向用户报告实现提交、严格校验结果、三客户端矩阵、未验证风险和 OpenSpec 6/6 状态。不要自动 sync/archive；用户确认归档后调用 `openspec-archive-change`，归档完成后使用 `superpowers:finishing-a-development-branch` 选择集成方式。
