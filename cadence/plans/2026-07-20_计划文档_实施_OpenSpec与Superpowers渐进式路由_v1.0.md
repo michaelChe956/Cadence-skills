@@ -847,7 +847,7 @@ jq -r 'select(.type=="item.completed") | select(.item.type=="agent_message" or .
 
 复审范围为 `c9e359a..HEAD` 加本 Task 未提交差异。最终结果为 Critical 0、Important 0、`Ready to merge: Yes`；唯一 Minor 已通过逐行断言全部非 marker 内容修复。审查通过后勾选 OpenSpec 7.1。
 
-- [ ] **Step 8: 提交、推送并创建 PR**
+- [x] **Step 8: 提交、推送并创建 PR**
 
 ```bash
 git add cadence-init/skills/rule-config openspec/changes/improve-progressive-disclosure-routing cadence/plans/2026-07-20_计划文档_实施_OpenSpec与Superpowers渐进式路由_v1.0.md cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由脱敏证据_v1.0.md CLAUDE.md AGENTS.md .claude/rules/openspec-superpowers-workflow.md README.md
@@ -856,4 +856,4 @@ git push -u origin feat/improve-progressive-disclosure-routing
 gh pr create --base main --head feat/improve-progressive-disclosure-routing
 ```
 
-Expected: 提交只包含本变更范围；push 成功；PR 指向 `main` 并包含验证与已知风险摘要。不自动 archive OpenSpec change。
+实际结果：主要修复提交为 `2d41a2d`，分支已推送到 `origin/feat/improve-progressive-disclosure-routing`，PR 为 `https://github.com/michaelChe956/Cadence-skills/pull/69`，base 为 `main`。未自动 archive OpenSpec change。
