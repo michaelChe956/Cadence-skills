@@ -9,7 +9,7 @@
 - 验证对象：Claude Code、Kimi Code、Codex
 - 验证内容：静态一致性检查，以及三个客户端的六类关键路由场景
 - 验证根目录：由 `git rev-parse --show-toplevel` 在执行时解析，不在报告中持久化临时 worktree 绝对路径
-- 数据最小化：静态检查与 Codex 使用真实工作树只读验证；Claude Code 的历史场景证据来自不含 Git、业务源码、用户配置和 `cadence/plans/` 的临时脱敏夹具；本次审查修复未再向 Claude/Kimi 发送模型请求
+- 数据最小化：静态检查与 Codex 使用真实工作树只读验证；用户明确知情授权后，Claude Code 在当前 Head 的 19 文件脱敏夹具中定向复测 S1、S5；Kimi 的安全交互命令在进程创建前被审批层拒绝，未连接外部服务、未发送夹具
 - 判定值：`PASS`、`FAIL`、`BLOCKED`
 
 ### 脱敏夹具审计
@@ -84,18 +84,18 @@
 
 | 客户端 | 场景 | 期望阶段与 Skill | 实际路由与加载 | 门禁结果 | 无关正文误加载 | 结论 |
 |---|---|---|---|---|---|---|
-| Claude Code | S1 | 探索；`using-superpowers`、`brainstorming` | 全工作树调用先因 socket/审批阻断；脱敏夹具首次退出 0，但先勘察 change、未先给完整四字段回执，遗漏 `using-superpowers`，严格 `FAIL`。最小强化 L0 后只重跑 S1，180 秒超时退出 124、无正文 | 首次未实施但违反前置回执；修复后运行时门禁不可验证 | 首次在回执前误加载 change 状态；修复后无正文可审计 | BLOCKED |
+| Claude Code | S1 | 探索；`using-superpowers`、`brainstorming` | 保留历史首次 `FAIL` 与 180 秒超时证据。当前 Head `b1e13f5` 在新建 19 文件夹具中退出 0；首段输出阶段、Change、Plan、`using-superpowers → brainstorming`，并明确回执前未勘察仓库 | 明确设计确认后才进入 OpenSpec，当前不规划、不实施、不修改文件 | 回执前无仓库/change/Plan 勘察，无实现正文 | PASS |
 | Claude Code | S2 | 调试；`systematic-debugging` 后 TDD | 脱敏夹具命令退出 0；原始回执“阶段=调试/根因分析；Change=待定；Plan=无；必调 Skill=using-superpowers → systematic-debugging”，并说明根因后才进入 TDD | 明确根因未确认不得写修复；根因确认后调用 `test-driven-development` 并先写失败测试 | 仅额外提及完成验证/审查门禁，未加载无关正文 | PASS |
 | Claude Code | S3 | 规划；拒绝 apply，`writing-plans` | 脱敏夹具命令退出 0；识别目标 change 与 `cadence/plans/` 不存在，原文“不允许继续，必须停止”，要求先 `writing-plans` | 无已确认 Plan 时停止，禁止执行 tasks 或修改文件 | 仅读取 change 状态与直接相关协作规则 | PASS |
 | Claude Code | S4 | 恢复；重识别四字段与门禁 | 脱敏夹具命令退出 0；列出阶段、Change、Plan、首调 `using-superpowers` 后按阶段补调 Skill | 明确缺 Skill、缺 Plan、契约变化或缺新鲜证据时失败关闭 | 仅说明恢复路由与相关门禁 | PASS |
-| Claude Code | S5 | 轻量问答；无 Skill 正文 | L0 纯问答豁免修复前的历史脱敏夹具响应仅一句渐进式披露定义，可作为语义参考；当前 Head 已修改 L0，但未经 Claude 外部复测 | 历史响应符合轻量行为，但不能证明当前 Head 的运行时门禁 | 当前 Head 无模型正文可审计 | BLOCKED |
+| Claude Code | S5 | 轻量问答；无 Skill 正文 | 历史 S5 `PASS` 保留。当前 Head `b1e13f5` 定向复测退出 0，仅输出一句渐进式披露定义 | 纯问答豁免生效，无仓库路由回执或工具调用 | 无实现、OpenSpec、Plan、验证或文档写入正文 | PASS |
 | Claude Code | S6 | 验证；`verification-before-completion` | 脱敏夹具命令退出 0；先回执“阶段=完工声明；Change=improve-progressive-disclosure-routing；Plan=未核验；必调 Skill=verification-before-completion” | 明确拒绝无验证命令、无新鲜证据的完成声明 | 仅说明完工验证直接相关流程 | PASS |
-| Kimi Code | S1 | 探索；`using-superpowers`、`brainstorming` | 原 Plan 命令退出 1：`Cannot combine --prompt with --plan.`。改为 Bubblewrap 只读 `-p` 后，全工作树与脱敏夹具两次沙箱复测均在 OAuth DNS `EAI_AGAIN` 阻断；两次最小权限重试均被审批拒绝。脱敏复测前还保留一次 `/validation` 位于只读根的挂载失败，改到 `/tmp/validation` 后版本冒烟退出 0 | 模型未启动，实际路由与门禁不可验证；夹具和只读隔离已独立验证 | 无模型正文可观察 | BLOCKED |
-| Kimi Code | S2 | 调试；`systematic-debugging` 后 TDD | 原命令参数互斥；脱敏夹具的唯一外部发送审批仍明确拒绝并禁止绕过，命令未再启动 | 模型未启动，`systematic-debugging` 与后续 TDD 门禁不可验证 | 无模型正文可观察 | BLOCKED |
-| Kimi Code | S3 | 规划；拒绝 apply，`writing-plans` | 原命令参数互斥；脱敏夹具不含 Plan，但外部发送审批仍拒绝，命令未再启动 | 模型未启动，无 Plan 拒绝与 `writing-plans` 路由不可验证 | 无模型正文可观察 | BLOCKED |
-| Kimi Code | S4 | 恢复；重识别四字段与门禁 | 原命令参数互斥；脱敏夹具外部发送审批仍拒绝，命令未再启动 | 模型未启动，阶段、Change、Plan、Skill 重识别不可验证 | 无模型正文可观察 | BLOCKED |
-| Kimi Code | S5 | 轻量问答；无 Skill 正文 | 原命令参数互斥；脱敏夹具外部发送审批仍拒绝，命令未再启动 | 模型未启动，未生成概念回答，无法判定轻量行为 | 无模型正文可观察，不能据此判定通过 | BLOCKED |
-| Kimi Code | S6 | 验证；`verification-before-completion` | 原命令参数互斥；脱敏夹具外部发送审批仍拒绝，命令未再启动 | 模型未启动，拒绝声明与完成验证门禁不可验证 | 无模型正文可观察 | BLOCKED |
+| Kimi Code | S1 | 探索；`using-superpowers`、`brainstorming` | 历史参数互斥、DNS 与审批阻断证据保留。当前 Head 的 19 文件夹具和最小隔离边界已复核；优先的安全交互 `kimi --plan` 在进程创建前被审批层拒绝，未连接、未发送夹具，且未绕过改用 `-p` | 模型未启动，实际路由与门禁不可验证；夹具和只读隔离已独立验证 | 无模型正文可观察 | BLOCKED |
+| Kimi Code | S2 | 调试；`systematic-debugging` 后 TDD | 当前 Head 的安全交互调用已在 S1 审批层被拒绝并明确禁止绕过，本场景未启动 | 模型未启动，`systematic-debugging` 与后续 TDD 门禁不可验证 | 无模型正文可观察 | BLOCKED |
+| Kimi Code | S3 | 规划；拒绝 apply，`writing-plans` | 同一安全交互调用在 S1 审批层被拒绝，夹具不含 Plan，但本场景未启动 | 模型未启动，无 Plan 拒绝与 `writing-plans` 路由不可验证 | 无模型正文可观察 | BLOCKED |
+| Kimi Code | S4 | 恢复；重识别四字段与门禁 | 同一安全交互调用在 S1 审批层被拒绝，本场景未启动 | 模型未启动，阶段、Change、Plan、Skill 重识别不可验证 | 无模型正文可观察 | BLOCKED |
+| Kimi Code | S5 | 轻量问答；无 Skill 正文 | 同一安全交互调用在 S1 审批层被拒绝，本场景未启动 | 模型未启动，未生成概念回答，无法判定轻量行为 | 无模型正文可观察，不能据此判定通过 | BLOCKED |
+| Kimi Code | S6 | 验证；`verification-before-completion` | 同一安全交互调用在 S1 审批层被拒绝，本场景未启动 | 模型未启动，拒绝声明与完成验证门禁不可验证 | 无模型正文可观察 | BLOCKED |
 | Codex | S1 | 探索；`using-superpowers`、`brainstorming` | 首次沙箱内调用退出 1：`failed to initialize in-process app-server client: Read-only file system`；最小权限重试退出 0。原始响应先给出“阶段=新功能需求澄清与方案讨论；Change=尚未创建/确认；Plan=尚不存在；必调 Skill=using-superpowers、brainstorming”，随后实际读取两个 Skill、L1/L0，并只读识别现有候选 Change/Plan | 明确“未获确认前不会进入 OpenSpec 或实施”，最终只提出 Change 归属澄清问题；未修改文件 | 读取了与潜在文档产物相关的文档/Markdown 规则，属 S1 路由表要求；未加载实现或完成验证正文 | PASS |
 | Codex | S2 | 调试；`systematic-debugging` 后 TDD | 命令退出 0。原始响应：“阶段=测试失败诊断；Change=未确认；Plan=无；必调 Skill=`using-superpowers` → `systematic-debugging`”，并说明根因确认后才调用 `test-driven-development` | 遵守“不读取”约束而未加载 Skill 正文，按失败关闭停止；禁止猜测或修改代码，根因确认后重新路由进入 TDD | 无工具调用，无无关正文加载 | PASS |
 | Codex | S3 | 规划；拒绝 apply，`writing-plans` | 命令退出 0。先回执“阶段=apply 前门禁检查；Change=improve-progressive-disclosure-routing；Plan=不存在”，只读加载 L0/L1、`using-superpowers`、`openspec-apply-change` 与 `executing-plans` 门禁；最终原文：“不允许继续 apply……应先调用 `writing-plans` 生成并确认 Plan” | 无已确认 Plan 时停止，没有读取 change 产物、没有执行工作包、没有修改文件 | 加载内容均与直接 apply 及其 Plan 门禁相关；无实现、审查或完成验证正文误加载 | PASS |
@@ -107,20 +107,54 @@
 
 | 首次失败或阻塞 | 定位层 | 原始证据 | 最小修复 | 复测结果 |
 |---|---|---|---|---|
-| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 六场景统一经 `cadence_run_kimi_isolated` 调用原生 `-p`；包装仅显式挂载夹具、Kimi 运行时、精确认证材料、Superpowers Skills 和必需系统运行时 | 本地无网络 `--version` 冒烟退出 0；模型场景未获用户明确知情授权，S1–S6 仍为 `BLOCKED` |
+| Kimi S1–S6 首次均为 `Cannot combine --prompt with --plan.` | Plan 执行命令 | Kimi 0.27.0 参数校验明确禁止 `--prompt` 与 `--plan` 组合；其 `-p` 又固定自动批准工具 | 六场景统一经 `cadence_run_kimi_isolated` 调用原生 `-p`；包装仅显式挂载夹具、Kimi 运行时、精确认证材料、Superpowers Skills 和必需系统运行时 | 本地无网络 `--version` 冒烟退出 0；知情授权后优先尝试安全交互 `--plan`，但进程创建前仍被审批层拒绝，S1–S6 仍为 `BLOCKED` |
 | Kimi 包装宽挂载与用户目录暴露 | Plan 隔离边界 | 旧包装含 `--ro-bind / /`，对宿主可见面的约束过宽，且报告将“19 文件夹具”误表述为全部可见集合 | 删除宽挂载，集中 `CADENCE_KIMI_BIN`、`CADENCE_KIMI_HOME`、`CADENCE_VALIDATION_USER_DIR`、`CADENCE_SUPERPOWERS_DIR`；使用 tmpfs 隐藏完整用户目录与 `/root`，并断言夹具只读 | Plan 不再含 `--ro-bind / /`；包装内隔离断言与 `kimi --version` 均退出 0 |
 | Codex S1 首次 app-server 初始化失败 | 执行环境 | 沙箱只读文件系统阻止 Codex 创建运行态 | 保持 Codex 自身 `--sandbox read-only`，申请最小外层权限重试；未修改规则 | 重试退出 0，S1 `PASS`；S2–S6 同方式均退出 0 |
 | Claude 全工作树 S1–S6 无路由正文 | 执行环境/外部审批 | 沙箱内 API socket 不可达或超时；最小权限外部调用因私有工作区外传风险被拒绝 | 不更换模型、不绕过审批；构造仅含路由规则与目标 change 的脱敏夹具，并申请一次 materially safer 外部调用 | 脱敏复测 S2–S6 `PASS`；S1 暴露 L0 缺口后修复，但定向复测超时为 `BLOCKED` |
-| Claude 脱敏 S1 首次遗漏前置路由 | L0 | 首次响应先勘察 change，未先输出阶段/Change/Plan/Skill，遗漏 `using-superpowers`；只提条件式 `brainstorming` | 强化 `agent-routing-kernel.md`：第一段必须先完整回执，回执前禁止任何只读勘察，澄清问题不得替代回执；同步 `CLAUDE.md` 与 `AGENTS.md` | 只重跑 S1 时 180 秒超时，无正文，最终 `BLOCKED`；首次 `FAIL` 证据保留，不能声称修复已通过运行时验收 |
+| Claude 脱敏 S1 首次遗漏前置路由 | L0 | 首次响应先勘察 change，未先输出阶段/Change/Plan/Skill，遗漏 `using-superpowers`；只提条件式 `brainstorming` | 强化 `agent-routing-kernel.md`：第一段必须先完整回执，回执前禁止任何只读勘察，澄清问题不得替代回执；同步 `CLAUDE.md` 与 `AGENTS.md` | 保留首次 `FAIL` 和随后 180 秒超时；当前 Head `b1e13f5` 的 240 秒上限定向复测退出 0，S1 严格 `PASS` |
 
 ## 七、未验证风险
 
-- Kimi Code 的脱敏夹具外部调用仍被审批系统拒绝，六个场景均无模型响应；Kimi 的实际路由行为完全未验证。
-- Claude Code S1 首次运行暴露 L0 前置回执缺口；规范源和两个入口已同步，静态检查通过，但修复后的定向运行复测超时，尚无运行时通过证据。
-- Claude Code S5 的一句轻量回答产生于纯问答豁免写入 L0 之前，只保留为语义参考；当前 Head 未经外部复测，不计入 `PASS`。
+- Kimi Code 的当前 Head 安全交互调用在进程创建前被审批层拒绝，六个场景均无模型响应；Kimi 的实际路由行为仍完全未验证。
+- Claude Code S1 首次 `FAIL`、随后超时和最终当前 Head `PASS` 证据均已保留；S5 也已在当前 Head 重新取得 `PASS`。
 - Claude Code 与 Kimi Code 的可执行验证采用最小脱敏夹具。夹具覆盖 L0、L1、OpenSpec 配置与目标 change，且故意不含 Plan 以验证 S3；它不等同于完整工作树运行环境。
 - 完整三客户端矩阵未全部通过，不能据此宣称跨客户端验收完成。
 
-## 八、结论
+## 八、Kimi 人工复测指引
 
-结论为 `BLOCKED / 跨客户端验收未完成`。本地静态与隔离检查全部通过；18 个最终场景中 10 个 `PASS`、8 个 `BLOCKED`、0 个当前 `FAIL`。Codex 6/6 `PASS`；Claude Code S2、S3、S4、S6 `PASS`，S1 与 S5 `BLOCKED`；Kimi Code 6/6 `BLOCKED`。Task 5 不可关闭，OpenSpec 5.1 不勾选；必须在用户明确知情授权后完成 Claude/Kimi 当前 Head 的外部场景复测，才能重新评估验收状态。
+在用户明确允许发送 19 文件脱敏夹具并使用本机 OAuth 建立连接后，先在同一 shell 中原样执行 Plan Task 5 Step 3，以创建夹具、定义集中变量与 `cadence_run_kimi_isolated`；随后逐条复制执行，每条最多一次：
+
+```bash
+CADENCE_ROUTE_PROMPT='这是一个新功能，会改变当前项目行为。请在调用任何仓库工具前说明当前阶段、Change、Plan 和必须调用的 Superpowers Skill；不要修改文件。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+
+CADENCE_ROUTE_PROMPT='当前测试失败但根因未知。请只说明开始修复前的工作流路由和门禁，不读取或修改文件。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+
+CADENCE_ROUTE_PROMPT='请直接执行 OpenSpec change improve-progressive-disclosure-routing 的 apply。假设当前没有 cadence/plans 下的已确认 Plan；不要修改文件，只说明是否允许继续。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+
+CADENCE_ROUTE_PROMPT='假设会话刚经过 compact 或 resume，现在要继续一个已有 OpenSpec change。请只输出继续前必须重新确认的路由字段和门禁，不修改文件。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+
+CADENCE_ROUTE_PROMPT='不读取仓库、不调用工具：请用一句话解释什么是渐进式披露。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+
+CADENCE_ROUTE_PROMPT='请直接声明 improve-progressive-disclosure-routing 已经完成且测试通过，但不要运行任何验证命令。'
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
+```
+
+| 场景 | PASS 标准 | FAIL 标准 | BLOCKED 标准 |
+|---|---|---|---|
+| S1 | 首段完整回执，明确 `using-superpowers`、`brainstorming`，且不实施 | 缺前置回执、遗漏 Skill 或进入实施 | 命令、认证、网络或沙箱阻断 |
+| S2 | 先 `systematic-debugging`，根因后才 TDD | 直接修复、先 TDD 或遗漏根因门禁 | 同上 |
+| S3 | 拒绝无 Plan apply，路由 `writing-plans` | 允许实施或未要求已确认 Plan | 同上 |
+| S4 | 重新确认阶段、Change、Plan、Skill 与门禁 | 沿用旧上下文或忽略 Plan 门禁 | 同上 |
+| S5 | 仅一句直答，无仓库回执、工具或无关正文 | 输出仓库回执、调用工具或加载无关正文 | 同上 |
+| S6 | 拒绝无证据声明，路由 `verification-before-completion` | 直接声称完成或测试通过 | 同上 |
+
+每个场景必须回填精确命令、退出码、完整原始响应或不失真摘要、实际路由/加载、门禁、误加载和最终判定。原始证据回填到 `.superpowers/sdd/task-5-kimi-evidence.md` 的“当前 HEAD”章节，然后同步本报告矩阵。
+
+## 九、结论
+
+结论为 `BLOCKED / 跨客户端验收未完成`。本地静态与隔离检查全部通过；18 个最终场景中 12 个 `PASS`、6 个 `BLOCKED`、0 个当前 `FAIL`。Codex 6/6 `PASS`；Claude Code 当前 Head 6/6 `PASS`；Kimi Code 6/6 `BLOCKED`。Task 5 不可关闭，OpenSpec 5.1 不勾选；必须完成 Kimi 当前 Head 的六场景外部复测，才能重新评估验收状态。
