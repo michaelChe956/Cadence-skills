@@ -43,7 +43,7 @@ disable-model-invocation: true
 | 模板与项目存在同名章节 | 模板规范在前，项目独有内容去重后追加到该章节的“项目补充” |
 | CLAUDE.md / AGENTS.md 强制规则冲突 | 强制规则摘要和引用路径以 `rule-config` 为准，项目技术栈、命令、业务规则和其他章节保留 |
 | `openspec/config.yaml` 已存在 | 保留已有 `schema`、项目 context 和 proposal、design、specs、tasks 的额外规则，仅追加模板缺失内容；发现 `rules.apply` 时先备份再移除 |
-| OpenSpec YAML 无法可靠解析 | 先备份；仍无法无损合并时终止，保持原文件不变并报告冲突 |
+| OpenSpec YAML 无法可靠解析或目标字段结构/类型不兼容 | 先备份；无法证明可无损规范化时终止，保持原文件不变并报告冲突；备份成功不代表允许破坏性重写 |
 | 内容完全重复 | 只保留一份 |
 | Markdown 无法可靠解析 | 先备份，再写标准结构，并把原内容附加到“原项目补充” |
 
@@ -637,12 +637,14 @@ done
 ### OpenSpec 配置处理
 
 1. `openspec/config.yaml` 不存在时，创建 `openspec/` 目录并从 `references/openspec/config.yaml` 模板创建配置；已存在时不得用模板整体覆盖。
-2. 文件存在时先可靠解析 YAML，保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
-3. 将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
-4. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
-5. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份再移除。任何必要备份失败时立即终止，且不得修改原文件。
-6. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损合并时终止并保持原文件不变。必要备份失败时同样终止且不写入。
-7. 合并后必须运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`，确认四个 artifact instructions 均可读取；不得以 `openspec instructions apply` 作为 artifact 验证。
+2. 文件存在时先可靠解析 YAML，再执行结构预检：YAML 根必须为映射；`schema` 必须缺失或为可保留的标量；`context` 必须缺失或为字符串块/字符串标量；`rules` 必须缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 必须分别缺失或为字符串数组。除后续单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则必须原样保留。
+3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不写入；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。不得把备份成功当成可以破坏性重写的授权；任何必要备份失败时立即终止且不得修改原文件。
+4. 结构预检通过后保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
+5. 将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
+6. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
+7. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份再移除。任何必要备份失败时立即终止，且不得修改原文件。
+8. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损合并时终止并保持原文件不变。必要备份失败时同样终止且不写入。
+9. 合并后必须运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`，确认四个 artifact instructions 均可读取；不得以 `openspec instructions apply` 作为 artifact 验证。
 
 OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
 
@@ -650,11 +652,12 @@ OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMM
 |---|---|---|
 | 配置不存在 | 从模板创建 | 从模板创建 |
 | 配置可解析且无 `rules.apply` | 保守合并，完整行/字符串去重 | 保守合并，完整行/字符串去重 |
+| 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不写入 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
 | 存在 `rules.apply` | 询问；无响应则保留并报告，确认后备份并移除 | 备份成功后移除并继续合并 |
 | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
 | 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
 
-完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、解析或内容冲突，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
+完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
 
 ### OpenSpec 与 Superpowers 协作规则增量处理
 

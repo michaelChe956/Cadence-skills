@@ -341,12 +341,14 @@ Expected: 显示 context 和四个 artifact；无 `apply`。
 ```markdown
 ### OpenSpec 配置处理
 1. `openspec/config.yaml` 不存在时，从模板创建。
-2. 文件存在时保留现有 `schema`；未设置时写入 `spec-driven`。
-3. 将四行 Cadence 协作 context 追加到现有 context，按完整行去重，不删除项目技术栈和领域上下文。
-4. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留项目额外规则。
-5. 禁止创建 `rules.apply`；发现已有 `rules.apply` 时普通模式先确认，`no-interrupt` 模式先备份再移除。
-6. YAML 无法可靠解析时，普通模式保留并报告；`no-interrupt` 模式先备份，仍无法无损合并则终止。
-7. 合并后运行 `openspec instructions proposal --json`、`design`、`specs`、`tasks` 验证。
+2. 文件存在时先解析 YAML 并执行结构预检：YAML 根必须为映射；`schema` 缺失或为可保留的标量；`context` 缺失或为字符串块/字符串标量；`rules` 缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 分别缺失或为字符串数组。除单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则原样保留。
+3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不写入；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。备份成功不是破坏性重写授权；必要备份失败时终止且不修改原文件。
+4. 结构预检通过后保留现有 `schema`；未设置时写入 `spec-driven`。
+5. 将四行 Cadence 协作 context 追加到现有 context，按完整行去重，不删除项目技术栈和领域上下文。
+6. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留项目额外规则。
+7. 禁止创建 `rules.apply`；发现已有 `rules.apply` 时普通模式先确认，`no-interrupt` 模式先备份再移除。
+8. YAML 无法可靠解析时，普通模式保留并报告；`no-interrupt` 模式先备份，仍无法无损合并则终止并保持原文件不变。
+9. 合并后运行 `openspec instructions proposal --json`、`design`、`specs`、`tasks` 验证。
 ```
 
 - [ ] **Step 6: 更新 no-interrupt 合并表和完成报告**
@@ -356,8 +358,28 @@ Expected: 显示 context 和四个 artifact；无 `apply`。
 - [ ] **Step 7: 运行 OpenSpec 集成说明检查**
 
 ```bash
-rg -n "references/openspec/config.yaml|OpenSpec 配置处理|proposal.*design.*specs.*tasks|禁止创建 `rules.apply`|openspec instructions proposal" cadence-init/skills/rule-config/SKILL.md
+rg -n 'references/openspec/config.yaml|OpenSpec 配置处理|proposal.*design.*specs.*tasks|禁止创建 `rules\.apply`|openspec instructions proposal' cadence-init/skills/rule-config/SKILL.md
+for file in cadence-init/skills/rule-config/SKILL.md cadence/plans/2026-07-20_计划文档_实施_OpenSpec与Superpowers渐进式路由_v1.0.md; do
+  rg -n "YAML 根必须为映射" "$file"
+  rg -n "schema.*可保留的标量" "$file"
+  rg -n "context.*字符串块/字符串标量" "$file"
+  rg -n "rules.*缺失或为映射|rules.*必须缺失或为映射" "$file"
+  rg -n "rules\\.proposal.*rules\\.design.*rules\\.specs.*rules\\.tasks.*字符串数组" "$file"
+  rg -n "其他项目自定义键和 artifact 规则.*原样保留" "$file"
+  rg -n "字段路径、实际类型和冲突.*不写入" "$file"
+  rg -n "普通模式保留原文件" "$file"
+  rg -n "no-interrupt.*先创建可恢复备份.*无法证明可无损规范化.*终止.*原文件不变" "$file"
+  rg -n "备份成功.*破坏性重写" "$file"
+  rg -n "必要备份失败.*不修改原文件|必要备份失败.*不得修改原文件" "$file"
+  rg -n "rules.apply" "$file"
+  rg -n "YAML 无法可靠解析" "$file"
+  rg -n "完整行去重" "$file"
+  rg -n "完整字符串去重" "$file"
+  rg -n "openspec instructions proposal.*design.*specs.*tasks" "$file"
+done
 ```
+
+Expected: Plan 与 SKILL 均包含结构预检、字段路径/实际类型报告、普通模式保留、`no-interrupt` 备份后无法无损规范化则终止且原文件不变，并回归 `rules.apply`、不可解析 YAML、去重和四类 instructions 验证。
 
 - [ ] **Step 8: 提交 L2 模板与合并规则**
 
