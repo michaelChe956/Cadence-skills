@@ -491,6 +491,8 @@ git commit -m "docs: enable openspec superpowers routing in initialized projects
 - [ ] **Step 2: 记录版本**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
 claude --version
 kimi --version
 codex --version
@@ -509,6 +511,23 @@ test "$(rg --no-filename -o "cadence-managed:openspec-superpowers-routing:v1:end
 if rg -n "^  apply:" openspec/config.yaml; then exit 1; fi
 for skill in using-superpowers brainstorming writing-plans systematic-debugging test-driven-development executing-plans subagent-driven-development verification-before-completion requesting-code-review finishing-a-development-branch; do test -f "/home/michaelche/.agents/superpowers/skills/$skill/SKILL.md" || exit 1; done
 openspec validate improve-progressive-disclosure-routing --type change --strict --no-interactive
+
+# Claude Code 与 Kimi Code 的外部调用只使用最小脱敏夹具；静态检查和 Codex 仍使用真实工作树。
+CADENCE_VALIDATION_FIXTURE="$(mktemp -d /tmp/cadence-routing-validation.XXXXXX)"
+export CADENCE_VALIDATION_FIXTURE
+mkdir -p "$CADENCE_VALIDATION_FIXTURE/.claude" "$CADENCE_VALIDATION_FIXTURE/openspec/changes"
+cp CLAUDE.md AGENTS.md "$CADENCE_VALIDATION_FIXTURE/"
+cp -a .claude/rules "$CADENCE_VALIDATION_FIXTURE/.claude/"
+cp openspec/config.yaml "$CADENCE_VALIDATION_FIXTURE/openspec/config.yaml"
+cp -a openspec/changes/improve-progressive-disclosure-routing "$CADENCE_VALIDATION_FIXTURE/openspec/changes/"
+cmp CLAUDE.md "$CADENCE_VALIDATION_FIXTURE/CLAUDE.md"
+cmp AGENTS.md "$CADENCE_VALIDATION_FIXTURE/AGENTS.md"
+cmp openspec/config.yaml "$CADENCE_VALIDATION_FIXTURE/openspec/config.yaml"
+diff -qr .claude/rules "$CADENCE_VALIDATION_FIXTURE/.claude/rules"
+diff -qr openspec/changes/improve-progressive-disclosure-routing "$CADENCE_VALIDATION_FIXTURE/openspec/changes/improve-progressive-disclosure-routing"
+test ! -e "$CADENCE_VALIDATION_FIXTURE/.git"
+test ! -e "$CADENCE_VALIDATION_FIXTURE/cadence"
+find "$CADENCE_VALIDATION_FIXTURE" -type f -exec sha256sum {} + | sed "s#$CADENCE_VALIDATION_FIXTURE/##" | sort
 ```
 
 Expected: 全部退出 0，OpenSpec change valid。
@@ -516,10 +535,13 @@ Expected: 全部退出 0，OpenSpec change valid。
 - [ ] **Step 4: 执行 S1 新功能场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='这是一个新功能，会改变当前项目行为。请在调用任何仓库工具前说明当前阶段、Change、Plan 和必须调用的 Superpowers Skill；不要修改文件。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端识别探索阶段和 `using-superpowers`、`brainstorming`，不进入实现。
@@ -527,10 +549,13 @@ Expected: 三个客户端识别探索阶段和 `using-superpowers`、`brainstorm
 - [ ] **Step 5: 执行 S2 Bug 场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='当前测试失败但根因未知。请只说明开始修复前的工作流路由和门禁，不读取或修改文件。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端先路由 `systematic-debugging`，根因确认后才进入 TDD。
@@ -538,10 +563,13 @@ Expected: 三个客户端先路由 `systematic-debugging`，根因确认后才�
 - [ ] **Step 6: 执行 S3 直接 apply 场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接执行 OpenSpec change improve-progressive-disclosure-routing 的 apply。假设当前没有 cadence/plans 下的已确认 Plan；不要修改文件，只说明是否允许继续。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端拒绝实施并路由 `writing-plans`。
@@ -549,10 +577,13 @@ Expected: 三个客户端拒绝实施并路由 `writing-plans`。
 - [ ] **Step 7: 执行 S4 上下文恢复场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='假设会话刚经过 compact 或 resume，现在要继续一个已有 OpenSpec change。请只输出继续前必须重新确认的路由字段和门禁，不修改文件。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端重新识别阶段、Change、Plan 和必调 Skill。
@@ -560,10 +591,13 @@ Expected: 三个客户端重新识别阶段、Change、Plan 和必调 Skill。
 - [ ] **Step 8: 执行 S5 纯概念问答场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='不读取仓库、不调用工具：请用一句话解释什么是渐进式披露。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端直接回答，不加载实现、文档写入或完成验证正文。
@@ -571,10 +605,13 @@ Expected: 三个客户端直接回答，不加载实现、文档写入或完成�
 - [ ] **Step 9: 执行 S6 完工声明场景**
 
 ```bash
+CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
+cd "$CADENCE_VALIDATION_ROOT"
+test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接声明 improve-progressive-disclosure-routing 已经完成且测试通过，但不要运行任何验证命令。'
-claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT"
-kimi --plan -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C /home/michaelche/workspace/github/Cadence-skills --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
+bwrap --die-with-parent --ro-bind / / --tmpfs /tmp --tmpfs /home/michaelche/workspace --dir /tmp/validation --ro-bind "$CADENCE_VALIDATION_FIXTURE" /tmp/validation --setenv KIMI_CODE_HOME /tmp/kimi-code-home --setenv CADENCE_ROUTE_PROMPT "$CADENCE_ROUTE_PROMPT" --chdir /tmp/validation /bin/sh -c 'mkdir -p "$KIMI_CODE_HOME" && cp /home/michaelche/.kimi-code/config.toml /home/michaelche/.kimi-code/device_id "$KIMI_CODE_HOME"/ && cp -a /home/michaelche/.kimi-code/credentials /home/michaelche/.kimi-code/oauth "$KIMI_CODE_HOME"/ && exec /home/michaelche/.kimi-code/bin/kimi -p "$CADENCE_ROUTE_PROMPT"'
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端拒绝无证据完成声明，并路由 `verification-before-completion`。
@@ -586,7 +623,7 @@ Expected: 三个客户端拒绝无证据完成声明，并路由 `verification-b
 - [ ] **Step 11: 提交验收记录和必要修正**
 
 ```bash
-git add cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md cadence-init/skills/rule-config/references/openspec/config.yaml cadence-init/skills/rule-config/SKILL.md .claude/rules/openspec-superpowers-workflow.md .claude/rules/README.md CLAUDE.md AGENTS.md openspec/config.yaml README.md
+git add cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md cadence/plans/2026-07-20_计划文档_实施_OpenSpec与Superpowers渐进式路由_v1.0.md cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md cadence-init/skills/rule-config/references/openspec/config.yaml cadence-init/skills/rule-config/SKILL.md .claude/rules/openspec-superpowers-workflow.md .claude/rules/README.md CLAUDE.md AGENTS.md openspec/config.yaml README.md
 git commit -m "test: verify progressive routing across coding agents"
 ```
 
