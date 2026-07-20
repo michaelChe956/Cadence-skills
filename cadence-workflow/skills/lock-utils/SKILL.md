@@ -465,8 +465,7 @@ ttl = 300  # 5分钟，足够完成操作
 
 ## 相关文档
 
-- **设计文档**：`cadence/docs/2026-03-05_设计文档_可靠性保障系统_v1.0.md`
-- **实施计划**：`cadence/plans/2026-03-04_计划文档_项目任务追踪优化_v1.0.md`
+- **实施计划**：`cadence/archive/plans/2026-03-04_计划文档_项目任务追踪优化_v1.0.md`（已归档；原设计文档《可靠性保障系统》已于 2026-07-20 清理删除，可经 git 历史查阅）
 - **相关Skills**：
   - checkpoint skill - 使用锁保护Checkpoint保存
   - status skill - 读取Progress数据
