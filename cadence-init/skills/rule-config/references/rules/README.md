@@ -8,6 +8,8 @@
 
 | 文件 | 内容概述 |
 |------|---------|
+| `agent-routing-kernel.md` | L0 Agent 入口受管区块模板，仅插入 CLAUDE.md/AGENTS.md，不复制到 `.claude/rules/` |
+| `openspec-superpowers-workflow.md` | OpenSpec 契约层与 Superpowers 行为层协作规则 |
 | `language.md` | 语言规则（中文回答要求） |
 | `code-usage-coding.md` | 代码使用规则（编码项目适用） |
 | `code-usage-noncoding.md` | 代码使用规则（非编码项目适用） |
@@ -25,11 +27,7 @@
 
 ## 从旧版迁移
 
-如果你之前使用旧版 cadence-init 初始化了项目（CLAUDE.md 中包含完整规则文本），可以：
-
-1. 重新运行 `/cadence:init:rule-config` 命令
-2. 命令将自动创建 `.claude/rules/` 目录并写入规则文件
-3. 手动将 CLAUDE.md 中的规则文本替换为摘要引用
+重新运行 `/cadence:init:rule-config` 会更新受管路由和已知版本框架规则；无法识别的本地修改会先备份并报告。
 
 ## 相关目录
 
