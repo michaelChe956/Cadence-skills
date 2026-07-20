@@ -1,20 +1,21 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  OpenSpec 是契约层：proposal 记录 Why、范围和非目标，design 记录架构边界与权衡，specs 记录 MUST/SHALL 验收场景，tasks 只记录高层工作包。
+  Superpowers 是行为层：brainstorming 负责探索，writing-plans 负责精确实施 Plan，调试、TDD、执行、审查和验证由对应 Skill 负责。
+  brainstorming 的确认结果必须持久化到 OpenSpec；OpenSpec 书面契约获批后才能调用 writing-plans。
+  已存在 OpenSpec change 的多步实施必须先有位于 cadence/plans/ 的已确认 Plan；Plan 只能展开契约，不能重新定义范围、架构或验收。
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - 记录 Why、范围、非目标和受影响 capability；不要写精确文件级实施步骤。
+    - proposal 必须来自已经过用户确认的 brainstorming 结果。
+  design:
+    - 持久化已确认的架构边界、职责、权衡、失败处理和迁移策略。
+    - 发现未确认的设计决策时停止并返回 brainstorming，不得自行补全关键边界。
+  specs:
+    - 使用 MUST 或 SHALL 编写可验收 requirement，并为每项 requirement 提供 WHEN/THEN scenario。
+    - specs 定义行为与验收边界，不包含 Superpowers 的操作步骤。
+  tasks:
+    - 只生成可跟踪的高层工作包；精确文件、命令、测试和提交步骤由 superpowers:writing-plans 写入 cadence/plans/。
+    - 每个工作包必须能够映射到相关 requirement；Plan 只能展开工作包，不能重定义契约。

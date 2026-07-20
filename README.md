@@ -222,7 +222,7 @@ git pull
 |------|----------|--------------------|
 | `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
-| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
+| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
@@ -398,8 +398,11 @@ your_minimax_api_key
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
 - ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
 - ✅ 配置目录结构
+- ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则
 - ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
 - ✅ 默认不启用 Playwright 规则，除非显式要求
+
+OpenSpec 管契约，Superpowers 管行为。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则；无法识别的本地修改会先备份并报告。
 
 ### 步骤 4：MCP 配置
 
