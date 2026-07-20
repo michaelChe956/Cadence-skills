@@ -76,10 +76,10 @@ Expected: 两条检查均以非零状态结束，因为文件尚不存在。
 | 写 Markdown 或 Cadence 产物 | `document-storage.md`、`markdown-format.md` | 按阶段选择 | 遵守目录和命名 |
 | 联网、图片、浏览器自动化 | `mcp-servers.md` 或专项规则 | 按任务选择 | 不加载无关工具正文 |
 | 声称完成、修复或通过 | 协作规则 | `verification-before-completion` | 必须读取新鲜证据 |
-| 审查和验证通过 | 协作规则 | `requesting-code-review` | 勾选工作包并 sync/archive |
+| 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `finishing-a-development-branch` | 选择分支集成方式 |
 
-阶段切换必须重新路由：新任务、讨论转写入、契约获批、apply 前、resume/clear/compact 后、完工声明前。
+阶段切换必须重新路由：新任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
 有仓库操作时，首次工具调用前输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。
 失败关闭：必调 Skill 未加载则停止；强制 OpenSpec 未确认则不规划；已有 change 无 Plan 则不实施；契约变化先更新 OpenSpec；无验证证据不得声称完成。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->
@@ -91,10 +91,10 @@ Run:
 
 ```bash
 test "$(wc -l < cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md)" -le 32
-rg -n "cadence-managed:openspec-superpowers-routing:v1:(start|end)|writing-plans|systematic-debugging|verification-before-completion|无已确认 Plan 则停止" cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md
+rg -n "cadence-managed:openspec-superpowers-routing:v1:(start|end)|writing-plans|systematic-debugging|verification-before-completion|requesting-code-review|无已确认 Plan 则停止|讨论、分析或只读调查转为创建/修改文件|实施与验证均完成" cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md
 ```
 
-Expected: 第一条退出 0；第二条显示开始/结束标记和四类关键门禁。
+Expected: 第一条退出 0；第二条显示开始/结束标记、关键门禁、从只读转写入的重路由和审查顺序。
 
 - [ ] **Step 4: 创建 L1 完整协作规则**
 
@@ -116,10 +116,10 @@ Expected: 第一条退出 0；第二条显示开始/结束标记和四类关键�
 4. 用户审阅 OpenSpec 书面契约后，下一 Skill 必须是 `writing-plans`。
 5. Plan 必须写入 `cadence/plans/`，并引用 change、工作包编号和 requirement。
 6. 实施使用 `executing-plans` 或 `subagent-driven-development`；Bug 先 `systematic-debugging`；写实现前调用 `test-driven-development`。
-7. 完成声明前调用 `verification-before-completion`；审查通过后勾选工作包并执行 OpenSpec sync/archive；最后调用 `finishing-a-development-branch`。
+7. 完成声明前调用 `verification-before-completion`；实施与验证均完成后调用 `requesting-code-review`；审查通过后勾选工作包并执行 OpenSpec sync/archive；最后调用 `finishing-a-development-branch`。
 
 ## 三、阶段重路由
-在新任务、讨论转写入、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新读取 L0。需要仓库操作时，在首次工具调用前输出包含阶段、Change、Plan 和必调 Skill 的路由回执。
+在新任务、讨论、分析或只读调查转为创建/修改文件、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新读取 L0。需要仓库操作时，在首次工具调用前输出包含阶段、Change、Plan 和必调 Skill 的路由回执。
 
 ## 四、失败关闭
 - 必调 Skill 未加载或不可用：停止并报告，不得模拟已经执行。
@@ -160,10 +160,10 @@ Run:
 
 ```bash
 rg -n "^## (一、职责边界|二、标准流程|三、阶段重路由|四、失败关闭|五、OpenSpec 强制阈值与豁免|六、tasks 与 Plan 的边界|七、冲突裁决|八、禁止事项)$" cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md
-rg -n "openspec-propose|writing-plans|systematic-debugging|test-driven-development|verification-before-completion|rules.apply|cadence-workflow" cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md
+rg -n "openspec-propose|writing-plans|systematic-debugging|test-driven-development|verification-before-completion|requesting-code-review|rules.apply|cadence-workflow|讨论、分析或只读调查转为创建/修改文件|实施与验证均完成" cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md
 ```
 
-Expected: 显示八个固定章节，以及所有关键职责、Skill 和禁止项。
+Expected: 显示八个固定章节，以及所有关键职责、Skill、从只读转写入的重路由、审查顺序和禁止项。
 
 - [ ] **Step 6: 更新框架规则目录说明**
 
@@ -173,6 +173,8 @@ Expected: 显示八个固定章节，以及所有关键职责、Skill 和禁止�
 | `agent-routing-kernel.md` | L0 Agent 入口受管区块模板，仅插入 CLAUDE.md/AGENTS.md，不复制到 `.claude/rules/` |
 | `openspec-superpowers-workflow.md` | OpenSpec 契约层与 Superpowers 行为层协作规则 |
 ```
+
+将目录说明改为：除 `agent-routing-kernel.md` 仅作为受管区块插入业务项目的 `CLAUDE.md`/`AGENTS.md` 外，其余规则在项目初始化时自动创建到 `.claude/rules/`。
 
 将旧版迁移步骤改为：重新运行 `/cadence:init:rule-config` 会更新受管路由和已知版本框架规则；无法识别的本地修改会先备份并报告。
 

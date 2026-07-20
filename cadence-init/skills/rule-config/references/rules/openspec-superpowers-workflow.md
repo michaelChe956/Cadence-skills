@@ -13,10 +13,10 @@
 4. 用户审阅 OpenSpec 书面契约后，下一 Skill 必须是 `writing-plans`。
 5. Plan 必须写入 `cadence/plans/`，并引用 change、工作包编号和 requirement。
 6. 实施使用 `executing-plans` 或 `subagent-driven-development`；Bug 先 `systematic-debugging`；写实现前调用 `test-driven-development`。
-7. 完成声明前调用 `verification-before-completion`；审查通过后勾选工作包并执行 OpenSpec sync/archive；最后调用 `finishing-a-development-branch`。
+7. 完成声明前调用 `verification-before-completion`；实施与验证均完成后调用 `requesting-code-review`；审查通过后勾选工作包并执行 OpenSpec sync/archive；最后调用 `finishing-a-development-branch`。
 
 ## 三、阶段重路由
-在新任务、讨论转写入、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新读取 L0。需要仓库操作时，在首次工具调用前输出包含阶段、Change、Plan 和必调 Skill 的路由回执。
+在新任务、讨论、分析或只读调查转为创建/修改文件、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新读取 L0。需要仓库操作时，在首次工具调用前输出包含阶段、Change、Plan 和必调 Skill 的路由回执。
 
 ## 四、失败关闭
 - 必调 Skill 未加载或不可用：停止并报告，不得模拟已经执行。

@@ -2,7 +2,7 @@
 
 ## 目录说明
 
-本目录存放 Cadence 框架的内置规则文件。这些规则由框架维护者管理，在项目初始化时自动创建到用户项目的 `.claude/rules/` 目录。
+本目录存放 Cadence 框架的内置规则文件。这些规则由框架维护者管理；除 `agent-routing-kernel.md` 仅作为受管区块插入业务项目的 `CLAUDE.md`/`AGENTS.md` 外，其余规则在项目初始化时自动创建到 `.claude/rules/`。
 
 ## 文件列表
 

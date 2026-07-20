@@ -15,10 +15,10 @@
 | 写 Markdown 或 Cadence 产物 | `document-storage.md`、`markdown-format.md` | 按阶段选择 | 遵守目录和命名 |
 | 联网、图片、浏览器自动化 | `mcp-servers.md` 或专项规则 | 按任务选择 | 不加载无关工具正文 |
 | 声称完成、修复或通过 | 协作规则 | `verification-before-completion` | 必须读取新鲜证据 |
-| 审查和验证通过 | 协作规则 | `requesting-code-review` | 勾选工作包并 sync/archive |
+| 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `finishing-a-development-branch` | 选择分支集成方式 |
 
-阶段切换必须重新路由：新任务、讨论转写入、契约获批、apply 前、resume/clear/compact 后、完工声明前。
+阶段切换必须重新路由：新任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
 有仓库操作时，首次工具调用前输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。
 失败关闭：必调 Skill 未加载则停止；强制 OpenSpec 未确认则不规划；已有 change 无 Plan 则不实施；契约变化先更新 OpenSpec；无验证证据不得声称完成。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->
