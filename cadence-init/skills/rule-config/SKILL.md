@@ -42,6 +42,8 @@ disable-model-invocation: true
 | 模板与项目存在不同章节 | 保留模板章节，并按原顺序保留项目独有章节 |
 | 模板与项目存在同名章节 | 模板规范在前，项目独有内容去重后追加到该章节的“项目补充” |
 | CLAUDE.md / AGENTS.md 强制规则冲突 | 强制规则摘要和引用路径以 `rule-config` 为准，项目技术栈、命令、业务规则和其他章节保留 |
+| `openspec/config.yaml` 已存在 | 保留已有 `schema`、项目 context 和 proposal、design、specs、tasks 的额外规则，仅追加模板缺失内容；发现 `rules.apply` 时先备份再移除 |
+| OpenSpec YAML 无法可靠解析 | 先备份；仍无法无损合并时终止，保持原文件不变并报告冲突 |
 | 内容完全重复 | 只保留一份 |
 | Markdown 无法可靠解析 | 先备份，再写标准结构，并把原内容附加到“原项目补充” |
 
@@ -104,6 +106,7 @@ disable-model-invocation: true
 8. **代码阅读规则配置** — Coding 项目默认配置 `ast-grep outline` 与 CodeGraph 使用规则
 9. **CodeGraph 项目初始化** — Coding 项目默认项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`
 10. **Playwright Skills 规则配置** — 默认跳过，仅用户明确要求时配置 Playwright CLI 使用规则
+11. **配置 OpenSpec 契约冗余** — 定位 `references/openspec/config.yaml`，创建或保守合并 `openspec/config.yaml` 的 context 与 proposal、design、specs、tasks 规则，不改变已有 schema 和项目自定义规则
 
 **下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
 
@@ -140,12 +143,12 @@ disable-model-invocation: true
 按以下优先级顺序查找模板目录：
 
 1. **在线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`
-   - 如果同时存在，取该目录作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
+   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
 
 2. **离线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`
-   - 如果同时存在，取该目录作为**模板根路径**
+   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
+   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
 
 3. **回退搜索**（开发环境）：
    - 使用 Glob 工具搜索标识文件：
@@ -153,10 +156,10 @@ disable-model-invocation: true
    **/cadence-init/skills/rule-config/references/rules/language.md
    ```
    从返回结果中提取目录路径（去掉末尾 `language.md`），作为**模板根路径**。
-   验证每个路径下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md` 和 `document-storage.md`。如果匹配多个，
+   验证每个路径下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md` 和 `document-storage.md`，并验证同一 `references/` 下的 `openspec/config.yaml` 存在。如果匹配多个，
    从通过验证的结果中取修改时间最新的。
 
-> **重要**：此模板根路径需在后续所有步骤中复用（包括步骤 8 的 code-reading.md 和步骤 10 的 playwright.md）。
+> **重要**：模板根路径与 OpenSpec 配置模板路径必须成对定位并在后续步骤中复用（包括步骤 8 的 code-reading.md、步骤 10 的 playwright.md 和步骤 11 的 OpenSpec 配置）；任一候选缺少 `references/openspec/config.yaml` 时不得选用该候选，所有候选均不完整时终止并报告缺失模板。
 
 **步骤 1c：创建目标目录**
 
@@ -630,6 +633,28 @@ for rule in README.md language.md openspec-superpowers-workflow.md document-stor
   fi
 done
 ```
+
+### OpenSpec 配置处理
+
+1. `openspec/config.yaml` 不存在时，创建 `openspec/` 目录并从 `references/openspec/config.yaml` 模板创建配置；已存在时不得用模板整体覆盖。
+2. 文件存在时先可靠解析 YAML，保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
+3. 将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
+4. 对 proposal、design、specs、tasks 数组追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
+5. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份再移除。任何必要备份失败时立即终止，且不得修改原文件。
+6. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损合并时终止并保持原文件不变。必要备份失败时同样终止且不写入。
+7. 合并后必须运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`，确认四个 artifact instructions 均可读取；不得以 `openspec instructions apply` 作为 artifact 验证。
+
+OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
+
+| 场景 | 普通模式 | no-interrupt 模式 |
+|---|---|---|
+| 配置不存在 | 从模板创建 | 从模板创建 |
+| 配置可解析且无 `rules.apply` | 保守合并，完整行/字符串去重 | 保守合并，完整行/字符串去重 |
+| 存在 `rules.apply` | 询问；无响应则保留并报告，确认后备份并移除 | 备份成功后移除并继续合并 |
+| YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
+| 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
+
+完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、解析或内容冲突，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
 
 ### OpenSpec 与 Superpowers 协作规则增量处理
 
