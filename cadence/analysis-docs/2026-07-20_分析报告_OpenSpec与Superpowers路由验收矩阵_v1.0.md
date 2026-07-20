@@ -1,6 +1,6 @@
 # OpenSpec 与 Superpowers 路由验收矩阵
 
-> 状态：🟡 `REVIEW_PENDING / 客户端级跨轮证据 18/18 PASS，Kimi 跨版本、跨模型一致性存在风险`
+> 状态：✅ `PASS / 客户端级跨轮证据 18/18 PASS，Kimi 跨版本、跨模型一致性作为已知风险保留`
 
 ## 一、验证范围
 
@@ -146,4 +146,4 @@
 
 ## 九、结论
 
-客户端级跨轮验收结果为 `18 PASS / 0 FAIL / 0 BLOCKED`：Codex 与 Claude Code 各 6/6 `PASS`；Kimi S2–S6 沿用既有客户端通过证据，S1 由 0.28.0 K3 精确轮补齐为 `PASS`。Kimi 0.28.0 的 K2.7 Coding 对照轮仍为 S1 `FAIL`，因此本报告不声称同一 Kimi 版本或模型六场景全通过，也不声称跨模型稳定通过。Task 5 与 OpenSpec 5.1 暂不勾选，等待修正口径后的独立复审。
+客户端级跨轮验收结果为 `18 PASS / 0 FAIL / 0 BLOCKED`：Codex 与 Claude Code 各 6/6 `PASS`；Kimi S2–S6 沿用既有客户端通过证据，S1 由 0.28.0 K3 精确轮补齐为 `PASS`。Kimi 0.28.0 的 K2.7 Coding 对照轮仍为 S1 `FAIL`，因此本报告不声称同一 Kimi 版本或模型六场景全通过，也不声称跨模型稳定通过。独立复审批准当前客户端级验收口径；Task 5 已关闭，OpenSpec 5.1 已勾选。Task 6 尚未开始。
