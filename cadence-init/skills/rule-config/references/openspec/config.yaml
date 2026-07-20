@@ -3,6 +3,7 @@ schema: spec-driven
 context: |
   OpenSpec 是契约层：proposal 记录 Why、范围和非目标，design 记录架构边界与权衡，specs 记录 MUST/SHALL 验收场景，tasks 只记录高层工作包。
   Superpowers 是行为层：brainstorming 负责探索，writing-plans 负责精确实施 Plan，调试、TDD、执行、审查和验证由对应 Skill 负责。
+  需要仓库操作时必须先通过客户端原生机制调用 using-superpowers 和当前阶段全部必调 Skill，再输出首个用户可见路由回执，随后才读取规则和使用仓库工具。
   brainstorming 的确认结果必须持久化到 OpenSpec；OpenSpec 书面契约获批后才能调用 writing-plans。
   已存在 OpenSpec change 的多步实施必须先有位于 cadence/plans/ 的已确认 Plan；Plan 只能展开契约，不能重新定义范围、架构或验收。
 

@@ -35,7 +35,7 @@
 - **AND** 先更新并重新审阅 OpenSpec，再重新生成或更新 Plan
 
 ### Requirement: 路由目标和版本必须通过静态检查
-系统 MUST 提供可重复的静态检查，确认 L0 引用的规则文件与 Skill 名称存在、`CLAUDE.md` 和 `AGENTS.md` 的路由版本一致、L1 规范源与生成副本一致，并且 OpenSpec 配置只使用有效 artifact 规则键。
+系统 MUST 提供可重复的静态检查，确认 L0 引用的规则文件与 Skill 名称存在、`CLAUDE.md` 和 `AGENTS.md` 的路由版本一致、L1 规范源与生成副本一致，并且 OpenSpec 配置只使用有效 artifact 规则键。系统还 MUST 提供仅用于测试的可执行生命周期参考模型，证明同版本幂等、内容漂移保护、双入口备份屏障、候选 instructions 验证和原子发布失败关闭；该参考模型 SHALL NOT 接入 `rule-config` 业务运行路径。
 
 #### Scenario: 入口引用不存在的 Skill
 - **WHEN** L0 引用当前项目应已安装但实际不存在的 Superpowers Skill
@@ -45,8 +45,13 @@
 - **WHEN** `openspec/config.yaml` 将 `apply` 配置为 artifact 规则键
 - **THEN** 静态检查失败并指出 `apply` 是特殊命令而非有效 artifact
 
+#### Scenario: 受管生命周期失败关闭
+- **WHEN** 测试夹具模拟 L0/L1 备份失败、不可解析 YAML、目标字段类型冲突、候选 instructions 失败或原子发布失败
+- **THEN** 可执行参考模型 MUST 返回非零状态并保持目标文件运行前后哈希一致
+- **AND** 测试报告 MUST 记录场景、退出状态和运行前后 SHA-256
+
 ### Requirement: 必须验证跨客户端关键场景
-系统 SHALL 对 Claude Code、Kimi Code 与 Codex 执行新功能、Bug、直接 apply、上下文恢复、纯问答和完工声明场景验证，并 MUST 记录路由回执、实际加载项、门禁结果和无关正文误加载项。
+系统 SHALL 对 Claude Code、Kimi Code 与 Codex 执行新功能、Bug、直接 apply、上下文恢复、纯问答和完工声明场景验证，并 MUST 记录原生 Skill 调用事件、首个用户可见路由回执、Skill 正文与仓库工具调用顺序、门禁结果和无关正文误加载项。最终自然路由门禁使用的提示词 SHALL NOT 直接补入“Skill 前静默”“先调用后回执”等待验证顺序；除纯概念问答只要求全局 `using-superpowers` 外，每个场景的全部必调 Skill 都 MUST 通过客户端原生机制实际调用。Claude/Kimi 仅普通读取 `SKILL.md`、输出名称、复述流程或声称已加载 SHALL 判定失败；Codex 必须记录从平台 Skill 目录显式选择、首段用途公告、全文读取对应 `SKILL.md`，并确认全文读取前没有仓库操作。
 
 #### Scenario: Kimi Code 漏调 brainstorming
 - **WHEN** Kimi Code 在新功能场景中未调用 brainstorming 就准备创建 OpenSpec 或实现文件
@@ -60,7 +65,8 @@
 
 #### Scenario: Codex 纯问答
 - **WHEN** Codex 只回答不涉及仓库操作的概念问题
-- **THEN** 它不加载实现、文档写入或完成验证正文
+- **THEN** 它只原生调用全局 `using-superpowers`，不输出仓库路由回执
+- **AND** 它不加载仓库规则、其他无关 Skill、实现、文档写入或完成验证正文
 - **AND** 场景验证不把合理的轻量行为判定为失败
 
 #### Scenario: 完工声明

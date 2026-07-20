@@ -67,7 +67,7 @@ disable-model-invocation: true
 | 技术栈 | 自动检测并写入；未检测到的命令写为“未检测到” |
 | 历史产物迁移 | 无冲突时自动迁移；目标目录非空时跳过并报告 |
 | `cadence/` gitignore | 默认不加入 `.gitignore` |
-| 代码阅读规则 | Coding 项目默认启用，非 Coding 项目默认跳过 |
+| 代码阅读规则 | 所有项目创建；非 Coding 项目只跳过 CodeGraph 初始化 |
 | CodeGraph 初始化 | Coding 项目默认启用，非 Coding 项目默认跳过 |
 | Playwright 规则 | 默认跳过，仅用户明确要求时启用 |
 | 已存在文件 | 默认不覆盖，只补齐缺失文件、缺失摘要和缺失配置块 |
@@ -103,7 +103,7 @@ disable-model-invocation: true
 5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
 6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，无冲突时自动迁移到 `cadence/`
 7. **cadence gitignore 决策** — 默认不将 `cadence/` 加入 `.gitignore`
-8. **代码阅读规则配置** — Coding 项目默认配置 `ast-grep outline` 与 CodeGraph 使用规则
+8. **代码阅读规则配置** — 所有项目创建 `code-reading.md`，Coding 项目默认配置并初始化 CodeGraph，非 Coding 项目保留规则但跳过 CodeGraph 初始化
 9. **CodeGraph 项目初始化** — Coding 项目默认项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`
 10. **Playwright Skills 规则配置** — 默认跳过，仅用户明确要求时配置 Playwright CLI 使用规则
 11. **配置 OpenSpec 契约冗余** — 定位 `references/openspec/config.yaml`，创建或保守合并 `openspec/config.yaml` 的 context 与 proposal、design、specs、tasks 规则，不改变已有 schema 和项目自定义规则
@@ -179,6 +179,7 @@ mkdir -p .claude/rules
 | `document-storage.md` | `.claude/rules/document-storage.md` | 必选 |
 | `markdown-format.md` | `.claude/rules/markdown-format.md` | 必选 |
 | `mcp-servers.md` | `.claude/rules/mcp-servers.md` | 必选 |
+| `code-reading.md` | `.claude/rules/code-reading.md` | 必选；所有项目创建 |
 | `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
 | `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
 
@@ -247,7 +248,7 @@ Today's date is {当前日期}。
 **注意**：
 - 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
 - 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 7（代码阅读）由步骤 8 添加（Coding 项目默认启用）
+- 规则 7（代码阅读）由步骤 8 添加（所有项目启用；非 Coding 项目仅跳过 CodeGraph 初始化）
 - CodeGraph 项目初始化由步骤 9 执行（Coding 项目默认启用）
 - Playwright 规则由步骤 10 添加（默认跳过，用户明确要求时启用）
 - 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
@@ -484,10 +485,6 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 
 ### 8. 代码阅读规则配置
 
-**检测条件**：
-- 项目为 **Coding 项目**（基于步骤 1a 检测结果）
-- Coding 项目默认需要代码阅读辅助
-
 **创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `code-reading.md` 读取内容，写入 `.claude/rules/code-reading.md`
 
 **在 CLAUDE.md 和 AGENTS.md 中添加**：
@@ -498,8 +495,8 @@ grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\
 ```
 
 **无交互行为**：
-- 对 Coding 项目：默认启用代码阅读规则，创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要。
-- 对非 Coding 项目：默认跳过，仅在报告中记录“非 Coding 项目跳过代码阅读规则”。
+- 对所有项目：创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要，避免 L0 产生悬空引用。
+- 对非 Coding 项目：规则仍存在；仅步骤 9 的 CodeGraph 安装与初始化默认跳过。
 - 已存在规则文件时不覆盖；缺少摘要时只追加摘要。
 
 ### 9. CodeGraph 项目初始化
@@ -617,7 +614,7 @@ grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地�
 |------|------|
 | 文件不存在 | 从模板根路径读取并创建 |
 | 文件已存在 | **不自动覆盖**，报告已存在 |
-| 新增规则模板（如 `code-reading.md`） | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| 新增 `code-reading.md` | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 |
 
 上表适用于普通规则，不改变已有的“不自动覆盖”语义；`openspec-superpowers-workflow.md` 仅按下述版本化框架规则特例处理。
@@ -714,7 +711,7 @@ OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMM
 | 场景 | 行为 |
 |------|------|
 | 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 |
-| 代码阅读规则缺失 | Coding 项目默认新增，非 Coding 项目默认跳过 |
+| 代码阅读规则缺失 | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
 | Playwright 规则缺失 | 默认跳过，用户明确要求时新增 |
 | 无法判断历史选择 | 按本节默认值处理，不询问 |
 

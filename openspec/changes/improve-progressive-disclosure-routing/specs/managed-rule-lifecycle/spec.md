@@ -13,6 +13,11 @@
 - **THEN** 先修改 `cadence-init` 中的规范源
 - **AND** 再从规范源同步当前仓库的 `.claude/rules/` 副本
 
+#### Scenario: 非 Coding 项目仍获得代码阅读规则
+- **WHEN** `rule-config` 将目标识别为非 Coding 项目
+- **THEN** 系统仍 MUST 生成 `.claude/rules/code-reading.md` 和入口摘要，确保 L0 不产生悬空引用
+- **AND** 系统 SHALL 只跳过 CodeGraph 安装与初始化，不得跳过代码阅读规则文件
+
 ### Requirement: L0 入口内容必须版本化且可安全升级
 系统 MUST 使用稳定开始标记、结束标记和版本号维护 `CLAUDE.md` 与 `AGENTS.md` 中的 L0 受管区块；重复运行 `rule-config` 时 SHALL 只更新受管区块并保留区块外内容。当前 v1 开始和结束标记成对存在、但完整受管区块与规范源当前 v1 不一致时，系统 MUST 将其视为无法识别的本地修改，不得静默覆盖。一次 `rule-config` 处理两个入口时，系统 MUST 在写入任一入口前统一预检 `CLAUDE.md` 与 `AGENTS.md` 的状态和全部必要备份，并 MUST 仅在本次所需的全部 L0 备份成功后开始写入。
 

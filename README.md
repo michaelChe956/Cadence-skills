@@ -402,7 +402,7 @@ your_minimax_api_key
 - ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
 - ✅ 默认不启用 Playwright 规则，除非显式要求
 
-OpenSpec 管契约，Superpowers 管行为。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则；无法识别的本地修改会先备份并报告。
+OpenSpec 管契约，Superpowers 管行为。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则。普通模式遇到无法识别的本地修改且没有获得替换确认时会保留并报告；`no-interrupt` 模式会先备份，备份成功后再替换。
 
 ### 步骤 4：MCP 配置
 

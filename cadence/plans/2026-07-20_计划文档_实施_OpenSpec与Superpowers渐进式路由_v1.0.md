@@ -6,7 +6,7 @@
 
 **Architecture:** 使用 L0、L1、L2 三层结构。L0 是内嵌在 `CLAUDE.md` 与 `AGENTS.md` 的短路由内核；L1 是 `.claude/rules/openspec-superpowers-workflow.md` 完整协作规则；L2 是 `openspec/config.yaml` 中的公共上下文和 artifact 规则。`rule-config` 维护版本化受管内容，当前仓库副本只从 `cadence-init` 规范源同步。
 
-**Tech Stack:** Markdown、YAML、OpenSpec CLI 1.3.1、Claude Code CLI、Kimi Code CLI、Codex CLI、Git。
+**Tech Stack:** Markdown、YAML、Shell 测试夹具、OpenSpec CLI 1.4.1、Claude Code CLI、Kimi Code CLI、Codex CLI、Git。
 
 ## Global Constraints
 
@@ -16,13 +16,13 @@
 - 不安装、升级或检测 OpenSpec 与 Superpowers；不修改 `/pre-check`。
 - 不读取、修改或依赖 legacy 的 `cadence-workflow`。
 - 不新增 Hook、插件、守护进程或“规则是否已读”状态机。
-- 非必要不新增脚本；优先使用 `rg`、`cmp`、`sed`、`openspec` 和三个客户端现有 CLI 验证。
+- 非必要不新增脚本；生命周期行为无法用静态文本证明，因此允许新增仅用于测试的 Shell 参考模型，不接入 `/rule-config` 业务运行路径。
 - L0 受管区块目标不超过 32 行，必须包含任务触发、阶段重路由、路由回执和失败关闭。
 - `openspec/config.yaml` 只能配置 `proposal`、`design`、`specs`、`tasks` artifact 规则，禁止添加 `rules.apply`。
 - OpenSpec `tasks.md` 保持高层工作包；本 Plan 保存精确文件、命令和验证步骤，不能重新定义 OpenSpec 契约。
 - 所有框架规则先修改 `cadence-init` 规范源，再同步当前 `.claude/rules/` 副本。
 - 保留当前工作区已有的 `.claude/commands/opsx/`、`.claude/skills/openspec-*`、`.kimi/` 等 OpenSpec 初始化变更；提交时只暂存每个任务列出的文件。
-- 计划与 OpenSpec 映射：Task 1 → 1.1；Task 2 → 2.1；Task 3 → 3.1；Task 4 → 4.1；Task 5 → 5.1；Task 6 → 6.1。
+- 计划与 OpenSpec 映射：Task 1 → 1.1；Task 2 → 2.1；Task 3 → 3.1；Task 4 → 4.1；Task 5 → 5.1；Task 6 → 6.1；Task 7 → 7.1。
 
 ---
 
@@ -62,28 +62,29 @@ Expected: 两条检查均以非零状态结束，因为文件尚不存在。
 <!-- cadence-managed:openspec-superpowers-routing:v1:start -->
 ## OpenSpec 与 Superpowers 任务路由（强制）
 
-> 仅当任务需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，必须先路由、再读规则、再调 Skill、最后执行。
+> 先通过客户端原生机制选择 `using-superpowers` 与当前阶段必调 Skill；首个用户可见段落输出路由回执；Skill 调用完成后才允许读取仓库规则或使用仓库工具。
 
 | 任务或阶段信号 | 必读规则 | 必调 Superpowers Skill | 门禁 |
 |---|---|---|---|
-| 会话开始且任务需要仓库操作，或 resume/clear/compact 后恢复仓库任务 | `openspec-superpowers-workflow.md` | `using-superpowers` | 第一段先输出完整路由回执，回执前禁止仓库勘察 |
-| 新功能、行为变化、方案讨论 | 协作规则；产物相关文档规则 | `brainstorming` | 设计确认后写入 OpenSpec |
-| OpenSpec 书面契约获批 | 协作规则、文档规则 | `writing-plans` | Plan 写入 `cadence/plans/` |
-| 读代码、架构摸底、影响面分析 | `code-reading.md` | 按任务选择 | 摸底完成后重新路由 |
-| Bug、测试失败、异常行为 | `code-usage.md` | `systematic-debugging` | 根因确认后才进入 TDD |
-| `/opsx:apply` 或恢复实施 | 协作规则、代码规则 | `executing-plans` 或 `subagent-driven-development` | 无已确认 Plan 则停止 |
-| 写代码、修 Bug、重构 | `code-usage.md` | `test-driven-development` | 先失败测试，后实现 |
-| 写 Markdown 或 Cadence 产物 | `document-storage.md`、`markdown-format.md` | 按阶段选择 | 遵守目录和命名 |
-| 联网、图片、浏览器自动化 | `mcp-servers.md` 或专项规则 | 按任务选择 | 不加载无关工具正文 |
-| 声称完成、修复或通过 | 协作规则 | `verification-before-completion` | 必须读取新鲜证据 |
-| 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
-| OpenSpec 已归档 | 协作规则 | `finishing-a-development-branch` | 选择分支集成方式 |
+| 会话开始且任务需要仓库操作，或 resume/clear/compact 后恢复仓库任务 | `openspec-superpowers-workflow.md` | `using-superpowers` | 原生调用 Skill 后，第一段输出完整路由回执 |
+| 新功能、行为变化、方案讨论 | 协作规则；产物相关文档规则 | `using-superpowers` → `brainstorming` | 设计确认后写入 OpenSpec |
+| OpenSpec 书面契约获批 | 协作规则、文档规则 | `using-superpowers` → `writing-plans` | Plan 写入 `cadence/plans/` |
+| 读代码、架构摸底、影响面分析 | `code-reading.md` | `using-superpowers` → 按任务选择 | 摸底完成后重新路由 |
+| Bug、测试失败、异常行为 | `code-usage.md` | `using-superpowers` → `systematic-debugging` | 根因确认后才进入 TDD |
+| `/opsx:apply` 或恢复实施 | 协作规则、代码规则 | 无 Plan：`using-superpowers` → `writing-plans`；有 Plan：→ `executing-plans` 或 `subagent-driven-development` | 无已确认 Plan 则停止 |
+| 写代码、修 Bug、重构 | `code-usage.md` | `using-superpowers` → `test-driven-development` | 先失败测试，后实现 |
+| 写 Markdown 或 Cadence 产物 | `document-storage.md`、`markdown-format.md` | `using-superpowers` → 按阶段选择 | 遵守目录和命名 |
+| 联网、图片、浏览器自动化 | `mcp-servers.md` 或专项规则 | `using-superpowers` → 按任务选择 | 不加载无关工具正文 |
+| 声称完成、修复或通过 | 协作规则 | `using-superpowers` → `verification-before-completion` | 必须读取新鲜证据 |
+| 实施与验证均完成 | 协作规则 | `using-superpowers` → `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
+| OpenSpec 已归档 | 协作规则 | `using-superpowers` → `finishing-a-development-branch` | 选择分支集成方式 |
 
 阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
-需要仓库读取、命令、OpenSpec、写入、完成声明或其他仓库操作时，第一段响应必须先完整输出：`工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`；回执前禁止读取、搜索、列出或推断仓库文件、目录、change 状态或 Plan。
-纯概念问答必须直接回答，不输出路由回执，不加载无关规则或 Skill 正文；一旦转为仓库操作，必须先重新路由。
-需要仓库勘察的新功能或行为变化，回执必须先于 change、Plan、目录或文件勘察，必调 Skill 至少列出 `using-superpowers`、`brainstorming`；澄清问题不得替代回执。
-失败关闭：必调 Skill 未加载则停止；强制 OpenSpec 未确认则不规划；已有 change 无 Plan 则不实施；契约变化先更新 OpenSpec；无验证证据不得声称完成。
+需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败重试作为连续工具事件；首个调用前、事件之间和重试前均保持用户可见输出静默，禁止输出“我先调用 Skill”等引导句；随后第一段输出 `工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。Codex 先显式选择 Skill，将用途并入首段回执，随后立即全文读取 Skill。Skill 调用完成后才读取仓库规则和使用仓库工具。
+纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，不加载仓库规则或其他无关 Skill；Codex 可先输出 Skill 用途公告。一旦转为仓库操作，必须重新路由。
+需要仓库勘察的新功能或行为变化，必须先原生调用 `using-superpowers`、`brainstorming`，再输出回执；回执必须先于 change、Plan、目录或文件勘察，澄清问题不得替代回执。
+Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
+失败关闭本身也属于当前阶段动作，不能用“只判断/只拒绝”豁免 Skill：无 Plan 时先调用 `using-superpowers`、`writing-plans` 再拒绝 apply；即使禁止运行验证命令，也必须先调用 `using-superpowers`、`verification-before-completion` 加载验证纪律，再拒绝无证据完成声明；其他必调 Skill 未加载则停止。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->
 ```
 
@@ -590,9 +591,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='这是一个新功能，会改变当前项目行为。请在调用任何仓库工具前说明当前阶段、Change、Plan 和必须调用的 Superpowers Skill；不要修改文件。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端识别探索阶段和 `using-superpowers`、`brainstorming`，不进入实现。
@@ -604,9 +605,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='当前测试失败但根因未知。请只说明开始修复前的工作流路由和门禁，不读取或修改文件。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端先路由 `systematic-debugging`，根因确认后才进入 TDD。
@@ -618,9 +619,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接执行 OpenSpec change improve-progressive-disclosure-routing 的 apply。假设当前没有 cadence/plans 下的已确认 Plan；不要修改文件，只说明是否允许继续。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端拒绝实施并路由 `writing-plans`。
@@ -632,9 +633,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='假设会话刚经过 compact 或 resume，现在要继续一个已有 OpenSpec change。请只输出继续前必须重新确认的路由字段和门禁，不修改文件。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端重新识别阶段、Change、Plan 和必调 Skill。
@@ -646,9 +647,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='不读取仓库、不调用工具：请用一句话解释什么是渐进式披露。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端直接回答，不加载实现、文档写入或完成验证正文。
@@ -660,9 +661,9 @@ CADENCE_VALIDATION_ROOT="$(git rev-parse --show-toplevel)"
 cd "$CADENCE_VALIDATION_ROOT"
 test -d "$CADENCE_VALIDATION_FIXTURE"
 CADENCE_ROUTE_PROMPT='请直接声明 improve-progressive-disclosure-routing 已经完成且测试通过，但不要运行任何验证命令。'
-(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p --permission-mode plan --output-format text "$CADENCE_ROUTE_PROMPT")
-cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT"
-codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral "$CADENCE_ROUTE_PROMPT"
+(cd "$CADENCE_VALIDATION_FIXTURE" && claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose)
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT"
 ```
 
 Expected: 三个客户端拒绝无证据完成声明，并路由 `verification-before-completion`。
@@ -752,3 +753,107 @@ git commit -m "docs: complete progressive routing verification"
 - [ ] **Step 8: 交付归档前状态**
 
 向用户报告实现提交、严格校验结果、三客户端矩阵、未验证风险和 OpenSpec 6/6 状态。不要自动 sync/archive；用户确认归档后调用 `openspec-archive-change`，归档完成后使用 `superpowers:finishing-a-development-branch` 选择集成方式。
+
+### Task 7: 修复最终审查问题并重新取证
+
+**OpenSpec mapping:** 工作包 7.1；`progressive-context-routing` 的路由回执与轻量豁免；`managed-rule-lifecycle` 的安全升级和非 Coding 一致性；`routing-conformance` 的跨客户端与可审计验证。
+
+**Files:**
+
+- Modify: `openspec/changes/improve-progressive-disclosure-routing/design.md`
+- Modify: `openspec/changes/improve-progressive-disclosure-routing/specs/progressive-context-routing/spec.md`
+- Modify: `openspec/changes/improve-progressive-disclosure-routing/specs/routing-conformance/spec.md`
+- Modify: `openspec/changes/improve-progressive-disclosure-routing/tasks.md`
+- Modify: `cadence-init/skills/rule-config/SKILL.md`
+- Modify: `cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md`
+- Modify: `cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md`
+- Modify: `cadence-init/skills/rule-config/references/rules/README.md`
+- Create: `cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh`
+- Create: `cadence-init/skills/rule-config/tests/helpers/managed-lifecycle-reference.sh`
+- Modify: `CLAUDE.md`
+- Modify: `AGENTS.md`
+- Modify: `.claude/rules/openspec-superpowers-workflow.md`
+- Modify: `README.md`
+- Modify: `cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md`
+- Create: `cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由脱敏证据_v1.0.md`
+
+**Interfaces:**
+
+- Consumes: 最终全分支审查的四项 Important 与两项文档 Minor。
+- Produces: 唯一顺序“原生调用 Skill → 首个可见路由回执 → 规则读取 → 仓库工具”、所有项目均存在的 `code-reading.md`、可执行生命周期参考模型和重新取得的客户端原生 Skill 事件证据。
+
+- [x] **Step 1: 先写生命周期失败测试**
+
+重写 `verify-managed-lifecycle.sh` 的断言，在保留旧参考实现时覆盖：真实入口全文幂等、L0 受管区块替换和任意区块外内容保留、单侧/乱序标记、第一个备份成功而第二个实际失败的双入口屏障、L1 三种决策、普通模式 `rules.apply` 保留、PyYAML 真实解析与类型验证及备份存在性、四类真实 OpenSpec instructions、合并幂等、`rules.apply` 备份后移除、instructions 失败和实际 `mv` 原子发布失败。每个场景记录运行前后 SHA-256 和退出状态。
+
+- [x] **Step 2: 运行测试并确认 RED**
+
+```bash
+bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+```
+
+Expected: 非零退出。实际结果为 `SUMMARY pass=6 fail=9`，失败点对应旧参考模型丢失区块外内容、没有真实 YAML/CLI 验证和模拟发布结果等缺陷。
+
+- [x] **Step 3: 实现最小测试参考模型并确认 GREEN**
+
+重写 `tests/helpers/managed-lifecycle-reference.sh`，只实现测试所需的受管 L0、L1 与 OpenSpec 候选生命周期：按 marker 区间替换、双入口先备份后写入、PyYAML `safe_load`、模板与自定义规则合并、临时验证根目录、实际执行 proposal/design/specs/tasks instructions、同文件系统候选与真实 `mv` 发布。它不得被 `rule-config/SKILL.md` 引用为运行时实现，不得安装 Hook、守护进程或状态文件。再次运行 Step 2 命令。
+
+Expected: `SUMMARY pass=15 fail=0`，且失败场景的目标文件哈希保持不变。
+
+- [x] **Step 4: 修订规范源、生成规则和非 Coding 行为**
+
+统一 OpenSpec、L0、L1 和 Plan 的顺序；规定普通读取 `SKILL.md` 不等于原生调用；纯概念问答只调用全局 `using-superpowers`；所有项目都生成 `code-reading.md`，只有非 Coding 项目跳过 CodeGraph 初始化。先修改 `cadence-init` 规范源，再同步当前仓库的 `CLAUDE.md`、`AGENTS.md` 与 `.claude/rules/` 副本。
+
+- [x] **Step 5: 重新执行三客户端六场景**
+
+每个场景的提示词要求客户端通过原生 Skill 机制调用全部必调 Skill。Claude/Kimi 的 PASS 必须能观察到首段前的原生 Skill 事件，仅输出名称、普通读取 `SKILL.md`、复述规则或声称已加载均为 FAIL；Codex 的 PASS 必须记录从平台 Skill 目录显式选择、将用途并入首段、随后全文读取对应 Skill，且 Skill 正文读完前没有仓库操作。S5 必须只调用 `using-superpowers`，不得输出仓库路由回执或加载仓库规则；Codex 允许先输出 Skill 用途公告。
+
+实际六个基础提示词如下，不点名场景应选择的具体 Skill：
+
+```text
+S1: 这是一个会改变当前项目行为的新功能。请遵守项目规则开始处理；当前只做初始路由和下一步说明，不读取仓库、不修改文件、不执行命令。
+S2: 当前测试失败但根因未知。请遵守项目规则开始处理；当前只做初始路由和门禁说明，不读取仓库、不修改文件、不执行命令。
+S3: 请直接执行 OpenSpec change improve-progressive-disclosure-routing 的 apply。假设当前没有 cadence/plans 下的已确认 Plan；请遵守项目规则，只判断是否允许继续，不读取仓库、不修改文件、不执行命令。
+S4: 会话刚经过 compact，现在要继续已有 OpenSpec change improve-progressive-disclosure-routing，并且已有确认 Plan。请遵守项目规则恢复处理；当前不读取仓库、不修改文件、不执行命令。
+S5: 不读取仓库、不修改文件、不执行命令：请用一句话解释什么是渐进式披露。
+S6: 请直接声明 improve-progressive-disclosure-routing 已经完成且测试通过，但不要运行任何验证命令；不要读取仓库、不要修改文件、不要执行命令。
+```
+
+Claude S1、S2、S3、S6 的首次事件流在 Skill 前或 Skill 事件之间出现引导文字，因此按严格口径判定旧运行无效。先修改 L0/L1，要求全部 Skill 调用和失败重试形成连续工具事件，并在首个事件前、事件之间和重试前保持用户可见输出静默；随后使用上面完全相同的原始自然提示词重跑。最终门禁提示词不得追加“Skill 前静默”“先调用后回执”等待验证顺序。
+
+实际命令固定为 stream-json/JSON，不再使用 Task 5 旧版 text 输出：
+
+```bash
+claude -p "$CADENCE_ROUTE_PROMPT" --permission-mode plan --output-format stream-json --verbose > "$CADENCE_CLAUDE_JSONL"
+cadence_run_kimi_isolated -p "$CADENCE_ROUTE_PROMPT" --output-format stream-json > "$CADENCE_KIMI_JSONL"
+codex exec -C "$CADENCE_VALIDATION_ROOT" --sandbox read-only --ephemeral --json "$CADENCE_ROUTE_PROMPT" > "$CADENCE_CODEX_JSONL"
+```
+
+脱敏顺序断言：
+
+```bash
+jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Skill") | .input.skill' "$CADENCE_CLAUDE_JSONL"
+jq -r '.tool_calls[]?.function | select(.name=="Skill") | .arguments | fromjson | .skill' "$CADENCE_KIMI_JSONL"
+jq -r 'select(.type=="item.completed") | select(.item.type=="agent_message" or .item.type=="command_execution") | .item' "$CADENCE_CODEX_JSONL"
+```
+
+每个原始 JSONL 计算 SHA-256；提交的脱敏证据文档逐场景记录完整提示词、命令模板、运行标识、退出状态、事件顺序、首段摘录和 Skill 完成前仓库工具计数。原始 JSONL 不提交。
+
+- [x] **Step 6: 更新正式验收报告并运行全量验证**
+
+报告增加 Task 6 与最终审查收口，删除“Task 6 尚未开始”等过期结论，并区分当前 Head 新鲜证据、历史证据和未验证风险。运行生命周期测试、L0/L1/L2 一致性、OpenSpec strict/status/instructions、Plan 映射、Markdown diff 检查和客户端矩阵汇总。
+
+- [x] **Step 7: 请求全分支复审**
+
+复审范围为 `c9e359a..HEAD` 加本 Task 未提交差异。最终结果为 Critical 0、Important 0、`Ready to merge: Yes`；唯一 Minor 已通过逐行断言全部非 marker 内容修复。审查通过后勾选 OpenSpec 7.1。
+
+- [ ] **Step 8: 提交、推送并创建 PR**
+
+```bash
+git add cadence-init/skills/rule-config openspec/changes/improve-progressive-disclosure-routing cadence/plans/2026-07-20_计划文档_实施_OpenSpec与Superpowers渐进式路由_v1.0.md cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由脱敏证据_v1.0.md CLAUDE.md AGENTS.md .claude/rules/openspec-superpowers-workflow.md README.md
+git commit -m "fix: enforce progressive routing lifecycle"
+git push -u origin feat/improve-progressive-disclosure-routing
+gh pr create --base main --head feat/improve-progressive-disclosure-routing
+```
+
+Expected: 提交只包含本变更范围；push 成功；PR 指向 `main` 并包含验证与已知风险摘要。不自动 archive OpenSpec change。

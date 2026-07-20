@@ -32,16 +32,19 @@
 - **AND** 满足对应前置条件后才开始写入
 
 ### Requirement: 有操作的任务必须输出路由回执
-对于需要读取仓库、创建或修改文件、调用 OpenSpec 命令、执行命令或声称完成的任务，系统 SHALL 要求 Agent 在首次工具调用前输出包含阶段、change、Plan 和必调 Skill 的简短路由回执。
+对于需要读取仓库、创建或修改文件、调用 OpenSpec 命令、执行命令或声称完成的任务，系统 SHALL 要求 Agent 通过客户端原生机制选择 `using-superpowers` 和当前阶段全部必调 Skill，并将包含阶段、change、Plan、Skill 与用途的简短路由回执作为首个用户可见段落；系统 MUST 要求回执先于仓库规则读取和仓库工具调用。Claude/Kimi 必须把 Skill 调用及失败重试作为连续工具事件，并在首个事件前、事件之间和重试前保持用户可见输出静默；“我先调用 Skill”等预告、普通文件读取、复述名称或声称已加载 SHALL NOT 视为调用。Codex MAY 将选择 Skill 与首段用途公告合并，但 MUST 随后立即全文读取对应 `SKILL.md`，且在读完前 SHALL NOT 读取仓库规则或使用仓库工具。
 
 #### Scenario: 开始实施已有 change
 - **WHEN** Agent 准备实施名为 `sample-change` 的 OpenSpec change
-- **THEN** 路由回执明确显示阶段为实施、change 名称、Plan 路径和执行类 Skill
+- **THEN** Agent 按客户端原生机制选择 `using-superpowers` 和执行类 Skill
+- **AND** 首个用户可见段落的路由回执明确显示阶段为实施、change 名称、Plan 路径、执行类 Skill 和用途
+- **AND** Claude/Kimi 的 Skill 工具事件先于回执；Codex 在回执后立即全文读取 Skill
+- **AND** Skill 调用完成后才读取仓库规则或使用仓库工具
 
 #### Scenario: 纯概念问答
 - **WHEN** 用户只要求解释概念且不需要读取仓库、创建文件、执行命令或声称完成
-- **THEN** Agent 不必输出路由回执
-- **AND** 不加载代码修改、文档存储或验证正文
+- **THEN** Agent 只选择并调用全局 `using-superpowers` 后直接回答且不输出仓库路由回执；Codex MAY 先输出一条 Skill 用途公告
+- **AND** 不加载仓库规则、其他无关 Skill、代码修改、文档存储或验证正文
 
 ### Requirement: 路由门禁必须失败关闭
 系统 MUST 要求 Agent 在必调 Skill 不可用、强制 OpenSpec 未确认、已有 change 缺少 Plan、实施发现契约变化或缺少完成证据时停止当前阶段，而不是静默降级或模拟已完成的流程。

@@ -88,13 +88,13 @@ L0 解决“Agent 不知道该加载什么”，L1 解决“加载后不知道�
 | 实施与验证均完成 | 协作规则 | `requesting-code-review` | 审查通过后勾选工作包并执行 OpenSpec sync/archive |
 | OpenSpec 已归档，准备集成分支 | 协作规则 | `finishing-a-development-branch` | 选择合并、PR、保留或清理方式 |
 
-对于需要读取仓库、创建或修改文件、调用 `/opsx:*`、执行命令或声称完成的任务，Agent 在首次工具调用前必须输出一行路由回执：
+对于需要读取仓库、创建或修改文件、调用 `/opsx:*`、执行命令或声称完成的任务，必须先选择 `using-superpowers` 与当前阶段全部必调 Skill，将路由回执作为首个用户可见段落，随后才读取仓库规则并使用仓库工具。Claude/Kimi 必须在首段前把原生 Skill 调用及失败重试作为连续工具事件，首个事件前、事件之间和重试前保持用户可见输出静默；“我先调用 Skill”等预告、普通文件读取、复述名称或声称已加载不算调用。Codex 允许把 Skill 选择与用途公告并入首段，随后立即全文读取对应 `SKILL.md`，正文读完前不得进行仓库操作。路由回执格式为：
 
 ```text
 工作流路由：阶段=<探索|契约|计划|实施|验证|收尾>；Change=<名称或无>；Plan=<路径或无>；必调 Skill=<名称>
 ```
 
-纯概念问答不要求输出回执，也不应为了满足路由而加载无关规则。
+纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，也不加载仓库规则或其他无关 Skill；Codex 可以先输出一条 Skill 用途公告以满足平台约束。
 
 ### 4. 阶段切换必须重新路由，并采用失败关闭
 
@@ -181,6 +181,8 @@ cadence-init/skills/rule-config/references/rules/
 
 该规则包含职责边界、完整流程、阶段门禁、冲突裁决、OpenSpec 与 Plan 映射、实施中契约变更、完成归档顺序和轻量豁免。`CLAUDE.md`、`AGENTS.md` 中的 L0 只保留强制索引，不复制长篇解释。
 
+L0 无条件引用 `code-reading.md`，因此 `rule-config` 必须为 Coding 与非 Coding 项目都生成该规则和入口摘要；项目类型只控制 CodeGraph 是否默认安装和初始化，不能控制路由目标文件是否存在。
+
 框架规范源先修改，当前仓库的 `.claude/rules/` 仅作为生成副本同步；不得把框架变更只写入当前副本。
 
 ### 8. L2 使用 OpenSpec 支持的配置点，不虚构 `rules.apply`
@@ -217,7 +219,7 @@ L1 文件属于 Cadence 框架规则，包含框架版本标识。版本标记�
 
 已执行过五个初始化命令的业务项目在获得新版 Cadence 规则后，只需重新运行 `rule-config` 即可补齐或升级 L0、L1 和 OpenSpec 配置受管内容。该过程不重复安装 OpenSpec 或 Superpowers。
 
-### 11. 验证关注路由结果，不假装证明模型“真的读过”
+### 11. 验证同时关注原生 Skill 调用与路由结果
 
 静态验证确认：
 
@@ -227,7 +229,7 @@ L1 文件属于 Cadence 框架规则，包含框架版本标识。版本标记�
 - `openspec/config.yaml` 只使用有效 artifact 规则键。
 - OpenSpec tasks 保持高层粒度，Plan 具有 change、task、requirement 映射。
 
-场景验证至少覆盖 Claude Code、Kimi Code 与 Codex 的新功能、Bug、直接 apply、上下文恢复、纯问答和完工声明。验证记录 Agent 的路由回执、实际加载项、是否越过门禁和是否误加载无关正文。
+场景验证至少覆盖 Claude Code、Kimi Code 与 Codex 的新功能、Bug、直接 apply、上下文恢复、纯问答和完工声明。验证必须记录客户端原生 Skill 调用事件、首个用户可见回执、Skill 正文与仓库工具调用顺序、是否越过门禁和是否误加载无关正文；Claude/Kimi 仅普通读取 `SKILL.md` 不得判定通过，Codex 以平台 Skill 目录中的显式选择、首段用途公告、全文读取和“正文读完前无仓库操作”作为调用证据。
 
 ## Risks / Trade-offs
 
