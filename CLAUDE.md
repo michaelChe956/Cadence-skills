@@ -64,3 +64,6 @@ Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；调用失�
 - **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
 
 ## 项目信息
+
+- 本仓库是一个以 Markdown、YAML、JSON 等文档和配置为主要工作对象的 Skills 项目。
+- Agent 在执行任务时，应优先修改文档、规则、配置与说明文件，避免不必要的代码实现。
