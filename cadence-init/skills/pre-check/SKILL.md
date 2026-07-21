@@ -124,7 +124,7 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` 指令文件。
+- 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` / `.pi` 指令文件。
 - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
@@ -330,18 +330,20 @@ npm install -g @fission-ai/openspec@latest
 
 ```bash
 # 当前项目尚未存在 openspec/config.yaml 时
-openspec init --tools claude,codex
+openspec init --tools claude,codex,pi
 
 # 当前项目已存在 openspec/config.yaml 时
 openspec update
 ```
 
 **增量要求**：
-- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex`。
-- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件。
-- OpenSpec 生成的 Claude Code 和 Codex 目录结构不同，不能混用：
+- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
+- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件（含 pi 产物）。
+- OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
+  - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
+- `--tools pi` 需要 OpenSpec CLI >= 1.4.1；`/pre-check` 的安装命令始终安装 `@fission-ai/openspec@latest`，版本不足时先升级 CLI。
 - 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
 
 **验证命令**：
@@ -350,6 +352,7 @@ openspec update
 test -f openspec/config.yaml
 test -f .codex/skills/openspec-propose/SKILL.md
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+test -f .pi/skills/openspec-propose/SKILL.md
 ```
 
 ### 步骤 6：检查 Superpowers
