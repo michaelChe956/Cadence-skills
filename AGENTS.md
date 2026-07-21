@@ -23,10 +23,10 @@
 | OpenSpec 已归档 | 协作规则 | `using-superpowers` → `finishing-a-development-branch` | 选择分支集成方式 |
 
 阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
-需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败重试作为连续工具事件；首个调用前、事件之间和重试前均保持用户可见输出静默，禁止输出“我先调用 Skill”等引导句；随后第一段输出 `工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。Codex 先显式选择 Skill，将用途并入首段回执，随后立即全文读取 Skill。Skill 调用完成后才读取仓库规则和使用仓库工具。
-纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，不加载仓库规则或其他无关 Skill；Codex 可先输出 Skill 用途公告。一旦转为仓库操作，必须重新路由。
+需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败重试作为连续工具事件；首个调用前、事件之间和重试前均保持用户可见输出静默，禁止输出“我先调用 Skill”等引导句；随后第一段输出 `工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。Codex 先显式选择 Skill，将用途并入首段回执，随后立即全文读取 Skill。pi 与 Codex 同类：从 Skill 清单显式选择 Skill，将用途并入首段回执，随后立即全文读取对应 SKILL.md 作为调用，Skill 未读完前不得读取仓库规则或使用仓库工具。Skill 调用完成后才读取仓库规则和使用仓库工具。
+纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，不加载仓库规则或其他无关 Skill；Codex/pi 可先输出 Skill 用途公告。一旦转为仓库操作，必须重新路由。
 需要仓库勘察的新功能或行为变化，必须先原生调用 `using-superpowers`、`brainstorming`，再输出回执；回执必须先于 change、Plan、目录或文件勘察，澄清问题不得替代回执。
-Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
+Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；pi 以全文读取对应 SKILL.md 作为 Skill 调用；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
 失败关闭本身也属于当前阶段动作，不能用“只判断/只拒绝”豁免 Skill：无 Plan 时先调用 `using-superpowers`、`writing-plans` 再拒绝 apply；即使禁止运行验证命令，也必须先调用 `using-superpowers`、`verification-before-completion` 加载验证纪律，再拒绝无证据完成声明；其他必调 Skill 未加载则停止。
 <!-- cadence-managed:openspec-superpowers-routing:v1:end -->
 

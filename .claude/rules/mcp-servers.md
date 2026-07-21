@@ -124,7 +124,7 @@ codegraph serve --mcp
 
 **使用规则**：
 1. 图片建议放到本地目录，通过对话指定图片名称或路径来调用
-2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外）
+2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外；pi 经 pi-mcp-adapter 调用时同样需通过本地路径指定图片）
 3. 需要安装最新版本（>= 0.1.2）
 
 **典型工作流**：
@@ -271,7 +271,7 @@ codegraph serve --mcp
 
 **使用规则**：
 1. 基于 uvx 运行的本地 MCP 服务
-2. 验证配置：进入 Claude Code 后输入 `/mcp`，能看到 `web_search` 和 `understand_image` 说明配置成功
+2. 验证配置：在 Claude Code 或 pi 中输入 `/mcp`（pi 的 `/mcp` 由 pi-mcp-adapter 提供），能看到 `web_search` 和 `understand_image` 说明配置成功
 3. **优先级规则**：当需要进行网络搜索时，**优先使用 MiniMax Token Plan MCP**。只有在 MiniMax 不可用时，才回退到模型自带的 WebSearch 工具或其他联网搜索功能（如智普联网搜索 MCP）
 
 **典型工作流**：
@@ -286,7 +286,7 @@ codegraph serve --mcp
 ### 智普/MiniMax API Key 安全提醒
 
 > **安全警告**
-> 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 Claude Code
+> 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 AI 客户端（Claude Code、Codex、pi 等）
 > 2. 配置文件中使用占位符，用户需自行替换为真实密钥
 > 3. `.mcp.json` 已在 `.gitignore` 中排除，不会提交到版本控制
 >
