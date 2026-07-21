@@ -220,10 +220,10 @@ git pull
 
 | Skill | 默认行为 | 需要显式启用的内容 |
 |------|----------|--------------------|
-| `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
+| `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；OpenSpec 默认初始化 `claude,codex,pi` 三客户端产物，老项目缺 pi 产物时自动补齐；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；PATH 中存在 pi 可执行文件时条件检查并安装 `pi-mcp-adapter`，不存在时跳过；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
 | `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
-| `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
+| `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
 ### KnowledgeBase Skills
@@ -323,7 +323,7 @@ $knowledge-base-context
 
 | Skill | no-interrupt 模式行为 |
 |------|------------------------|
-| `/pre-check` | 除 Playwright 外，强制完成 npx、uvx、ast-grep、codegraph、OpenSpec、Superpowers 的安装和验证；任一项失败立即终止；Superpowers 固定离线目录无效时直接报错；同名冲突先备份再处理 |
+| `/pre-check` | 除 Playwright 外，强制完成 npx、uvx、ast-grep、codegraph、OpenSpec、Superpowers 的安装和验证；任一项失败立即终止；Superpowers 同步四层软链（含 `~/.pi/agent/skills`）且固定离线目录无效时直接报错；同名冲突先备份再处理；PATH 中存在 pi 可执行文件但 `pi-mcp-adapter` 安装失败时立即终止，pi 不存在时跳过不算失败 |
 | `/rule-config` | 冲突时以 `rule-config` 模板和强制规则为准，项目已有内容作为补充合并；只报告历史文档目录，不执行迁移 |
 | `/mcp-configuration` | 冲突时以标准 MCP 结构和必需参数为准，保留项目额外 Server、扩展字段和已有非占位密钥；解析或验证失败时恢复备份并终止 |
 | `/project-rules-examples` | 冲突时以标准模板骨架和强制约束为准，保留项目事实、真实占位值和额外章节；无法结构化合并时备份并保留原文 |
@@ -369,7 +369,10 @@ your_minimax_api_key
 - ✅ 检查 npx 是否安装（Node.js 包执行器）
 - ✅ 检查 uvx 是否安装（Python 包执行器）
 - ✅ 检查并补齐 ast-grep、codegraph、OpenSpec、Superpowers
+- ✅ OpenSpec 默认初始化 `claude,codex,pi` 三客户端产物，老项目缺 pi 产物时先 `openspec init --tools pi` 再 `openspec update`
+- ✅ Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层
 - ✅ 支持 Superpowers 在线更新和离线目录同步
+- ✅ 检测到 pi 可执行文件时条件检查并安装 `pi-mcp-adapter`（未安装 pi 时跳过）
 - ✅ 默认跳过 Playwright，除非显式启用
 - ✅ 默认提醒后续替换智普/MiniMax API Key 占位符
 
@@ -402,7 +405,7 @@ your_minimax_api_key
 - ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
 - ✅ 默认不启用 Playwright 规则，除非显式要求
 
-OpenSpec 管契约，Superpowers 管行为。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则。普通模式遇到无法识别的本地修改且没有获得替换确认时会保留并报告；`no-interrupt` 模式会先备份，备份成功后再替换。
+OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kimi、Codex 与 pi 三类客户端的 Skill 调用与路由回执约定（pi 与 Codex 同类：显式选择 Skill → 用途并入首段回执 → 全文读取 `SKILL.md` → 读完后才允许仓库操作）。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则。普通模式遇到无法识别的本地修改且没有获得替换确认时会保留并报告；`no-interrupt` 模式会先备份，备份成功后再替换。
 
 ### 步骤 4：MCP 配置
 
@@ -416,7 +419,8 @@ OpenSpec 管契约，Superpowers 管行为。已初始化项目更新 Cadence �
 - ✅ 创建 `.mcp.json` 配置文件
 - ✅ 配置 MCP 使用规则
 - ✅ 默认写入智普/MiniMax API Key 占位配置
-- ✅ 默认同步 stdio MCP 到 `.codex/config.toml`
+- ✅ 默认同步 stdio MCP 到 `.codex/config.toml`（Codex 不支持 HTTP 类型 MCP）
+- ✅ pi 经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置
 - ✅ 默认将 `.worktrees/`、`.mcp.json`、`.codex/` 加入 `.gitignore`
 
 ### 步骤 5（推荐）：项目个性化规则
@@ -638,6 +642,7 @@ Cadence 提供 3 种流程模式，适应不同的开发场景：
 
 - 自动检测项目类型和技术栈
 - 跨平台兼容（macOS/Linux/Windows）
+- 同时支持 Claude Code、Codex 与 pi 三类客户端的环境初始化（OpenSpec 产物、Superpowers 软链、MCP 接入）
 - 用户确认机制确保准确性
 
 ## 哲学
