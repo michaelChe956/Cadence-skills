@@ -43,14 +43,14 @@ disable-model-invocation: true
 | ast-grep | `ast-grep --version` 成功 | 立即终止 |
 | codegraph | `codegraph version` 成功 | 立即终止 |
 | OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
-| Superpowers | 来源目录和三层 Skills 软链验证成功 | 立即终止 |
+| Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 
 `no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
 
 ### no-interrupt Superpowers 处理
 
-1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成三层软链。
+1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成四层软链。
 2. 来源目录无效或缺失时，尝试在线 clone 或 Git 更新。
 3. 在线操作失败后，只允许校验固定离线目录 `~/.agents/superpowers/skills`，不询问其他离线来源路径。
 4. 固定离线目录仍无效时立即报错，终止 `/pre-check`。
@@ -125,7 +125,7 @@ digraph when_to_use {
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
 - 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` 指令文件。
-- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 的软链。
+- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
 ## 检查流程
@@ -214,7 +214,7 @@ digraph check_flow {
 | **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
 | **5. OpenSpec** | `openspec --version`、`openspec/config.yaml` | CLI 和指令文件存在 | 安装 CLI 后执行 `openspec init` 或 `openspec update` |
-| **6. Superpowers** | `~/.agents/superpowers/skills` | 三层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
@@ -362,6 +362,7 @@ test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/S
 | 统一 Skills 目录 | `~/.agents/skills` |
 | Codex 目标目录 | `~/.codex/skills/skills` |
 | Claude Code 目标目录 | `~/.claude/skills` |
+| pi 目标目录 | `~/.pi/agent/skills` |
 
 **在线安装来源**：
 
@@ -399,14 +400,17 @@ git pull --ff-only
 
 **软链同步逻辑**：
 
-1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 存在。
+1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 存在。
 2. 将 `~/.agents/superpowers/skills/*` 逐项软链到 `~/.agents/skills`。
 3. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.codex/skills/skills`。
 4. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.claude/skills`。
-5. 已存在正确软链：跳过。
-6. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
-7. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
-8. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
+5. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.pi/agent/skills`。
+6. 已存在正确软链：跳过。
+7. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
+8. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
+9. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
+
+> 说明：pi 原生也会读取 `~/.agents/skills`，此处显式软链到 `~/.pi/agent/skills` 是为了与 Claude Code/Codex 保持一致的显式布局，便于统一检查、更新与失效清理。
 
 **验证命令**：
 
@@ -415,6 +419,7 @@ test -d "$HOME/.agents/superpowers/skills"
 test -d "$HOME/.agents/skills"
 test -d "$HOME/.codex/skills/skills"
 test -d "$HOME/.claude/skills"
+test -d "$HOME/.pi/agent/skills"
 ```
 
 **增量要求**：
