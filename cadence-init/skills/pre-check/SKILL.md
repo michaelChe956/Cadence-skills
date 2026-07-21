@@ -44,6 +44,7 @@ disable-model-invocation: true
 | codegraph | `codegraph version` 成功 | 立即终止 |
 | OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
 | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
+| pi MCP Adapter | 条件项：检测到 pi 环境时 adapter 安装并验证成功；未检测到 pi 环境时跳过 | pi 存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 
 `no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
@@ -163,6 +164,9 @@ digraph check_flow {
     sync_superpowers [label="更新仓库并同步软链"];
     superpowers_done [label="Superpowers 就绪"];
 
+    check_pi_mcp [label="检测到 pi 环境?", shape=diamond];
+    install_pi_mcp [label="检查/安装 pi-mcp-adapter"];
+    skip_pi_mcp [label="跳过 pi MCP Adapter 检查"];
     optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
     remind_apikey [label="默认展示 API Key 占位提醒"];
 
@@ -199,7 +203,11 @@ digraph check_flow {
     check_superpowers -> sync_superpowers [label="来源存在"];
     clone_superpowers -> sync_superpowers;
     sync_superpowers -> superpowers_done;
-    superpowers_done -> optional_playwright;
+    superpowers_done -> check_pi_mcp;
+    check_pi_mcp -> install_pi_mcp [label="是"];
+    check_pi_mcp -> skip_pi_mcp [label="否"];
+    install_pi_mcp -> optional_playwright;
+    skip_pi_mcp -> optional_playwright;
     optional_playwright -> remind_apikey;
     remind_apikey -> end;
 }
@@ -215,6 +223,7 @@ digraph check_flow {
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
 | **5. OpenSpec** | `openspec --version`、`openspec/config.yaml` | CLI 和指令文件存在 | 安装 CLI 后执行 `openspec init` 或 `openspec update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`~/.pi/agent/npm/pi-mcp-adapter` | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
@@ -431,6 +440,43 @@ test -d "$HOME/.pi/agent/skills"
 - 离线安装目录有效时，不要求 `.git` 存在，不尝试 Git 更新。
 - 在线 clone 或 Git 更新失败时，不删除已有离线目录或已有软链。
 
+### 步骤 7：检查 pi MCP Adapter（条件检查）
+
+> 条件项：仅在检测到 pi 环境时执行；未检测到 pi 环境时跳过且不算失败（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
+
+**触发条件（满足任一即执行检查）**：
+
+```bash
+pi --version
+test -d "$HOME/.pi/agent"
+```
+
+**就绪判定（满足任一即视为已安装）**：
+
+```bash
+test -d "$HOME/.pi/agent/npm/pi-mcp-adapter"
+pi list | grep pi-mcp-adapter
+```
+
+**安装命令**：
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+**行为（中文输出）**：
+- 未检测到 pi 环境：报告 "✓ 未检测到 pi 环境，跳过 pi MCP Adapter 检查"，继续后续步骤
+- 已安装：报告 "✓ pi-mcp-adapter 已安装"
+- 未安装：报告 "正在安装 pi-mcp-adapter..."，执行安装命令，完成后按就绪判定验证并报告 "✓ pi-mcp-adapter 安装成功"
+- 安装失败：普通模式报告失败原因与手动命令 `pi install npm:pi-mcp-adapter`；no-interrupt 模式立即终止并给出恢复建议，不得宣称初始化成功
+
+**说明**：
+
+- **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后直接读取项目 `.mcp.json`（含 HTTP 类型 server），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
+- **安装位置**：全局安装，写入 `~/.pi/agent/settings.json`，包文件位于 `~/.pi/agent/npm/pi-mcp-adapter`；一次安装对所有项目生效。
+- **增量要求**：已安装时跳过；pi 环境不存在时不安装、不报错、不影响其他检查结果。
+- **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
+
 ### 默认步骤：API Key 占位配置提醒
 
 > **⚠️ 默认执行提醒** — 不主动询问用户是否需要，不要求用户输入真实 API Key，不阻塞初始化。
@@ -469,4 +515,5 @@ test -d "$HOME/.pi/agent/skills"
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
 | **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
+| **pi-mcp-adapter 安装失败** | pi 不可用或网络问题 | 手动执行 `pi install npm:pi-mcp-adapter`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
