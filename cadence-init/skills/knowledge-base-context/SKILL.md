@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-context
-description: "Use when an agent is about to perform project-specific 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug work and an existing Schema 4.0 KnowledgeBase must ground the task context."
+description: "MUST use when an agent is about to perform project-specific 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug work and an existing Schema 4.0 KnowledgeBase must ground the task context."
 ---
 
 # KnowledgeBase 任务上下文
@@ -36,6 +36,8 @@ description: "Use when an agent is about to perform project-specific 需求澄�
 - 不复制完整源码、整篇知识库文档或配置快照，只保留摘要、稳定 ID、精确位置和必要短片段。
 - 工作区未提交修改属于当前代码证据，不清理、不覆盖、不恢复。
 - 敏感配置只返回配置键、用途、状态和绑定位置；值统一写为 `<redacted>`。
+- 四条证据路径逐层执行：每层必须输出本层证据摘要（来源、精确位置、本层结论、停止原因）后才允许进入下一层；四条路径各自必须有证据或停止原因，禁止留白方向。
+- 默认只扩展一跳；画像必需字段仍缺关键证据时才扩第二跳，扩跳必须记录触发理由。
 
 ## 工作流程
 
@@ -202,7 +204,25 @@ YYYY-MM-DD_任务上下文_任务名称_v1.0.md
 
 任务快照记录 Manifest 基线和当前提交，但不加入 Manifest，也不反向更新领域知识库。
 
+### 输出门禁（强制）
+
+输出上下文包前必须逐项自检：
+
+1. 十三节逐节必填；无内容节写明`无直接关系`或`证据缺失+原因`，不得省略整节。
+2. 每个关键结论必须挂稳定 ID + 精确文件/行号，或显式状态（`一致`/`KnowledgeBase 缺失`/`代码缺失`/`数据模型证据缺失`/`配置证据缺失`/`基线漂移`/`来源冲突`/`待确认`）；无载体的结论不得出现在上下文包中。
+3. 就绪状态硬性判定：目标实体无法唯一确定、关键冲突会改变任务方向、任务依赖的实际配置不可验证，满足其一时必须判`阻断`。
+
+### 输出前准确性自查（强制，留痕）
+
+1. 稳定 ID 解析复核：引用的每个稳定 ID 读文件确认存在，不凭记忆写 ID。
+2. 逐字一致复核：Method+Path、表名、字段名、配置键与来源逐字一致。
+3. 候选强制：无法唯一匹配时列出候选清单，禁止挑一个写。
+4. 证据矩阵必填：每行结论必须含状态列，状态只使用上述八种枚举。
+
 ## 完成条件
+
+- 四条路径均已输出本层证据摘要或停止原因；扩跳均记录了触发理由。
+- 输出门禁三项自检与准确性自查四步已通过并留痕；十三节无省略。
 
 - 已识别一个主画像和不超过两个辅助画像。
 - 四条路径均已实际检查并分别记录证据或停止原因。
