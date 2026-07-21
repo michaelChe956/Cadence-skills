@@ -126,8 +126,9 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 2. 在读取配置内容前首次计算最终快照指纹，并与 `evidence.configuration_snapshots.baseline.fingerprint` 比较。只有两者相等时，才在授权的外部不可变快照中分类和读取配置文件；不复制快照或访问远程配置源。
 3. 按分析指南区分配置证据、Mapper XML、日志配置、脚本证据和默认排除项。相同内容文件仅在当前运行中用临时哈希去重，合并后保留全部适用服务、环境、Profile 与来源。
 4. 逐服务记录配置来源与加载顺序、Profile、配置键、代码绑定、生效条件、数据源、分片、中间件和外部系统关系；来源冲突不得擅自裁决。
-5. 所有敏感值和敏感内部地址统一写为 `<redacted>`，不保留敏感值哈希。配置键状态只允许 `存在`、`新增`、`删除`、`修改`、`缺失`、`来源冲突`、`待确认`。
-6. 分析结束后再次计算最终快照指纹。只有满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint` 时，才生成 `configurations/README.md` 和范围内每个服务的配置文档，并登记到 Manifest 的 `documents.configurations`。
+5. 键数核对（强制）：统计每个来源配置文件的实际键数（按本 Skill 既有去重与合并口径；相同内容文件合并分析时按合并后全集计），与配置文档第 4 节"配置键清单"行数比对；两个数字分别以`来源文件键数`与`文档收录键数`写入该文档元数据表。两者不一致时不得进入下一阶段，先查明并补齐遗漏键。
+6. 所有敏感值和敏感内部地址统一写为 `<redacted>`，不保留敏感值哈希。配置键状态只允许 `存在`、`新增`、`删除`、`修改`、`缺失`、`来源冲突`、`待确认`。脱敏对象是值而不是键：敏感配置的键名、用途、值类型与敏感级别必须逐键列出，仅值写 `<redacted>`；禁止以敏感为由整条省略配置键，也禁止只写"共 N 个敏感键"的总数替代逐键条目。
+7. 分析结束后再次计算最终快照指纹。只有满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint` 时，才生成 `configurations/README.md` 和范围内每个服务的配置文档，并登记到 Manifest 的 `documents.configurations`。
 
 代码、数据模型与配置分别生成自己的一级文档；Mapper XML 转交数据模型文档，配置文档只保留它与逻辑表、数据源或分片规则的关系，不复制字段清单。
 
@@ -203,6 +204,9 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 横切机制基础分析只覆盖 `scope.projects` 内本地实现。中间件为 `不适用` 时，`base-information.md` 与 `services/README.md` 均已记录原因，且未扫描、创建、输出或关联任何 MIDDLEWARE 候选或实体；中间件为 `指定` 时，输出只包含 `selected` 实体及其关系，必要依赖未新增授权对象；中间件为 `全量` 时，中间件实体发现和建模仍未越过 `scope.projects`。
 - 数据模型总索引、所有适用的 Schema 索引和每张逻辑表文档均已生成，链接可达。
 - 配置总索引和范围内每个服务的配置文档均已生成，链接可达；配置为 `不适用` 时总索引已记录原因。
+- 每个服务配置文档遵循 `assets/service-configuration-template.md` 的 10 节结构（无内容节按规则填`未发现`或`未提供`，不允许整节消失或自创节结构），输出前已逐节与模板对照自检。
+- 每个服务配置文档第 4 节配置键清单逐键完整：`来源文件键数` == `文档收录键数`，两个数字已写入元数据表可供机械比对。
+- 敏感配置逐键列出键名、用途、值类型与敏感级别，仅值写 `<redacted>`；不存在以敏感为由省略的键。
 - 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 保存授权的最终快照指纹、来源元数据和 `scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
 - Manifest 的 `generated_at` 已保留为首次生成时间；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 的未解决条目完全一致，并与受影响文档原子写入。
 - 每张逻辑表都有字段清单、证据状态、证据位置、读写服务以及已发现的 Mapper/SQL 映射。
