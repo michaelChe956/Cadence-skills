@@ -8,17 +8,17 @@
 ## 2. pre-check：OpenSpec 增加 pi
 
 - [x] 2.1 更新初始化命令为 `openspec init --tools claude,codex,pi`，补充 pi 产物结构说明与验证命令（映射：OpenSpec 初始化包含 pi 工具）
-- [x] 2.2 更新增量要求：老项目 `openspec update` 补齐 pi 产物；注明 pi 支持需 openspec ≥ 1.4.1（映射：OpenSpec 初始化包含 pi 工具）
+- [x] 2.2 更新增量要求：老项目缺少 pi 产物时先执行 `openspec init --tools pi`、再执行 `openspec update`；已有 pi 产物时直接执行 `openspec update`；注明 pi 支持需 openspec ≥ 1.4.1（映射：OpenSpec 初始化包含 pi 工具）
 
 ## 3. pre-check：新增 pi MCP Adapter 条件检查
 
-- [x] 3.1 在 Superpowers 之后、Playwright 之前新增"pi MCP Adapter"检查步骤：触发条件、就绪判定、安装命令、失败处理（映射：pi MCP adapter 条件检查与安装）
+- [x] 3.1 在 Superpowers 之后、Playwright 之前新增"pi MCP Adapter"检查步骤：触发条件、以 `pi list` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 为就绪判定、全局安装命令、失败处理（映射：pi MCP adapter 条件检查与安装）
 - [x] 3.2 更新 no-interrupt 强制完成策略表、检查流程图、快速参考表与常见错误表（映射：pi MCP adapter 条件检查与安装）
 
 ## 4. mcp-configuration：pi 消费方式说明
 
 - [x] 4.1 增加 pi 段落：无原生 MCP、pi-mcp-adapter 直读 `.mcp.json`（含 HTTP server）、不维护第二份配置、`.gitignore` 无新增条目（映射：MCP 配置文档说明 pi 消费方式）
-- [x] 4.2 "Codex 与 Claude Code 格式差异"对比表扩展为三客户端对比（映射：MCP 配置文档说明 pi 消费方式）
+- [x] 4.2 "Claude Code、Codex 与 pi 格式差异"对比表覆盖三客户端（映射：MCP 配置文档说明 pi 消费方式）
 
 ## 5. rule-config：规则模板补 pi 行为约定
 

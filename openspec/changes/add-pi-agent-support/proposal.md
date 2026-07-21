@@ -7,7 +7,7 @@ Cadence 框架当前的客户端支持矩阵只覆盖 Claude Code 与 Codex：Su
 ## What Changes
 
 - `pre-check` Skill 的 Superpowers 软链同步增加第四个目标目录 `~/.pi/agent/skills`，与现有 claude/codex 目标共用同一套增量、冲突与失效清理规则。
-- `pre-check` Skill 的 OpenSpec 初始化命令从 `openspec init --tools claude,codex` 扩展为 `claude,codex,pi`，验证与增量说明同步补齐 pi 产物（`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`）。
+- `pre-check` Skill 的 OpenSpec 初始化命令对新项目使用 `openspec init --tools claude,codex,pi`；对已有 `openspec/config.yaml` 的项目，若缺少 pi 产物则先执行 `openspec init --tools pi`，再执行 `openspec update`，若 pi 产物已存在则直接执行 `openspec update`。验证与增量说明同步覆盖 pi 产物（`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`）。
 - `pre-check` Skill 新增一项条件检查"pi MCP Adapter"：仅在检测到 pi 环境时检查/全局安装 `pi-mcp-adapter`（`pi install npm:pi-mcp-adapter`）；未安装 pi 的环境跳过且不算失败。
 - `mcp-configuration` Skill 增加 pi 说明：pi 无原生 MCP，由 pi-mcp-adapter 直接读取项目 `.mcp.json`（含 HTTP 类型 server），不维护第二份客户端配置文件。
 - `rule-config` 的路由规则模板（`agent-routing-kernel.md`、`openspec-superpowers-workflow.md`）增加 pi 客户端行为约定；`mcp-servers.md` 模板与 `rule-config` 的 codegraph 章节补充 pi 相关说明。

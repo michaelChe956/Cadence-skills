@@ -13,7 +13,7 @@ pi 侧已确认的事实（勘察证据）：
 
 - pi 全局 skills 目录为 `~/.pi/agent/skills/`（项目级为 `.pi/skills/`）；pi 原生也会读 `~/.agents/skills/`，但显式软链与 claude/codex 模式对齐，且用户本机已是此形态并正常工作。
 - openspec CLI 1.4.1 原生支持 `--tools pi`，生成 `.pi/prompts/opsx-*.md` 与 `.pi/skills/openspec-*`（已在 /tmp 实测）。
-- pi 官方不做原生 MCP（README: "No MCP"），只能通过扩展接入。npm 包 `pi-mcp-adapter`（v2.11.0，持续维护）安装后直接读取项目 `.mcp.json`，支持 stdio 与 HTTP 类型 server；全局安装位置 `~/.pi/agent/npm/pi-mcp-adapter`，由 `pi install npm:pi-mcp-adapter` 写入 `~/.pi/agent/settings.json`。
+- pi 官方不做原生 MCP（README: "No MCP"），只能通过扩展接入。npm 包 `pi-mcp-adapter`（v2.11.0，持续维护）安装后自动读取项目 `.mcp.json`，支持标准 stdio 与 HTTP 配置；全局安装位置 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，由 `pi install npm:pi-mcp-adapter` 写入 `~/.pi/agent/settings.json`，可执行文件软链位于 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`。
 - `codegraph install --target` 仅支持 claude/cursor/codex/opencode/hermes，不支持 pi；pi 经 `.mcp.json` + adapter 消费 codegraph MCP，无需额外动作。
 - pi 调用 Skill 的机制是全文读取 SKILL.md（harness 在系统提示中列出可用 Skill 及其路径），行为特征与 Codex 类似。
 
@@ -45,7 +45,8 @@ pi 侧已确认的事实（勘察证据）：
 
 ### D2：OpenSpec 工具列表追加 `pi`
 
-- `openspec init --tools claude,codex` → `claude,codex,pi`；`openspec update` 增量补齐 pi 产物。
+- 新项目使用 `openspec init --tools claude,codex,pi`。
+- 已有 `openspec/config.yaml` 的项目不能依赖 `openspec update` 引入新的工具集：若 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*` 缺失，先执行 `openspec init --tools pi` 生成 5 个 pi skills 与 5 个 pi prompts，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。
 - 验证增加 `test -f .pi/skills/openspec-propose/SKILL.md`。
 
 ### D3：pi MCP 走第三方扩展 pi-mcp-adapter，全局安装，检查归 pre-check
@@ -54,9 +55,9 @@ pi 侧已确认的事实（勘察证据）：
 - 安装位置（已经用户确认）：全局（`pi install npm:pi-mcp-adapter` → `~/.pi/agent/settings.json`），adapter 属于 pi 运行环境而非项目配置；不做项目级 `.pi/settings.json` 安装。
 - 检查归属：pre-check 新增第 7 项**条件检查**，位于 Superpowers 之后、Playwright 之前：
   - 触发条件：`pi --version` 可用或 `~/.pi/agent` 目录存在；否则报告跳过且**不算失败**（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
-  - 就绪判定：`~/.pi/agent/npm/pi-mcp-adapter` 存在或 `pi list` 输出含 `pi-mcp-adapter`。
+  - 就绪判定：`pi list` 输出含 `pi-mcp-adapter`，或实际包目录 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在。
   - 失败处理：pi 存在但安装失败时报告失败原因与手动命令；no-interrupt 模式下终止并给出恢复建议。
-- mcp-configuration 不新增"同步到 pi"步骤（无第二份配置文件可同步），只增加 pi 消费方式说明，并把"Codex 与 Claude Code 格式差异"对比表扩展为三客户端对比；`.gitignore` 无新增条目（pi 复用的 `.mcp.json` 已在忽略清单）。
+- mcp-configuration 不新增"同步到 pi"步骤（无第二份配置文件可同步），只增加 pi 消费方式说明，并把"Claude Code、Codex 与 pi 格式差异"对比表覆盖三客户端；`.gitignore` 无新增条目（pi 复用的 `.mcp.json` 已在忽略清单）。
 
 ### D4：pi 客户端行为约定并入路由规则模板
 
@@ -77,7 +78,7 @@ pi 侧已确认的事实（勘察证据）：
 
 ## Migration Plan
 
-- 纯文档变更，无数据迁移。发布后即生效：新运行 `/pre-check` 的项目自动获得 pi 支持；已初始化项目重跑 `/pre-check` 增量补齐 pi 软链、OpenSpec pi 产物与（如装 pi）adapter；重跑 rule-config 的项目获得含 pi 约定的路由区块。
+- 纯文档变更，无数据迁移。发布后即生效：新运行 `/pre-check` 的项目自动获得 pi 支持；已初始化项目重跑 `/pre-check` 时，若缺少 pi OpenSpec 产物则先执行 `openspec init --tools pi`、再执行 `openspec update`，并增量补齐 pi 软链与（如装 pi）adapter；已有 pi 产物时直接执行 `openspec update`。重跑 rule-config 的项目获得含 pi 约定的路由区块。
 
 ## Open Questions
 

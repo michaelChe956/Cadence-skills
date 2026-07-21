@@ -107,8 +107,8 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
 5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
-6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
-7. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
+6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
+7. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -559,7 +559,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 - 写入顺序：基础配置 → CodeGraph 配置（仅 Coding 项目） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
-**Codex 与 Claude Code 格式差异**：
+**Claude Code、Codex 与 pi 格式差异**：
 
 | 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) | pi（pi-mcp-adapter） |
 |------|--------------------------|------------------------------|----------------------|

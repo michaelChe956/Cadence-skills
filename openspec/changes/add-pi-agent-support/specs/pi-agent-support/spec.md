@@ -23,17 +23,22 @@ pre-check 的 Superpowers 软链同步 MUST 在现有 `~/.agents/skills`、`~/.c
 
 ### Requirement: OpenSpec 初始化包含 pi 工具
 
-pre-check 的 OpenSpec 初始化 MUST 使用 `openspec init --tools claude,codex,pi`；已初始化的项目执行 `openspec update` 时 MUST 补齐 pi 产物（`.pi/prompts/opsx-*.md` 与 `.pi/skills/openspec-*`）。
+pre-check 对新项目的 OpenSpec 初始化 MUST 使用 `openspec init --tools claude,codex,pi`。对已存在 `openspec/config.yaml` 的项目，若 pi 产物缺失，MUST 先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，MUST 直接执行 `openspec update`。pre-check MUST NOT 声称 `openspec update` 单独执行会为未选择过 pi 工具的老项目新增 `.pi/prompts/opsx-*.md` 与 `.pi/skills/openspec-*`。
 
 #### Scenario: 新项目初始化生成 pi 产物
 
 - **WHEN** 项目不存在 `openspec/config.yaml` 且 pre-check 执行 OpenSpec 初始化
 - **THEN** 执行 `openspec init --tools claude,codex,pi`，且验证 `test -f .pi/skills/openspec-propose/SKILL.md` 通过
 
-#### Scenario: 老项目增量补齐 pi 产物
+#### Scenario: 老项目缺少 pi 产物时增量初始化
 
-- **WHEN** 项目已存在 `openspec/config.yaml` 但缺少 `.pi/skills/openspec-*`
-- **THEN** pre-check 执行 `openspec update` 补齐 pi 指令文件，不删除、不覆盖用户已改动的既有产物
+- **WHEN** 项目已存在 `openspec/config.yaml` 但缺少 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*`
+- **THEN** pre-check 先执行 `openspec init --tools pi`，确认生成 5 个 pi skills 与 5 个 pi prompts，再执行 `openspec update`
+
+#### Scenario: 老项目已有 pi 产物时更新
+
+- **WHEN** 项目已存在 `openspec/config.yaml` 且 pi skills 与 prompts 已存在
+- **THEN** pre-check 直接执行 `openspec update` 刷新已有工具产物
 
 ### Requirement: pi MCP adapter 条件检查与安装
 
@@ -41,7 +46,7 @@ pre-check MUST 提供一项"pi MCP Adapter"条件检查：仅当检测到 pi 环
 
 #### Scenario: pi 存在且 adapter 缺失时自动安装
 
-- **WHEN** 检测到 pi 环境，且 `~/.pi/agent/npm/pi-mcp-adapter` 不存在且 `pi list` 输出不含 `pi-mcp-adapter`
+- **WHEN** 检测到 pi 环境，且 `pi list` 输出不含 `pi-mcp-adapter`，且 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 不存在
 - **THEN** pre-check 执行 `pi install npm:pi-mcp-adapter` 并验证安装结果
 
 #### Scenario: 未安装 pi 的环境条件跳过

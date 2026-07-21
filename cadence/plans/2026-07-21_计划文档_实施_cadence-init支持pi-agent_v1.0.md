@@ -12,10 +12,10 @@
 
 ## Global Constraints
 
-- 改动范围仅限 `cadence-init/`；禁止触碰 `cadence-workflow/` 与根目录 `install-offline.sh/.bat`。
+- 产品实现改动范围仅限 `cadence-init/`；允许同步维护本 Change 的 `openspec/changes/add-pi-agent-support/` 契约、tasks 与本 Plan。禁止触碰 `cadence-workflow/`、根 `AGENTS.md` / `CLAUDE.md` 与根目录 `install-offline.sh/.bat`。
 - 不新增任何脚本/代码文件，仅修改 Markdown。
 - 软链目标目录为 `~/.pi/agent/skills`（不是 `~/.pi/skills`）。
-- OpenSpec 初始化命令为 `openspec init --tools claude,codex,pi`（需 openspec ≥ 1.4.1）。
+- OpenSpec 新项目初始化命令为 `openspec init --tools claude,codex,pi`（需 openspec ≥ 1.4.1）；已有配置但缺少 pi 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；已有 pi 产物时直接执行 `openspec update`。
 - pi MCP 方案：全局 `pi install npm:pi-mcp-adapter`，直读项目 `.mcp.json`；不引入 `.pi/mcp.json`，不在 `.gitignore` 新增条目。
 - 每个 Task 结束后单独 commit，提交信息风格沿用仓库（如 `docs(cadence-init): ...`），使用中文描述。
 - 编辑使用精确字符串替换；`old` 文本必须在原文件中唯一。
@@ -54,6 +54,13 @@ new: | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终
 ```
 old: | **6. Superpowers** | `~/.agents/superpowers/skills` | 三层软链同步完成 | 在线 clone；失败时提示离线复制 |
 new: | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
+```
+
+精确替换 3（no-interrupt Superpowers 处理第 1 条）：
+
+```
+old: 1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成三层软链。
+new: 1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成四层软链。
 ```
 
 - [ ] **Step 3: 更新增量运行典型场景**
@@ -189,7 +196,9 @@ old:
 
 new:
 - 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
-- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件（含 pi 产物）。
+- 如果 `openspec/config.yaml` 已存在且缺少 `.pi` 产物，先执行 `openspec init --tools pi`；确认 `.pi/skills` 恰有 5 个 `openspec-*` 目录且 `.pi/prompts` 恰有 5 个 `opsx-*.md` 文件后，再执行 `openspec update`。
+- 如果 `openspec/config.yaml` 已存在且 pi 产物已存在，直接执行 `openspec update`。
+- `openspec update` 只刷新已初始化的工具产物，不能单独为未选择过 pi 的老项目新增 `.pi` 产物。
 - OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
@@ -219,8 +228,8 @@ test -f .pi/skills/openspec-propose/SKILL.md
 精确替换：
 
 ```
-old: - 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` 指令文件。
-new: - 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` / `.pi` 指令文件。
+old: - 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` / `.pi` 指令文件。
+new: - 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
 ```
 
 - [ ] **Step 6: 验证修改生效**
@@ -276,7 +285,7 @@ test -d "$HOME/.pi/agent"
 **就绪判定（满足任一即视为已安装）**：
 
 ```bash
-test -d "$HOME/.pi/agent/npm/pi-mcp-adapter"
+test -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
 pi list | grep pi-mcp-adapter
 ```
 
@@ -295,7 +304,7 @@ pi install npm:pi-mcp-adapter
 **说明**：
 
 - **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后直接读取项目 `.mcp.json`（含 HTTP 类型 server），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
-- **安装位置**：全局安装，写入 `~/.pi/agent/settings.json`，包文件位于 `~/.pi/agent/npm/pi-mcp-adapter`；一次安装对所有项目生效。
+- **安装位置**：使用 `pi install npm:pi-mcp-adapter` 全局安装并写入 `~/.pi/agent/settings.json`；实际包目录为 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，可执行文件软链为 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`；一次安装对所有项目生效。
 - **增量要求**：已安装时跳过；pi 环境不存在时不安装、不报错、不影响其他检查结果。
 - **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
 
@@ -319,7 +328,7 @@ new: | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终
 
 ```
 old: | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
-new: | **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`~/.pi/agent/npm/pi-mcp-adapter` | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
+new: | **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 ```
 
@@ -372,7 +381,7 @@ new:
 cd cadence-init/skills/pre-check
 grep -c 'pi-mcp-adapter' SKILL.md        # 期望 >= 8
 grep -c '步骤 7：检查 pi MCP Adapter' SKILL.md  # 期望 = 1
-grep -c 'check_pi_mcp' SKILL.md          # 期望 = 5
+grep -c 'check_pi_mcp' SKILL.md          # 期望 = 4
 ```
 
 - [ ] **Step 8: Commit**
@@ -409,15 +418,18 @@ old: 配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.cod
 new: 配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 ```
 
-- [ ] **Step 3: 检查清单增加第 7 项**
+- [ ] **Step 3: 按实际章节顺序更新检查清单**
 
 精确替换：
 
 ```
 old: 6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
-new: 6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
 7. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
+new: 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
+7. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
 ```
+
+> 实际正文沿用已批准架构：`### 7. pi MCP 说明`、`### 8. 配置 .gitignore`。检查清单是七项任务，因此以“第 6 项 pi、第 7 项 gitignore”表达执行顺序，不要求清单编号与正文标题编号完全相同。
 
 - [ ] **Step 4: 三客户端对比表扩展**
 
@@ -606,7 +618,7 @@ git commit -m "docs(cadence-init): rule-config 规则模板补充 pi 客户端�
 ### Task 6: 整体验证（工作包 6）
 
 **Files:**
-- 无修改（仅运行验证）
+- Modify: `openspec/changes/add-pi-agent-support/tasks.md`（仅在全部实现与验证完成后确认复选框）
 
 **Interfaces:**
 - Consumes: Task 1-5 的全部改动
@@ -619,7 +631,7 @@ cd cadence-init/skills/rule-config
 bash tests/verify-managed-lifecycle.sh
 ```
 
-Expected: 全部用例通过（该测试动态读取模板计算 hash，模板改动不应破坏；如有失败，检查失败用例并修复模板格式问题）
+Expected: 临时 detached worktree 中恢复归档 fixture、仅同步该临时 worktree 的根入口受管区块后，输出 `SUMMARY pass=15 fail=0`；主工作树根入口仍为非目标。
 
 - [ ] **Step 2: 对照本机环境核对文档描述**
 
@@ -627,14 +639,32 @@ Expected: 全部用例通过（该测试动态读取模板计算 hash，模板�
 # 软链形态：~/.pi/agent/skills 下应为指向 ~/.agents/skills 的软链
 ls -la ~/.pi/agent/skills/brainstorming
 
-# openspec --tools pi 产物形态（引用 /tmp/opsx-pi-test 实测结果）
-ls /tmp/opsx-pi-test/.pi/skills /tmp/opsx-pi-test/.pi/prompts
+# 老项目迁移实测：先初始化 claude,codex
+TMP_DIR="$(mktemp -d)"
+cd "$TMP_DIR"
+openspec init --tools claude,codex
+openspec update
+test ! -e .pi
+openspec init --tools pi
+# 此时应有 5 个 skills 与 5 个 prompts
+SKILLS="$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')"
+PROMPTS="$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')"
+printf 'PI_SKILLS=%s\nPI_PROMPTS=%s\n' "$SKILLS" "$PROMPTS"
+test "$SKILLS" = 5
+test "$PROMPTS" = 5
+openspec update
 
-# openspec 版本满足 >= 1.4.1
-openspec --version
+# 全局 adapter
+pi list
+test -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
+VERSION="$(node -p "require(process.env.HOME + '/.pi/agent/npm/node_modules/pi-mcp-adapter/package.json').version")"
+printf 'ADAPTER_VERSION=%s\n' "$VERSION"
+test -n "$VERSION"
+grep -n 'npm:pi-mcp-adapter' "$HOME/.pi/agent/settings.json"
+test -L "$HOME/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter"
 ```
 
-Expected: 软链存在；`.pi/skills` 含 openspec-*、`.pi/prompts` 含 opsx-*；版本 >= 1.4.1。
+Expected: `openspec update` 单独执行后没有 `.pi`；`openspec init --tools pi` 后恰有 5 个 skills 与 5 个 prompts，随后 update 成功；`pi list` 含 `npm:pi-mcp-adapter`；实际包目录与可执行软链存在；settings packages 含 `npm:pi-mcp-adapter`；版本输出非空。本次全局安装的新鲜证据为 `2.11.0`，但产品策略不锁定版本。
 
 - [ ] **Step 3: OpenSpec change 校验与任务勾选**
 

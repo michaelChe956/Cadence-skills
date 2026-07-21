@@ -125,7 +125,7 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` / `.pi` 指令文件。
+- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若已有 `openspec/config.yaml` 但缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
 - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
@@ -221,9 +221,9 @@ digraph check_flow {
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml` | CLI 和指令文件存在 | 安装 CLI 后执行 `openspec init` 或 `openspec update` |
+| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml`、pi 产物状态 | CLI 和所需指令文件存在 | 新项目 init 三客户端；老项目缺 pi 时先 `init --tools pi` 再 update |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
-| **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`~/.pi/agent/npm/pi-mcp-adapter` | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
+| **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
@@ -338,16 +338,22 @@ npm install -g @fission-ai/openspec@latest
 **初始化与更新命令**：
 
 ```bash
-# 当前项目尚未存在 openspec/config.yaml 时
+# 新项目：当前项目尚未存在 openspec/config.yaml
 openspec init --tools claude,codex,pi
 
-# 当前项目已存在 openspec/config.yaml 时
+# 老项目：已存在 openspec/config.yaml，但缺少 .pi skills 或 prompts
+openspec init --tools pi
+openspec update
+
+# 老项目：pi skills 与 prompts 已存在
 openspec update
 ```
 
 **增量要求**：
 - 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
-- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件（含 pi 产物）。
+- 如果 `openspec/config.yaml` 已存在且 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*` 缺失，先执行 `openspec init --tools pi`；确认 `.pi/skills` 恰有 5 个 `openspec-*` 目录且 `.pi/prompts` 恰有 5 个 `opsx-*.md` 文件后，再执行 `openspec update`。
+- 如果 `openspec/config.yaml` 已存在且 pi 产物已经存在，直接执行 `openspec update`。
+- `openspec update` 只刷新已初始化的工具产物，不能单独为未选择过 pi 的老项目新增 `.pi` 产物。
 - OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
@@ -362,6 +368,8 @@ test -f openspec/config.yaml
 test -f .codex/skills/openspec-propose/SKILL.md
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 test -f .pi/skills/openspec-propose/SKILL.md
+test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
+test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
 
 ### 步骤 6：检查 Superpowers
@@ -454,8 +462,8 @@ test -d "$HOME/.pi/agent"
 **就绪判定（满足任一即视为已安装）**：
 
 ```bash
-test -d "$HOME/.pi/agent/npm/pi-mcp-adapter"
 pi list | grep pi-mcp-adapter
+test -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
 ```
 
 **安装命令**：
@@ -472,8 +480,8 @@ pi install npm:pi-mcp-adapter
 
 **说明**：
 
-- **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后直接读取项目 `.mcp.json`（含 HTTP 类型 server），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
-- **安装位置**：全局安装，写入 `~/.pi/agent/settings.json`，包文件位于 `~/.pi/agent/npm/pi-mcp-adapter`；一次安装对所有项目生效。
+- **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后自动读取项目 `.mcp.json`（标准 stdio 与 HTTP 配置），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
+- **安装位置**：使用 `pi install npm:pi-mcp-adapter` 全局安装，写入 `~/.pi/agent/settings.json`；实际包目录为 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，可执行文件软链为 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`，一次安装对所有项目生效。
 - **增量要求**：已安装时跳过；pi 环境不存在时不安装、不报错、不影响其他检查结果。
 - **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
 
