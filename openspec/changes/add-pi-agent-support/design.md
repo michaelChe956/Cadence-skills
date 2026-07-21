@@ -24,7 +24,7 @@ pi 侧已确认的事实（勘察证据）：
 **Goals:**
 
 - pi 用户运行 `/pre-check` 后获得与 claude/codex 对等的 Superpowers、OpenSpec 环境。
-- pi 环境存在时自动具备 MCP 能力（经 pi-mcp-adapter 读取 `.mcp.json`）；pi 不存在时不影响初始化结果。
+- pi 可执行文件可用时自动具备 MCP 能力（经 pi-mcp-adapter 读取 `.mcp.json`）；pi 可执行文件不存在时不调用 `pi list` 或 `pi install`，不影响初始化结果。
 - 路由规则对 pi 客户端有明确、可执行的行为约定。
 - 所有改动保持增量语义：老项目重跑只补齐缺失项。
 
@@ -54,7 +54,7 @@ pi 侧已确认的事实（勘察证据）：
 - 方案选型（已经用户确认）：安装 `pi-mcp-adapter` 扩展，pi 直接复用项目 `.mcp.json`；不自建扩展（违背"非必要不编写代码"且维护成本高），不做"仅文档说明"（目标 3 落空）。
 - 安装位置（已经用户确认）：全局（`pi install npm:pi-mcp-adapter` → `~/.pi/agent/settings.json`），adapter 属于 pi 运行环境而非项目配置；不做项目级 `.pi/settings.json` 安装。
 - 检查归属：pre-check 新增第 7 项**条件检查**，位于 Superpowers 之后、Playwright 之前：
-  - 触发条件：`pi --version` 可用或 `~/.pi/agent` 目录存在；否则报告跳过且**不算失败**（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
+  - 触发条件：仅当 `command -v pi >/dev/null 2>&1` 成功，即 PATH 中存在 pi 可执行文件时执行检查；`~/.pi/agent` 或 `~/.pi/agent/skills` 等目录存在不作为 pi 已安装的信号。pi 可执行文件不存在时报告跳过，不调用 `pi list` 或 `pi install`，且**不算失败**（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
   - 就绪判定：`pi list` 输出含 `pi-mcp-adapter`，或实际包目录 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在。
   - 失败处理：pi 存在但安装失败时报告失败原因与手动命令；no-interrupt 模式下终止并给出恢复建议。
 - mcp-configuration 不新增"同步到 pi"步骤（无第二份配置文件可同步），只增加 pi 消费方式说明，并把"Claude Code、Codex 与 pi 格式差异"对比表覆盖三客户端；`.gitignore` 无新增条目（pi 复用的 `.mcp.json` 已在忽略清单）。

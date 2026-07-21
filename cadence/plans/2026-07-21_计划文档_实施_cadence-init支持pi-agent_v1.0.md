@@ -31,7 +31,7 @@
 - Consumes: 无
 - Produces: 四层软链目录约定（`~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills`），供 Task 3 新增步骤引用同一份目录约定表
 
-- [ ] **Step 1: 运行失败验证（确认现状不含 pi）**
+- [x] **Step 1: 运行失败验证（确认现状不含 pi）**
 
 ```bash
 cd cadence-init/skills/pre-check
@@ -40,7 +40,7 @@ grep -c '\.pi/agent/skills' SKILL.md
 
 Expected: 输出 `0`（当前无任何 pi 软链描述）
 
-- [ ] **Step 2: 更新 no-interrupt 完成条件与快速参考表（三层→四层）**
+- [x] **Step 2: 更新 no-interrupt 完成条件与快速参考表（三层→四层）**
 
 精确替换 1：
 
@@ -63,7 +63,7 @@ old: 1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻�
 new: 1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成四层软链。
 ```
 
-- [ ] **Step 3: 更新增量运行典型场景**
+- [x] **Step 3: 更新增量运行典型场景**
 
 精确替换：
 
@@ -72,7 +72,7 @@ old: - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只�
 new: - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 ```
 
-- [ ] **Step 4: 目录约定表增加 pi 行**
+- [x] **Step 4: 目录约定表增加 pi 行**
 
 精确替换：
 
@@ -84,7 +84,7 @@ new: | Codex 目标目录 | `~/.codex/skills/skills` |
 | pi 目标目录 | `~/.pi/agent/skills` |
 ```
 
-- [ ] **Step 5: 软链同步逻辑增加第 5 步并重编号**
+- [x] **Step 5: 软链同步逻辑增加第 5 步并重编号**
 
 精确替换整个有序列表：
 
@@ -113,7 +113,7 @@ new:
 > 说明：pi 原生也会读取 `~/.agents/skills`，此处显式软链到 `~/.pi/agent/skills` 是为了与 Claude Code/Codex 保持一致的显式布局，便于统一检查、更新与失效清理。
 ```
 
-- [ ] **Step 6: 验证命令增加 pi 目录**
+- [x] **Step 6: 验证命令增加 pi 目录**
 
 精确替换：
 
@@ -132,7 +132,7 @@ test -d "$HOME/.claude/skills"
 test -d "$HOME/.pi/agent/skills"
 ```
 
-- [ ] **Step 7: 验证修改生效**
+- [x] **Step 7: 验证修改生效**
 
 ```bash
 cd cadence-init/skills/pre-check
@@ -143,7 +143,7 @@ grep -n '三层' SKILL.md                # 期望无输出
 
 Expected: 前两条计数达标，第三条无输出。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cadence-init/skills/pre-check/SKILL.md
@@ -161,14 +161,14 @@ git commit -m "docs(cadence-init): pre-check Superpowers 软链增加 pi 目标�
 - Consumes: 无
 - Produces: OpenSpec 三客户端初始化命令与验证命令
 
-- [ ] **Step 1: 运行失败验证**
+- [x] **Step 1: 运行失败验证**
 
 ```bash
 cd cadence-init/skills/pre-check
 grep -c 'claude,codex,pi' SKILL.md   # 期望 0
 ```
 
-- [ ] **Step 2: 初始化命令块更新**
+- [x] **Step 2: 初始化命令块更新**
 
 精确替换：
 
@@ -182,7 +182,7 @@ new:
 openspec init --tools claude,codex,pi
 ```
 
-- [ ] **Step 3: 增量要求更新（命令、产物结构、版本要求）**
+- [x] **Step 3: 增量要求更新（命令、产物结构、版本要求）**
 
 精确替换：
 
@@ -206,7 +206,7 @@ new:
 - `--tools pi` 需要 OpenSpec CLI >= 1.4.1；`/pre-check` 的安装命令始终安装 `@fission-ai/openspec@latest`，版本不足时先升级 CLI。
 ```
 
-- [ ] **Step 4: 验证命令增加 pi 产物**
+- [x] **Step 4: 验证命令增加 pi 产物**
 
 精确替换：
 
@@ -223,7 +223,7 @@ test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/S
 test -f .pi/skills/openspec-propose/SKILL.md
 ```
 
-- [ ] **Step 5: 增量运行典型场景更新**
+- [x] **Step 5: 增量运行典型场景更新**
 
 精确替换：
 
@@ -232,7 +232,7 @@ old: - 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会�
 new: - 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
 ```
 
-- [ ] **Step 6: 验证修改生效**
+- [x] **Step 6: 验证修改生效**
 
 ```bash
 cd cadence-init/skills/pre-check
@@ -241,7 +241,7 @@ grep -c '.pi/skills/openspec-propose' SKILL.md  # 期望 = 1
 grep -n 'claude,codex$' SKILL.md                # 期望无输出（无残留旧命令）
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cadence-init/skills/pre-check/SKILL.md
@@ -259,27 +259,26 @@ git commit -m "docs(cadence-init): pre-check OpenSpec 初始化增加 pi 工具"
 - Consumes: Task 1 的目录约定表位置（新增步骤位于步骤 6 之后）
 - Produces: "步骤 7：检查 pi MCP Adapter" 章节，供 mcp-configuration（Task 4）引用
 
-- [ ] **Step 1: 运行失败验证**
+- [x] **Step 1: 运行失败验证**
 
 ```bash
 cd cadence-init/skills/pre-check
 grep -c 'pi-mcp-adapter' SKILL.md   # 期望 0
 ```
 
-- [ ] **Step 2: 在步骤 6 之后、API Key 提醒之前插入新章节**
+- [x] **Step 2: 在步骤 6 之后、API Key 提醒之前插入新章节**
 
 锚点：`### 默认步骤：API Key 占位配置提醒`（在该行之前插入以下内容，保留原锚点行不变）：
 
 ````markdown
 ### 步骤 7：检查 pi MCP Adapter（条件检查）
 
-> 条件项：仅在检测到 pi 环境时执行；未检测到 pi 环境时跳过且不算失败（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
+> 条件项：仅在 PATH 中存在 pi 可执行文件时执行；pi 可执行文件不存在时跳过且不算失败（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
 
-**触发条件（满足任一即执行检查）**：
+**触发条件（成功时执行检查）**：
 
 ```bash
-pi --version
-test -d "$HOME/.pi/agent"
+command -v pi >/dev/null 2>&1
 ```
 
 **就绪判定（满足任一即视为已安装）**：
@@ -296,7 +295,7 @@ pi install npm:pi-mcp-adapter
 ```
 
 **行为（中文输出）**：
-- 未检测到 pi 环境：报告 "✓ 未检测到 pi 环境，跳过 pi MCP Adapter 检查"，继续后续步骤
+- pi 可执行文件不存在：报告 "✓ 未检测到 pi 可执行文件，跳过 pi MCP Adapter 检查"，不调用 `pi list` 或 `pi install`，继续后续步骤；no-interrupt 模式不因此失败关闭
 - 已安装：报告 "✓ pi-mcp-adapter 已安装"
 - 未安装：报告 "正在安装 pi-mcp-adapter..."，执行安装命令，完成后按就绪判定验证并报告 "✓ pi-mcp-adapter 安装成功"
 - 安装失败：普通模式报告失败原因与手动命令 `pi install npm:pi-mcp-adapter`；no-interrupt 模式立即终止并给出恢复建议，不得宣称初始化成功
@@ -305,12 +304,12 @@ pi install npm:pi-mcp-adapter
 
 - **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后直接读取项目 `.mcp.json`（含 HTTP 类型 server），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
 - **安装位置**：使用 `pi install npm:pi-mcp-adapter` 全局安装并写入 `~/.pi/agent/settings.json`；实际包目录为 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，可执行文件软链为 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`；一次安装对所有项目生效。
-- **增量要求**：已安装时跳过；pi 环境不存在时不安装、不报错、不影响其他检查结果。
+- **增量要求**：已安装时跳过；pi 可执行文件不存在时不调用 `pi list` 或 `pi install`，不报错、不影响其他检查结果。
 - **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
 
 ````
 
-- [ ] **Step 3: no-interrupt 强制完成策略表增加条件行**
+- [x] **Step 3: no-interrupt 强制完成策略表增加条件行**
 
 精确替换：
 
@@ -318,31 +317,31 @@ pi install npm:pi-mcp-adapter
 old: | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 new: | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
-| pi MCP Adapter | 条件项：检测到 pi 环境时 adapter 安装并验证成功；未检测到 pi 环境时跳过 | pi 存在但安装失败：立即终止 |
+| pi MCP Adapter | 条件项：`command -v pi` 成功时 adapter 安装并验证成功；pi 可执行文件不存在时跳过 | pi 可执行文件存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 ```
 
-- [ ] **Step 4: 快速参考表增加行**
+- [x] **Step 4: 快速参考表增加行**
 
 精确替换：
 
 ```
 old: | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
-new: | **7. pi MCP Adapter（条件）** | `pi --version` 或 `~/.pi/agent`；`pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | 检测到 pi 时 adapter 已安装；无 pi 时跳过 | 检测到 pi 且缺失时执行 `pi install npm:pi-mcp-adapter` |
+new: | **7. pi MCP Adapter（条件）** | `command -v pi >/dev/null 2>&1`；就绪判定为 `pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | pi 可执行文件存在时 adapter 已安装；不存在时跳过 | pi 可执行文件存在且 adapter 缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 ```
 
-- [ ] **Step 5: 常见错误表增加行**
+- [x] **Step 5: 常见错误表增加行**
 
 精确替换：
 
 ```
 old: | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
-new: | **pi-mcp-adapter 安装失败** | pi 不可用或网络问题 | 手动执行 `pi install npm:pi-mcp-adapter`，或修复 pi 环境后重新运行 `/pre-check` |
+new: | **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后手动执行 `pi install npm:pi-mcp-adapter`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
 ```
 
-- [ ] **Step 6: 检查流程图增加 pi MCP 节点**
+- [x] **Step 6: 检查流程图增加 pi MCP 节点**
 
 精确替换：
 
@@ -352,7 +351,7 @@ old:
     remind_apikey [label="默认展示 API Key 占位提醒"];
 
 new:
-    check_pi_mcp [label="检测到 pi 环境?", shape=diamond];
+    check_pi_mcp [label="PATH 中存在 pi 可执行文件?", shape=diamond];
     install_pi_mcp [label="检查/安装 pi-mcp-adapter"];
     skip_pi_mcp [label="跳过 pi MCP Adapter 检查"];
     optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
@@ -375,7 +374,7 @@ new:
     skip_pi_mcp -> optional_playwright;
 ```
 
-- [ ] **Step 7: 验证修改生效**
+- [x] **Step 7: 验证修改生效**
 
 ```bash
 cd cadence-init/skills/pre-check
@@ -384,7 +383,7 @@ grep -c '步骤 7：检查 pi MCP Adapter' SKILL.md  # 期望 = 1
 grep -c 'check_pi_mcp' SKILL.md          # 期望 = 4
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cadence-init/skills/pre-check/SKILL.md
@@ -402,14 +401,14 @@ git commit -m "docs(cadence-init): pre-check 新增 pi-mcp-adapter 条件检查"
 - Consumes: Task 3 的 pre-check 步骤 7（引用其安装职责）
 - Produces: 三客户端 MCP 对比表与 pi 说明章节
 
-- [ ] **Step 1: 运行失败验证**
+- [x] **Step 1: 运行失败验证**
 
 ```bash
 cd cadence-init/skills/mcp-configuration
 grep -c 'pi-mcp-adapter' SKILL.md   # 期望 0
 ```
 
-- [ ] **Step 2: 概述补充 pi**
+- [x] **Step 2: 概述补充 pi**
 
 精确替换：
 
@@ -418,7 +417,7 @@ old: 配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.cod
 new: 配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 ```
 
-- [ ] **Step 3: 按实际章节顺序更新检查清单**
+- [x] **Step 3: 按实际章节顺序更新检查清单**
 
 精确替换：
 
@@ -431,7 +430,7 @@ new: 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.js
 
 > 实际正文沿用已批准架构：`### 7. pi MCP 说明`、`### 8. 配置 .gitignore`。检查清单是七项任务，因此以“第 6 项 pi、第 7 项 gitignore”表达执行顺序，不要求清单编号与正文标题编号完全相同。
 
-- [ ] **Step 4: 三客户端对比表扩展**
+- [x] **Step 4: 三客户端对比表扩展**
 
 精确替换整个对比表：
 
@@ -457,7 +456,7 @@ new:
 | type 字段 | 必须显式声明 | 不需要（自动推断） | 同 `.mcp.json` |
 ```
 
-- [ ] **Step 5: 新增 pi 章节并将 .gitignore 章节重编号为 8**
+- [x] **Step 5: 新增 pi 章节并将 .gitignore 章节重编号为 8**
 
 精确替换（在 `### 7. 配置 .gitignore` 标题处插入新章节并改编号）：
 
@@ -477,7 +476,7 @@ new: ### 7. pi MCP 说明
 ### 8. 配置 .gitignore
 ```
 
-- [ ] **Step 6: .gitignore 说明表补充 pi 无新增条目**
+- [x] **Step 6: .gitignore 说明表补充 pi 无新增条目**
 
 精确替换：
 
@@ -488,7 +487,7 @@ new: | `.codex/config.toml` | Codex CLI 项目级 MCP 配置 | 包含本地 MCP 
 > pi 复用 `.mcp.json`（pi-mcp-adapter 直读），`.gitignore` 无需为 pi 新增条目。
 ```
 
-- [ ] **Step 7: 验证修改生效**
+- [x] **Step 7: 验证修改生效**
 
 ```bash
 cd cadence-init/skills/mcp-configuration
@@ -498,7 +497,7 @@ grep -c '### 8. 配置 .gitignore' SKILL.md  # 期望 = 1
 grep -n '### 7. 配置 .gitignore' SKILL.md  # 期望无输出
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cadence-init/skills/mcp-configuration/SKILL.md
@@ -519,7 +518,7 @@ git commit -m "docs(cadence-init): mcp-configuration 增加 pi MCP 消费方式�
 - Consumes: 无
 - Produces: 含 pi 约定的 L0 路由区块模板（将来经 rule-config 写入各项目 AGENTS.md/CLAUDE.md）
 
-- [ ] **Step 1: 运行失败验证**
+- [x] **Step 1: 运行失败验证**
 
 ```bash
 cd cadence-init/skills/rule-config
@@ -527,7 +526,7 @@ grep -c 'pi' references/rules/agent-routing-kernel.md   # 记录基线（不含 
 grep -n 'Codex 与 pi\|Codex/pi\|pi 与 Codex' references/rules/*.md   # 期望无输出
 ```
 
-- [ ] **Step 2: agent-routing-kernel.md — 仓库操作路由段补 pi**
+- [x] **Step 2: agent-routing-kernel.md — 仓库操作路由段补 pi**
 
 精确替换：
 
@@ -536,7 +535,7 @@ old: 需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败�
 new: 需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败重试作为连续工具事件；首个调用前、事件之间和重试前均保持用户可见输出静默，禁止输出“我先调用 Skill”等引导句；随后第一段输出 `工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。Codex 先显式选择 Skill，将用途并入首段回执，随后立即全文读取 Skill。pi 与 Codex 同类：从 Skill 清单显式选择 Skill，将用途并入首段回执，随后立即全文读取对应 SKILL.md 作为调用，Skill 未读完前不得读取仓库规则或使用仓库工具。Skill 调用完成后才读取仓库规则和使用仓库工具。
 ```
 
-- [ ] **Step 3: agent-routing-kernel.md — 纯概念问答段补 pi**
+- [x] **Step 3: agent-routing-kernel.md — 纯概念问答段补 pi**
 
 精确替换：
 
@@ -545,7 +544,7 @@ old: 纯概念问答只调用全局 `using-superpowers` 后直接回答，不输
 new: 纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，不加载仓库规则或其他无关 Skill；Codex/pi 可先输出 Skill 用途公告。一旦转为仓库操作，必须重新路由。
 ```
 
-- [ ] **Step 4: agent-routing-kernel.md — Skill 参数与失败重试段补 pi**
+- [x] **Step 4: agent-routing-kernel.md — Skill 参数与失败重试段补 pi**
 
 精确替换：
 
@@ -554,7 +553,7 @@ old: Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；调�
 new: Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；pi 以全文读取对应 SKILL.md 作为 Skill 调用；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
 ```
 
-- [ ] **Step 5: openspec-superpowers-workflow.md — 阶段重路由段补 pi**
+- [x] **Step 5: openspec-superpowers-workflow.md — 阶段重路由段补 pi**
 
 精确替换：
 
@@ -563,7 +562,7 @@ old: Codex 的平台约束允许“从 Skill 目录显式选择 → 将 Skill �
 new: Codex 与 pi 的平台约束允许“从 Skill 清单显式选择 → 将 Skill 用途并入首个路由回执 → 立即全文读取对应 `SKILL.md` → 读取仓库规则 → 使用仓库工具”；Skill 正文未读完前不得进行仓库操作。
 ```
 
-- [ ] **Step 6: mcp-servers.md — 三处客户端表述**
+- [x] **Step 6: mcp-servers.md — 三处客户端表述**
 
 精确替换 1：
 
@@ -586,7 +585,7 @@ old: > 1. 请自行前往对应平台获取 API Key，不要将真实密钥告�
 new: > 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 AI 客户端（Claude Code、Codex、pi 等）
 ```
 
-- [ ] **Step 7: rule-config/SKILL.md — codegraph 配置范围注明 pi**
+- [x] **Step 7: rule-config/SKILL.md — codegraph 配置范围注明 pi**
 
 精确替换：
 
@@ -595,7 +594,7 @@ old: - `--target=claude,codex`：只支持 Claude Code 和 Codex。
 new: - `--target=claude,codex`：只支持 Claude Code 和 Codex，不支持 pi；pi 无原生 MCP，只要 `.mcp.json` 包含 codegraph server，pi 即可经 pi-mcp-adapter 直接使用，无需额外动作。
 ```
 
-- [ ] **Step 8: 验证修改生效**
+- [x] **Step 8: 验证修改生效**
 
 ```bash
 cd cadence-init/skills/rule-config
@@ -606,7 +605,7 @@ grep -c 'pi-mcp-adapter' references/rules/mcp-servers.md                # 期望
 grep -c '不支持 pi' SKILL.md                                            # 期望 = 1
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add cadence-init/skills/rule-config/
@@ -624,7 +623,7 @@ git commit -m "docs(cadence-init): rule-config 规则模板补充 pi 客户端�
 - Consumes: Task 1-5 的全部改动
 - Produces: 验证证据
 
-- [ ] **Step 1: 运行 rule-config 受管区块生命周期测试**
+- [x] **Step 1: 运行 rule-config 受管区块生命周期测试**
 
 ```bash
 cd cadence-init/skills/rule-config
@@ -633,7 +632,7 @@ bash tests/verify-managed-lifecycle.sh
 
 Expected: 临时 detached worktree 中恢复归档 fixture、仅同步该临时 worktree 的根入口受管区块后，输出 `SUMMARY pass=15 fail=0`；主工作树根入口仍为非目标。
 
-- [ ] **Step 2: 对照本机环境核对文档描述**
+- [x] **Step 2: 对照本机环境核对文档描述**
 
 ```bash
 # 软链形态：~/.pi/agent/skills 下应为指向 ~/.agents/skills 的软链
@@ -666,7 +665,7 @@ test -L "$HOME/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter"
 
 Expected: `openspec update` 单独执行后没有 `.pi`；`openspec init --tools pi` 后恰有 5 个 skills 与 5 个 prompts，随后 update 成功；`pi list` 含 `npm:pi-mcp-adapter`；实际包目录与可执行软链存在；settings packages 含 `npm:pi-mcp-adapter`；版本输出非空。本次全局安装的新鲜证据为 `2.11.0`，但产品策略不锁定版本。
 
-- [ ] **Step 3: OpenSpec change 校验与任务勾选**
+- [x] **Step 3: OpenSpec change 校验与任务勾选**
 
 ```bash
 openspec validate add-pi-agent-support
@@ -676,7 +675,7 @@ Expected: `Change 'add-pi-agent-support' is valid`
 
 随后在 `openspec/changes/add-pi-agent-support/tasks.md` 勾选 1.1-6.2 全部工作包（验证通过后）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add openspec/changes/add-pi-agent-support/tasks.md

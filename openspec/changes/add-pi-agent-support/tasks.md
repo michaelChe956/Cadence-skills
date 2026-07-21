@@ -12,7 +12,7 @@
 
 ## 3. pre-check：新增 pi MCP Adapter 条件检查
 
-- [x] 3.1 在 Superpowers 之后、Playwright 之前新增"pi MCP Adapter"检查步骤：触发条件、以 `pi list` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 为就绪判定、全局安装命令、失败处理（映射：pi MCP adapter 条件检查与安装）
+- [x] 3.1 在 Superpowers 之后、Playwright 之前新增"pi MCP Adapter"检查步骤：仅以 PATH 中存在 pi 可执行文件（`command -v pi` 成功）为触发条件；以 `pi list` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 为就绪判定；补充全局安装命令与失败处理（映射：pi MCP adapter 条件检查与安装）
 - [x] 3.2 更新 no-interrupt 强制完成策略表、检查流程图、快速参考表与常见错误表（映射：pi MCP adapter 条件检查与安装）
 
 ## 4. mcp-configuration：pi 消费方式说明

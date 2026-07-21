@@ -42,21 +42,21 @@ pre-check 对新项目的 OpenSpec 初始化 MUST 使用 `openspec init --tools 
 
 ### Requirement: pi MCP adapter 条件检查与安装
 
-pre-check MUST 提供一项"pi MCP Adapter"条件检查：仅当检测到 pi 环境（`pi --version` 可用或 `~/.pi/agent` 存在）时，检查并按需全局安装 `pi-mcp-adapter`（`pi install npm:pi-mcp-adapter`）；未检测到 pi 环境时 MUST 跳过且不计为失败。
+pre-check MUST 提供一项"pi MCP Adapter"条件检查：仅当 `command -v pi >/dev/null 2>&1` 成功，即 PATH 中存在 pi 可执行文件时，检查并按需全局安装 `pi-mcp-adapter`（`pi install npm:pi-mcp-adapter`）。`~/.pi/agent` 或其子目录存在 MUST NOT 作为 pi 已安装的信号。pi 可执行文件不存在时 MUST 跳过，不调用 `pi list` 或 `pi install`，且不计为失败。
 
 #### Scenario: pi 存在且 adapter 缺失时自动安装
 
-- **WHEN** 检测到 pi 环境，且 `pi list` 输出不含 `pi-mcp-adapter`，且 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 不存在
+- **WHEN** `command -v pi >/dev/null 2>&1` 成功，且 `pi list` 输出不含 `pi-mcp-adapter`，且 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 不存在
 - **THEN** pre-check 执行 `pi install npm:pi-mcp-adapter` 并验证安装结果
 
 #### Scenario: 未安装 pi 的环境条件跳过
 
-- **WHEN** `pi --version` 不可用且 `~/.pi/agent` 不存在
-- **THEN** pre-check 报告"未检测到 pi 环境，跳过 pi MCP Adapter 检查"，继续后续检查，no-interrupt 模式下不因此失败关闭
+- **WHEN** `command -v pi >/dev/null 2>&1` 失败，即使 cadence 已创建 `~/.pi/agent/skills`
+- **THEN** pre-check 报告"未检测到 pi 可执行文件，跳过 pi MCP Adapter 检查"，不调用 `pi list` 或 `pi install`，继续后续检查，no-interrupt 模式下不因此失败关闭
 
 #### Scenario: pi 存在但 adapter 安装失败
 
-- **WHEN** 检测到 pi 环境且 `pi install npm:pi-mcp-adapter` 执行失败
+- **WHEN** `command -v pi >/dev/null 2>&1` 成功且 `pi install npm:pi-mcp-adapter` 执行失败
 - **THEN** 普通模式报告失败原因与手动安装命令；no-interrupt 模式终止并给出恢复建议，不得宣称初始化成功
 
 ### Requirement: MCP 配置文档说明 pi 消费方式
