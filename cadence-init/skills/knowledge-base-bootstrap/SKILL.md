@@ -115,6 +115,11 @@ cadence/knowledge-base/
 - 固定产物检测、Manifest 完整性/版本门禁和显式重新初始化授权已经通过；需要清理重建时，六领域输入、指定范围、数据模型结构证据、配置不可变快照可读性、范围摘要与首次指纹前置条件也已只读通过，输入清单已锁定或清理前复核无漂移。全部扫描前门禁通过后才允许清理，未经授权或任一门禁失败时没有覆盖或删除任何 KnowledgeBase 文件。
 - `global-validation` 必须核对 Manifest 与输入清单的六领域范围、适用领域文档登记、索引与链接、稳定 ID、对外能力分类、`open_questions` 四级计数、模板占位符和敏感信息；同时确认同一快照标识的环境与目录映射唯一，重要结论具有可信度与可定位证据。
 - `global-validation` 必须显式检索全部服务文档中的 `待后续阶段补齐（api）`、`待后续阶段补齐（pages）`、`阶段状态：已验证为空（api）` 和 `阶段状态：已验证为空（pages）`。API/Pages 领域适用时，范围内每个服务的对应导航区块必须是已验证稳定 ID 与主文件链接，或对应的唯一 `已验证为空` 状态且同区块同时具有非空 `原因` 和可定位 `证据`；任何待补状态、空原因、缺失原因、空证据或缺失证据均判定失败。对应领域为 `不适用` 时，BaseInfo 不应生成该领域的待补或 `已验证为空` 状态；如仍发现任一状态同样判定失败。
+- `global-validation` 必须追加内容完整性检查，任一不过即判 `failed`（沿用现有失败处理：保持 `in_progress` 与空 `completed_at`，只报告缺失项，不删除产物）：
+  1. API 领域适用时：`interfaces/` 下每个请求响应能力主文件存在配套 `_参数与报文.md`；`interfaces/README.md` 同时含“对外能力”与“对内能力”分区（允许“未盘点+原因”，不允许整块缺失）。
+  2. 配置为全量或指定时：每个服务配置文档元数据中的`来源文件键数`等于`文档收录键数`。
+  3. Pages 适用且 selected 含路由/菜单级条目时：每条点名路由存在 `PAGE-*`+`ROUTE-*` 实体与单页面文档；页面文档的 API 引用不得为零链接（`../interfaces/` 链接或 `API-CANDIDATE-*` 候选条目链接）。
+  4. 模板节结构符合性：在占位符检查外增加节序比对——接口主文件 11 节、参数报文 5 节、服务配置文档 10 节、页面文档含第 3/4 节；自创节结构判 `failed`。
 - 全局验收通过时，将 `coverage.initialization.global_validation` 写为 `passed`，将 `coverage.initialization.status` 写为 `complete`，并填写 `coverage.initialization.completed_at`。
 - 任一全局检查失败时，将 `coverage.initialization.global_validation` 写为 `failed`，保持 `coverage.initialization.status: in_progress` 和空 `completed_at`；只报告缺失项、影响和继续初始化入口，不要求删除现有 Schema 4.0 产物。
 
