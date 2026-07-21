@@ -16,7 +16,7 @@
 7. 完成声明前调用 `verification-before-completion`；实施与验证均完成后调用 `requesting-code-review`；审查通过后勾选工作包并执行 OpenSpec sync/archive；最后调用 `finishing-a-development-branch`。
 
 ## 三、阶段重路由
-在新任务、讨论、分析或只读调查转为创建/修改文件、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新路由。Claude/Kimi 的顺序固定为“保持用户可见输出静默并调用 `using-superpowers` 与当前阶段全部必调 Skill → 首个用户可见段落输出路由回执 → 读取相关规则 → 使用仓库工具”；“我先调用 Skill”等预告、普通文件读取、复述名称或声称已加载均不算调用且不得出现在 Skill 事件前。Codex 的平台约束允许“从 Skill 目录显式选择 → 将 Skill 用途并入首个路由回执 → 立即全文读取对应 `SKILL.md` → 读取仓库规则 → 使用仓库工具”；Skill 正文未读完前不得进行仓库操作。
+在新任务、讨论、分析或只读调查转为创建/修改文件、brainstorming 设计确认、OpenSpec 契约获批、`/opsx:apply` 前、resume/clear/compact 后、完工声明前重新路由。Claude/Kimi 的顺序固定为“保持用户可见输出静默并调用 `using-superpowers` 与当前阶段全部必调 Skill → 首个用户可见段落输出路由回执 → 读取相关规则 → 使用仓库工具”；“我先调用 Skill”等预告、普通文件读取、复述名称或声称已加载均不算调用且不得出现在 Skill 事件前。Codex 与 pi 的平台约束允许“从 Skill 清单显式选择 → 将 Skill 用途并入首个路由回执 → 立即全文读取对应 `SKILL.md` → 读取仓库规则 → 使用仓库工具”；Skill 正文未读完前不得进行仓库操作。
 
 ## 四、失败关闭
 - 失败关闭回复本身属于当前阶段动作，“只判断是否允许”或“只拒绝声明”不构成 Skill 豁免；无 Plan 的 apply 必须先调用 `using-superpowers` 与 `writing-plans`。调用 `verification-before-completion` 只是加载验证纪律，不等于执行验证命令；即使用户禁止运行验证，也必须先调用 `using-superpowers` 与该 Skill，再拒绝无证据完成声明。

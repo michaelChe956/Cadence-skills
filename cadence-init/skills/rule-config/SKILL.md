@@ -551,7 +551,7 @@ test -d .codegraph && codegraph status
 ```
 
 **配置范围**：
-- `--target=claude,codex`：只支持 Claude Code 和 Codex。
+- `--target=claude,codex`：只支持 Claude Code 和 Codex，不支持 pi；pi 无原生 MCP，只要 `.mcp.json` 包含 codegraph server，pi 即可经 pi-mcp-adapter 直接使用，无需额外动作。
 - `--location=local`：只写入当前项目配置，不写入全局 Agent 配置。
 - `.codegraph/`：本地代码图索引目录，应加入 `.gitignore`。
 - `codegraph.json`：团队共享配置文件，不应加入 `.gitignore`。
