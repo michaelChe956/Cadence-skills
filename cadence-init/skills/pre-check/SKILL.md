@@ -43,14 +43,15 @@ disable-model-invocation: true
 | ast-grep | `ast-grep --version` 成功 | 立即终止 |
 | codegraph | `codegraph version` 成功 | 立即终止 |
 | OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
-| Superpowers | 来源目录和三层 Skills 软链验证成功 | 立即终止 |
+| Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
+| pi MCP Adapter | 条件项：`command -v pi` 成功时 adapter 安装并验证成功；pi 可执行文件不存在时跳过 | pi 可执行文件存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 
 `no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
 
 ### no-interrupt Superpowers 处理
 
-1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成三层软链。
+1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成四层软链。
 2. 来源目录无效或缺失时，尝试在线 clone 或 Git 更新。
 3. 在线操作失败后，只允许校验固定离线目录 `~/.agents/superpowers/skills`，不询问其他离线来源路径。
 4. 固定离线目录仍无效时立即报错，终止 `/pre-check`。
@@ -124,8 +125,8 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec 后，老项目重新运行 `/pre-check`，只会安装 CLI、执行 `openspec init` 或 `openspec update`，补齐 `.codex` / `.claude` 指令文件。
-- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 的软链。
+- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若已有 `openspec/config.yaml` 但缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
+- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
 ## 检查流程
@@ -163,6 +164,9 @@ digraph check_flow {
     sync_superpowers [label="更新仓库并同步软链"];
     superpowers_done [label="Superpowers 就绪"];
 
+    check_pi_mcp [label="PATH 中存在 pi 可执行文件?", shape=diamond];
+    install_pi_mcp [label="检查/安装 pi-mcp-adapter"];
+    skip_pi_mcp [label="跳过 pi MCP Adapter 检查"];
     optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
     remind_apikey [label="默认展示 API Key 占位提醒"];
 
@@ -199,7 +203,11 @@ digraph check_flow {
     check_superpowers -> sync_superpowers [label="来源存在"];
     clone_superpowers -> sync_superpowers;
     sync_superpowers -> superpowers_done;
-    superpowers_done -> optional_playwright;
+    superpowers_done -> check_pi_mcp;
+    check_pi_mcp -> install_pi_mcp [label="是"];
+    check_pi_mcp -> skip_pi_mcp [label="否"];
+    install_pi_mcp -> optional_playwright;
+    skip_pi_mcp -> optional_playwright;
     optional_playwright -> remind_apikey;
     remind_apikey -> end;
 }
@@ -213,8 +221,9 @@ digraph check_flow {
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml` | CLI 和指令文件存在 | 安装 CLI 后执行 `openspec init` 或 `openspec update` |
-| **6. Superpowers** | `~/.agents/superpowers/skills` | 三层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml`、pi 产物状态 | CLI 和所需指令文件存在 | 新项目 init 三客户端；老项目缺 pi 时先 `init --tools pi` 再 update |
+| **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **7. pi MCP Adapter（条件）** | `command -v pi >/dev/null 2>&1`；就绪判定为 `pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | pi 可执行文件存在时 adapter 已安装；不存在时跳过 | pi 可执行文件存在且 adapter 缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
@@ -329,19 +338,27 @@ npm install -g @fission-ai/openspec@latest
 **初始化与更新命令**：
 
 ```bash
-# 当前项目尚未存在 openspec/config.yaml 时
-openspec init --tools claude,codex
+# 新项目：当前项目尚未存在 openspec/config.yaml
+openspec init --tools claude,codex,pi
 
-# 当前项目已存在 openspec/config.yaml 时
+# 老项目：已存在 openspec/config.yaml，但缺少 .pi skills 或 prompts
+openspec init --tools pi
+openspec update
+
+# 老项目：pi skills 与 prompts 已存在
 openspec update
 ```
 
 **增量要求**：
-- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex`。
-- 如果 `openspec/config.yaml` 已存在，不重新初始化，执行 `openspec update` 补齐或刷新指令文件。
-- OpenSpec 生成的 Claude Code 和 Codex 目录结构不同，不能混用：
+- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
+- 如果 `openspec/config.yaml` 已存在且 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*` 缺失，先执行 `openspec init --tools pi`；确认 `.pi/skills` 恰有 5 个 `openspec-*` 目录且 `.pi/prompts` 恰有 5 个 `opsx-*.md` 文件后，再执行 `openspec update`。
+- 如果 `openspec/config.yaml` 已存在且 pi 产物已经存在，直接执行 `openspec update`。
+- `openspec update` 只刷新已初始化的工具产物，不能单独为未选择过 pi 的老项目新增 `.pi` 产物。
+- OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
+  - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
+- `--tools pi` 需要 OpenSpec CLI >= 1.4.1；`/pre-check` 的安装命令始终安装 `@fission-ai/openspec@latest`，版本不足时先升级 CLI。
 - 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
 
 **验证命令**：
@@ -350,6 +367,9 @@ openspec update
 test -f openspec/config.yaml
 test -f .codex/skills/openspec-propose/SKILL.md
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+test -f .pi/skills/openspec-propose/SKILL.md
+test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
+test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
 
 ### 步骤 6：检查 Superpowers
@@ -362,6 +382,7 @@ test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/S
 | 统一 Skills 目录 | `~/.agents/skills` |
 | Codex 目标目录 | `~/.codex/skills/skills` |
 | Claude Code 目标目录 | `~/.claude/skills` |
+| pi 目标目录 | `~/.pi/agent/skills` |
 
 **在线安装来源**：
 
@@ -399,14 +420,17 @@ git pull --ff-only
 
 **软链同步逻辑**：
 
-1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills` 存在。
+1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 存在。
 2. 将 `~/.agents/superpowers/skills/*` 逐项软链到 `~/.agents/skills`。
 3. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.codex/skills/skills`。
 4. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.claude/skills`。
-5. 已存在正确软链：跳过。
-6. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
-7. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
-8. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
+5. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.pi/agent/skills`。
+6. 已存在正确软链：跳过。
+7. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
+8. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
+9. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
+
+> 说明：pi 原生也会读取 `~/.agents/skills`，此处显式软链到 `~/.pi/agent/skills` 是为了与 Claude Code/Codex 保持一致的显式布局，便于统一检查、更新与失效清理。
 
 **验证命令**：
 
@@ -415,6 +439,7 @@ test -d "$HOME/.agents/superpowers/skills"
 test -d "$HOME/.agents/skills"
 test -d "$HOME/.codex/skills/skills"
 test -d "$HOME/.claude/skills"
+test -d "$HOME/.pi/agent/skills"
 ```
 
 **增量要求**：
@@ -422,6 +447,42 @@ test -d "$HOME/.claude/skills"
 - 只补齐缺失软链或更新指向旧来源的软链。
 - 离线安装目录有效时，不要求 `.git` 存在，不尝试 Git 更新。
 - 在线 clone 或 Git 更新失败时，不删除已有离线目录或已有软链。
+
+### 步骤 7：检查 pi MCP Adapter（条件检查）
+
+> 条件项：仅在 PATH 中存在 pi 可执行文件时执行；pi 可执行文件不存在时跳过且不算失败（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
+
+**触发条件（成功时执行检查）**：
+
+```bash
+command -v pi >/dev/null 2>&1
+```
+
+**就绪判定（满足任一即视为已安装）**：
+
+```bash
+pi list | grep pi-mcp-adapter
+test -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
+```
+
+**安装命令**：
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+**行为（中文输出）**：
+- pi 可执行文件不存在：报告 "✓ 未检测到 pi 可执行文件，跳过 pi MCP Adapter 检查"，不调用 `pi list` 或 `pi install`，继续后续步骤；no-interrupt 模式不因此失败关闭
+- 已安装：报告 "✓ pi-mcp-adapter 已安装"
+- 未安装：报告 "正在安装 pi-mcp-adapter..."，执行安装命令，完成后按就绪判定验证并报告 "✓ pi-mcp-adapter 安装成功"
+- 安装失败：普通模式报告失败原因与手动命令 `pi install npm:pi-mcp-adapter`；no-interrupt 模式立即终止并给出恢复建议，不得宣称初始化成功
+
+**说明**：
+
+- **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后自动读取项目 `.mcp.json`（标准 stdio 与 HTTP 配置），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
+- **安装位置**：使用 `pi install npm:pi-mcp-adapter` 全局安装，写入 `~/.pi/agent/settings.json`；实际包目录为 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，可执行文件软链为 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`，一次安装对所有项目生效。
+- **增量要求**：已安装时跳过；pi 可执行文件不存在时不调用 `pi list` 或 `pi install`，不报错、不影响其他检查结果。
+- **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
 
 ### 默认步骤：API Key 占位配置提醒
 
@@ -461,4 +522,5 @@ test -d "$HOME/.claude/skills"
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
 | **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
+| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后手动执行 `pi install npm:pi-mcp-adapter`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |

@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。默认不需要人工交互即可完成基础 MCP 初始化。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 
 ## 参数模式
 
@@ -107,7 +107,8 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
 5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
-6. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
+6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
+7. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -558,16 +559,16 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 - 写入顺序：基础配置 → CodeGraph 配置（仅 Coding 项目） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
-**Codex 与 Claude Code 格式差异**：
+**Claude Code、Codex 与 pi 格式差异**：
 
-| 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) |
-|------|--------------------------|------------------------------|
-| 格式 | JSON | TOML |
-| 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` |
-| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** |
-| 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` |
-| HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` |
-| type 字段 | 必须显式声明 | 不需要（自动推断） |
+| 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) | pi（pi-mcp-adapter） |
+|------|--------------------------|------------------------------|----------------------|
+| 格式 | JSON | TOML | 复用 `.mcp.json`（JSON），无第二份配置 |
+| 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` | 同 `.mcp.json` |
+| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** | stdio 与 HTTP 均支持 |
+| 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` | 同 `.mcp.json` |
+| HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` | 同 `.mcp.json` |
+| type 字段 | 必须显式声明 | 不需要（自动推断） | 同 `.mcp.json` |
 
 **信任提醒**：
 - 提醒用户：首次在 Codex 中打开项目时需确认信任项目，否则 `.codex/config.toml` 不会被加载
@@ -626,7 +627,18 @@ args = ["minimax-coding-plan-mcp", "-y"]
 env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https://api.minimaxi.com" }
 ````
 
-### 7. 配置 .gitignore
+### 7. pi MCP 说明
+
+> **无需同步步骤** — pi 不维护第二份客户端配置文件。
+
+- pi 官方不提供原生 MCP 支持；MCP 能力由第三方扩展 pi-mcp-adapter 提供，该扩展由 `/pre-check` 步骤 7 全局安装。
+- pi-mcp-adapter 直接读取项目根目录 `.mcp.json`；本 Skill 维护的 `.mcp.json` 即 pi 的 MCP 配置来源，无需执行任何同步。
+- 与 Codex 不同，pi-mcp-adapter 支持 HTTP 类型 server：智普的 `web-search-prime`、`web-reader`、`zread` 在 pi 下可用。
+- `.gitignore` 无需新增条目：pi 复用的 `.mcp.json` 已在忽略清单内。
+
+**pi 侧验证方式**：pi 会话中输入 `/mcp`（由 adapter 提供）查看 server 列表与连接状态。
+
+### 8. 配置 .gitignore
 
 **目的**：将 Cadence 工作目录和本地配置添加到 .gitignore，避免将临时文件、本地 MCP 配置和 Codex 项目配置提交到版本控制。无人工交互模式下默认执行。
 
@@ -667,6 +679,8 @@ EOF
 | `.worktrees/` | Git worktrees 隔离开发环境 | 包含临时的隔离开发环境，不应提交 |
 | `.mcp.json` | MCP 配置文件 | 包含本地 MCP 路径配置，不应提交到版本控制 |
 | `.codex/config.toml` | Codex CLI 项目级 MCP 配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
+
+> pi 复用 `.mcp.json`（pi-mcp-adapter 直读），`.gitignore` 无需为 pi 新增条目。
 
 **验证**：
 
