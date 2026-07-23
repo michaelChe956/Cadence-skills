@@ -328,7 +328,7 @@ openspec --version
 **行为（中文输出）**：
 - CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
 - CLI 未安装：报告 "正在安装 OpenSpec CLI..."，执行 `npm install -g @fission-ai/openspec@latest`，完成后再次验证
-- `openspec/config.yaml` 不存在：报告 "ℹ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
+- `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
 **安装命令**：
 
@@ -339,14 +339,14 @@ npm install -g @fission-ai/openspec@latest
 **初始化与更新命令**：
 
 ```bash
-# 新项目：当前项目尚未存在 openspec/config.yaml
+# 三客户端产物均缺失（新项目）
 openspec init --tools claude,codex,pi
 
-# 老项目：已存在 openspec/config.yaml，但缺少 .pi skills 或 prompts
+# 仅 pi 产物缺失
 openspec init --tools pi
 openspec update
 
-# 老项目：pi skills 与 prompts 已存在
+# 三客户端产物齐全
 openspec update
 ```
 
