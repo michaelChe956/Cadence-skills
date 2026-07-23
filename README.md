@@ -220,9 +220,9 @@ git pull
 
 | Skill | 默认行为 | 需要显式启用的内容 |
 |------|----------|--------------------|
-| `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；OpenSpec 默认初始化 `claude,codex,pi` 三客户端产物，老项目缺 pi 产物时自动补齐；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；PATH 中存在 pi 可执行文件时条件检查并安装 `pi-mcp-adapter`，不存在时跳过；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
+| `/pre-check` | 检查并补齐 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、Superpowers；OpenSpec 检查范围为 CLI 与 `claude,codex,pi` 三客户端指令产物，按缺失客户端精确补齐（缺哪个 init 哪个）；`openspec/config.yaml` 由 `/rule-config` 创建与合并，缺失时仅提示不影响判定；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；PATH 中存在 pi 可执行文件时条件检查并安装 `pi-mcp-adapter`，不存在时跳过；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
-| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
+| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
@@ -323,7 +323,7 @@ $knowledge-base-context
 
 | Skill | no-interrupt 模式行为 |
 |------|------------------------|
-| `/pre-check` | 除 Playwright 外，强制完成 npx、uvx、ast-grep、codegraph、OpenSpec、Superpowers 的安装和验证；任一项失败立即终止；Superpowers 同步四层软链（含 `~/.pi/agent/skills`）且固定离线目录无效时直接报错；同名冲突先备份再处理；PATH 中存在 pi 可执行文件但 `pi-mcp-adapter` 安装失败时立即终止，pi 不存在时跳过不算失败 |
+| `/pre-check` | 除 Playwright 外，强制完成 npx、uvx、ast-grep、codegraph、OpenSpec（CLI 与三客户端指令产物；`openspec/config.yaml` 缺失不算失败，由 `/rule-config` 创建）、Superpowers 的安装和验证；任一项失败立即终止；Superpowers 同步四层软链（含 `~/.pi/agent/skills`）且固定离线目录无效时直接报错；同名冲突先备份再处理；PATH 中存在 pi 可执行文件但 `pi-mcp-adapter` 安装失败时立即终止，pi 不存在时跳过不算失败 |
 | `/rule-config` | 冲突时以 `rule-config` 模板和强制规则为准，项目已有内容作为补充合并；只报告历史文档目录，不执行迁移 |
 | `/mcp-configuration` | 冲突时以标准 MCP 结构和必需参数为准，保留项目额外 Server、扩展字段和已有非占位密钥；解析或验证失败时恢复备份并终止 |
 | `/project-rules-examples` | 冲突时以标准模板骨架和强制约束为准，保留项目事实、真实占位值和额外章节；无法结构化合并时备份并保留原文 |
@@ -340,6 +340,8 @@ $knowledge-base-context
 /mcp-configuration no-interrupt
 /project-rules-examples no-interrupt
 ```
+
+> **职责边界**：`/pre-check` 负责 OpenSpec CLI 与三客户端指令产物；`openspec/config.yaml` 由 `/rule-config` 步骤 11 创建与合并（含 Cadence 协作上下文）。顺序保持 `/pre-check` 先、`/rule-config` 后；即使顺序颠倒，`/pre-check` 也会按缺失客户端补齐产物且保留已有 config.yaml。
 
 如果需要 Playwright，请明确说明：
 
@@ -369,7 +371,7 @@ your_minimax_api_key
 - ✅ 检查 npx 是否安装（Node.js 包执行器）
 - ✅ 检查 uvx 是否安装（Python 包执行器）
 - ✅ 检查并补齐 ast-grep、codegraph、OpenSpec、Superpowers
-- ✅ OpenSpec 默认初始化 `claude,codex,pi` 三客户端产物，老项目缺 pi 产物时先 `openspec init --tools pi` 再 `openspec update`
+- ✅ OpenSpec 检查 CLI 与 `claude,codex,pi` 三客户端指令产物，缺失哪个客户端就先 `openspec init --tools <缺失客户端>` 再 `openspec update`；`openspec/config.yaml` 由 `/rule-config` 创建，缺失时仅提示
 - ✅ Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层
 - ✅ 支持 Superpowers 在线更新和离线目录同步
 - ✅ 检测到 pi 可执行文件时条件检查并安装 `pi-mcp-adapter`（未安装 pi 时跳过）
@@ -399,6 +401,7 @@ your_minimax_api_key
 该 Skill 会：
 - ✅ 创建 `.claude/rules/` 规则目录
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
+- ✅ 创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）
 - ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
 - ✅ 配置目录结构
 - ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则

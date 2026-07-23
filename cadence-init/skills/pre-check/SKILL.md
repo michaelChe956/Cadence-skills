@@ -42,7 +42,7 @@ disable-model-invocation: true
 | uvx | `uvx --version` 成功 | 立即终止 |
 | ast-grep | `ast-grep --version` 成功 | 立即终止 |
 | codegraph | `codegraph version` 成功 | 立即终止 |
-| OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
+| OpenSpec | CLI 和 claude/codex/pi 三客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
 | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
 | pi MCP Adapter | 条件项：`command -v pi` 成功时 adapter 安装并验证成功；pi 可执行文件不存在时跳过 | pi 可执行文件存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
@@ -125,7 +125,7 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若已有 `openspec/config.yaml` 但缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
+- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：缺少 `.pi` 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目或三客户端产物均缺失时执行 `openspec init --tools claude,codex,pi`。
 - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
@@ -221,7 +221,7 @@ digraph check_flow {
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml`、pi 产物状态 | CLI 和所需指令文件存在 | 新项目 init 三客户端；老项目缺 pi 时先 `init --tools pi` 再 update |
+| **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
 | **7. pi MCP Adapter（条件）** | `command -v pi >/dev/null 2>&1`；就绪判定为 `pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | pi 可执行文件存在时 adapter 已安装；不存在时跳过 | pi 可执行文件存在且 adapter 缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
@@ -328,6 +328,7 @@ openspec --version
 **行为（中文输出）**：
 - CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
 - CLI 未安装：报告 "正在安装 OpenSpec CLI..."，执行 `npm install -g @fission-ai/openspec@latest`，完成后再次验证
+- `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
 **安装命令**：
 
@@ -338,22 +339,32 @@ npm install -g @fission-ai/openspec@latest
 **初始化与更新命令**：
 
 ```bash
-# 新项目：当前项目尚未存在 openspec/config.yaml
+# 三客户端产物均缺失（新项目）
 openspec init --tools claude,codex,pi
 
-# 老项目：已存在 openspec/config.yaml，但缺少 .pi skills 或 prompts
+# 仅 pi 产物缺失
 openspec init --tools pi
 openspec update
 
-# 老项目：pi skills 与 prompts 已存在
+# 三客户端产物齐全
 openspec update
 ```
 
 **增量要求**：
-- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
-- 如果 `openspec/config.yaml` 已存在且 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*` 缺失，先执行 `openspec init --tools pi`；确认 `.pi/skills` 恰有 5 个 `openspec-*` 目录且 `.pi/prompts` 恰有 5 个 `opsx-*.md` 文件后，再执行 `openspec update`。
-- 如果 `openspec/config.yaml` 已存在且 pi 产物已经存在，直接执行 `openspec update`。
-- `openspec update` 只刷新已初始化的工具产物，不能单独为未选择过 pi 的老项目新增 `.pi` 产物。
+
+按 claude、codex、pi 三客户端分别检测指令产物存在性，`openspec/config.yaml` 是否存在不作为分支判断条件：
+
+| 客户端 | 产物就绪判定 |
+|--------|--------------|
+| claude | `.claude/commands/opsx/` 存在，或 `.claude/skills/` 下存在 `openspec-*` 目录 |
+| codex | `.codex/skills/` 下存在 `openspec-*` 目录 |
+| pi | `.pi/skills/` 下恰有 5 个 `openspec-*` 目录，且 `.pi/prompts/` 下恰有 5 个 `opsx-*.md` 文件 |
+
+- 存在缺失客户端：对缺失客户端执行 `openspec init --tools <缺失客户端列表>`（如 `claude,codex,pi`、`pi`），再执行 `openspec update`。
+- 三客户端产物均齐全：直接执行 `openspec update`。
+- 已就绪客户端不得重新 init，不覆盖用户改动。
+- `openspec init` 检测到 `openspec/config.yaml` 已存在时原样保留（CLI 行为），不覆盖 rule-config 写入的内容。
+- `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
 - OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
@@ -364,13 +375,15 @@ openspec update
 **验证命令**：
 
 ```bash
-test -f openspec/config.yaml
+openspec --version
 test -f .codex/skills/openspec-propose/SKILL.md
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 test -f .pi/skills/openspec-propose/SKILL.md
 test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
 test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
+
+> 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
 
 ### 步骤 6：检查 Superpowers
 
