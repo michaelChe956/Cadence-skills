@@ -42,7 +42,7 @@ disable-model-invocation: true
 | uvx | `uvx --version` 成功 | 立即终止 |
 | ast-grep | `ast-grep --version` 成功 | 立即终止 |
 | codegraph | `codegraph version` 成功 | 立即终止 |
-| OpenSpec | CLI、`openspec/config.yaml` 和目标指令文件验证成功 | 立即终止 |
+| OpenSpec | CLI 和 claude/codex/pi 三客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
 | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
 | pi MCP Adapter | 条件项：`command -v pi` 成功时 adapter 安装并验证成功；pi 可执行文件不存在时跳过 | pi 可执行文件存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
@@ -221,7 +221,7 @@ digraph check_flow {
 | **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
 | **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
 | **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **5. OpenSpec** | `openspec --version`、`openspec/config.yaml`、pi 产物状态 | CLI 和所需指令文件存在 | 新项目 init 三客户端；老项目缺 pi 时先 `init --tools pi` 再 update |
+| **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
 | **7. pi MCP Adapter（条件）** | `command -v pi >/dev/null 2>&1`；就绪判定为 `pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | pi 可执行文件存在时 adapter 已安装；不存在时跳过 | pi 可执行文件存在且 adapter 缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
@@ -328,6 +328,7 @@ openspec --version
 **行为（中文输出）**：
 - CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
 - CLI 未安装：报告 "正在安装 OpenSpec CLI..."，执行 `npm install -g @fission-ai/openspec@latest`，完成后再次验证
+- `openspec/config.yaml` 不存在：报告 "ℹ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
 **安装命令**：
 
@@ -364,13 +365,15 @@ openspec update
 **验证命令**：
 
 ```bash
-test -f openspec/config.yaml
+openspec --version
 test -f .codex/skills/openspec-propose/SKILL.md
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 test -f .pi/skills/openspec-propose/SKILL.md
 test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
 test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
+
+> 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
 
 ### 步骤 6：检查 Superpowers
 
