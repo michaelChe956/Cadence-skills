@@ -125,7 +125,7 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：若已有 `openspec/config.yaml` 但缺少 `.pi` 产物，先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目仍执行 `openspec init --tools claude,codex,pi`。
+- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：缺少 `.pi` 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目或三客户端产物均缺失时执行 `openspec init --tools claude,codex,pi`。
 - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
@@ -351,10 +351,20 @@ openspec update
 ```
 
 **增量要求**：
-- 如果 `openspec/config.yaml` 不存在，执行 `openspec init --tools claude,codex,pi`。
-- 如果 `openspec/config.yaml` 已存在且 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*` 缺失，先执行 `openspec init --tools pi`；确认 `.pi/skills` 恰有 5 个 `openspec-*` 目录且 `.pi/prompts` 恰有 5 个 `opsx-*.md` 文件后，再执行 `openspec update`。
-- 如果 `openspec/config.yaml` 已存在且 pi 产物已经存在，直接执行 `openspec update`。
-- `openspec update` 只刷新已初始化的工具产物，不能单独为未选择过 pi 的老项目新增 `.pi` 产物。
+
+按 claude、codex、pi 三客户端分别检测指令产物存在性，`openspec/config.yaml` 是否存在不作为分支判断条件：
+
+| 客户端 | 产物就绪判定 |
+|--------|--------------|
+| claude | `.claude/commands/opsx/` 存在，或 `.claude/skills/` 下存在 `openspec-*` 目录 |
+| codex | `.codex/skills/` 下存在 `openspec-*` 目录 |
+| pi | `.pi/skills/` 下恰有 5 个 `openspec-*` 目录，且 `.pi/prompts/` 下恰有 5 个 `opsx-*.md` 文件 |
+
+- 存在缺失客户端：对缺失客户端执行 `openspec init --tools <缺失客户端列表>`（如 `claude,codex,pi`、`pi`），再执行 `openspec update`。
+- 三客户端产物均齐全：直接执行 `openspec update`。
+- 已就绪客户端不得重新 init，不覆盖用户改动。
+- `openspec init` 检测到 `openspec/config.yaml` 已存在时原样保留（CLI 行为），不覆盖 rule-config 写入的内容。
+- `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
 - OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
