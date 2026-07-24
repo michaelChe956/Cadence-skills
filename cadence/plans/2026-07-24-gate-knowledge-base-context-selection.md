@@ -180,10 +180,17 @@ git commit -m "docs(project-rules): 新增 knowledge-base-context 选择门禁�
 - Consumes: Task 1 的 description 门禁句、Task 2 的三处门禁句、Task 3 的规则文件
 - Produces: 无
 
-- [ ] **Step 1: 四处载体语义一致性检索**
+- [ ] **Step 1: 4 处主门禁 + 项目规则语义兜底验证**
 
-Run: `grep -rn "选择前置门禁" cadence-init/skills/knowledge-base-context/SKILL.md cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md CLAUDE.md AGENTS.md cadence/project-rules/knowledge-base-gating.md | wc -l`
-Expected: `5`（五处载体均含门禁；README 登记不含该短语属预期）
+Run:
+
+```sh
+grep -rn "选择前置门禁" cadence-init/skills/knowledge-base-context/SKILL.md cadence-init/skills/rule-config/references/rules/agent-routing-kernel.md CLAUDE.md AGENTS.md | wc -l
+grep -Fn '在选择 `knowledge-base-context` 前，先只读检查' cadence/project-rules/knowledge-base-gating.md
+grep -Fn '不得因为 Manifest 缺失' cadence/project-rules/knowledge-base-gating.md
+```
+
+Expected: 第一项输出 `4`（四处主门禁均含精确短语）；后两项各命中项目规则中的对应规则行，合计证明第五处是语义兜底而非同一字面短语；README 登记不参与本验证。
 
 - [ ] **Step 2: Skill 正文零改动确认**
 
