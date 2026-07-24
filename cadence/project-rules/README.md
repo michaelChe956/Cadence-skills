@@ -73,6 +73,10 @@
 ### test-standards.md
 测试规范，包括测试覆盖率要求、测试类型要求、测试命名规范等。
 
+### knowledge-base-gating.md
+`knowledge-base-context` Skill 的选择前置门禁：Manifest 缺失或 Schema 非 4.0 时
+不得选择该 Skill；并说明 Skill 异常处理的正确解读。
+
 ## 💡 提示
 
 - 只创建您需要的规则文档，不必全部创建

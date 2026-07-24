@@ -18,6 +18,8 @@
 | 实施与验证均完成 | 协作规则 | `using-superpowers` → `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `using-superpowers` → `finishing-a-development-branch` | 选择分支集成方式 |
 
+`knowledge-base-context` 选择前置门禁：仅当只读确认 `cadence/knowledge-base/manifest.yaml` 存在且 `schema_version` 为 `"4.0"` 时才可选择；Manifest 缺失或版本不符时不得选择、调用或读取该 Skill，不输出知识库相关提示，按普通流程继续。
+
 阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
 需要仓库操作时：Claude/Kimi 必须把全部 Skill 调用及失败重试作为连续工具事件；首个调用前、事件之间和重试前均保持用户可见输出静默，禁止输出“我先调用 Skill”等引导句；随后第一段输出 `工作流路由：阶段=...；Change=...；Plan=...；必调 Skill=...`。Codex 先显式选择 Skill，将用途并入首段回执，随后立即全文读取 Skill。pi 与 Codex 同类：从 Skill 清单显式选择 Skill，将用途并入首段回执，随后立即全文读取对应 SKILL.md 作为调用，Skill 未读完前不得读取仓库规则或使用仓库工具。Skill 调用完成后才读取仓库规则和使用仓库工具。
 纯概念问答只调用全局 `using-superpowers` 后直接回答，不输出仓库路由回执，不加载仓库规则或其他无关 Skill；Codex/pi 可先输出 Skill 用途公告。一旦转为仓库操作，必须重新路由。
