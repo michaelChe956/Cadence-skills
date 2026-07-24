@@ -1,6 +1,6 @@
 ---
 name: knowledge-base-context
-description: "MUST use when an agent is about to perform project-specific 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug work and an existing Schema 4.0 KnowledgeBase must ground the task context."
+description: "MUST use when an agent is about to perform project-specific 需求澄清、Design、Plan、Coding、Testing、Review 或 Debug work and an existing Schema 4.0 KnowledgeBase must ground the task context. 选择前置门禁：仅当 cadence/knowledge-base/manifest.yaml 存在且 schema_version 为 '4.0' 时才可选择本 Skill；Manifest 缺失或 Schema 非 4.0 时不得选择、调用或读取本 Skill，按普通流程继续，不输出知识库相关提示，不引导 knowledge-base-bootstrap。"
 ---
 
 # KnowledgeBase 任务上下文
