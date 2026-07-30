@@ -202,7 +202,11 @@ do_uvx() {
       add_step "uvx" "installed" "installed-via-pip" "$_v" ""
       log "${C_GRN}✓ uvx 安装成功（$_v）${C_NC}"
     else
-      add_step "uvx" "failed" "install-attempted" "" "uvx 安装失败或未就绪；可手动执行 pip install uv"
+      if [ "$MODE" = "check" ]; then
+        add_step "uvx" "failed" "not-ready" "" "uvx 未就绪（check 模式未安装）"
+      else
+        add_step "uvx" "failed" "install-attempted" "" "uvx 安装失败或未就绪；可手动执行 pip install uv"
+      fi
       handle_failure "uvx" "安装后复验失败"
     fi
   fi
@@ -218,7 +222,11 @@ do_ast_grep() {
       add_step "ast-grep" "installed" "installed-via-npm" "$_v" ""
       log "${C_GRN}✓ ast-grep 安装成功（$_v）${C_NC}"
     else
-      add_step "ast-grep" "failed" "install-attempted" "" "ast-grep 安装失败；可手动执行 npm i @ast-grep/cli -g"
+      if [ "$MODE" = "check" ]; then
+        add_step "ast-grep" "failed" "not-ready" "" "ast-grep 未就绪（check 模式未安装）"
+      else
+        add_step "ast-grep" "failed" "install-attempted" "" "ast-grep 安装失败；可手动执行 npm i @ast-grep/cli -g"
+      fi
       handle_failure "ast-grep" "安装后复验失败"
     fi
   fi
@@ -234,7 +242,11 @@ do_codegraph() {
       add_step "codegraph" "installed" "installed-via-npm" "$_v" ""
       log "${C_GRN}✓ codegraph 安装成功（$_v）${C_NC}"
     else
-      add_step "codegraph" "failed" "install-attempted" "" "codegraph 安装失败；可手动执行 npm i -g @colbymchenry/codegraph"
+      if [ "$MODE" = "check" ]; then
+        add_step "codegraph" "failed" "not-ready" "" "codegraph 未就绪（check 模式未安装）"
+      else
+        add_step "codegraph" "failed" "install-attempted" "" "codegraph 安装失败；可手动执行 npm i -g @colbymchenry/codegraph"
+      fi
       handle_failure "codegraph" "安装后复验失败"
     fi
   fi
@@ -250,7 +262,11 @@ do_openspec() {
       add_step "openspec" "installed" "installed-via-npm" "$_v" ""
       log "${C_GRN}✓ openspec 安装成功（$_v）${C_NC}"
     else
-      add_step "openspec" "failed" "install-attempted" "" "openspec 安装失败；可手动执行 npm install -g @fission-ai/openspec@latest"
+      if [ "$MODE" = "check" ]; then
+        add_step "openspec" "failed" "not-ready" "" "openspec 未就绪（check 模式未安装）"
+      else
+        add_step "openspec" "failed" "install-attempted" "" "openspec 安装失败；可手动执行 npm install -g @fission-ai/openspec@latest"
+      fi
       handle_failure "openspec" "安装后复验失败"
     fi
   fi
@@ -272,7 +288,11 @@ do_pi_mcp_adapter() {
       add_step "pi-mcp-adapter" "installed" "installed-via-pi" "" ""
       log "${C_GRN}✓ pi-mcp-adapter 安装成功${C_NC}"
     else
-      add_step "pi-mcp-adapter" "failed" "install-attempted" "" "pi-mcp-adapter 安装失败；可手动执行 pi install npm:pi-mcp-adapter"
+      if [ "$MODE" = "check" ]; then
+        add_step "pi-mcp-adapter" "failed" "not-ready" "" "pi-mcp-adapter 未就绪（check 模式未安装）"
+      else
+        add_step "pi-mcp-adapter" "failed" "install-attempted" "" "pi-mcp-adapter 安装失败；可手动执行 pi install npm:pi-mcp-adapter"
+      fi
       handle_failure "pi-mcp-adapter" "安装后复验失败"
     fi
   fi
@@ -332,6 +352,11 @@ upgrade_npm_tool() {
     remove_step "$_name"
     add_step "$_name" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
     log "${C_RED}❌ $_name 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    if [ "$NO_INTERRUPT" = "1" ]; then
+      err "🛑 no-interrupt 模式：升级失败立即终止"
+      emit_report "failed"
+      exit 1
+    fi
     return 0
   fi
   return 0
@@ -359,6 +384,11 @@ upgrade_uv() {
     remove_step "uv"
     add_step "uv" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
     log "${C_RED}❌ uv 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    if [ "$NO_INTERRUPT" = "1" ]; then
+      err "🛑 no-interrupt 模式：升级失败立即终止"
+      emit_report "failed"
+      exit 1
+    fi
     return 0
   fi
   return 0
