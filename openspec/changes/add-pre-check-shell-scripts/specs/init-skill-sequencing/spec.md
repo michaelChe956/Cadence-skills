@@ -9,7 +9,7 @@ pre-check 对 npx、uvx、ast-grep、codegraph、openspec、pi-mcp-adapter 六�
 #### Scenario: SKILL.md 调用脚本处理六工具
 
 - **WHEN** 执行 `/pre-check`
-- **THEN** SKILL.md 调用 `scripts/pre-check.sh run` 完成六工具检查与安装，读取 JSON 报告判定六工具状态，正文不含六工具的逐条安装命令
+- **THEN** SKILL.md 以完整绝对路径 `<PRE_CHECK_SH>` 调用脚本完成六工具检查与安装，读取 JSON 报告判定六工具状态，正文不含六工具的逐条安装命令，也不以相对路径 `scripts/pre-check.sh` 调用
 
 #### Scenario: OpenSpec 三客户端仍由 SKILL.md 处理
 
@@ -39,19 +39,19 @@ pre-check 对 npx、uvx、ast-grep、codegraph、openspec、pi-mcp-adapter 六�
 
 Agent 的每条命令在独立 shell 中执行，cwd、环境变量、上一条命令的状态 MUST NOT 被假设为跨命令保留。SKILL.md 给出的每条可执行命令 MUST 完全自包含：使用绝对路径，不依赖 cwd，不依赖环境变量，不依赖前一条命令的任何状态。
 
-SKILL.md MUST 引导模型先确定并记住两个字面绝对路径后在每条命令中显式写出：项目根 `<PROJECT_ROOT>`（待初始化项目的绝对路径，openspec 产物、`.claude/.codex/.pi`、报告均落在其中）与脚本路径 `<PRE_CHECK_SH>`（pre-check skill 关联脚本的完整绝对路径，脚本只读、不得 `cd` 进 skill 目录执行）。
+SKILL.md MUST 引导模型先确定并记住两个字面绝对路径后在每条命令中显式写出：项目根 `<PROJECT_ROOT>`（待初始化项目的绝对路径，openspec 产物与 `.claude/.codex/.pi` 落在其中）与脚本路径 `<PRE_CHECK_SH>`（pre-check skill 关联脚本的完整绝对路径，脚本只读、不得 `cd` 进 skill 目录执行）。路径字面值在命令中 MUST 加引号，以容忍含空格的路径。
 
-报告文件 MUST 使用每次调用独占的绝对路径（如 `<PROJECT_ROOT>/.precheck-report-<时间戳>.json`），避免并发或重复运行互相覆盖；无论成功或失败，完成后 MUST 删除该次调用的独占报告文件。
+报告是临时中间产物，MUST 用 `mktemp` 生成原子唯一的绝对路径（如 `mktemp -t precheck-report.XXXXXX.json`，落在 `/tmp`），模型记住该字面值后在每条命令中显式写出；MUST NOT 用 `date +%s`（同秒并发重名）或 `pwd` 推导（独立 shell cwd 可变）。无论成功或失败，完成后 MUST 删除该次调用的独占报告文件。
 
 #### Scenario: 命令不依赖独立 shell 的 cwd
 
 - **WHEN** 模型在任意 cwd 下按 SKILL.md 逐条执行命令
-- **THEN** openspec init/update、`.claude/.codex/.pi` 检查、报告读写均作用于 `<PROJECT_ROOT>`，不写入 Skill 源码目录，也不因 cwd 变化而落到错误目录
+- **THEN** openspec init/update 与 `.claude/.codex/.pi` 检查作用于 `<PROJECT_ROOT>`，报告读写作用于 `<REPORT>`（`/tmp` 下 mktemp 路径），均不写入 Skill 源码目录，也不因 cwd 变化而落到错误目录
 
 #### Scenario: 报告路径独占且用完清理
 
-- **WHEN** 同一项目根下先后或并发执行多次 `/pre-check`
-- **THEN** 每次调用使用含时间戳的独占报告路径，互不覆盖、互不误删；每次调用结束后删除自己的报告文件
+- **WHEN** 同一环境先后或并发执行多次 `/pre-check`
+- **THEN** 每次调用用 `mktemp` 生成唯一报告路径，互不覆盖、互不误删；每次调用结束后删除自己的报告文件
 
 #### Scenario: 不 cd 进 skill 目录
 

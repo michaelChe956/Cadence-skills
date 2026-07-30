@@ -142,15 +142,38 @@ _ok12=0
 python3 -m json.tool "$_REP_A" >/dev/null 2>&1 && python3 -m json.tool "$_REP_B" >/dev/null 2>&1 && _ok12=1
 assert_eq "跨 cwd 独占报告各自可解析（互未覆盖）" "1" "$_ok12"
 
-# 12b. 跨独立 shell 读取：在第三个 shell（不同 cwd）用绝对路径读 _REP_A
+# 12b. 跨独立 shell 读取：在第三个 shell（不同 cwd）用绝对路径读 _REP_A，
+# 断言 JSON 可读且 overall 为合法枚举（不强制 success——check 不安装，受限 PATH/工具缺失时为 partial）
 _ov12="$(bash -c "cd / && python3 -c \"import json;print(json.load(open('$_REP_A'))['overall'])\"" 2>/dev/null)"
-assert_eq "独立 shell（不同 cwd）按绝对路径读报告 overall" "success" "$_ov12"
+case "$_ov12" in
+  success|partial|failed) _ov12_ok=1 ;;
+  *) _ov12_ok=0 ;;
+esac
+assert_eq "独立 shell（不同 cwd）按绝对路径读报告 overall 为合法枚举" "1" "$_ov12_ok"
 
-# 12c. skill 目录不被写入报告（脚本绝对路径调用，报告写项目根）
+# 12c. skill 目录不被写入报告（脚本绝对路径调用，报告写 /tmp）
 [ ! -e "$SCRIPT_DIR/../.precheck-report.json" ] && [ ! -e "$SCRIPT_DIR/.precheck-report.json" ]
 assert_true "skill 目录无报告残留（不污染源码）" "$?"
 
 rm -rf "$_PROJ_A" "$_PROJ_B"
+
+# --- 13. 同秒并发 mktemp 唯一性（date +%s 会重名，mktemp 原子唯一） ---
+_m1="$(mktemp -t precheck-report.XXXXXX.json)"
+_m2="$(mktemp -t precheck-report.XXXXXX.json)"
+_m3="$(mktemp -t precheck-report.XXXXXX.json)"
+_uniq=0
+[ "$_m1" != "$_m2" ] && [ "$_m2" != "$_m3" ] && [ "$_m1" != "$_m3" ] && _uniq=1
+assert_eq "同秒三次 mktemp 生成路径互不相同" "1" "$_uniq"
+rm -f "$_m1" "$_m2" "$_m3"
+
+# --- 14. 带空格路径加引号可用（模拟含空格的项目路径） ---
+_SP="$(mktemp -d -t 'precheck space.XXXXXX')"
+_SPREP="$(mktemp "$_SP/report.XXXXXX.json")"
+bash -c "bash '$PRE_CHECK' check > \"$_SPREP\"" 2>/dev/null
+_sp_ok=0
+python3 -m json.tool "$_SPREP" >/dev/null 2>&1 && _sp_ok=1
+assert_eq "带空格路径加引号写报告并解析" "1" "$_sp_ok"
+rm -rf "$_SP"
 
 # --- 汇总 ---
 _total=$((PASS_COUNT + FAIL_COUNT))

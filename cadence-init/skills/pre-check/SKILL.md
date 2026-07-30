@@ -180,30 +180,30 @@ digraph check_flow {
 1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物、`.claude/.codex/.pi`、报告文件都落在该目录。
 2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录。
 
-**第二步——确定独占报告路径 `<REPORT>`**：为避免并发/重复运行互相覆盖，报告用**每次调用独占**的绝对路径 `<PROJECT_ROOT>/.precheck-report-<时间戳>.json`。执行一次 `echo "$(pwd)/.precheck-report-$(date +%s).json"` 得到字面值并记住，后续命令直接写出它。
+**第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
 
 **调用命令**：按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）。把 `<PRE_CHECK_SH>` 与 `<REPORT>` 替换为上面记住的字面值：
 
 ```bash
 # 通用源，普通模式
-bash <PRE_CHECK_SH> run > <REPORT>
+bash "<PRE_CHECK_SH>" run > "<REPORT>"
 
 # 大陆镜像源
-bash <PRE_CHECK_SH> run --mirror cn > <REPORT>
+bash "<PRE_CHECK_SH>" run --mirror cn > "<REPORT>"
 
 # no-interrupt 模式（任一基础工具失败即非零退出）
-bash <PRE_CHECK_SH> run --mirror cn --no-interrupt > <REPORT>
+bash "<PRE_CHECK_SH>" run --mirror cn --no-interrupt > "<REPORT>"
 
 # 仅探测不安装（摸底）
-bash <PRE_CHECK_SH> check --mirror cn > <REPORT>
+bash "<PRE_CHECK_SH>" check --mirror cn > "<REPORT>"
 
 # 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash <PRE_CHECK_SH> run --mirror cn --upgrade > <REPORT>
+bash "<PRE_CHECK_SH>" run --mirror cn --upgrade > "<REPORT>"
 ```
 
-脚本向 stdout 输出单份 JSON，重定向到 `<REPORT>`（项目根下的独占绝对路径）；stderr 彩色摘要直接显示。
+脚本向 stdout 输出单份 JSON，重定向到 `"<REPORT>"`（`/tmp` 下的独占绝对路径）；stderr 彩色摘要直接显示。
 
-**读取结果**：报告 JSON 已写入独占路径 `<REPORT>`。用以下命令取 overall 与各工具状态（每条命令自包含，写出 `<REPORT>` 字面值）：
+**读取结果**：报告 JSON 已写入独占路径 `<REPORT>`。用以下命令取 overall 与各工具状态（每条命令自包含，写出 `<REPORT>` 字面值并加引号）：
 
 ```bash
 # overall（success/partial/failed）
@@ -214,9 +214,9 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print([s for s in d['steps
 python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])"
 ```
 
-**报告生命周期**：报告是临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件（`<REPORT>` 是含时间戳的字面值）：
-- 成功路径：全部检查完成后 `rm -f <REPORT>`。
-- 失败路径：任一失败终止或报告后，同样 `rm -f <REPORT>`，避免残留。
+**报告生命周期**：报告是 `/tmp` 下的临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件：
+- 成功路径：全部检查完成后 `rm -f "<REPORT>"`。
+- 失败路径：任一失败终止或报告后，同样 `rm -f "<REPORT>"`，避免残留。
 
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
 
@@ -338,7 +338,7 @@ cd <PROJECT_ROOT> && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -n
 
 **在线安装来源**：
 
-> **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（项目根下独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
+> **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（`/tmp` 下 mktemp 生成的独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
 
 ```bash
 # 单条命令自包含：从 <REPORT> 读出 Superpowers 远端地址并 clone（同一 shell 内完成）
@@ -368,7 +368,7 @@ $HOME/.agents/superpowers/skills
 
 **Git 更新逻辑**：
 
-> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 的独占绝对路径字面值）。
+> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 在 `/tmp` 生成的独占绝对路径字面值）。
 
 ```bash
 # 从 <REPORT> 读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
