@@ -9,6 +9,11 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRE_CHECK="$SCRIPT_DIR/pre-check.sh"
 
+# 临时目录：全部冒烟输出写入此目录，退出时自动清理，不在 /tmp 留固定文件
+SMOKE_DIR="$(mktemp -d -t precheck-smoke.XXXXXX)"
+trap 'rm -rf "$SMOKE_DIR"' EXIT
+export SMOKE_DIR
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -40,20 +45,20 @@ bash -n "$PRE_CHECK" 2>/dev/null
 assert_true "bash -n pre-check.sh 语法通过" "$?"
 
 # --- 2. check（default 与 cn）stdout 可被 python3 -m json.tool 解析 ---
-bash "$PRE_CHECK" check 2>/dev/null > /tmp/precheck_smoke_default.json
+bash "$PRE_CHECK" check 2>/dev/null > "$SMOKE_DIR/default.json"
 _rc=$?
-python3 -m json.tool /tmp/precheck_smoke_default.json >/dev/null 2>&1
+python3 -m json.tool "$SMOKE_DIR/default.json" >/dev/null 2>&1
 assert_true "check(default) stdout 为合法 JSON（exit=$_rc）" "$?"
 
-bash "$PRE_CHECK" check --mirror cn 2>/dev/null > /tmp/precheck_smoke_cn.json
+bash "$PRE_CHECK" check --mirror cn 2>/dev/null > "$SMOKE_DIR/cn.json"
 _rc=$?
-python3 -m json.tool /tmp/precheck_smoke_cn.json >/dev/null 2>&1
+python3 -m json.tool "$SMOKE_DIR/cn.json" >/dev/null 2>&1
 assert_true "check(cn) stdout 为合法 JSON（exit=$_rc）" "$?"
 
 # --- 3. JSON 含 overall/steps/next_actions/hints.superpowers_git ---
 _keys="$(python3 -c "
-import json
-d = json.load(open('/tmp/precheck_smoke_default.json'))
+import json, os
+d = json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))
 ok = ('overall' in d and 'steps' in d and 'next_actions' in d
       and 'hints' in d and 'superpowers_git' in d['hints'])
 print('yes' if ok else 'no')
@@ -62,8 +67,8 @@ assert_eq "JSON 含 overall/steps/next_actions/hints.superpowers_git" "yes" "$_k
 
 # --- 4. next_actions 恰为固定四项 ---
 _na="$(python3 -c "
-import json
-d = json.load(open('/tmp/precheck_smoke_default.json'))
+import json, os
+d = json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))
 print(json.dumps(d.get('next_actions')))
 " 2>/dev/null)"
 assert_eq "next_actions 恰为固定四项" \
@@ -71,14 +76,14 @@ assert_eq "next_actions 恰为固定四项" \
 
 # --- 5. default/cn 镜像 hints.superpowers_git 正确 ---
 _git_default="$(python3 -c "
-import json
-print(json.load(open('/tmp/precheck_smoke_default.json'))['hints']['superpowers_git'])
+import json, os
+print(json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))['hints']['superpowers_git'])
 " 2>/dev/null)"
 assert_eq "default 镜像 hints.superpowers_git" "https://github.com/obra/superpowers" "$_git_default"
 
 _git_cn="$(python3 -c "
-import json
-print(json.load(open('/tmp/precheck_smoke_cn.json'))['hints']['superpowers_git'])
+import json, os
+print(json.load(open(os.environ['SMOKE_DIR'] + '/cn.json'))['hints']['superpowers_git'])
 " 2>/dev/null)"
 assert_eq "cn 镜像 hints.superpowers_git" "https://gitee.com/michaelChe-World/superpowers.git" "$_git_cn"
 
