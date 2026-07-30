@@ -673,6 +673,200 @@ class TestLocateTemplates(unittest.TestCase):
             rc.locate_templates()
 
 
+# ---------------------------------------------------------------------------
+# Task 6：step_s3_rules_files / step_s4_entry_files step 级集成断言
+# 验证 S3（含 L1 独立分支红线）与 S4（双入口合成 + 幂等 + 漂移修复）的核心行为。
+# 不重复 Task 2 纯函数单测；聚焦 step 函数对 plan/report 的驱动与文件产出。
+# ---------------------------------------------------------------------------
+
+
+class TestStepS3RulesFiles(unittest.TestCase):
+    """step_s3_rules_files 集成断言：普通规则分支、L1 独立分支、Playwright。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        # 模板根：复用 skill 自带 references/rules
+        self.rules_root = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.kernel = (self.rules_root / "agent-routing-kernel.md").read_text(encoding="utf-8")
+        self.l1_v1 = (self.rules_root / rc.L1_RULE_FILENAME).read_text(encoding="utf-8")
+        self.language_tpl = (self.rules_root / "language.md").read_text(encoding="utf-8")
+        self.playwright_tpl = (self.rules_root / "playwright.md").read_text(encoding="utf-8")
+
+    def _base_plan(self, **overrides):
+        plan = {
+            "project_type": "non-coding",
+            "templates": {"rules_root": str(self.rules_root)},
+            "decisions_map": {},
+            "steps": {},
+        }
+        plan.update(overrides)
+        return plan
+
+    def test_ordinary_rule_created_when_missing(self):
+        """ut-step_s3-ordinary-create / RF-01（普通规则不存在 → 读模板创建）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "language.md"
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/language.md", "action": "create",
+                    "conflict": None, "backup_needed": False, "is_l1": False,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(self.root, _intents(), plan, {})
+        self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
+
+    def test_l1_independent_branch_no_merge_no_supplement(self):
+        """ut-step_s3-l1-red-line / L1 独立分支红线（no-interrupt → 直接写 v1 模板；
+        结果不得含「项目补充」，不调 merge_markdown）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / rc.L1_RULE_FILENAME
+        # 项目旧版内容（漂移）
+        target.write_text("# 被篡改的旧版\n项目内容\n", encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": f".claude/rules/{rc.L1_RULE_FILENAME}", "action": "replace",
+                    "conflict": "replace", "backup_needed": True, "is_l1": True,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, {})
+        result = target.read_text(encoding="utf-8")
+        self.assertEqual(result, self.l1_v1)  # 逐字等于 v1 规范源
+        self.assertNotIn("项目补充", result)  # 红线：不含项目补充
+
+    def test_playwright_existing_not_overwritten(self):
+        """ut-step_s3-playwright-no-overwrite / RF-02（已存在 playwright.md 不覆盖）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "playwright.md"
+        custom = "# 自定义 playwright\n保留\n"
+        target.write_text(custom, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/playwright.md", "action": "skip",
+                    "conflict": None, "backup_needed": False, "is_l1": False,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(
+            self.root, _intents(no_interrupt=True, enable_playwright=True), plan, {}
+        )
+        self.assertEqual(target.read_text(encoding="utf-8"), custom)
+
+    def test_ordinary_no_interrupt_merge_uses_project_supplement(self):
+        """ut-step_s3-ordinary-merge / NC-03（普通规则 no-interrupt → merge_markdown 章节合并，含项目补充）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "language.md"
+        target.write_text(self.language_tpl + "\n项目独有行\n", encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/language.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True, "is_l1": False,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, {})
+        result = target.read_text(encoding="utf-8")
+        self.assertIn("项目补充", result)  # 普通规则走 merge，含项目补充
+        self.assertIn("项目独有行", result)
+
+
+class TestStepS4EntryFiles(unittest.TestCase):
+    """step_s4_entry_files 集成断言：双入口合成、幂等、漂移修复。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.rules_root = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.kernel = (self.rules_root / "agent-routing-kernel.md").read_text(encoding="utf-8")
+
+    def _base_plan(self, **overrides):
+        plan = {
+            "project_type": "non-coding",
+            "templates": {"rules_root": str(self.rules_root)},
+            "decisions_map": {},
+            "steps": {},
+        }
+        plan.update(overrides)
+        return plan
+
+    def test_entry_created_from_base_when_missing(self):
+        """ut-step_s4-base-created / L0-P5（入口不存在 → BASE 基线 + L0 + 强制规则）"""
+        plan = self._base_plan(steps={
+            rc.STEP_ENTRY_FILES: {
+                "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                "assets": [{
+                    "path": "CLAUDE.md", "action": "create",
+                    "conflict": None, "backup_needed": False,
+                }],
+            }
+        })
+        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
+        text = (self.root / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn(rc.L0_BEGIN, text)
+        self.assertIn(rc.L0_END, text)
+        self.assertIn("## 强制规则", text)
+
+    def test_skip_state_idempotent_no_change(self):
+        """ut-step_s4-skip-idempotent / L0-P6（skip 状态 → 不修改入口）"""
+        entry = self.root / "CLAUDE.md"
+        # 构造一个 skip 状态的入口（L0 区块 = 规范源）
+        base = "# CLAUDE.md\n\n说明\n\n" + self.kernel + "\n## 强制规则\n- x\n"
+        entry.write_text(base, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_ENTRY_FILES: {
+                "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                "assets": [{
+                    "path": "CLAUDE.md", "action": "skip",
+                    "conflict": None, "backup_needed": False,
+                }],
+            }
+        })
+        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
+        self.assertEqual(entry.read_text(encoding="utf-8"), base)
+
+    def test_drift_replaced_block_matches_source_outside_preserved(self):
+        """ut-step_s4-drift-replace / L0-P7+L0-B2（no-interrupt 修复 drift：区块=规范源，区块外逐字保留）"""
+        entry = self.root / "CLAUDE.md"
+        # 构造 drift：L0 区块内含漂移内容
+        drift_block = rc.L0_BEGIN + "\n漂移内容\n" + rc.L0_END
+        original = "# CLAUDE.md\n\n文件说明\n\n" + drift_block + "\n## 强制规则\n\n- 用户规则\n"
+        entry.write_text(original, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_ENTRY_FILES: {
+                "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                "assets": [{
+                    "path": "CLAUDE.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True,
+                }],
+            }
+        })
+        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
+        result = entry.read_text(encoding="utf-8")
+        # 区块 = 规范源
+        begin = result.index(rc.L0_BEGIN)
+        end = result.index(rc.L0_END, begin) + len(rc.L0_END)
+        self.assertEqual(result[begin:end].strip(), self.kernel.strip())
+        # 区块外保留用户内容（漂移内容被移除）
+        self.assertNotIn("漂移内容", result)
+        self.assertIn("- 用户规则", result)
+
+
 if __name__ == "__main__":
     unittest.main()
 
