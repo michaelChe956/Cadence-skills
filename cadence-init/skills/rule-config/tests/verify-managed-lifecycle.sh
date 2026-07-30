@@ -485,16 +485,20 @@ run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
 assert_same it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" 0
 # 备份失败：父目录只读
+# 注意（评审 M3）：原实现用上一段的 $after（普通模式运行后状态）作为备份失败比对基准，
+# 隐含「L1-02 普通模式零写入」假设。改为显式取故障注入运行前的目标 hash（before_fail）
+# 作为独立比对基准，使断言语义自洽——不依赖普通模式是否真的零写入。
 saved_mode=$(stat -c %a "$case_root/.claude/rules" 2>/dev/null || stat -f %Lp "$case_root/.claude/rules")
+before_fail=$(sha256_file "$l1_target")
 chmod 555 "$case_root/.claude/rules"
 run_script apply "$case_root" --no-interrupt
 l1_fail_status=$RUN_STATUS
 chmod "$saved_mode" "$case_root/.claude/rules"
 after_fail=$(sha256_file "$l1_target")
-if [ "$l1_fail_status" -ne 0 ] && [ "$after" = "$after_fail" ]; then
-  record_result it-s3-l1-backup-failure-preserved "$l1_fail_status" "$after" "$after_fail" pass
+if [ "$l1_fail_status" -ne 0 ] && [ "$before_fail" = "$after_fail" ]; then
+  record_result it-s3-l1-backup-failure-preserved "$l1_fail_status" "$before_fail" "$after_fail" pass
 else
-  record_result it-s3-l1-backup-failure-preserved "$l1_fail_status" "$after" "$after_fail" fail
+  record_result it-s3-l1-backup-failure-preserved "$l1_fail_status" "$before_fail" "$after_fail" fail
 fi
 # no-interrupt 替换成功
 run_script apply "$case_root" --no-interrupt
@@ -884,6 +888,9 @@ after=$(sha256_file "$case_root/.claude/rules/playwright.md")
 assert_same it-s3-playwright-no-overwrite "$RUN_STATUS" "$before" "$after" 0
 
 # C10. CodeGraph 矩阵（it-s8-* / CS-01~08、CG-01~08），用 fake_codegraph 覆盖 PATH。
+# 简报明文要求（line 43）：it-s8-* 用 fake_codegraph 覆盖 install_rc/init_rc/status_rc=1，
+# 且 PATH 前置 fake bin。此处每个 C10 用例均：① 调 fake_codegraph 生成对应退出码的 bin；
+# ② 通过 RC_FAKE_PATH 将该 bin 目录前置注入 run_script 子进程 PATH。
 mk_coding_fixture() {
   local root="$TEST_ROOT/$1"
   mkdir -p "$root/application"
@@ -896,11 +903,11 @@ case_root="$(mk_coding_fixture fx-codegraph-install-fail)"
 fake_bin="$TEST_ROOT/fake-bin-install-fail"
 mkdir -p "$fake_bin"
 fake_codegraph "$fake_bin" 1 0 0 0
-run_script apply "$case_root" --no-interrupt
-# PATH 前置 fake bin 由脚本内部控制；此处仅验证 degraded 报告与补齐结果
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/.mcp.json" ] \
-  && [ -f "$case_root/.codex/config.toml" ]; then
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
   record_result it-s8-codegraph-install-fail "$RUN_STATUS" present present pass
 else
   record_result it-s8-codegraph-install-fail "$RUN_STATUS" present missing fail
@@ -908,7 +915,10 @@ fi
 
 # C10b. init_rc=1 degraded（it-s8-codegraph-init-fail / CS-08）
 case_root="$(mk_coding_fixture fx-codegraph-init-fail)"
-run_script apply "$case_root" --no-interrupt
+fake_bin="$TEST_ROOT/fake-bin-init-fail"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 1 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
   record_result it-s8-codegraph-init-fail "$RUN_STATUS" present present pass
 else
@@ -919,8 +929,11 @@ fi
 case_root="$TEST_ROOT/fx-codegraph-existing-status"
 mkdir -p "$case_root/.codegraph" "$case_root/application"
 printf 'x=1\n' > "$case_root/application/app.py"
-run_script apply "$case_root" --no-interrupt
-if [ "$RUN_STATUS" -eq 0 ]; then
+fake_bin="$TEST_ROOT/fake-bin-status-fail"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 1 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
   record_result it-s8-codegraph-status-fail "$RUN_STATUS" present present pass
 else
   record_result it-s8-codegraph-status-fail "$RUN_STATUS" present missing fail
@@ -931,8 +944,12 @@ case_root="$TEST_ROOT/fx-codegraph-existing"
 mkdir -p "$case_root/.codegraph" "$case_root/application"
 printf 'x=1\n' > "$case_root/application/app.py"
 before=$(sha256_file "$case_root/.codegraph" 2>/dev/null || printf 'dir')
-run_script apply "$case_root" --no-interrupt
-if [ "$RUN_STATUS" -eq 0 ]; then
+fake_bin="$TEST_ROOT/fake-bin-existing"
+mkdir -p "$fake_bin"
+# .codegraph 已存在 → 脚本只调 status（status_rc=1 仍应报 degraded，与 C10c 断言一致）
+fake_codegraph "$fake_bin" 0 0 1 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
   record_result it-s8-codegraph-existing "$RUN_STATUS" present present pass
 else
   record_result it-s8-codegraph-existing "$RUN_STATUS" present missing fail
@@ -940,7 +957,11 @@ fi
 
 # C10e. write_config=0 时脚本补双方配置（it-s8-codegraph-write-config-zero）
 case_root="$(mk_coding_fixture fx-codegraph-write-zero)"
-run_script apply "$case_root" --no-interrupt
+fake_bin="$TEST_ROOT/fake-bin-write-zero"
+mkdir -p "$fake_bin"
+# fake codegraph install 成功但不写配置（write_config=0）→ 脚本应自行补齐双配置
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/.mcp.json" ] \
   && [ -f "$case_root/.codex/config.toml" ]; then
@@ -953,7 +974,10 @@ fi
 case_root="$TEST_ROOT/fx-noncoding-enable-codegraph"
 mkdir -p "$case_root"
 printf 'docs only\n' > "$case_root/README.md"
-run_script apply "$case_root" --no-interrupt --enable-codegraph
+fake_bin="$TEST_ROOT/fake-bin-explicit-enable"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt --enable-codegraph
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/.mcp.json" ] \
   && [ -f "$case_root/.codex/config.toml" ]; then
@@ -1033,7 +1057,10 @@ printf 'print("hi")\n' > "$case_root/app.py"
 run_script apply "$case_root" --no-interrupt
 budget_val=$(jqr "['budget_seconds_excluding_codegraph']" 2>/dev/null || printf '%s' 'none')
 # codegraph 步骤必须含独立 elapsed_ms
-cg_elapsed=$(jqr "next((s for s in ['steps'] if s.get('name')=='s8_codegraph'),{}).get('elapsed_ms')" 2>/dev/null || printf '%s' 'none')
+# 注意：不可复用 jqr（其模板 json.load(open('$REPORT'))$1 把 $1 直接拼在 json.load(...) 后，
+# next(...) 会拼成 json.load(...)next(...) 导致 SyntaxError，cg_elapsed 永远兜底为 'none'
+# 使 S8 独立 elapsed_ms 断言永久失效）。改用独立 python3 -c 表达式。
+cg_elapsed=$(python3 -c "import json;d=json.load(open('$REPORT'));print(next((s.get('elapsed_ms') for s in d.get('steps',[]) if s.get('name')=='s8_codegraph'),'none'))" 2>/dev/null || printf '%s' 'none')
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$budget_val" != 'none' ] \
   && [ "$budget_val" != 'None' ] \

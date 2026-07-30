@@ -17,10 +17,16 @@ SCRIPT="$SKILL_DIR/scripts/rule-config.py"
 SKILL_MD="$SKILL_DIR/SKILL.md"
 
 run_script() {  # run_script <dry-run|apply> <fixture_root> [extra args]
+  # 可选 PATH 注入：调用前导出 RC_FAKE_PATH=<dir> 即把该目录前置到子进程 PATH。
+  # 用于 it-s8-codegraph-* 矩阵把 fake codegraph bin 暴露给脚本（简报要求 PATH 前置 fake bin）。
   local mode="$1" root="$2"; shift 2
   REPORT="$(mktemp /tmp/rule-config-report.XXXXXX)"
   set +e
-  python3 "$SCRIPT" "$mode" --project-root "$root" --report "$REPORT" "$@"
+  if [ -n "${RC_FAKE_PATH:-}" ]; then
+    PATH="$RC_FAKE_PATH:$PATH" python3 "$SCRIPT" "$mode" --project-root "$root" --report "$REPORT" "$@"
+  else
+    python3 "$SCRIPT" "$mode" --project-root "$root" --report "$REPORT" "$@"
+  fi
   RUN_STATUS=$?
   set -e
 }
