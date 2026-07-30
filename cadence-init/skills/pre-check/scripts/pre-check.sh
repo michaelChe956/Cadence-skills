@@ -338,3 +338,63 @@ upgrade_uv() {
   fi
   return 0
 }
+
+# --- 报告 ---
+
+# 计算整体状态：有失败→failed（no-interrupt）或 partial；否则 success
+compute_overall() {
+  if [ "$FAILED_COUNT" -gt 0 ]; then
+    if [ "$NO_INTERRUPT" = "1" ]; then printf 'failed'; else printf 'partial'; fi
+  else
+    printf 'success'
+  fi
+}
+
+# 输出单份 JSON 到 stdout。<overall> 可由 handle_failure 强制传 failed。
+emit_report() {
+  _overall="${1:-$(compute_overall)}"
+  _ts="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
+  _git="$(json_escape "$CADENCE_SUPERPOWERS_GIT")"
+  _mirror="$(json_escape "$MIRROR")"
+  _mode="$(json_escape "$MODE")"
+  printf '{\n'
+  printf '  "mirror": "%s",\n' "$_mirror"
+  printf '  "mode": "%s",\n' "$_mode"
+  printf '  "no_interrupt": %s,\n' "$NO_INTERRUPT"
+  printf '  "upgrade": %s,\n' "$UPGRADE"
+  printf '  "finished_at": "%s",\n' "$_ts"
+  printf '  "overall": "%s",\n' "$_overall"
+  printf '  "steps": [%s],\n' "$STEPS_JSON"
+  printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
+  printf '  "hints": {"superpowers_git": "%s"}\n' "$_git"
+  printf '}\n'
+}
+
+# --- 主流程 ---
+do_npx
+do_uvx
+do_ast_grep
+do_codegraph
+do_openspec
+do_pi_mcp_adapter
+
+# 升级钩子：仅 UPGRADE=1 时执行；仅升级已 ready 的工具
+if [ "$UPGRADE" = "1" ]; then
+  log "${C_BLU}⬆️  升级模式（来源：当前 mirror）${C_NC}"
+  upgrade_npm_tool "ast-grep" "@ast-grep/cli" ast-grep --version
+  upgrade_npm_tool "codegraph" "@colbymchenry/codegraph" codegraph version
+  upgrade_npm_tool "openspec" "@fission-ai/openspec" openspec --version
+  upgrade_uv
+fi
+
+# 汇总输出
+_OVERALL="$(compute_overall)"
+emit_report "$_OVERALL"
+
+if [ "$_OVERALL" = "failed" ]; then
+  exit 1
+elif [ "$_OVERALL" = "partial" ]; then
+  exit 0   # 普通模式部分失败仍以 0 结束，由 SKILL.md 读 overall 判定
+else
+  exit 0
+fi
