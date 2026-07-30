@@ -386,12 +386,27 @@ your_minimax_api_key
 - **大陆镜像**：淘宝 npm 镜像、清华 pypi 镜像、国内 Superpowers Git 镜像，适合国内网络，下载更快更稳。
 - **通用源**：npmjs、pypi、GitHub 官方源（默认）。
 
-还可以把已安装的工具升级到最新版本：
+**怎么用大陆镜像？** 直接用自然语言告诉 Agent 即可，不需要记命令参数。例如输入：
 
-- **升级范围**：`ast-grep`、`codegraph`、OpenSpec、`uv`（`npx`/Node.js、`pi-mcp-adapter`、`uvx` 临时包不升级）。
-- **版本口径**：用大陆镜像就以镜像最新版为准，用通用源就以官方最新版为准。
+```text
+/pre-check 用大陆镜像
+```
 
-如需使用大陆镜像或升级，直接告诉 Agent 即可（例如“用大陆镜像跑 pre-check”“升级一下这些工具”），Agent 会以对应方式执行初始化。
+或者说“用国内镜像跑 pre-check”“走淘宝镜像初始化”。Agent 会在执行时自动切换到大陆镜像源（内部对应脚本的 `--mirror cn`）。
+
+**镜像的作用范围**：
+
+- 只对**本次调用**生效，不会被记住；下次默认仍用通用源，需要时再说一次即可。
+- 本次调用中，npm/pypi 包下载走淘宝/清华镜像，Superpowers 仓库也从国内 Git 镜像 clone/更新。
+- **不修改你的全局配置**（`~/.npmrc`、uv 配置、git 全局配置都不动），镜像只在本次初始化过程内生效。
+
+**怎么升级工具？** 同样用自然语言说明，例如：
+
+```text
+/pre-check 并升级这些工具
+```
+
+或“把 ast-grep、codegraph、openspec 升到最新版”。升级范围是 `ast-grep`、`codegraph`、OpenSpec、`uv`（`npx`/Node.js、`pi-mcp-adapter`、`uvx` 临时包不升级）。版本口径：用大陆镜像就以镜像最新版为准，用通用源就以官方最新版为准。升级也可以和镜像一起用，例如“用大陆镜像跑 pre-check 并升级工具”。
 
 ### 步骤 2：项目分析
 
