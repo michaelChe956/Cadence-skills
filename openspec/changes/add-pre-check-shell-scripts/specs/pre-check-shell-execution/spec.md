@@ -4,7 +4,7 @@
 
 ### Requirement: 单一主脚本承接六工具检查与安装
 
-pre-check MUST 提供单一主脚本 `scripts/pre-check.sh`（mac/Linux 兼容 bash），承接 npx、uvx、ast-grep、codegraph、openspec、pi-mcp-adapter 六个工具的就绪探测、缺失安装与安装后复验。SKILL.md MUST NOT 再在正文中逐条罗列这六个工具的安装与验证命令，MUST 改为调用脚本并读取其报告。
+pre-check MUST 提供单一主脚本 `scripts/pre-check.sh`（mac/Linux 兼容 bash），承接 npx、uvx、ast-grep、codegraph、openspec、pi-mcp-adapter 六个工具的就绪探测、缺失安装与安装后复验。SKILL.md MUST NOT 再在正文中逐条罗列这六个工具的安装与验证命令，MUST 改为调用脚本并读取其报告。其中 npx 随 Node.js 运行时提供，脚本 MUST NOT 自动安装 Node.js；npx 缺失时标记为外部前置条件未满足并按失败处理，不尝试安装。
 
 #### Scenario: 脚本存在且承接六工具
 
@@ -18,7 +18,7 @@ pre-check MUST 提供单一主脚本 `scripts/pre-check.sh`（mac/Linux 兼容 b
 
 ### Requirement: run 与 check 子命令语义
 
-脚本 MUST 提供 `run` 与 `check` 两个子命令。`run` MUST 对缺失工具执行安装并复验；`check` MUST 仅探测就绪状态而不执行任何安装。两个子命令 MUST 支持 `--mirror <name>` 与 `--no-interrupt` 参数；`--no-interrupt` MUST 沿用失败关闭语义：任一基础工具失败即以非零退出码终止。
+脚本 MUST 提供 `run` 与 `check` 两个子命令。`run` MUST 对缺失工具执行安装并复验；`check` MUST 仅探测就绪状态而不执行任何安装。两个子命令 MUST 支持 `--mirror <name>` 与 `--no-interrupt` 参数；`--no-interrupt` MUST 沿用失败关闭语义：任一基础工具失败即以非零退出码终止。npx 为例外：脚本 MUST NOT 安装 Node.js，npx 缺失时 run 模式标记 install-unavailable 并判定失败。
 
 #### Scenario: check 不安装
 
@@ -29,6 +29,11 @@ pre-check MUST 提供单一主脚本 `scripts/pre-check.sh`（mac/Linux 兼容 b
 
 - **WHEN** 在缺少 ast-grep 的环境执行 `pre-check.sh run`
 - **THEN** 脚本安装 ast-grep，安装后复验成功，报告中标记为已安装
+
+#### Scenario: npx 缺失不自动安装
+
+- **WHEN** 在缺少 npx（未安装 Node.js）的环境执行 `pre-check.sh run`
+- **THEN** 脚本不尝试安装 Node.js 或 npx，将 npx 标记为 failed（action=install-unavailable），报告提示需用户自行安装 Node.js，并按失败处理
 
 #### Scenario: no-interrupt 失败关闭
 
