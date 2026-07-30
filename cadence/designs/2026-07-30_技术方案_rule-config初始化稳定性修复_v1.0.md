@@ -43,8 +43,8 @@
 ### 4.2 OpenSpec 候选验证
 
 1. 通过不会产生工具错误的存在性检查区分“目标 config 不存在”和“目标 config 已存在”。前者是正常初始状态。
-2. 在与目标配置同一文件系统的临时工作区构建候选 `openspec/config.yaml`。
-3. 仅在该临时工作区执行 `openspec new change cadence-rule-config-validation`，创建验证所需的 change 上下文。
+2. 在目标配置目录中构建候选 `openspec/config.yaml`，以保持候选发布的同文件系统原子替换前提。
+3. 仅在独立的临时验证根目录执行 `openspec new change cadence-rule-config-validation`，创建验证所需的 change 上下文。
 4. 对 proposal、design、specs、tasks 依次执行 `openspec instructions <artifact> --change cadence-rule-config-validation --json`。
 5. 四项均成功后才原子创建或替换目标 `openspec/config.yaml`；任一失败时清理或保留临时工作区以便诊断，但目标文件保持原样。
 
@@ -56,7 +56,6 @@
 
 测试将验证：
 
-- 未携带 change 上下文的当前基线会失败；
 - 生成临时 change 并带 `--change` 后四项 instructions 校验通过；
 - `rule-config` 的源码探测文本明确剪枝常见依赖目录，避免无界 Glob 回归；
 - 原有候选失败、备份失败与原子发布失败场景继续保持目标文件不变。

@@ -81,6 +81,39 @@ outside_l0_hash() {
   ' "$1" | sha256sum | awk '{print $1}'
 }
 
+replace_first_visible_paragraph() {
+  local source_file=$1
+  local replacement=$2
+  local source_dir
+  local temporary_file
+
+  source_dir=$(dirname "$source_file") || return 1
+  temporary_file=$(mktemp "$source_dir/.${source_file##*/}.cadence-replace-XXXXXX") || return 1
+  if ! awk -v replacement="$replacement" '
+    {
+      if (!replaced) {
+        match_position = index($0, "首个用户可见段落")
+        if (match_position > 0) {
+          $0 = substr($0, 1, match_position - 1) replacement substr($0, match_position + length("首个用户可见段落"))
+          replaced = 1
+        }
+      }
+      print
+    }
+    END {
+      exit !replaced
+    }
+  ' "$source_file" > "$temporary_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  if ! mv "$temporary_file" "$source_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  return 0
+}
+
 record_result() {
   name=$1
   status=$2
@@ -150,16 +183,47 @@ run_bounded_source_scan() {
   )
 }
 
+is_single_application_source() {
+  printf '%s\n' "$1" | awk '
+    NF {
+      nonempty_line_count += 1
+      source_path = $0
+    }
+    END {
+      exit !(nonempty_line_count == 1 && source_path ~ /^\.\/application\/[^\/]+\.(py|ts)$/)
+    }
+  '
+}
+
+assert_single_application_source_contract() {
+  local invalid_multiline
+
+  invalid_multiline=$(printf './application/first.py\n./application/second.ts')
+  is_single_application_source './application/first.py' \
+    && is_single_application_source './application/second.ts' \
+    && ! is_single_application_source "$invalid_multiline" \
+    && ! is_single_application_source '' \
+    && ! is_single_application_source './.venv/ignored.py' \
+    && ! is_single_application_source './application/readme.md'
+}
+
 assert_bounded_source_scan_behavior() {
   local fixture
   local output
   local scan_status
   local project_type
   local excluded_dir
+  local source_contract_status
+
+  if assert_single_application_source_contract; then
+    source_contract_status=0
+  else
+    source_contract_status=$?
+  fi
 
   fixture="$TEST_ROOT/source-scan-with-business"
   mkdir -p "$fixture/application"
-  touch "$fixture/application/first.py" "$fixture/application/second.ts"
+  touch "$fixture/application/second.ts" "$fixture/application/first.py"
   for excluded_dir in .venv venv node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
     mkdir -p "$fixture/$excluded_dir"
     touch "$fixture/$excluded_dir/ignored.py"
@@ -169,10 +233,12 @@ assert_bounded_source_scan_behavior() {
   else
     scan_status=$?
   fi
-  if [ "$scan_status" -eq 0 ] && [ "$output" = './application/first.py' ]; then
-    record_result source-scan-prunes-excluded "$scan_status" "$output" './application/first.py' pass
+  if [ "$source_contract_status" -eq 0 ] \
+    && [ "$scan_status" -eq 0 ] \
+    && is_single_application_source "$output"; then
+    record_result source-scan-prunes-excluded "$scan_status" "$output" '<single application source>' pass
   else
-    record_result source-scan-prunes-excluded "$scan_status" "$output" './application/first.py' fail
+    record_result source-scan-prunes-excluded "$scan_status" "$output" '<single application source>' fail
   fi
 
   fixture="$TEST_ROOT/source-scan-pruned-only"
@@ -232,7 +298,7 @@ case_root="$TEST_ROOT/l0-drift-normal"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//本地漂移段落/' "$case_root/CLAUDE.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_reference l0 "$case_root" "$KERNEL" normal no-response ok
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -243,8 +309,8 @@ case_root="$TEST_ROOT/l0-drift-replace"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//本地漂移段落/' "$case_root/CLAUDE.md"
-sed -i '0,/首个用户可见段落/s//另一个漂移段落/' "$case_root/AGENTS.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
 outside_claude_before=$(outside_l0_hash "$case_root/CLAUDE.md")
 outside_agents_before=$(outside_l0_hash "$case_root/AGENTS.md")
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -289,8 +355,8 @@ case_root="$TEST_ROOT/l0-backup-barrier"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//漂移-CLAUDE/' "$case_root/CLAUDE.md"
-sed -i '0,/首个用户可见段落/s//漂移-AGENTS/' "$case_root/AGENTS.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '漂移-CLAUDE'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '漂移-AGENTS'
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_reference l0 "$case_root" "$KERNEL" no-interrupt replace fail-2
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")

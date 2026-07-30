@@ -287,6 +287,7 @@ PY
     fi
   done
   rm -rf "$validation_root"
+  return 0
 }
 
 apply_openspec() {

@@ -71,7 +71,8 @@ assert_fresh_change_contract
 - [x] **Step 2: 运行失败态验证**
 
 ~~~bash
-bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+OPENSPEC_TELEMETRY=0 PYTHONPATH=/private/tmp/task1-python-deps \
+  bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 ~~~
 
 Expected: 非零退出，输出“缺少 rule-config 候选验证约定: openspec new change cadence-rule-config-validation”。这证明测试先于实现捕获了截图中的无活动 Change 缺陷。
@@ -134,10 +135,11 @@ rg -Fq -- '--change cadence-rule-config-validation --json' "$case_root/instructi
 - [x] **Step 6: 运行通过态回归**
 
 ~~~bash
-bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+OPENSPEC_TELEMETRY=0 PYTHONPATH=/private/tmp/task1-python-deps \
+  bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 ~~~
 
-Expected: 退出 0，末行是 SUMMARY pass=15 fail=0，且不再出现缺少测试依赖: .../openspec/changes/improve-progressive-disclosure-routing。若 OpenSpec CLI 的遥测仅写 stderr 但退出码为 0，以退出码和 summary 为准，不把遥测网络噪声当作候选验证失败。
+Expected: 退出 0，末行是 SUMMARY pass=18 fail=0，且不再出现缺少测试依赖: .../openspec/changes/improve-progressive-disclosure-routing。若 OpenSpec CLI 的遥测仅写 stderr 但退出码为 0，以退出码和 summary 为准，不把遥测网络噪声当作候选验证失败。
 
 - [x] **Step 7: Commit**
 
@@ -191,7 +193,8 @@ assert_bounded_source_scan_contract
 - [x] **Step 2: 运行失败态验证**
 
 ~~~bash
-bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+OPENSPEC_TELEMETRY=0 PYTHONPATH=/private/tmp/task1-python-deps \
+  bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 ~~~
 
 Expected: 非零退出，输出“缺少 rule-config 有界源码扫描约定: find .”或“仍存在无界源码 Glob 约定”。这是编辑 Skill 前对虚拟环境误扫描的回归保护。
@@ -215,11 +218,12 @@ find . \
 - [x] **Step 4: 运行通过态回归与格式检查**
 
 ~~~bash
-bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+OPENSPEC_TELEMETRY=0 PYTHONPATH=/private/tmp/task1-python-deps \
+  bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 git diff --check
 ~~~
 
-Expected: 生命周期测试退出 0 且输出 SUMMARY pass=15 fail=0；git diff --check 无输出。静态锚点同时证明 .venv、venv、node_modules、vendor 被剪枝并使用 -print -quit，不再允许截图所示的数万条依赖文件输出。
+Expected: 生命周期测试退出 0 且输出 SUMMARY pass=18 fail=0；git diff --check 无输出。静态锚点同时证明 .venv、venv、node_modules、vendor 被剪枝并使用 -print -quit，不再允许截图所示的数万条依赖文件输出。该命令可在 macOS/BSD sed 环境直接运行，不依赖临时 GNU sed PATH。
 
 - [x] **Step 5: Commit**
 
@@ -249,11 +253,12 @@ git commit -m "fix(cadence-init): 限制 rule-config 源码扫描范围"
 - [x] **Step 1: 运行完整回归与 OpenSpec 严格校验**
 
 ~~~bash
-bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
+OPENSPEC_TELEMETRY=0 PYTHONPATH=/private/tmp/task1-python-deps \
+  bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 openspec validate --all --strict
 ~~~
 
-Expected: 第一条退出 0 且输出 SUMMARY pass=15 fail=0；第二条对所有 specs 与 archived changes 无 invalid 结果。若严格校验报告报告历史 Purpose 字段中的占位文本，记录为基线问题，不修改无关 archive 内容。
+Expected: 第一条退出 0 且输出 SUMMARY pass=18 fail=0；第二条对所有 specs 与 archived changes 无 invalid 结果。若严格校验报告报告历史 Purpose 字段中的占位文本，记录为基线问题，不修改无关 archive 内容。
 
 - [x] **Step 2: 审查范围与格式**
 
