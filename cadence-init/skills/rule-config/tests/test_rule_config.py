@@ -981,6 +981,60 @@ class TestEnsureSummaryLines(unittest.TestCase):
         self.assertIn("- 禁止在 `.claude/rules/` 目录中添加用户自定义规则", out)
 
 
+class TestEnsureGitignoreLine(unittest.TestCase):
+    """ensure_gitignore_line 行级幂等（grep -qxF 等价）：
+    已含整行→skipped；未含或不存在→added（创建/追加 comment+line）。
+    """
+
+    def setUp(self):
+        self._tmpdirs = []
+
+    def tearDown(self):
+        import shutil
+        for d in self._tmpdirs:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def _mkroot(self):
+        d = tempfile.mkdtemp()
+        self._tmpdirs.append(d)
+        return Path(d)
+
+    def test_adds_line_when_gitignore_absent(self):
+        """ut-gitignore-create / S7-02（.gitignore 不存在→创建含 comment+line）"""
+        root = self._mkroot()
+        status = rc.ensure_gitignore_line(root, "cadence/", "# Cadence 产物目录")
+        self.assertEqual(status, "added")
+        gi = (root / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("# Cadence 产物目录", gi)
+        self.assertIn("cadence/", gi)
+
+    def test_skipped_when_exact_line_exists(self):
+        """ut-gitignore-idempotent-exact / S7-02（整行精确匹配→skipped，幂等）"""
+        root = self._mkroot()
+        rc.ensure_gitignore_line(root, "cadence/", "# Cadence 产物目录")
+        status2 = rc.ensure_gitignore_line(root, "cadence/", "# Cadence 产物目录")
+        self.assertEqual(status2, "skipped")
+        # 内容不重复（只有一个 cadence/ 行）
+        gi = (root / ".gitignore").read_text(encoding="utf-8")
+        self.assertEqual(gi.count("cadence/"), 1)
+
+    def test_added_when_line_is_substring_only(self):
+        """ut-gitignore-qxf-semantics / S7-02（grep -qxF 语义：仅作为子串/前缀不算匹配→added）
+
+        例：已有 `cadence/foo` 不会让 `cadence/` 判为已存在；整行必须精确相等。
+        """
+        root = self._mkroot()
+        (root / ".gitignore").write_text("cadence/foo\n", encoding="utf-8")
+        status = rc.ensure_gitignore_line(root, "cadence/", "# Cadence 产物目录")
+        self.assertEqual(status, "added")
+        gi = (root / ".gitignore").read_text(encoding="utf-8")
+        # 两行都保留：原 cadence/foo 与新增 cadence/（grep -qxF 语义下二者不同）
+        self.assertIn("cadence/foo", gi)
+        # 整行精确为 cadence/ 的行恰一条（不计 cadence/foo 这种子串行）
+        exact = [ln for ln in gi.splitlines() if ln == "cadence/"]
+        self.assertEqual(len(exact), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

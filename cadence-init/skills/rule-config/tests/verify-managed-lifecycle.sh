@@ -701,14 +701,20 @@ else
 fi
 
 # C3. 历史目录两模式（it-s5-history-* / NH-01~03）。
-# 构建 16 个精确历史目录清单中部分存在的 fixture（.claude/<dir> 形式）。
+# 构建 HISTORY_DIRS 清单内部分目录存在的 fixture（.claude/<dir> 形式）。
+# 重要：fixture 必须预置与模板一致的 .claude/rules/（使 S3 幂等），否则 S3 创建 rules
+# 会扰动 .claude 树，与「no-interrupt 不迁移历史」断言语义冲突（NH-02 比较 .claude 树）。
+# 历史目录取清单内 3 个：prds / plans / docs（不在禁止迁移清单 rules/commands/skills）。
 mk_history_fixture() {
   local root="$TEST_ROOT/$1"
-  mkdir -p "$root"
+  mkdir -p "$root/.claude/rules"
   cp "$REPO_ROOT/CLAUDE.md" "$root/CLAUDE.md"
   cp "$REPO_ROOT/AGENTS.md" "$root/AGENTS.md"
-  # 精确历史目录清单（来自 SKILL HM 表）：取若干存在
-  for d in commands skills agents settings; do
+  # 预置与模板一致的规则文件，保证 S3 幂等（不创建新文件）
+  cp "$TEST_DIR/../references/rules"/*.md "$root/.claude/rules/" 2>/dev/null || true
+  cp "$TEST_DIR/../references/rules/README.md" "$root/.claude/rules/" 2>/dev/null || true
+  # HISTORY_DIRS 清单内历史目录（3 个）：prds / plans / docs
+  for d in prds plans docs; do
     mkdir -p "$root/.claude/$d"
     printf 'legacy-%s\n' "$d" > "$root/.claude/$d/file.md"
   done
@@ -747,13 +753,16 @@ else
 fi
 
 # C3d. 普通模式历史目标非空跳过（it-s5-history-conflict-skip / DF-03+HM-03）
+# 用 HISTORY_DIRS 清单内目录（prds）+ 预置 rules 幂等 + cadence/prds 非空。
 case_root="$TEST_ROOT/fx-history-target-nonempty"
-mkdir -p "$case_root"
+mkdir -p "$case_root/.claude/rules"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-mkdir -p "$case_root/.claude/commands" "$case_root/cadence/commands"
-printf 'legacy\n' > "$case_root/.claude/commands/old.md"
-printf 'existing\n' > "$case_root/cadence/commands/keep.md"
+cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+cp "$TEST_DIR/../references/rules/README.md" "$case_root/.claude/rules/" 2>/dev/null || true
+mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
+printf 'legacy\n' > "$case_root/.claude/prds/old.md"
+printf 'existing\n' > "$case_root/cadence/prds/keep.md"
 before=$(tree_hash "$case_root")
 run_script apply "$case_root"
 after=$(tree_hash "$case_root")

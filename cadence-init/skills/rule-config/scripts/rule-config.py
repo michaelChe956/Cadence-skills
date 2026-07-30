@@ -135,6 +135,61 @@ ORDINARY_RULE_FILES = (
 # Playwright 规则文件（仅 intents.enable_playwright 时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
+# S5 目录结构创建（SKILL.md 第 5 步）：cadence/ 下 17 个子目录（含
+# project-rules/examples 与 cache）。逐字对齐 SKILL.md mkdir 块展开后的目录名。
+# project-rules 下含 examples 子目录，用 "project-rules/examples" 表示。
+CADENCE_DIRS = (
+    "prds",
+    "analysis",
+    "analysis-docs",
+    "docs",
+    "designs",
+    "designs-reviews",
+    "plans",
+    "readmes",
+    "modaos",
+    "models",
+    "architecture",
+    "notes",
+    "logs",
+    "reports",
+    "project-rules",
+    "project-rules/examples",
+    "cache",
+)
+
+# S6 历史产物迁移检测清单（SKILL.md 第 6 步检测块）：16 个精确目录名。
+# 这些是 .claude/ 下的旧产物目录，普通模式下按 HM 表迁移到 cadence/。
+# 注意：与 CADENCE_DIRS 的差异在于 project-rules/examples 拆出后历史清单为 16 个
+# （历史清单不含 project-rules/examples 子目录，project-rules 整目录作为一项）。
+HISTORY_DIRS = (
+    "prds",
+    "analysis",
+    "analysis-docs",
+    "docs",
+    "designs",
+    "designs-reviews",
+    "plans",
+    "readmes",
+    "modaos",
+    "models",
+    "architecture",
+    "notes",
+    "logs",
+    "reports",
+    "project-rules",
+    "cache",
+)
+
+# S6 历史迁移禁止目录（SKILL.md 第 6 步「禁止迁移」清单）：即便存在也不迁移。
+HISTORY_FORBIDDEN_DIRS = ("rules", "commands", "skills")
+
+# .gitignore 追加行与注释（S7/S9）。
+GITIGNORE_CADENCE_LINE = "cadence/"
+GITIGNORE_CADENCE_COMMENT = "# Cadence 产物目录"
+GITIGNORE_CODEGRAPH_LINE = ".codegraph/"
+GITIGNORE_CODEGRAPH_COMMENT = "# CodeGraph 本地索引"
+
 
 def _load_reference(name: str) -> str:
     """从 skill 目录下的 references/<name> 加载文本（加载失败返回空串）。"""
@@ -460,6 +515,40 @@ def atomic_write(path: Path, content) -> None:
             except OSError:
                 pass
         raise PublishError(f"原子写入失败：{path}（{exc}）") from exc
+
+
+def ensure_gitignore_line(root: Path, line: str, comment: str) -> str:
+    """行级幂等追加一行到 root/.gitignore（S7/S9）。
+
+    语义（与 SKILL.md `grep -qxF '...' || printf ...` 等价）：
+      * 若 .gitignore 已含**完整匹配**的 line 行（grep -qxF 语义：整行精确相等），
+        则不重复追加，返回 'skipped'；
+      * 否则在文件末尾追加 `\n<comment>\n<line>\n`，返回 'added'。
+      * .gitignore 不存在时创建（含父目录），写入 `<comment>\n<line>\n`，返回 'added'。
+
+    幂等：重复调用同一 (line) 不会产生重复行；comment 仅在首次追加时写入。
+    "line" 为空时直接返回 'skipped'（防御）。
+    """
+    if not line:
+        return "skipped"
+    gi = root / ".gitignore"
+    # 行级精确匹配判断（等价 grep -qxF）：按整行去首尾空白后比较。
+    if gi.is_file():
+        try:
+            existing = gi.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            existing = ""
+        for raw in existing.splitlines():
+            if raw.rstrip("\r") == line:
+                return "skipped"
+        # 追加：comment + line
+        ensure_parent(gi)
+        atomic_write(gi, existing.rstrip("\n") + "\n\n" + comment + "\n" + line + "\n")
+        return "added"
+    # 不存在 → 创建
+    ensure_parent(gi)
+    atomic_write(gi, comment + "\n" + line + "\n")
+    return "added"
 
 
 # ---------------------------------------------------------------------------
@@ -1188,14 +1277,38 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s4["status"] = "ok"
     plan["steps"][STEP_ENTRY_FILES] = s4
 
-    # --- S5 scaffold：探测 cadence/ 目录（骨架） ---
+    # --- S5 scaffold：探测 cadence/ 目录与历史目录（Task 7） ---
     s5 = _step_skeleton(STEP_SCAFFOLD)
     s5["status"] = "ok"
+    # 历史目录检测：扫描 .claude/ 下 HISTORY_DIRS（16 个精确目录）。
+    claude_dir = root / ".claude"
+    detected: list = []
+    for d in HISTORY_DIRS:
+        if (claude_dir / d).exists():
+            detected.append(f".claude/{d}")
+    plan["history_detected"] = detected
+    s5["assets"].append({
+        "path": "cadence/", "action": "create",
+        "conflict": None, "backup_needed": False,
+        "detail": f"mkdir {len(CADENCE_DIRS)} cadence dirs",
+    })
+    if detected:
+        s5["assets"].append({
+            "path": "<history>", "action": "detect",
+            "conflict": None, "backup_needed": False,
+            "history_detected": detected,
+        })
     plan["steps"][STEP_SCAFFOLD] = s5
 
-    # --- S6 gitignore：探测 .gitignore（骨架） ---
+    # --- S6 gitignore：探测 .gitignore（Task 7） ---
     s6 = _step_skeleton(STEP_GITIGNORE)
     s6["status"] = "ok"
+    gi = root / ".gitignore"
+    s6["assets"].append({
+        "path": ".gitignore", "action": "skip",
+        "conflict": None, "backup_needed": False,
+        "exists": gi.exists(),
+    })
     plan["steps"][STEP_GITIGNORE] = s6
 
     # --- S7 openspec config：探测 openspec/config.yaml ---
@@ -1696,6 +1809,24 @@ def _record_step_actions(report: dict, step_name: str, actions: list) -> None:
     })
 
 
+def _record_step_conflicts(report: dict, step_name: str, conflicts: list) -> None:
+    """将执行阶段产生的冲突回写到报告对应 step 的 conflicts 字段。
+
+    用于 HM-03 等不进 decisions 机制、直接报告的冲突（仅记录，不阻塞）。
+    """
+    for step in report.get("steps", []):
+        if step.get("name") == step_name:
+            existing = step.get("conflicts") or []
+            existing.extend(conflicts)
+            step["conflicts"] = existing
+            return
+    report.setdefault("steps", []).append({
+        "name": step_name, "status": "ok", "action": None,
+        "reason": "", "elapsed_ms": 0, "assets": [],
+        "conflicts": list(conflicts), "actions": [],
+    })
+
+
 
 def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S4 执行（Task 6 实现）：双入口统一预检 + 单次写入。
@@ -2010,13 +2141,148 @@ def _ensure_techstack_block(text: str, tech_stack: dict) -> str:
 
 
 def step_s5_scaffold(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S5 执行（Task 7 实现）。骨架：pass。"""
-    _ = (root, intents, plan, report)
+    """S5 执行（Task 7 实现）：创建 cadence/ 目录结构 + 历史产物迁移。
+
+    两模式行为（简报 Step 1）：
+      1. mkdir -p 17 个 CADENCE_DIRS 子目录（幂等，两模式都执行）；
+      2. 历史目录检测：仅扫描 .claude/ 下 HISTORY_DIRS（16 个精确目录）；
+         检测结果写入 report.history_detected（清单内存在的相对路径列表）；
+      3. no-interrupt：**只写报告 actions**，不执行 mv/合并/rmdir/清理；
+      4. 普通模式：按 HM-01~03 迁移表处理：
+           * cadence/<dir> 不存在 → mv .claude/<dir> cadence/<dir>（HM-01）；
+           * cadence/<dir> 已存在且为空 → 内容移入 + rmdir 源空目录（HM-02）；
+           * cadence/<dir> 已存在且非空 → 跳过 + 报告冲突（HM-03，不进 decisions，直接 report conflict）。
+    """
+    actions_log: list = []
+    cadence_root = root / "cadence"
+
+    # 1) mkdir -p 17 个子目录（幂等）
+    for sub in CADENCE_DIRS:
+        target_dir = cadence_root / sub
+        target_dir.mkdir(parents=True, exist_ok=True)
+    actions_log.append({
+        "path": "cadence/", "action": "created",
+        "detail": f"mkdir {len(CADENCE_DIRS)} dirs",
+    })
+
+    # 2) 历史目录检测：扫描 .claude/ 下 HISTORY_DIRS
+    claude_dir = root / ".claude"
+    detected: list = []
+    for d in HISTORY_DIRS:
+        src = claude_dir / d
+        if src.exists():
+            detected.append(f".claude/{d}")
+    report["history_detected"] = detected
+
+    # 3) no-interrupt：只写报告，不迁移
+    if intents.no_interrupt:
+        actions_log.append({
+            "path": "<history>", "action": "report-only",
+            "detail": f"detected={detected}",
+        })
+        _record_step_actions(report, STEP_SCAFFOLD, actions_log)
+        return
+
+    # 4) 普通模式：按 HM 表迁移
+    conflicts_log: list = []
+    for d in HISTORY_DIRS:
+        src = claude_dir / d
+        if not src.exists():
+            continue
+        dst = cadence_root / d
+        # 判定目标状态
+        dst_exists = dst.exists()
+        dst_nonempty = dst_exists and any(dst.iterdir())
+
+        if not dst_exists:
+            # HM-01：目标不存在 → mv 源到目标
+            # 确保父目录存在（project-rules 等已在 mkdir 阶段创建）
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dst))
+            actions_log.append({
+                "path": f".claude/{d}", "action": "moved",
+                "to": f"cadence/{d}", "branch": "hm-01",
+            })
+        elif not dst_nonempty:
+            # HM-02：目标存在且为空 → 内容移入 + rmdir 源
+            for entry in src.iterdir():
+                shutil.move(str(entry), str(dst / entry.name))
+            # 清理空源目录
+            try:
+                src.rmdir()
+            except OSError:
+                pass
+            actions_log.append({
+                "path": f".claude/{d}", "action": "merged",
+                "to": f"cadence/{d}", "branch": "hm-02",
+            })
+        else:
+            # HM-03：目标已存在且非空 → 跳过 + 报告冲突（不询问，直接 report conflict）
+            conflict_id = f"s5:.claude/{d}"
+            conflicts_log.append({
+                "conflict_id": conflict_id,
+                "asset": f".claude/{d}",
+                "state": "target-nonempty",
+                "kind": "history-migration",
+                "question": f"历史目录 .claude/{d} 目标 cadence/{d} 非空，需手动处理",
+                "recommendation": "手动合并后重试",
+            })
+            actions_log.append({
+                "path": f".claude/{d}", "action": "skipped",
+                "reason": f"target cadence/{d} nonempty",
+                "branch": "hm-03",
+            })
+
+    _record_step_actions(report, STEP_SCAFFOLD, actions_log)
+    if conflicts_log:
+        # 冲突写入报告 step.conflicts（不进 decisions 机制，仅报告）
+        _record_step_conflicts(report, STEP_SCAFFOLD, conflicts_log)
 
 
 def step_s6_gitignore(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S6 执行（Task 7 实现）。骨架：pass。"""
-    _ = (root, intents, plan, report)
+    """S6 执行（Task 7 实现）：.gitignore 行级幂等追加。
+
+    规则（简报 Step 2）：
+      * cadence/ 仅在 intents.ignore_cadence 时追加（默认不加入）；
+      * .codegraph/ 条件 =（project_type=='coding' 或 intents.enable_codegraph）；
+      * codegraph.json 不处理（团队共享配置，不加入 gitignore）；
+      * 行级幂等：ensure_gitignore_line 内部 grep -qxF 等价判断后追加。
+    """
+    actions_log: list = []
+    project_type = plan.get("project_type", "non-coding")
+
+    # cadence/ 分支（仅 ignore_cadence）
+    if intents.ignore_cadence:
+        status = ensure_gitignore_line(
+            root, GITIGNORE_CADENCE_LINE, GITIGNORE_CADENCE_COMMENT,
+        )
+        actions_log.append({
+            "path": ".gitignore", "action": status,
+            "line": GITIGNORE_CADENCE_LINE, "branch": "ignore-cadence",
+        })
+    else:
+        actions_log.append({
+            "path": ".gitignore", "action": "skip",
+            "reason": "ignore_cadence=False", "branch": "cadence-default",
+        })
+
+    # .codegraph/ 分支（coding 或 enable_codegraph）
+    if project_type == "coding" or intents.enable_codegraph:
+        status = ensure_gitignore_line(
+            root, GITIGNORE_CODEGRAPH_LINE, GITIGNORE_CODEGRAPH_COMMENT,
+        )
+        actions_log.append({
+            "path": ".gitignore", "action": status,
+            "line": GITIGNORE_CODEGRAPH_LINE, "branch": "codegraph",
+        })
+    else:
+        actions_log.append({
+            "path": ".gitignore", "action": "skip",
+            "reason": f"project_type={project_type}; enable_codegraph=False",
+            "branch": "codegraph-skip",
+        })
+
+    _record_step_actions(report, STEP_GITIGNORE, actions_log)
 
 
 def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: dict) -> None:
@@ -2162,6 +2428,8 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
 def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
     """将 compute_plan 的探测结果同步到报告 steps/conflicts/project_type。"""
     report["project_type"] = plan.get("project_type", "non-coding")
+    # 同步 S5 历史目录检测结果（dry-run 与 apply 初始报告均需含此字段）。
+    report["history_detected"] = plan.get("history_detected", []) or []
     steps_in_plan = plan.get("steps", {}) or {}
     report_steps: list = []
     for step_name in STEP_ORDER:
