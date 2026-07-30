@@ -120,8 +120,15 @@ probe_version() {
 }
 
 # JSON 字符串转义（最小集：反斜杠、双引号、控制字符）
+# 用 bash 参数展开处理真实控制字符（$'\n'/$'\t'），避免 sed 的 \t/\n 是 GNU 扩展、
+# 在 BSD/mac sed 上会把字面字母 t 误转义（bash 3.2 兼容，GNU/BSD 行为一致）
 json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' -e 's/\t/\\t/g'
+  local s="$1"
+  s="${s//\\/\\\\}"      # 反斜杠（须最先处理）
+  s="${s//\"/\\\"}"      # 双引号
+  s="${s//$'\n'/\\n}"      # 真实换行符 -> 两字符 \n
+  s="${s//$'\t'/\\t}"      # 真实 Tab 符 -> 两字符 \t
+  printf '%s' "$s"
 }
 
 # 追加一个步骤到 STEPS_JSON（name/status/action/version/error）
