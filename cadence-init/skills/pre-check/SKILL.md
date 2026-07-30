@@ -175,6 +175,8 @@ digraph check_flow {
 
 **脚本位置**：`scripts/pre-check.sh`（相对本 SKILL.md 所在目录）
 
+**工作目录约定**：以下所有命令均在本 SKILL.md 所在目录（`cadence-init/skills/pre-check/`）下执行，报告文件 `./.precheck-report.json` 与脚本路径 `scripts/pre-check.sh` 均以该目录为基准，全程保持同一工作目录。
+
 **调用命令**：
 
 ```bash
@@ -199,7 +201,7 @@ bash scripts/pre-check.sh check --mirror cn > ./.precheck-report.json
 bash scripts/pre-check.sh run --mirror cn --upgrade > ./.precheck-report.json
 ```
 
-脚本向 stdout 输出单份 JSON，重定向到固定文件 `./.precheck-report.json`（相对项目根）；stderr 彩色摘要直接显示。**该路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量**（Agent 各命令独立 shell，环境变量不跨命令保留）。
+脚本向 stdout 输出单份 JSON，重定向到固定文件 `./.precheck-report.json`（相对本 SKILL.md 所在目录）；stderr 彩色摘要直接显示。**该路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量**（Agent 各命令独立 shell，环境变量不跨命令保留）。
 
 **读取结果**：报告 JSON 由上面的调用命令写入 `./.precheck-report.json`。用以下命令取 overall 与各工具状态：
 
