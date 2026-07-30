@@ -25,7 +25,26 @@ assert_fresh_change_contract() {
   return "$missing"
 }
 
+assert_bounded_source_scan_contract() {
+  local missing=0
+  for needle in 'find .' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
+    if ! rg -Fq -- "$needle" "$SKILL"; then
+      printf '缺少 rule-config 有界源码扫描约定: %s\n' "$needle" >&2
+      missing=1
+    fi
+  done
+  if rg -Fq '**/*.{java,js,ts,py,go,php,rs,rb,swift,kt,c,cpp,cs}' "$SKILL"; then
+    printf '仍存在无界源码 Glob 约定\n' >&2
+    missing=1
+  fi
+  return "$missing"
+}
+
 if ! assert_fresh_change_contract; then
+  exit 1
+fi
+
+if ! assert_bounded_source_scan_contract; then
   exit 1
 fi
 

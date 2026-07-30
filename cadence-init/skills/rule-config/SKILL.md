@@ -116,22 +116,19 @@ disable-model-invocation: true
 
 **步骤 1a：项目类型检测**
 
-使用 Glob 工具搜索常见源代码文件，**排除框架内部目录**：
+使用一次有界的首命中扫描判定项目类型。该命令**仅用于项目类型判定**：
 
-先使用 Glob 搜索：
+```bash
+find . \
+  \( -type d \( -name .git -o -name .claude -o -name .codex -o -name .pi -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
+    -o -name node_modules -o -name vendor -o -name venv -o -name .venv -o -name env -o -name .env \
+    -o -name dist -o -name build -o -name coverage -o -name .next -o -name target -o -name __pycache__ \) -prune \) \
+  -o \( -type f \( -name '*.java' -o -name '*.js' -o -name '*.ts' -o -name '*.py' -o -name '*.go' \
+    -o -name '*.php' -o -name '*.rs' -o -name '*.rb' -o -name '*.swift' -o -name '*.kt' -o -name '*.c' \
+    -o -name '*.cpp' -o -name '*.cs' \) -print -quit \)
 ```
-**/*.{java,js,ts,py,go,php,rs,rb,swift,kt,c,cpp,cs}
-```
 
-从搜索结果中**排除**路径包含以下关键词的匹配：
-- `cadence-init/`
-- `Cadence-skills/`
-- `.claude-plugin/`
-- `node_modules/`
-
-排除后：
-- 如果仍有匹配结果 → **Coding 项目**
-- 如果没有匹配结果或所有结果都被排除 → 可能是**非 Coding 项目**，也可能是**全新 Coding 项目**
+命令有输出即判定检测到业务源码；无输出时才继续检查已有的 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置。
 
 检测结果需记录到执行报告中。无人工交互模式下不等待用户确认：
 - 如果排除后仍有匹配结果，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**
