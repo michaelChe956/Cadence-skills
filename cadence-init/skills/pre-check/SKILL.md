@@ -21,7 +21,7 @@ disable-model-invocation: true
 ```
 
 - 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
-- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过和失败后继续策略。
+- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过策略；单项工具失败不阻塞其他检查项的就绪探测，但整体判定为失败（`overall` 为 `partial`/`failed` 或任一步骤 failed）时不得进入 OpenSpec、Superpowers 等下游步骤（详见步骤 0 判定规则）。
 - 两种模式互斥；不得把 `no-interrupt` 规则应用到普通模式。
 
 ### no-interrupt 通用规则
@@ -173,37 +173,32 @@ digraph check_flow {
 
 六个基础工具（npx、uvx、ast-grep、codegraph、openspec CLI、pi-mcp-adapter）的就绪探测、缺失安装与安装后复验统一由脚本完成，不再逐条执行安装命令。
 
-**脚本位置**：`scripts/pre-check.sh`（相对本 SKILL.md 所在目录）
+**执行目录**：以下所有命令均在**用户项目根目录**执行（即你运行 `/pre-check` 时所在的目录）。openspec 产物、`.claude/.codex/.pi`、报告文件都落在该项目根。
 
-**工作目录约定**：以下所有命令均在本 SKILL.md 所在目录（`cadence-init/skills/pre-check/`）下执行，报告文件 `./.precheck-report.json` 与脚本路径 `scripts/pre-check.sh` 均以该目录为基准，全程保持同一工作目录。
+**脚本位置**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`（与 skill-creator 的 `scripts/` 约定一致）。**模型根据自身安装环境定位该 skill 目录，拼出脚本的完整绝对路径后调用**——例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`。脚本只读，**不要** `cd` 进 skill 目录执行。下文以 `<PRE_CHECK_SH>` 指代该完整绝对路径，调用时替换为实际路径。
 
-**调用命令**：
+**调用命令**：报告写入项目根的 `./.precheck-report.json`（相对项目根的固定字面路径，每次执行覆盖写；为临时文件，用完需清理，建议加入项目 `.gitignore`）。按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）：
 
 ```bash
-# 报告文件：固定相对路径，每次执行覆盖写，后续步骤统一从这里读。
-# 这是临时文件（每次覆盖，不积累）；如需可加入项目 .gitignore。
-
-# 按需选择下面其中一条执行（不要全部顺序执行，尤其不要误跑 --upgrade）：
-
 # 通用源，普通模式
-bash scripts/pre-check.sh run > ./.precheck-report.json
+bash <PRE_CHECK_SH> run > ./.precheck-report.json
 
 # 大陆镜像源
-bash scripts/pre-check.sh run --mirror cn > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn > ./.precheck-report.json
 
 # no-interrupt 模式（任一基础工具失败即非零退出）
-bash scripts/pre-check.sh run --mirror cn --no-interrupt > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn --no-interrupt > ./.precheck-report.json
 
 # 仅探测不安装（摸底）
-bash scripts/pre-check.sh check --mirror cn > ./.precheck-report.json
+bash <PRE_CHECK_SH> check --mirror cn > ./.precheck-report.json
 
 # 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash scripts/pre-check.sh run --mirror cn --upgrade > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn --upgrade > ./.precheck-report.json
 ```
 
-脚本向 stdout 输出单份 JSON，重定向到固定文件 `./.precheck-report.json`（相对本 SKILL.md 所在目录）；stderr 彩色摘要直接显示。**该路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量**（Agent 各命令独立 shell，环境变量不跨命令保留）。
+脚本向 stdout 输出单份 JSON，重定向到项目根的 `./.precheck-report.json`；stderr 彩色摘要直接显示。**报告路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量或上一条命令的工作目录**（Agent 各命令独立 shell，环境变量与 cwd 不跨命令保留）。
 
-**读取结果**：报告 JSON 由上面的调用命令写入 `./.precheck-report.json`。用以下命令取 overall 与各工具状态：
+**读取结果**：报告 JSON 由上面的调用命令写入项目根的 `./.precheck-report.json`。用以下命令取 overall 与各工具状态（每条命令自包含，用字面路径）：
 
 ```bash
 # overall（success/partial/failed）
@@ -213,6 +208,8 @@ python3 -c "import json;d=json.load(open('./.precheck-report.json'));print([s fo
 # Superpowers 远端地址（供步骤 6 使用）
 python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])"
 ```
+
+**报告生命周期**：报告是临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。**全部检查完成后删除它**：`rm -f ./.precheck-report.json`。
 
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
 
@@ -236,9 +233,11 @@ playwright-cli --help
 
 **安装命令**：
 
+> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 必须在**用户项目根目录**执行，其 skills 产物写入当前项目对应位置。
+
 ```bash
-npm install -g @playwright/cli@latest
-playwright-cli install --skills
+npm install -g @playwright/cli@latest   # 全局安装 CLI
+playwright-cli install --skills          # 在用户项目根目录执行
 ```
 
 **验证安装**：
@@ -269,6 +268,8 @@ openspec --version
 **安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节三客户端产物检查。
 
 **初始化与更新命令**：
+
+> **执行位置**：以下 `openspec init`/`openspec update` 及后续 `.claude/.codex/.pi` 相对路径检查，均在**用户项目根目录**执行（与步骤 0 同一工作目录），产物写入该项目根，不写入 Skill 目录。
 
 ```bash
 # 三客户端产物均缺失（新项目）
@@ -331,15 +332,14 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 
 **在线安装来源**：
 
-> 兜底：`./.precheck-report.json` 由步骤 0 生成；若文件不存在，先回步骤 0 执行脚本生成报告，再读本节。
+> **执行位置与产物**：以下命令在**用户项目根目录**执行（读项目根的 `./.precheck-report.json`），clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。若 `./.precheck-report.json` 不存在，先回步骤 0 生成报告再读本节。
 
 ```bash
-# 从步骤 0 的 JSON 报告读取 Superpowers 远端地址
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")"
-git clone "$CADENCE_SUPERPOWERS_GIT" "$HOME/.agents/superpowers"
+# 单条命令自包含：从项目根报告读出 Superpowers 远端地址并 clone（同一 shell 内完成）
+git clone "$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")" "$HOME/.agents/superpowers"
 ```
 
-`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `./.precheck-report.json` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
+Superpowers 远端地址必须从项目根 `./.precheck-report.json` 的 `hints.superpowers_git` 读出；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -362,13 +362,13 @@ $HOME/.agents/superpowers/skills
 
 **Git 更新逻辑**：
 
+> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用项目根的 `./.precheck-report.json`（在项目根执行）。
+
 ```bash
-# 从步骤 0 的 JSON 报告读取 Superpowers 远端地址，确保 cn 模式走国内镜像而非残留的原 origin
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")"
-cd "$HOME/.agents/superpowers"
-git remote set-url origin "$CADENCE_SUPERPOWERS_GIT"
-git fetch origin
-git pull --ff-only origin "$(git rev-parse --abbrev-ref HEAD)"
+# 从项目根报告读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
+git -C "$HOME/.agents/superpowers" remote set-url origin "$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")" && \
+git -C "$HOME/.agents/superpowers" fetch origin && \
+git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
 ```
 
 **软链同步逻辑**：
