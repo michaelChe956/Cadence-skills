@@ -63,7 +63,10 @@ load_mirror() {
 
 # 命令级源注入助手
 npm_registry_args() { printf '%s' "--registry=$CADENCE_NPM_REGISTRY"; }
-uv_index_env()      { printf '%s' "UV_INDEX_URL=$CADENCE_PY_INDEX"; }
+# 同时输出 pip 与 uv 均识别的索引变量：脚本实际用 pip 装/查/升级 uv，pip 只认
+# PIP_INDEX_URL；保留 UV_INDEX_URL 以备 uv/uvx 命令直接使用（如 uv pip / uvx 临时包）。
+# 调用方形如 env $(uv_index_env) pip ...（刻意不加引号），依赖单词拆分拆成两个 KEY=VAL。
+uv_index_env()      { printf '%s' "PIP_INDEX_URL=$CADENCE_PY_INDEX UV_INDEX_URL=$CADENCE_PY_INDEX"; }
 
 # 解析参数
 while [ $# -gt 0 ]; do
@@ -184,7 +187,8 @@ do_uvx() {
   else
     if [ "$MODE" = "run" ]; then
       # 经 pip 安装 uv（提供 uvx），走当前源
-      if _try_install "uv（提供 uvx）" env "$(uv_index_env)" pip install uv; then :; fi
+      # shellcheck disable=SC2046  # 刻意不引号：依赖单词拆分拆成两个 KEY=VAL
+      if _try_install "uv（提供 uvx）" env $(uv_index_env) pip install uv; then :; fi
     fi
     if _v="$(probe_version uvx --version)"; then
       add_step "uvx" "installed" "installed-via-pip" "$_v" ""
@@ -294,10 +298,19 @@ upgrade_npm_tool() {
   [ -n "$_lat" ] || { log "${C_YEL}⚠️  $_name 无法查询 latest，跳过升级${C_NC}"; return 0; }
   if _ver_lt "$_cur" "$_lat"; then
     log "${C_YEL}⬆️  升级 $_name：$_cur → $_lat（来源 $CADENCE_NPM_REGISTRY）${C_NC}"
-    npm install -g "$_pkg@latest" "$(npm_registry_args)" >/dev/null 2>&1
+    if npm install -g "$_pkg@latest" "$(npm_registry_args)" >/dev/null 2>&1; then
+      _new="$(probe_version "$@")"
+      # 校验升级结果：版本非空且已追到 latest 才记 upgraded
+      if [ -n "$_new" ] && ! _ver_lt "$_new" "$_lat"; then
+        add_step "$_name" "upgraded" "upgraded" "$_new" "from=$_cur to=$_new source=$CADENCE_NPM_REGISTRY"
+        return 2   # 返回 2 表示已升级（供调用方覆盖原 ready 项）
+      fi
+    fi
+    # 升级失败：记录 failed，不谎报 upgraded
     _new="$(probe_version "$@")"
-    add_step "$_name" "upgraded" "upgraded" "$_new" "from=$_cur to=$_lat source=$CADENCE_NPM_REGISTRY"
-    return 2   # 返回 2 表示已升级（供调用方覆盖原 ready 项）
+    add_step "$_name" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
+    log "${C_RED}❌ $_name 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    return 0
   fi
   return 0
 }
@@ -305,14 +318,23 @@ upgrade_npm_tool() {
 # 升级 uv 本体
 upgrade_uv() {
   _cur="$(probe_version uv --version)" || return 0
-  _lat="$(env "$(uv_index_env)" pip index versions uv 2>/dev/null | sed -n 's/.*(\([0-9][^)]*\)).*/\1/p' | head -n1)"
+  _lat="$(env $(uv_index_env) pip index versions uv 2>/dev/null | sed -n 's/.*(\([0-9][^)]*\)).*/\1/p' | head -n1)"
   [ -n "$_lat" ] || { log "${C_YEL}⚠️  uv 无法查询 latest，跳过升级${C_NC}"; return 0; }
   if _ver_lt "$_cur" "$_lat"; then
     log "${C_YEL}⬆️  升级 uv：$_cur → $_lat（来源 $CADENCE_PY_INDEX）${C_NC}"
-    env "$(uv_index_env)" pip install -U uv >/dev/null 2>&1
+    if env $(uv_index_env) pip install -U uv >/dev/null 2>&1; then
+      _new="$(probe_version uv --version)"
+      # 校验升级结果：版本非空且已追到 latest 才记 upgraded
+      if [ -n "$_new" ] && ! _ver_lt "$_new" "$_lat"; then
+        add_step "uv" "upgraded" "upgraded" "$_new" "from=$_cur to=$_new source=$CADENCE_PY_INDEX"
+        return 2
+      fi
+    fi
+    # 升级失败：记录 failed，不谎报 upgraded
     _new="$(probe_version uv --version)"
-    add_step "uv" "upgraded" "upgraded" "$_new" "from=$_cur to=$_lat source=$CADENCE_PY_INDEX"
-    return 2
+    add_step "uv" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
+    log "${C_RED}❌ uv 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    return 0
   fi
   return 0
 }
