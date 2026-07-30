@@ -264,7 +264,7 @@ python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['su
 
 **判定规则**：
 - `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 三客户端检查与步骤 6 的 Superpowers 同步。
-- 脚本非零退出或 `overall=failed`：no-interrupt 模式立即终止 `/pre-check`，报告失败；普通模式报告失败项与恢复建议，不宣称成功。
+- `overall` 为 `partial` 或 `failed`，或任一 `steps[].status=failed`，或脚本非零退出：no-interrupt 模式立即终止 `/pre-check` 并报告失败；普通模式报告失败项与恢复建议，**不得继续后续步骤，不宣称成功**。
 - pi-mcp-adapter 的 `status=skipped`（action=pi-not-found）不算失败。
 
 ### 可选步骤：检查 playwright-cli
@@ -378,12 +378,12 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 **在线安装来源**：
 
 ```bash
-# 远端地址由步骤 0 脚本报告的 hints.superpowers_git 提供：
-# 通用源为 https://github.com/obra/superpowers；cn 镜像为用户维护的国内地址。
+# 从步骤 0 的 JSON 报告读取 Superpowers 远端地址
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['superpowers_git'])")"
 git clone "$CADENCE_SUPERPOWERS_GIT" "$HOME/.agents/superpowers"
 ```
 
-`$CADENCE_SUPERPOWERS_GIT` 从步骤 0 的 JSON 报告 `hints.superpowers_git` 读取；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
+`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `/tmp/precheck.json` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -407,10 +407,12 @@ $HOME/.agents/superpowers/skills
 **Git 更新逻辑**：
 
 ```bash
+# 从步骤 0 的 JSON 报告读取 Superpowers 远端地址，确保 cn 模式走国内镜像而非残留的原 origin
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['superpowers_git'])")"
 cd "$HOME/.agents/superpowers"
-git fetch --all
-git rev-parse --abbrev-ref --symbolic-full-name @{u}
-git pull --ff-only
+git remote set-url origin "$CADENCE_SUPERPOWERS_GIT"
+git fetch origin
+git pull --ff-only origin "$(git rev-parse --abbrev-ref HEAD)"
 ```
 
 **软链同步逻辑**：
