@@ -593,14 +593,76 @@ class TestLocateTemplates(unittest.TestCase):
             / "rule-config" / "references" / "rules"
         )
         _write_minimal_templates(old_candidate, fallback=True)
-        # 确保 new_candidate 的 mtime 严格大于 old_candidate
+        _write_minimal_templates(new_candidate, fallback=True)
+        # 确保老候选的 openspec_yaml（mtime 比较基准）严格更新
         import time as _time
         _time.sleep(0.05)
-        _write_minimal_templates(new_candidate, fallback=True)
-        # 将 old 的 language.md 触摸更新为新（模拟 old 更新），new 应仍胜出？
-        # 此处直接断言 new（mtime 更大）胜出
+        (old_candidate.parent / "openspec" / "config.yaml").touch()
+        # 断言：mtime 主导 → 老候选胜出
         rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, new_candidate)
+        self.assertEqual(rules_root, old_candidate)
+
+    # --- ut-locate_templates-online-preferred-over-offline / S1b-01（双有效场景在线优先）---
+    def test_online_preferred_over_offline_when_both_valid(self):
+        """ut-locate_templates-online-preferred / S1b-01（在线与离线均完整且离线 mtime 更新时仍返回在线）"""
+        online = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        offline = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(online)
+        _write_minimal_templates(offline)
+        # 让离线 mtime 严格更新，确保“在线优先”是短路优先级而非 mtime 选择
+        import time as _time
+        _time.sleep(0.05)
+        (offline / "language.md").touch()
+        rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, online)
+
+    # --- ut-locate_templates-error-lists-missing / S1b-04（TemplateError 列出每个候选缺失文件名）---
+    def test_template_error_lists_missing_files(self):
+        """ut-locate_templates-error-lists-missing / S1b-04（全不完整时 TemplateError 消息列出缺失文件名）"""
+        # 在线候选：目录存在但缺 openspec/config.yaml（三件套齐全）
+        online_rules = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        online_rules.mkdir(parents=True)
+        for name in _ONLINE_RULES:
+            (online_rules / name).write_text("# x\n", encoding="utf-8")
+        # 离线候选：目录存在但缺 language.md
+        offline_rules = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        offline_rules.mkdir(parents=True)
+        for name in (_ONLINE_RULES[0], _ONLINE_RULES[2]):  # 仅写 ark + osw，缺 language.md
+            (offline_rules / name).write_text("# x\n", encoding="utf-8")
+        # glob 回退候选：目录存在但缺 document-storage.md（fallback 额外要求）
+        dev_rules = (
+            self.home / "workspace" / "proj" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        dev_rules.mkdir(parents=True)
+        for name in _ONLINE_RULES:
+            (dev_rules / name).write_text("# x\n", encoding="utf-8")
+        # 故意不写 document-storage.md，并补上 config.yaml 让 language.md 作为 glob 标识可命中
+        openspec_dir = dev_rules.parent / "openspec"
+        openspec_dir.mkdir(parents=True, exist_ok=True)
+        (openspec_dir / "config.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+        with self.assertRaises(rc.TemplateError) as ctx:
+            rc.locate_templates()
+        msg = str(ctx.exception)
+        # 断言消息含每个候选具体缺失的文件名
+        self.assertIn("openspec/config.yaml", msg)  # 在线候选缺
+        self.assertIn("language.md", msg)  # 离线候选缺
+        self.assertIn("document-storage.md", msg)  # 回退候选缺
+        self.assertIn("在线候选", msg)
+        self.assertIn("离线候选", msg)
+        self.assertIn("回退候选", msg)
 
     # --- ut-locate_templates-all-incomplete / S1b-04（全不完整 → TemplateError）---
     def test_all_incomplete_raises_template_error(self):

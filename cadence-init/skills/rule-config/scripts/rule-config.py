@@ -809,43 +809,101 @@ def locate_templates() -> tuple:
 
     返回 (rules_root: Path, openspec_yaml: Path)。
 
-    优先级：
-      1) 在线 ~/.claude/plugins/marketplaces/cadence-skills-marketplace/...
-      2) 离线 ~/.claude/plugins/marketplaces/cadence-skills-local/...
-      3) glob 回退 **/cadence-init/skills/rule-config/references/rules/language.md
-         （多候选取 mtime 最新）
+    固定路径之间按优先级短路（在线优先）：
+      1) 在线 ~/.claude/plugins/marketplaces/cadence-skills-marketplace/... 完整即直接返回；
+      2) 在线不完整 → 离线 ~/.claude/plugins/marketplaces/cadence-skills-local/... 完整即返回；
+      3) 固定路径均不完整 → glob 回退
+         **/cadence-init/skills/rule-config/references/rules/language.md
+         （多候选取 mtime 最新；mtime 比较仅在此阶段用于多候选择优）。
 
     成对校验（S1b-02）：每候选 rules/ 下须含 TEMPLATE_REQUIRED 三件套
     （回退路径额外须含 document-storage.md）+ 同级 references/openspec/config.yaml；
-    缺任一则跳过该候选。全部候选不完整 → TemplateError 终止并列缺失。
+    缺任则该候选不完整。固定路径间不混入统一 mtime 比较，以确保“在线优先”语义。
+    全部候选不完整 → TemplateError 终止并逐个列出每个候选具体缺失的文件名。
     """
     home = Path(os.path.expanduser("~"))
-    candidates: list = []  # (rules_root, openspec_yaml, is_fallback)
+    # (kind, rules_root, missing_files) 用于失败时构造详细错误
+    failures: list = []
 
+    # 1) 在线固定路径（短路优先：完整即返回，不查离线）
     online_rules = home / _ONLINE_RULES_SUBPATH
-    online_pair = _check_template_candidate(online_rules, fallback=False)
-    if online_pair is not None:
-        candidates.append((online_pair[0], online_pair[1], False))
+    online = _check_template_candidate(online_rules, fallback=False)
+    if online is not None:
+        return online[0], online[1]
+    failures.append((
+        "在线",
+        online_rules,
+        _missing_template_files(online_rules, fallback=False),
+    ))
 
+    # 2) 离线固定路径（在线不完整才查；完整即返回）
     offline_rules = home / _OFFLINE_RULES_SUBPATH
-    offline_pair = _check_template_candidate(offline_rules, fallback=False)
-    if offline_pair is not None:
-        candidates.append((offline_pair[0], offline_pair[1], False))
+    offline = _check_template_candidate(offline_rules, fallback=False)
+    if offline is not None:
+        return offline[0], offline[1]
+    failures.append((
+        "离线",
+        offline_rules,
+        _missing_template_files(offline_rules, fallback=False),
+    ))
 
-    if not candidates:
-        # glob 回退：从 home 起搜索标识文件
-        fallback_candidates = _glob_fallback_candidates(home)
-        candidates.extend(fallback_candidates)
+    # 3) glob 回退：从 home 起搜索标识文件并成对校验；多候选取 mtime 最新
+    fallback_candidates: list = []  # (rules_root, openspec_yaml)
+    seen: set = set()
+    for lang_path in home.glob(_FALLBACK_GLOB_PATTERN):
+        rules_root = lang_path.parent
+        key = str(rules_root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        pair = _check_template_candidate(rules_root, fallback=True)
+        if pair is not None:
+            fallback_candidates.append(pair)
+        else:
+            failures.append((
+                "回退",
+                rules_root,
+                _missing_template_files(rules_root, fallback=True),
+            ))
 
-    if not candidates:
-        raise TemplateError(
-            "模板定位失败：未找到任何完整的模板候选"
-            "（在线/离线/回退均不完整）"
-        )
+    if fallback_candidates:
+        # mtime 比较仅用于 glob 回退阶段的多候选择优
+        best = max(fallback_candidates, key=lambda c: _candidate_mtime(c[1]))
+        return best[0], best[1]
 
-    # 多候选取 mtime 最新（按 openspec_yaml 的 mtime 比较稳定）。
-    best = max(candidates, key=lambda c: _candidate_mtime(c[1]))
-    return best[0], best[1]
+    # 全不完整：构造逐候选缺失明细
+    raise TemplateError(_format_template_failures(failures))
+
+
+def _missing_template_files(rules_root: Path, *, fallback: bool) -> list:
+    """返回单一候选缺失的文件名列表（含同级 openspec/config.yaml）。"""
+    missing: list = []
+    required = list(TEMPLATE_REQUIRED)
+    if fallback:
+        required = required + list(TEMPLATE_REQUIRED_FALLBACK)
+    if not rules_root.is_dir():
+        # 目录不存在视为三件套（含回退的 document-storage.md）全缺
+        return list(required) + ["openspec/config.yaml"]
+    for name in required:
+        if not (rules_root / name).is_file():
+            missing.append(name)
+    openspec_yaml = rules_root.parent / "openspec" / "config.yaml"
+    if not openspec_yaml.is_file():
+        missing.append("openspec/config.yaml")
+    return missing
+
+
+def _format_template_failures(failures: list) -> str:
+    """格式化全部不完整候选的缺失明细（每候选一行，列出缺失文件名）。"""
+    lines = ["模板定位失败：所有候选均不完整"]
+    for kind, rules_root, missing in failures:
+        if missing:
+            joined = "、".join(missing)
+            lines.append(f"{kind}候选 {rules_root} 缺 {joined}")
+        else:
+            lines.append(f"{kind}候选 {rules_root} 不完整")
+    lines.append("（在线/离线/回退均不完整）")
+    return "；".join(lines)
 
 
 def _check_template_candidate(rules_root: Path, *, fallback: bool):
@@ -866,25 +924,6 @@ def _check_template_candidate(rules_root: Path, *, fallback: bool):
     if not openspec_yaml.is_file():
         return None
     return rules_root, openspec_yaml
-
-
-def _glob_fallback_candidates(home: Path) -> list:
-    """glob 回退候选收集：从 home 起搜索标识文件并成对校验。
-
-    返回 [(rules_root, openspec_yaml, True), ...]。
-    """
-    candidates: list = []
-    seen: set = set()
-    for lang_path in home.glob(_FALLBACK_GLOB_PATTERN):
-        rules_root = lang_path.parent
-        key = str(rules_root.resolve())
-        if key in seen:
-            continue
-        seen.add(key)
-        pair = _check_template_candidate(rules_root, fallback=True)
-        if pair is not None:
-            candidates.append((pair[0], pair[1], True))
-    return candidates
 
 
 def _candidate_mtime(path: Path) -> float:
