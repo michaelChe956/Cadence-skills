@@ -27,7 +27,7 @@ assert_fresh_change_contract() {
 
 assert_bounded_source_scan_contract() {
   local missing=0
-  for needle in 'find .' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
+  for needle in 'find .' '-name .claude-plugin' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
     if ! rg -Fq -- "$needle" "$SKILL"; then
       printf '缺少 rule-config 有界源码扫描约定: %s\n' "$needle" >&2
       missing=1

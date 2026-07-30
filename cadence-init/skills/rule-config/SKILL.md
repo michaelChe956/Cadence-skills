@@ -120,7 +120,7 @@ disable-model-invocation: true
 
 ```bash
 find . \
-  \( -type d \( -name .git -o -name .claude -o -name .codex -o -name .pi -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
+  \( -type d \( -name .git -o -name .claude -o -name .claude-plugin -o -name .codex -o -name .pi -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
     -o -name node_modules -o -name vendor -o -name venv -o -name .venv -o -name env -o -name .env \
     -o -name dist -o -name build -o -name coverage -o -name .next -o -name target -o -name __pycache__ \) -prune \) \
   -o \( -type f \( -name '*.java' -o -name '*.js' -o -name '*.ts' -o -name '*.py' -o -name '*.go' \
@@ -131,7 +131,7 @@ find . \
 命令有输出即判定检测到业务源码；无输出时才继续检查已有的 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置。
 
 检测结果需记录到执行报告中。无人工交互模式下不等待用户确认：
-- 如果排除后仍有匹配结果，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**
+- 如果有界扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**
 - 如果没有检测到常见源代码文件和主工程配置 → **非 Coding 项目**
 - 用户在命令中明确指定项目类型时，以用户指定为准
 
