@@ -134,79 +134,25 @@ digraph check_flow {
     node [shape=box, style="rounded"];
 
     start [label="开始检查", shape=ellipse];
-
-    check_npx [label="检查 npx", shape=diamond];
-    install_npx [label="安装 npx"];
-    npx_done [label="npx 就绪"];
-
-    check_uvx [label="检查 uvx", shape=diamond];
-    install_uvx [label="安装 uvx"];
-    uvx_done [label="uvx 就绪"];
-
-    check_ast_grep [label="检查 ast-grep", shape=diamond];
-    install_ast_grep [label="安装 ast-grep"];
-    ast_grep_done [label="ast-grep 就绪"];
-
-    check_codegraph [label="检查 codegraph", shape=diamond];
-    install_codegraph [label="安装 codegraph"];
-    codegraph_done [label="codegraph 就绪"];
-
-    check_openspec [label="检查 OpenSpec", shape=diamond];
-    install_openspec [label="安装 OpenSpec CLI"];
-    sync_openspec [label="初始化或更新 OpenSpec 指令文件"];
-    openspec_done [label="OpenSpec 就绪"];
-
-    check_superpowers [label="检查 Superpowers", shape=diamond];
-    clone_superpowers [label="在线 clone 或提示离线复制"];
-    sync_superpowers [label="更新仓库并同步软链"];
-    superpowers_done [label="Superpowers 就绪"];
-
-    check_pi_mcp [label="PATH 中存在 pi 可执行文件?", shape=diamond];
-    install_pi_mcp [label="检查/安装 pi-mcp-adapter"];
-    skip_pi_mcp [label="跳过 pi MCP Adapter 检查"];
-    optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
-    remind_apikey [label="默认展示 API Key 占位提醒"];
-
+    run_script [label="步骤 0：执行脚本\n六工具探测/安装/复验/升级"];
+    read_report [label="读取 JSON 报告\noverall + steps[]"];
+    judge [label="overall 判定", shape=diamond];
+    fail_stop [label="失败处理：\nno-interrupt 终止\n普通模式报告不继续"];
+    openspec_clients [label="步骤 5：OpenSpec 三客户端产物补齐"];
+    superpowers_sync [label="步骤 6：Superpowers clone/更新 + 四层软链"];
+    playwright [label="可选：用户明确要求时安装 Playwright", shape=box];
+    apikey [label="API Key 占位提醒"];
     end [label="检查完成", shape=ellipse];
 
-    start -> check_npx;
-    check_npx -> install_npx [label="未安装"];
-    check_npx -> check_uvx [label="已安装"];
-    install_npx -> npx_done;
-    npx_done -> check_uvx;
-
-    check_uvx -> install_uvx [label="未安装"];
-    check_uvx -> check_ast_grep [label="已安装"];
-    install_uvx -> uvx_done;
-    uvx_done -> check_ast_grep;
-
-    check_ast_grep -> install_ast_grep [label="未安装"];
-    check_ast_grep -> check_codegraph [label="已安装"];
-    install_ast_grep -> ast_grep_done;
-    ast_grep_done -> check_codegraph;
-
-    check_codegraph -> install_codegraph [label="未安装"];
-    check_codegraph -> check_openspec [label="已安装"];
-    install_codegraph -> codegraph_done;
-    codegraph_done -> check_openspec;
-
-    check_openspec -> install_openspec [label="CLI 未安装"];
-    check_openspec -> sync_openspec [label="CLI 已安装"];
-    install_openspec -> sync_openspec;
-    sync_openspec -> openspec_done;
-    openspec_done -> check_superpowers;
-
-    check_superpowers -> clone_superpowers [label="来源缺失"];
-    check_superpowers -> sync_superpowers [label="来源存在"];
-    clone_superpowers -> sync_superpowers;
-    sync_superpowers -> superpowers_done;
-    superpowers_done -> check_pi_mcp;
-    check_pi_mcp -> install_pi_mcp [label="是"];
-    check_pi_mcp -> skip_pi_mcp [label="否"];
-    install_pi_mcp -> optional_playwright;
-    skip_pi_mcp -> optional_playwright;
-    optional_playwright -> remind_apikey;
-    remind_apikey -> end;
+    start -> run_script;
+    run_script -> read_report;
+    read_report -> judge;
+    judge -> fail_stop [label="partial / failed / 非零退出"];
+    judge -> openspec_clients [label="success"];
+    openspec_clients -> superpowers_sync;
+    superpowers_sync -> playwright;
+    playwright -> apikey;
+    apikey -> end;
 }
 ```
 
@@ -232,32 +178,36 @@ digraph check_flow {
 **调用命令**：
 
 ```bash
-# 通用源，普通模式
-bash scripts/pre-check.sh run
+# 一次执行中的报告文件路径（后续步骤统一从这里读）
+PRECHECK_REPORT="$(mktemp -t precheck.XXXXXX.json)"
+
+# 通用源，普通模式（stdout 落盘到报告文件）
+bash scripts/pre-check.sh run > "$PRECHECK_REPORT"
 
 # 大陆镜像源
-bash scripts/pre-check.sh run --mirror cn
+bash scripts/pre-check.sh run --mirror cn > "$PRECHECK_REPORT"
 
 # no-interrupt 模式（任一基础工具失败即非零退出）
-bash scripts/pre-check.sh run --mirror cn --no-interrupt
+bash scripts/pre-check.sh run --mirror cn --no-interrupt > "$PRECHECK_REPORT"
 
 # 仅探测不安装（摸底）
-bash scripts/pre-check.sh check --mirror cn
+bash scripts/pre-check.sh check --mirror cn > "$PRECHECK_REPORT"
 
 # 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash scripts/pre-check.sh run --mirror cn --upgrade
+bash scripts/pre-check.sh run --mirror cn --upgrade > "$PRECHECK_REPORT"
 ```
 
-**读取结果**：脚本向 stdout 输出单份 JSON，向 stderr 输出彩色摘要。用以下命令取 overall 与各工具状态：
+脚本向 stdout 输出单份 JSON，统一重定向到 `$PRECHECK_REPORT`；stderr 彩色摘要仍直接显示。不要重定向到固定路径，避免文件不存在或残留旧内容。
+
+**读取结果**：报告 JSON 由上面的调用命令写入 `$PRECHECK_REPORT`。用以下命令取 overall 与各工具状态：
 
 ```bash
-bash scripts/pre-check.sh run --mirror cn 2>/dev/null > /tmp/precheck.json
 # overall（success/partial/failed）
-python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['overall'])"
+python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['overall'])"
 # 某工具状态
-python3 -c "import json;d=json.load(open('/tmp/precheck.json'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
+python3 -c "import json,os;d=json.load(open(os.environ['PRECHECK_REPORT']));print([s for s in d['steps'] if s['name']=='ast-grep'])"
 # Superpowers 远端地址（供步骤 6 使用）
-python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['superpowers_git'])"
+python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])"
 ```
 
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
@@ -377,13 +327,15 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 
 **在线安装来源**：
 
+> 兜底：`$PRECHECK_REPORT` 由步骤 0 生成；若未设置或文件不存在，先回步骤 0 执行脚本生成报告，再读本节。
+
 ```bash
 # 从步骤 0 的 JSON 报告读取 Superpowers 远端地址
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['superpowers_git'])")"
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])")"
 git clone "$CADENCE_SUPERPOWERS_GIT" "$HOME/.agents/superpowers"
 ```
 
-`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `/tmp/precheck.json` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
+`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `$PRECHECK_REPORT` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -408,7 +360,7 @@ $HOME/.agents/superpowers/skills
 
 ```bash
 # 从步骤 0 的 JSON 报告读取 Superpowers 远端地址，确保 cn 模式走国内镜像而非残留的原 origin
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('/tmp/precheck.json'))['hints']['superpowers_git'])")"
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])")"
 cd "$HOME/.agents/superpowers"
 git remote set-url origin "$CADENCE_SUPERPOWERS_GIT"
 git fetch origin
