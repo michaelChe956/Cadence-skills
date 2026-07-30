@@ -160,7 +160,7 @@ digraph check_flow {
 
 | 步骤 | 检查命令或路径 | 成功标志 | 失败处理 |
 |------|----------------|----------|----------|
-| **1-6. 基础工具** | `bash <PRE_CHECK_SH> run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
+| **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
 | （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
 | **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
@@ -177,7 +177,7 @@ digraph check_flow {
 
 **第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
 
-1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物、`.claude/.codex/.pi`、报告文件都落在该目录。
+1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.codex/.pi` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
 2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录。
 
 **第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
@@ -240,11 +240,11 @@ playwright-cli --help
 
 **安装命令**：
 
-> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 的 skills 产物写入当前项目，须 `cd <PROJECT_ROOT>`（项目根绝对路径）后执行，确保在独立 shell 下落到项目根。
+> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 的 skills 产物写入当前项目，须 `cd "<PROJECT_ROOT>"`（项目根绝对路径）后执行，确保在独立 shell 下落到项目根。
 
 ```bash
 npm install -g @playwright/cli@latest        # 全局安装 CLI（任意目录均可）
-cd <PROJECT_ROOT> && playwright-cli install --skills   # skills 产物写入项目根，须 cd <PROJECT_ROOT>
+cd "<PROJECT_ROOT>" && playwright-cli install --skills   # skills 产物写入项目根，须 cd "<PROJECT_ROOT>"
 ```
 
 **验证安装**：
@@ -276,17 +276,17 @@ openspec --version
 
 **初始化与更新命令**：
 
-> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd <PROJECT_ROOT> && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
 
 ```bash
 # 三客户端产物均缺失（新项目）
-cd <PROJECT_ROOT> && openspec init --tools claude,codex,pi
+cd "<PROJECT_ROOT>" && openspec init --tools claude,codex,pi
 
 # 仅 pi 产物缺失
-cd <PROJECT_ROOT> && openspec init --tools pi && openspec update
+cd "<PROJECT_ROOT>" && openspec init --tools pi && openspec update
 
 # 三客户端产物齐全
-cd <PROJECT_ROOT> && openspec update
+cd "<PROJECT_ROOT>" && openspec update
 ```
 
 **增量要求**：
@@ -314,12 +314,12 @@ cd <PROJECT_ROOT> && openspec update
 **验证命令**：
 
 ```bash
-cd <PROJECT_ROOT> && openspec --version
-cd <PROJECT_ROOT> && test -f .codex/skills/openspec-propose/SKILL.md
-cd <PROJECT_ROOT> && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
-cd <PROJECT_ROOT> && test -f .pi/skills/openspec-propose/SKILL.md
-cd <PROJECT_ROOT> && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
-cd <PROJECT_ROOT> && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
+cd "<PROJECT_ROOT>" && openspec --version
+cd "<PROJECT_ROOT>" && test -f .codex/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
+cd "<PROJECT_ROOT>" && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
 
 > 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
@@ -439,11 +439,11 @@ test -d "$HOME/.pi/agent/skills"
 |------|------|----------|
 | **npx 安装失败** | Node.js 未安装 | 先安装 Node.js |
 | **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
-| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
-| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
-| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
+| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
+| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
+| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
 | **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
-| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash <PRE_CHECK_SH> run`，或修复 pi 环境后重新运行 `/pre-check` |
+| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash "<PRE_CHECK_SH>" run`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |

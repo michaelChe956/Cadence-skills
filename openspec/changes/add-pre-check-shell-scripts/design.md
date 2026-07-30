@@ -12,7 +12,7 @@
 
 约束与现状：
 
-- 项目已有脚本目录约定：`skill-creator/scripts/`（Python 脚本，SKILL.md 以相对路径引用）、根目录 `install-offline.sh`（mac/Linux bash，彩色输出、`set -e`、分步骤）。本设计沿用 bash 脚本 + 相对路径引用的约定。
+- 项目已有脚本目录约定：`skill-creator/scripts/`（Python 脚本，由所属 skill 调用）。本设计沿用“脚本放 skill 同级 `scripts/` 目录”的约定；但 SKILL.md 对脚本的引用**不沿用相对路径**——因 Agent 各命令在独立 shell 执行、无共享 cwd，SKILL.md 改用完整绝对路径 `<PRE_CHECK_SH>` 调用脚本（详见决策 8）。
 - Superpowers 国内 Git 镜像已由用户同步至 `https://gitee.com/michaelChe-World/superpowers.git`。
 - `openspec/specs/init-skill-sequencing` 已定义 OpenSpec 三客户端产物补齐与失败门槛语义，本 change 保留这些语义，仅补充脚本化后的执行主体口径。
 - OpenSpec config.yaml 归属 rule-config 步骤 11，pre-check 不创建，本 change 不改变该边界。
@@ -52,7 +52,7 @@
 
 ### 决策 3：镜像配置经环境变量注入，不改用户全局配置
 
-- **选择**：`mirrors/cn.sh` 定义 `CADENCE_NPM_REGISTRY`、`CADENCE_PY_INDEX`、`CADENCE_SUPERPOWERS_GIT`；脚本在命令级注入（`npm --registry=`、`uv` 环境变量）；Superpowers Git 地址由 SKILL.md 读 `$CADENCE_SUPERPOWERS_GIT` 用于 clone/pull。不执行 `git config --global`、不写 `~/.npmrc`、不写 `~/.config/uv/uv.toml`。
+- **选择**：`mirrors/cn.sh` 定义 `CADENCE_NPM_REGISTRY`、`CADENCE_PY_INDEX`、`CADENCE_SUPERPOWERS_GIT`；脚本在命令级注入（`npm --registry=`、uv 索引环境变量），并把 `CADENCE_SUPERPOWERS_GIT` 写入 JSON 报告的 `hints.superpowers_git`。SKILL.md 的 Superpowers 步骤从报告 `<REPORT>` 读取该地址用于 clone/pull（`$CADENCE_SUPERPOWERS_GIT` 仅是脚本子进程内部变量，不直接暴露给模型，经 JSON 传递）。不执行 `git config --global`、不写 `~/.npmrc`、不写 `~/.config/uv/uv.toml`。
 - **理由**：零副作用、可随 `--mirror` 即时切换、易回滚；改全局配置污染用户环境且卸载难回滚。
 - **备选否决**：脚本直接写用户全局 npm/uv/git 配置（副作用大、难回滚）；Superpowers 走 git 代理（用户已提供国内 Git 镜像，无需代理）。
 
@@ -80,6 +80,12 @@
 - **理由**：mac 自带 bash 3.2 与 BSD 工具，Linux 为 GNU；保持最低公分母确保两平台一致行为。
 - **备选否决**：依赖 bash 4+/GNU coreutils（mac 默认不满足，需用户装 Homebrew coreutils，违背开箱即用）。
 
+### 决策 8：SKILL.md 命令自包含 + 绝对路径（Agent 独立 shell 约束）
+
+- **选择**：SKILL.md 给出的每条可执行命令完全自包含——使用绝对路径，不依赖 cwd，不依赖环境变量，不依赖前一条命令状态。模型先确定并记住三个字面值后在每条命令中显式写出（且加引号容忍空格路径）：项目根 `<PROJECT_ROOT>`（openspec 产物与 `.claude/.codex/.pi` 落点）、脚本 `<PRE_CHECK_SH>`（skill 关联脚本完整绝对路径，只读、不 cd 进 skill 目录）、报告 `<REPORT>`（`mktemp` 在 `/tmp` 生成的原子唯一路径）。openspec 命令用 `cd "<PROJECT_ROOT>" && ...`，Superpowers 用 `git -C`。
+- **理由**：Agent（pi/Codex）的每条命令在独立 shell 执行，cwd、环境变量、`cd` 结果均不跨命令保留；相对路径、环境变量传递、`cd` 后续命令在独立 shell 下都会失效或落到错误目录（如把 `.claude` 写进 Skill 源码目录）。唯一可靠的跨命令传递方式是让模型把字面路径写进每条命令。报告用 `mktemp` 原子唯一（`date +%s` 同秒重名）且放 `/tmp`（临时产物、不污染项目根、免入 .gitignore）。
+- **备选否决**：环境变量 + `export`（独立 shell 不保留）；固定相对路径 `./.precheck-report.json`（cwd 变化错位 + 并发覆盖 + 误删）；`date +%s` 命名（同秒并发重名）；强制全程在 Skill 目录执行（openspec/`.claude` 会写进源码目录）。
+
 ## Risks / Trade-offs
 
 - [mac bash 3.2 与 BSD 工具差异导致脚本在 mac 行为异常] → 仅用 POSIX 子集，避免关联数组、`sed -i` 原地差异、`grep -P`；在 mac 与 Linux 各验证一次六个工具全路径。
@@ -93,7 +99,7 @@
 
 1. 新增 `scripts/pre-check.sh` 与 `scripts/mirrors/{default,cn}.sh`（纯新增，不影响现有行为）。
 2. 在 mac 与 Linux 分别手动执行 `run`/`check`/`--upgrade`/两种 mirror，验证六工具全路径与 JSON 结构。
-3. 改写 `SKILL.md`：六工具正文替换为脚本调用约定 + 剩余四项处理；Superpowers 步骤改读 `$CADENCE_SUPERPOWERS_GIT`。
+3. 改写 `SKILL.md`：六工具正文替换为脚本调用约定 + 剩余四项处理；Superpowers 步骤从报告 `<REPORT>` 的 `hints.superpowers_git` 读取镜像地址（经 JSON 传递，非直接读脚本内部变量）。
 4. 更新 `init-skill-sequencing` spec 口径（执行主体由正文逐步执行改为脚本执行）。
 5. 回滚策略：脚本与镜像文件为纯新增，删除即回滚；SKILL.md 经 git 还原；不产生用户环境副作用（未改全局配置）。
 

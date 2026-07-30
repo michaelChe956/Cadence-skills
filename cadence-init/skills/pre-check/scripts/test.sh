@@ -173,6 +173,11 @@ bash -c "bash '$PRE_CHECK' check > \"$_SPREP\"" 2>/dev/null
 _sp_ok=0
 python3 -m json.tool "$_SPREP" >/dev/null 2>&1 && _sp_ok=1
 assert_eq "带空格路径加引号写报告并解析" "1" "$_sp_ok"
+
+# --- 15. 含空格的项目根 cd（模拟 cd "<PROJECT_ROOT>" && 相对路径检查） ---
+cd_ok=0
+bash -c "cd \"$_SP\" && mkdir -p .claude/commands/opsx && touch .claude/commands/opsx/propose.md && test -f .claude/commands/opsx/propose.md" && cd_ok=1
+assert_eq "含空格项目根 cd 后相对路径检查可用" "1" "$cd_ok"
 rm -rf "$_SP"
 
 # --- 汇总 ---
