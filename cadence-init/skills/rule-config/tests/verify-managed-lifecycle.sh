@@ -62,23 +62,70 @@ PASS_COUNT=0
 FAIL_COUNT=0
 
 sha256_file() {
-  sha256sum "$1" | awk '{print $1}'
+  local hash_line
+  local hash
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    hash_line=$(sha256sum "$1") || return $?
+  elif command -v shasum >/dev/null 2>&1; then
+    hash_line=$(shasum -a 256 "$1") || return $?
+  else
+    printf '缺少 SHA-256 工具：需要 sha256sum 或 shasum -a 256\n' >&2
+    return 127
+  fi
+  hash=$(awk 'NR == 1 { print $1; exit }' <<<"$hash_line") || return $?
+  if [ -z "$hash" ]; then
+    printf 'SHA-256 工具未返回文件哈希：%s\n' "$1" >&2
+    return 1
+  fi
+  printf '%s\n' "$hash"
 }
 
 sha256_pair() {
-  sha256sum "$1" "$2" | awk '{print $1}' | paste -sd: -
+  local first_hash
+  local second_hash
+
+  first_hash=$(sha256_file "$1") || return $?
+  second_hash=$(sha256_file "$2") || return $?
+  printf '%s:%s\n' "$first_hash" "$second_hash"
 }
 
 managed_block_hash() {
-  awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" | sha256sum | awk '{print $1}'
+  local hash_input
+  local hash
+  local status
+
+  hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" > "$hash_input"; then
+    rm -f "$hash_input"
+    return 1
+  fi
+  hash=$(sha256_file "$hash_input")
+  status=$?
+  rm -f "$hash_input"
+  [ "$status" -eq 0 ] || return "$status"
+  printf '%s\n' "$hash"
 }
 
 outside_l0_hash() {
-  awk '
+  local hash_input
+  local hash
+  local status
+
+  hash_input=$(mktemp "$TEST_ROOT/.outside-l0-hash-XXXXXX") || return $?
+  if ! awk '
     /cadence-managed:openspec-superpowers-routing:v[0-9]+:start/ { inside=1; next }
     /cadence-managed:openspec-superpowers-routing:v[0-9]+:end/ { inside=0; next }
     !inside { print }
-  ' "$1" | sha256sum | awk '{print $1}'
+  ' "$1" > "$hash_input"; then
+    rm -f "$hash_input"
+    return 1
+  fi
+  hash=$(sha256_file "$hash_input")
+  status=$?
+  rm -f "$hash_input"
+  [ "$status" -eq 0 ] || return "$status"
+  printf '%s\n' "$hash"
 }
 
 replace_first_visible_paragraph() {

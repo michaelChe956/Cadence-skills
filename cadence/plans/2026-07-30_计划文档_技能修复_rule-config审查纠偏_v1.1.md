@@ -4,7 +4,7 @@
 
 **Change:** 无新增 Change。该计划只修复已确认的测试可移植性、测试断言与文档准确性；不改变 `rule-config` 的项目类型识别规则，保留 `env` 与 `.env` 的剪枝。
 
-**Goal:** 让生命周期回归能在 macOS（BSD 工具链）和 Linux（GNU 工具链）完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 18 个用例和验证模型。
+**Goal:** 让生命周期回归能在 macOS（BSD 工具链）和 Linux（GNU 工具链）完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 18 个用例和验证模型；双平台验收必须覆盖优先使用 `sha256sum` 与仅有 `shasum -a 256` 时的回退路径。
 
 **Architecture:** 以 Bash、POSIX awk 与同目录临时文件的 `mv` 替换首个标记文本，避免 BSD/GNU `sed -i` 及 `0,/…/` 的方言差异；源码扫描测试只断言“恰好一个、位于业务目录、扩展名受支持”的结果。文档仅同步已实现的事实，不调整运行时 Skill 的剪枝列表。
 
@@ -16,6 +16,7 @@
 - 保持 `.venv`、`venv`、`env`、`.env`、`node_modules`、`vendor`、`.claude-plugin`、`cadence-init`、`Cadence-skills` 等既有剪枝策略不变。
 - 不新增依赖、业务代码、OpenSpec Change 或自动化工具。
 - 生命周期验证不得依赖 macOS 专属或 GNU 专属的 `sed -i` 语法；修改后的 Bash/awk/mv 路径必须同时兼容 macOS 和 Linux。
+- SHA-256 文件哈希优先使用 `sha256sum`，不可用时必须回退为 `shasum -a 256`；两者均缺失时必须向 stderr 明确失败，且哈希失败不得被后续管道掩盖。
 - 真实扫描测试仍须从 `SKILL.md` 提取并运行 `find` 命令，静态合同检查不得删除。
 
 ---
@@ -61,3 +62,5 @@ git diff --check
 ```
 
 Expected: 生命周期测试 `SUMMARY pass=18 fail=0`，在 macOS 与 Linux 的原生工具链下都不需要 GNU sed PATH；其余三个命令退出 0。提交信息：`fix(cadence-init): 稳定 rule-config 生命周期回归测试`。
+
+双平台验收还必须在受控 PATH 下分别验证：保留 `sha256sum` 时的默认路径，以及移除 `sha256sum`、保留 `shasum` 时的完整生命周期；后者必须同样得到 `SUMMARY pass=18 fail=0`。
