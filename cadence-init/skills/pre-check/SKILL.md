@@ -180,6 +180,7 @@ digraph check_flow {
 ```bash
 # 一次执行中的报告文件路径（后续步骤统一从这里读）
 PRECHECK_REPORT="$(mktemp -t precheck.XXXXXX.json)"
+export PRECHECK_REPORT
 
 # 通用源，普通模式（stdout 落盘到报告文件）
 bash scripts/pre-check.sh run > "$PRECHECK_REPORT"
