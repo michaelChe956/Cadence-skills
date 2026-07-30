@@ -3,16 +3,31 @@
 set -u
 
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SKILL="$TEST_DIR/../SKILL.md"
 REPO_ROOT=$(CDPATH= cd -- "$TEST_DIR/../../../.." && pwd)
 REFERENCE="$TEST_DIR/helpers/managed-lifecycle-reference.sh"
 KERNEL="$TEST_DIR/../references/rules/agent-routing-kernel.md"
 L1_SOURCE="$TEST_DIR/../references/rules/openspec-superpowers-workflow.md"
 CONFIG_TEMPLATE="$TEST_DIR/../references/openspec/config.yaml"
-CHANGE_SOURCE="$REPO_ROOT/openspec/changes/improve-progressive-disclosure-routing"
 OPENSPEC_WRAPPER="$TEST_DIR/fixtures/instrumented-openspec.sh"
 PUBLISH_HOOK="$TEST_DIR/fixtures/invalidate-candidate.sh"
 
-for required in "$REFERENCE" "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$CHANGE_SOURCE" "$OPENSPEC_WRAPPER" "$PUBLISH_HOOK"; do
+assert_fresh_change_contract() {
+  local missing=0
+  for needle in \
+    'openspec new change cadence-rule-config-validation' \
+    '--change cadence-rule-config-validation --json'; do
+    if ! rg -Fq -- "$needle" "$SKILL"; then
+      printf '缺少 rule-config 候选验证约定: %s\n' "$needle" >&2
+      missing=1
+    fi
+  done
+  return "$missing"
+}
+
+assert_fresh_change_contract
+
+for required in "$REFERENCE" "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$OPENSPEC_WRAPPER" "$PUBLISH_HOOK"; do
   if [ ! -e "$required" ]; then
     printf '缺少测试依赖: %s\n' "$required" >&2
     exit 1
@@ -200,9 +215,9 @@ else
   record_result l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace" fail
 fi
 
-# OpenSpec 调用参数：target template mode decision backup-result change-source。
+# OpenSpec 调用参数：target template mode decision backup-result。
 run_openspec() {
-  run_reference openspec "$1" "$CONFIG_TEMPLATE" "$2" "$3" "$4" "$CHANGE_SOURCE"
+  run_reference openspec "$1" "$CONFIG_TEMPLATE" "$2" "$3" "$4"
 }
 
 # 7. 普通模式 rules.apply 无响应时必须保留。
@@ -256,7 +271,9 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && rg -q 'instructions proposal' "$case_root/instructions.log" \
   && rg -q 'instructions design' "$case_root/instructions.log" \
   && rg -q 'instructions specs' "$case_root/instructions.log" \
-  && rg -q 'instructions tasks' "$case_root/instructions.log"; then
+  && rg -q 'instructions tasks' "$case_root/instructions.log" \
+  && rg -Fq 'new change cadence-rule-config-validation' "$case_root/instructions.log" \
+  && rg -Fq -- '--change cadence-rule-config-validation --json' "$case_root/instructions.log"; then
   assert_changed openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_first"
 else
   record_result openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_second" fail

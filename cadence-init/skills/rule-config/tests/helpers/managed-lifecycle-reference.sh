@@ -239,18 +239,19 @@ PY
 
 validate_openspec_candidate() {
   local candidate=$1
-  local change_source=$2
   local openspec_bin=${CADENCE_OPENSPEC_BIN:-openspec}
   local validation_root
-  local change_name
+  local change_name=cadence-rule-config-validation
   local artifact
   local output_file
 
   validation_root=$(mktemp -d)
-  change_name=$(basename -- "$change_source")
-  mkdir -p "$validation_root/openspec/changes"
+  mkdir -p "$validation_root/openspec"
   cp "$candidate" "$validation_root/openspec/config.yaml"
-  cp -R "$change_source" "$validation_root/openspec/changes/$change_name"
+  if ! (cd "$validation_root" && "$openspec_bin" new change "$change_name" --description "Temporary candidate validation" >/dev/null); then
+    rm -rf "$validation_root"
+    return 1
+  fi
 
   for artifact in proposal design specs tasks; do
     output_file="$validation_root/$artifact.json"
@@ -294,7 +295,6 @@ apply_openspec() {
   local mode=$3
   local decision=$4
   local backup_result=$5
-  local change_source=$6
   local target_dir
   local candidate
   local build_status
@@ -353,7 +353,7 @@ PY
     return "$build_status"
   fi
 
-  if ! validate_openspec_candidate "$candidate" "$change_source"; then
+  if ! validate_openspec_candidate "$candidate"; then
     rm -f "$candidate"
     return 53
   fi

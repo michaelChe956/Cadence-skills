@@ -642,9 +642,24 @@ done
 7. 在候选的 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
 8. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份；备份成功后只在候选中移除。任何必要备份失败时立即终止，且不得修改原文件。
 9. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损构建候选时终止并保持原文件不变。必要备份失败时同样终止且不写入。
-10. 必须在临时验证工作区对候选运行 `openspec instructions proposal --json`、`openspec instructions design --json`、`openspec instructions specs --json`、`openspec instructions tasks --json`；四类命令必须全部成功，且输出必须能读取公共 context 与对应 artifact rules。不得以 `openspec instructions apply` 作为 artifact 验证。
+10. 必须在临时验证工作区创建固定名称为 `cadence-rule-config-validation` 的临时 Change，例如执行：
+
+    ```bash
+    openspec new change cadence-rule-config-validation --description "Temporary candidate validation"
+    ```
+
+    该 Change 只用于验证，不得写入目标项目或复用目标项目的 Change。随后依次运行：
+
+    ```bash
+    openspec instructions proposal --change cadence-rule-config-validation --json
+    openspec instructions design --change cadence-rule-config-validation --json
+    openspec instructions specs --change cadence-rule-config-validation --json
+    openspec instructions tasks --change cadence-rule-config-validation --json
+    ```
+
+    四类命令必须全部成功，且输出必须能读取公共 context 与对应 artifact rules。不得以 `openspec instructions apply` 作为 artifact 验证。
 11. 只有候选通过全部语法、结构、合并和四类 instructions 验证后，才允许使用同一文件系统内的原子替换发布到 `openspec/config.yaml`；目标原本不存在时也必须以原子创建方式发布，不得先落入半成品。
-12. 任一候选验证失败时立即终止，报告失败 artifact、命令和错误；无论删除候选还是保留候选供排查，都必须报告候选处理结果，且原 `openspec/config.yaml` 保持不变。目标原本不存在时不得创建目标文件或留下半成品。
+12. 任一候选验证失败时立即终止，报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；无论删除候选还是保留候选供排查，都必须报告候选处理结果，且原 `openspec/config.yaml` 保持不变。目标原本不存在时不得创建目标文件或留下半成品。
 13. 原子替换或原子创建失败时立即终止，并保持或恢复原文件；目标原本不存在时保持不存在。不得声称配置已创建、已合并或发布成功。
 
 OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
@@ -656,11 +671,11 @@ OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMM
 | 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
 | 存在 `rules.apply` | 询问；无响应则保留并报告，确认并备份后在候选中移除 | 备份成功后在候选中移除并继续合并 |
 | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
-| 任一候选 instructions 验证失败 | 终止并报告失败 artifact、命令和错误；原文件不变 | 终止并报告失败 artifact、命令和错误；原文件不变 |
+| 任一候选 instructions 验证失败 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 |
 | 原子发布失败 | 终止并保持或恢复原文件，不得声称成功 | 终止并保持或恢复原文件，不得声称成功 |
 | 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
 
-完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其命令和错误、候选清理或保留结果、原子发布结果，以及四个 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
+完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其带有 `--change cadence-rule-config-validation --json` 的实际命令和错误、候选清理或保留结果、原子发布结果，以及四个带有 `--change cadence-rule-config-validation --json` 的 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
 
 ### OpenSpec 与 Superpowers 协作规则增量处理
 
