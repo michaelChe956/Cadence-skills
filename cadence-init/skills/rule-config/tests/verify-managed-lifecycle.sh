@@ -3,16 +3,60 @@
 set -u
 
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SKILL=${SKILL:-"$TEST_DIR/../SKILL.md"}
 REPO_ROOT=$(CDPATH= cd -- "$TEST_DIR/../../../.." && pwd)
 REFERENCE="$TEST_DIR/helpers/managed-lifecycle-reference.sh"
 KERNEL="$TEST_DIR/../references/rules/agent-routing-kernel.md"
 L1_SOURCE="$TEST_DIR/../references/rules/openspec-superpowers-workflow.md"
 CONFIG_TEMPLATE="$TEST_DIR/../references/openspec/config.yaml"
-CHANGE_SOURCE="$REPO_ROOT/openspec/changes/improve-progressive-disclosure-routing"
 OPENSPEC_WRAPPER="$TEST_DIR/fixtures/instrumented-openspec.sh"
 PUBLISH_HOOK="$TEST_DIR/fixtures/invalidate-candidate.sh"
 
-for required in "$REFERENCE" "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$CHANGE_SOURCE" "$OPENSPEC_WRAPPER" "$PUBLISH_HOOK"; do
+assert_fresh_change_contract() {
+  local missing=0
+  for needle in 'openspec new change cadence-rule-config-validation'; do
+    if ! rg -Fq -- "$needle" "$SKILL"; then
+      printf '缺少 rule-config 候选验证约定: %s\n' "$needle" >&2
+      missing=1
+    fi
+  done
+  for instruction in \
+    'openspec instructions proposal --change cadence-rule-config-validation --json' \
+    'openspec instructions design --change cadence-rule-config-validation --json' \
+    'openspec instructions specs --change cadence-rule-config-validation --json' \
+    'openspec instructions tasks --change cadence-rule-config-validation --json'; do
+    if ! rg -Fq -- "$instruction" "$SKILL"; then
+      printf '缺少 rule-config 完整 OpenSpec instructions 命令: %s\n' "$instruction" >&2
+      missing=1
+    fi
+  done
+  return "$missing"
+}
+
+assert_bounded_source_scan_contract() {
+  local missing=0
+  for needle in 'find .' '-name .claude-plugin' '-name .venv' '-name venv' '-name env' '-name .env' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
+    if ! rg -Fq -- "$needle" "$SKILL"; then
+      printf '缺少 rule-config 有界源码扫描约定: %s\n' "$needle" >&2
+      missing=1
+    fi
+  done
+  if rg -Fq '**/*.{java,js,ts,py,go,php,rs,rb,swift,kt,c,cpp,cs}' "$SKILL"; then
+    printf '仍存在无界源码 Glob 约定\n' >&2
+    missing=1
+  fi
+  return "$missing"
+}
+
+if ! assert_fresh_change_contract; then
+  exit 1
+fi
+
+if ! assert_bounded_source_scan_contract; then
+  exit 1
+fi
+
+for required in "$REFERENCE" "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$OPENSPEC_WRAPPER" "$PUBLISH_HOOK"; do
   if [ ! -e "$required" ]; then
     printf '缺少测试依赖: %s\n' "$required" >&2
     exit 1
@@ -26,23 +70,103 @@ PASS_COUNT=0
 FAIL_COUNT=0
 
 sha256_file() {
-  sha256sum "$1" | awk '{print $1}'
+  local hash_line
+  local hash
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    hash_line=$(sha256sum "$1") || return $?
+  elif command -v shasum >/dev/null 2>&1; then
+    hash_line=$(shasum -a 256 "$1") || return $?
+  else
+    printf '缺少 SHA-256 工具：需要 sha256sum 或 shasum -a 256\n' >&2
+    return 127
+  fi
+  hash=$(awk 'NR == 1 { print $1; exit }' <<<"$hash_line") || return $?
+  if [ -z "$hash" ]; then
+    printf 'SHA-256 工具未返回文件哈希：%s\n' "$1" >&2
+    return 1
+  fi
+  printf '%s\n' "$hash"
 }
 
 sha256_pair() {
-  sha256sum "$1" "$2" | awk '{print $1}' | paste -sd: -
+  local first_hash
+  local second_hash
+
+  first_hash=$(sha256_file "$1") || return $?
+  second_hash=$(sha256_file "$2") || return $?
+  printf '%s:%s\n' "$first_hash" "$second_hash"
 }
 
 managed_block_hash() {
-  awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" | sha256sum | awk '{print $1}'
+  local hash_input
+  local hash
+  local status
+
+  hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" > "$hash_input"; then
+    rm -f "$hash_input"
+    return 1
+  fi
+  hash=$(sha256_file "$hash_input")
+  status=$?
+  rm -f "$hash_input"
+  [ "$status" -eq 0 ] || return "$status"
+  printf '%s\n' "$hash"
 }
 
 outside_l0_hash() {
-  awk '
+  local hash_input
+  local hash
+  local status
+
+  hash_input=$(mktemp "$TEST_ROOT/.outside-l0-hash-XXXXXX") || return $?
+  if ! awk '
     /cadence-managed:openspec-superpowers-routing:v[0-9]+:start/ { inside=1; next }
     /cadence-managed:openspec-superpowers-routing:v[0-9]+:end/ { inside=0; next }
     !inside { print }
-  ' "$1" | sha256sum | awk '{print $1}'
+  ' "$1" > "$hash_input"; then
+    rm -f "$hash_input"
+    return 1
+  fi
+  hash=$(sha256_file "$hash_input")
+  status=$?
+  rm -f "$hash_input"
+  [ "$status" -eq 0 ] || return "$status"
+  printf '%s\n' "$hash"
+}
+
+replace_first_visible_paragraph() {
+  local source_file=$1
+  local replacement=$2
+  local source_dir
+  local temporary_file
+
+  source_dir=$(dirname "$source_file") || return 1
+  temporary_file=$(mktemp "$source_dir/.${source_file##*/}.cadence-replace-XXXXXX") || return 1
+  if ! awk -v replacement="$replacement" '
+    {
+      if (!replaced) {
+        match_position = index($0, "首个用户可见段落")
+        if (match_position > 0) {
+          $0 = substr($0, 1, match_position - 1) replacement substr($0, match_position + length("首个用户可见段落"))
+          replaced = 1
+        }
+      }
+      print
+    }
+    END {
+      exit !replaced
+    }
+  ' "$source_file" > "$temporary_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  if ! mv "$temporary_file" "$source_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  return 0
 }
 
 record_result() {
@@ -92,7 +216,206 @@ run_reference() {
   set -e
 }
 
+extract_bounded_source_scan() {
+  awk '
+    /^find \. \\$/ { in_scan=1 }
+    in_scan && /^```$/ { exit }
+    in_scan { print }
+  ' "$SKILL"
+}
+
+run_bounded_source_scan() {
+  local fixture=$1
+  local scan
+  scan=$(extract_bounded_source_scan)
+  if [ -z "$scan" ]; then
+    printf '无法从 rule-config Skill 提取有界源码扫描命令\n' >&2
+    return 64
+  fi
+  (
+    cd "$fixture"
+    bash -c "$scan"
+  )
+}
+
+is_single_application_source() {
+  printf '%s\n' "$1" | awk '
+    NF {
+      nonempty_line_count += 1
+      source_path = $0
+    }
+    END {
+      exit !(nonempty_line_count == 1 && source_path ~ /^\.\/application\/[^\/]+\.(py|ts)$/)
+    }
+  '
+}
+
+assert_single_application_source_contract() {
+  local invalid_multiline
+
+  invalid_multiline=$(printf './application/first.py\n./application/second.ts')
+  is_single_application_source './application/first.py' \
+    && is_single_application_source './application/second.ts' \
+    && ! is_single_application_source "$invalid_multiline" \
+    && ! is_single_application_source '' \
+    && ! is_single_application_source './.venv/ignored.py' \
+    && ! is_single_application_source './application/readme.md'
+}
+
+assert_bounded_source_scan_behavior() {
+  local fixture
+  local output
+  local scan_status
+  local project_type
+  local excluded_dir
+  local source_contract_status
+
+  if assert_single_application_source_contract; then
+    source_contract_status=0
+  else
+    source_contract_status=$?
+  fi
+
+  fixture="$TEST_ROOT/source-scan-with-business"
+  mkdir -p "$fixture/application"
+  touch "$fixture/application/second.ts" "$fixture/application/first.py"
+  for excluded_dir in .venv venv env .env node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+    mkdir -p "$fixture/$excluded_dir"
+    touch "$fixture/$excluded_dir/ignored.py"
+  done
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  if [ "$source_contract_status" -eq 0 ] \
+    && [ "$scan_status" -eq 0 ] \
+    && is_single_application_source "$output"; then
+    record_result source-scan-prunes-excluded "$scan_status" "$output" '<single application source>' pass
+  else
+    record_result source-scan-prunes-excluded "$scan_status" "$output" '<single application source>' fail
+  fi
+
+  fixture="$TEST_ROOT/source-scan-pruned-only"
+  for excluded_dir in .venv venv env .env node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+    mkdir -p "$fixture/$excluded_dir"
+    touch "$fixture/$excluded_dir/ignored.py"
+  done
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  if [ "$scan_status" -eq 0 ] && [ -z "$output" ]; then
+    record_result source-scan-pruned-only-empty "$scan_status" "$output" '<empty>' pass
+  else
+    record_result source-scan-pruned-only-empty "$scan_status" "$output" '<empty>' fail
+  fi
+
+  fixture="$TEST_ROOT/source-scan-pyproject-fallback"
+  mkdir -p "$fixture/.venv"
+  touch "$fixture/.venv/ignored.py" "$fixture/pyproject.toml"
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  project_type='非 Coding'
+  if [ -z "$output" ] && [ -f "$fixture/pyproject.toml" ]; then
+    project_type='Coding'
+  fi
+  if [ "$scan_status" -eq 0 ] \
+    && [ -z "$output" ] \
+    && [ "$project_type" = 'Coding' ] \
+    && rg -Fq '如果有界扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**' "$SKILL"; then
+    record_result source-scan-pyproject-fallback "$scan_status" "$project_type" 'Coding' pass
+  else
+    record_result source-scan-pyproject-fallback "$scan_status" "$project_type" 'Coding' fail
+  fi
+}
+
+assert_sha256_tool_contract() {
+  local hash_file
+  local sha256_tools
+  local shasum_tools
+  local failing_tools
+  local no_hash_tools
+  local output
+  local status
+  local error_file
+
+  hash_file="$TEST_ROOT/hash-input"
+  printf 'managed lifecycle hash fixture\n' > "$hash_file"
+
+  sha256_tools="$TEST_ROOT/hash-tools-sha256sum"
+  mkdir -p "$sha256_tools"
+  ln -s "$(command -v awk)" "$sha256_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" sha256sum-selected' > "$sha256_tools/sha256sum"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" shasum-selected' > "$sha256_tools/shasum"
+  chmod +x "$sha256_tools/sha256sum" "$sha256_tools/shasum"
+  if output=$(PATH="$sha256_tools" sha256_file "$hash_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 0 ] && [ "$output" = 'sha256sum-selected' ]; then
+    record_result hash-prefers-sha256sum "$status" "$output" sha256sum-selected pass
+  else
+    record_result hash-prefers-sha256sum "$status" "$output" sha256sum-selected fail
+  fi
+
+  shasum_tools="$TEST_ROOT/hash-tools-shasum"
+  mkdir -p "$shasum_tools"
+  ln -s "$(command -v awk)" "$shasum_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" shasum-selected' > "$shasum_tools/shasum"
+  chmod +x "$shasum_tools/shasum"
+  if output=$(PATH="$shasum_tools" sha256_file "$hash_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 0 ] && [ "$output" = 'shasum-selected' ]; then
+    record_result hash-falls-back-to-shasum "$status" "$output" shasum-selected pass
+  else
+    record_result hash-falls-back-to-shasum "$status" "$output" shasum-selected fail
+  fi
+
+  failing_tools="$TEST_ROOT/hash-tools-failing"
+  mkdir -p "$failing_tools"
+  ln -s "$(command -v awk)" "$failing_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" sha256sum-failed >&2' 'exit 75' > "$failing_tools/sha256sum"
+  chmod +x "$failing_tools/sha256sum"
+  error_file="$TEST_ROOT/hash-failure.stderr"
+  if output=$(PATH="$failing_tools" sha256_file "$hash_file" 2> "$error_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 75 ] && rg -Fq 'sha256sum-failed' "$error_file"; then
+    record_result hash-command-failure-propagates "$status" "$output" 75 pass
+  else
+    record_result hash-command-failure-propagates "$status" "$output" 75 fail
+  fi
+
+  no_hash_tools="$TEST_ROOT/hash-tools-missing"
+  mkdir -p "$no_hash_tools"
+  error_file="$TEST_ROOT/hash-missing.stderr"
+  if output=$(PATH="$no_hash_tools" sha256_file "$hash_file" 2> "$error_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 127 ] && rg -Fq '缺少 SHA-256 工具：需要 sha256sum 或 shasum -a 256' "$error_file"; then
+    record_result hash-missing-tools-fails "$status" "$output" 127 pass
+  else
+    record_result hash-missing-tools-fails "$status" "$output" 127 fail
+  fi
+}
+
 set -e
+
+assert_sha256_tool_contract
+assert_bounded_source_scan_behavior
 
 # 1. 真实入口复制件在当前版本下必须幂等，不能退化为纯 kernel。
 case_root="$TEST_ROOT/actual-entry-idempotent"
@@ -109,7 +432,7 @@ case_root="$TEST_ROOT/l0-drift-normal"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//本地漂移段落/' "$case_root/CLAUDE.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_reference l0 "$case_root" "$KERNEL" normal no-response ok
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -120,8 +443,8 @@ case_root="$TEST_ROOT/l0-drift-replace"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//本地漂移段落/' "$case_root/CLAUDE.md"
-sed -i '0,/首个用户可见段落/s//另一个漂移段落/' "$case_root/AGENTS.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
 outside_claude_before=$(outside_l0_hash "$case_root/CLAUDE.md")
 outside_agents_before=$(outside_l0_hash "$case_root/AGENTS.md")
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -166,8 +489,8 @@ case_root="$TEST_ROOT/l0-backup-barrier"
 mkdir -p "$case_root"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-sed -i '0,/首个用户可见段落/s//漂移-CLAUDE/' "$case_root/CLAUDE.md"
-sed -i '0,/首个用户可见段落/s//漂移-AGENTS/' "$case_root/AGENTS.md"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '漂移-CLAUDE'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '漂移-AGENTS'
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_reference l0 "$case_root" "$KERNEL" no-interrupt replace fail-2
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -200,9 +523,9 @@ else
   record_result l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace" fail
 fi
 
-# OpenSpec 调用参数：target template mode decision backup-result change-source。
+# OpenSpec 调用参数：target template mode decision backup-result。
 run_openspec() {
-  run_reference openspec "$1" "$CONFIG_TEMPLATE" "$2" "$3" "$4" "$CHANGE_SOURCE"
+  run_reference openspec "$1" "$CONFIG_TEMPLATE" "$2" "$3" "$4"
 }
 
 # 7. 普通模式 rules.apply 无响应时必须保留。
@@ -250,13 +573,18 @@ run_openspec "$case_root/config.yaml" no-interrupt replace ok
 after_first=$(sha256_file "$case_root/config.yaml")
 run_openspec "$case_root/config.yaml" no-interrupt replace ok
 after_second=$(sha256_file "$case_root/config.yaml")
+instructions_logged=yes
+for artifact in proposal design specs tasks; do
+  if ! rg -Fq "instructions $artifact --change cadence-rule-config-validation --json" "$case_root/instructions.log"; then
+    instructions_logged=no
+    break
+  fi
+done
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$after_first" = "$after_second" ] \
   && rg -q 'custom-context|custom-proposal|x-project-metadata|custom-owner' "$case_root/config.yaml" \
-  && rg -q 'instructions proposal' "$case_root/instructions.log" \
-  && rg -q 'instructions design' "$case_root/instructions.log" \
-  && rg -q 'instructions specs' "$case_root/instructions.log" \
-  && rg -q 'instructions tasks' "$case_root/instructions.log"; then
+  && [ "$instructions_logged" = yes ] \
+  && rg -Fq 'new change cadence-rule-config-validation' "$case_root/instructions.log"; then
   assert_changed openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_first"
 else
   record_result openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_second" fail
