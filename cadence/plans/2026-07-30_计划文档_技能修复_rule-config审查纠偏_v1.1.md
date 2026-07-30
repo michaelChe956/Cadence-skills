@@ -4,9 +4,9 @@
 
 **Change:** 无新增 Change。该计划只修复已确认的测试可移植性、测试断言与文档准确性；不改变 `rule-config` 的项目类型识别规则，保留 `env` 与 `.env` 的剪枝。
 
-**Goal:** 让生命周期回归能在 macOS/BSD sed 环境完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 18 个用例和验证模型。
+**Goal:** 让生命周期回归能在 macOS（BSD 工具链）和 Linux（GNU 工具链）完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 18 个用例和验证模型。
 
-**Architecture:** 以 Bash/awk 的临时文件替换首个标记文本，避免 GNU sed 专有的 `-i '0,/…/'` 语法；源码扫描测试只断言“恰好一个、位于业务目录、扩展名受支持”的结果。文档仅同步已实现的事实，不调整运行时 Skill 的剪枝列表。
+**Architecture:** 以 Bash、POSIX awk 与同目录临时文件的 `mv` 替换首个标记文本，避免 BSD/GNU `sed -i` 及 `0,/…/` 的方言差异；源码扫描测试只断言“恰好一个、位于业务目录、扩展名受支持”的结果。文档仅同步已实现的事实，不调整运行时 Skill 的剪枝列表。
 
 **Tech Stack:** Bash、awk、现有 OpenSpec CLI/PyYAML 生命周期测试、Markdown。
 
@@ -15,6 +15,7 @@
 - 仅修改 `.worktrees/bugfix-b-0730` 下的 Cadence-skills；不得修改 ontology 或 `.claude/rules`。
 - 保持 `.venv`、`venv`、`env`、`.env`、`node_modules`、`vendor`、`.claude-plugin`、`cadence-init`、`Cadence-skills` 等既有剪枝策略不变。
 - 不新增依赖、业务代码、OpenSpec Change 或自动化工具。
+- 生命周期验证不得依赖 macOS 专属或 GNU 专属的 `sed -i` 语法；修改后的 Bash/awk/mv 路径必须同时兼容 macOS 和 Linux。
 - 真实扫描测试仍须从 `SKILL.md` 提取并运行 `find` 命令，静态合同检查不得删除。
 
 ---
@@ -37,7 +38,7 @@
 
 - [ ] **Step 2: 以可移植替换函数取代四处 GNU sed 调用**
 
-新增 `replace_first_visible_paragraph FILE REPLACEMENT`：用 `awk` 仅替换文件中第一次出现的 `首个用户可见段落`，写入同目录临时文件后 `mv` 回原路径。把 235、246、247、292、293 行的 GNU `sed -i '0,/…/s//'` 调用改为该函数；函数失败必须返回非零。
+新增 `replace_first_visible_paragraph FILE REPLACEMENT`：用 POSIX awk 仅替换文件中第一次出现的 `首个用户可见段落`，写入同目录临时文件后 `mv` 回原路径。把 235、246、247、292、293 行的 GNU `sed -i '0,/…/s//'` 调用改为该函数；函数失败必须返回非零，且实现不得使用 BSD 或 GNU 专属选项。
 
 - [ ] **Step 3: 放宽业务源码结果的顺序假设**
 
@@ -59,4 +60,4 @@ openspec validate --all --strict
 git diff --check
 ```
 
-Expected: 生命周期测试 `SUMMARY pass=18 fail=0`，不再需要 GNU sed PATH；其余三个命令退出 0。提交信息：`fix(cadence-init): 稳定 rule-config 生命周期回归测试`。
+Expected: 生命周期测试 `SUMMARY pass=18 fail=0`，在 macOS 与 Linux 的原生工具链下都不需要 GNU sed PATH；其余三个命令退出 0。提交信息：`fix(cadence-init): 稳定 rule-config 生命周期回归测试`。
