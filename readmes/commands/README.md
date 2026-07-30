@@ -68,7 +68,7 @@
 
 ```bash
 # 项目初始化（首次使用时，均为 cadence-init 插件的 Skill）
-/pre-check               # 前置条件检查
+/pre-check               # 前置条件检查（一键补齐六个基础工具，支持大陆镜像与升级）
 /init                    # 项目初始化（Claude Code 内建）
 /project-analysis        # 项目分析
 /rule-config             # 项目规则配置
