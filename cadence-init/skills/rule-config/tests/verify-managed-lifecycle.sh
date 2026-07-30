@@ -3,7 +3,7 @@
 set -u
 
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL="$TEST_DIR/../SKILL.md"
+SKILL=${SKILL:-"$TEST_DIR/../SKILL.md"}
 REPO_ROOT=$(CDPATH= cd -- "$TEST_DIR/../../../.." && pwd)
 REFERENCE="$TEST_DIR/helpers/managed-lifecycle-reference.sh"
 KERNEL="$TEST_DIR/../references/rules/agent-routing-kernel.md"
@@ -128,7 +128,94 @@ run_reference() {
   set -e
 }
 
+extract_bounded_source_scan() {
+  awk '
+    /^find \. \\$/ { in_scan=1 }
+    in_scan && /^```$/ { exit }
+    in_scan { print }
+  ' "$SKILL"
+}
+
+run_bounded_source_scan() {
+  local fixture=$1
+  local scan
+  scan=$(extract_bounded_source_scan)
+  if [ -z "$scan" ]; then
+    printf '无法从 rule-config Skill 提取有界源码扫描命令\n' >&2
+    return 64
+  fi
+  (
+    cd "$fixture"
+    bash -c "$scan"
+  )
+}
+
+assert_bounded_source_scan_behavior() {
+  local fixture
+  local output
+  local scan_status
+  local project_type
+  local excluded_dir
+
+  fixture="$TEST_ROOT/source-scan-with-business"
+  mkdir -p "$fixture/application"
+  touch "$fixture/application/first.py" "$fixture/application/second.ts"
+  for excluded_dir in .venv venv node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+    mkdir -p "$fixture/$excluded_dir"
+    touch "$fixture/$excluded_dir/ignored.py"
+  done
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  if [ "$scan_status" -eq 0 ] && [ "$output" = './application/first.py' ]; then
+    record_result source-scan-prunes-excluded "$scan_status" "$output" './application/first.py' pass
+  else
+    record_result source-scan-prunes-excluded "$scan_status" "$output" './application/first.py' fail
+  fi
+
+  fixture="$TEST_ROOT/source-scan-pruned-only"
+  for excluded_dir in .venv venv node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+    mkdir -p "$fixture/$excluded_dir"
+    touch "$fixture/$excluded_dir/ignored.py"
+  done
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  if [ "$scan_status" -eq 0 ] && [ -z "$output" ]; then
+    record_result source-scan-pruned-only-empty "$scan_status" "$output" '<empty>' pass
+  else
+    record_result source-scan-pruned-only-empty "$scan_status" "$output" '<empty>' fail
+  fi
+
+  fixture="$TEST_ROOT/source-scan-pyproject-fallback"
+  mkdir -p "$fixture/.venv"
+  touch "$fixture/.venv/ignored.py" "$fixture/pyproject.toml"
+  if output=$(run_bounded_source_scan "$fixture"); then
+    scan_status=0
+  else
+    scan_status=$?
+  fi
+  project_type='非 Coding'
+  if [ -z "$output" ] && [ -f "$fixture/pyproject.toml" ]; then
+    project_type='Coding'
+  fi
+  if [ "$scan_status" -eq 0 ] \
+    && [ -z "$output" ] \
+    && [ "$project_type" = 'Coding' ] \
+    && rg -Fq '如果有界扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**' "$SKILL"; then
+    record_result source-scan-pyproject-fallback "$scan_status" "$project_type" 'Coding' pass
+  else
+    record_result source-scan-pyproject-fallback "$scan_status" "$project_type" 'Coding' fail
+  fi
+}
+
 set -e
+
+assert_bounded_source_scan_behavior
 
 # 1. 真实入口复制件在当前版本下必须幂等，不能退化为纯 kernel。
 case_root="$TEST_ROOT/actual-entry-idempotent"

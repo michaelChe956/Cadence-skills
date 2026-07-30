@@ -36,7 +36,7 @@
 
 ### 4.1 有界源码探测
 
-将项目类型检测改为一次有界的源码存在性探测：显式剪枝 `.git`、`.claude`、`.codex`、`.pi`、`.codegraph`、`.venv`、`venv`、`env`、`.env`、`node_modules`、`vendor`、构建目录和缓存目录；发现首个支持的源码文件后立即停止。
+将项目类型检测改为一次有界的源码存在性探测：显式剪枝 `.git`、`.claude`、`.claude-plugin`、`.codex`、`.pi`、`.codegraph`、`cadence-init`、`Cadence-skills`、`.venv`、`venv`、`env`、`.env`、`node_modules`、`vendor`、构建目录和缓存目录；发现首个支持的源码文件后立即停止。
 
 目录或主工程配置仍是 Coding 项目判定依据。探测不到源码不是工具失败，只返回“未发现源码”，再按现有主工程配置与默认策略继续判断。
 
