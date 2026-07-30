@@ -134,7 +134,7 @@ digraph check_flow {
     node [shape=box, style="rounded"];
 
     start [label="开始检查", shape=ellipse];
-    run_script [label="步骤 0：执行脚本\n六工具探测/安装/复验/升级"];
+    run_script [label="步骤 0：执行脚本\n六工具探测；npx 仅探测\n(缺失提示装 Node.js)；\n其余安装/复验/升级"];
     read_report [label="读取 JSON 报告\noverall + steps[]"];
     judge [label="overall 判定", shape=diamond];
     fail_stop [label="失败处理：\nno-interrupt 终止\n普通模式报告不继续"];
@@ -178,37 +178,38 @@ digraph check_flow {
 **调用命令**：
 
 ```bash
-# 一次执行中的报告文件路径（后续步骤统一从这里读）
-PRECHECK_REPORT="$(mktemp -t precheck.XXXXXX.json)"
-export PRECHECK_REPORT
+# 报告文件：固定相对路径，每次执行覆盖写，后续步骤统一从这里读。
+# 这是临时文件（每次覆盖，不积累）；如需可加入项目 .gitignore。
 
-# 通用源，普通模式（stdout 落盘到报告文件）
-bash scripts/pre-check.sh run > "$PRECHECK_REPORT"
+# 按需选择下面其中一条执行（不要全部顺序执行，尤其不要误跑 --upgrade）：
+
+# 通用源，普通模式
+bash scripts/pre-check.sh run > ./.precheck-report.json
 
 # 大陆镜像源
-bash scripts/pre-check.sh run --mirror cn > "$PRECHECK_REPORT"
+bash scripts/pre-check.sh run --mirror cn > ./.precheck-report.json
 
 # no-interrupt 模式（任一基础工具失败即非零退出）
-bash scripts/pre-check.sh run --mirror cn --no-interrupt > "$PRECHECK_REPORT"
+bash scripts/pre-check.sh run --mirror cn --no-interrupt > ./.precheck-report.json
 
 # 仅探测不安装（摸底）
-bash scripts/pre-check.sh check --mirror cn > "$PRECHECK_REPORT"
+bash scripts/pre-check.sh check --mirror cn > ./.precheck-report.json
 
 # 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash scripts/pre-check.sh run --mirror cn --upgrade > "$PRECHECK_REPORT"
+bash scripts/pre-check.sh run --mirror cn --upgrade > ./.precheck-report.json
 ```
 
-脚本向 stdout 输出单份 JSON，统一重定向到 `$PRECHECK_REPORT`；stderr 彩色摘要仍直接显示。不要重定向到固定路径，避免文件不存在或残留旧内容。
+脚本向 stdout 输出单份 JSON，重定向到固定文件 `./.precheck-report.json`（相对项目根）；stderr 彩色摘要直接显示。**该路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量**（Agent 各命令独立 shell，环境变量不跨命令保留）。
 
-**读取结果**：报告 JSON 由上面的调用命令写入 `$PRECHECK_REPORT`。用以下命令取 overall 与各工具状态：
+**读取结果**：报告 JSON 由上面的调用命令写入 `./.precheck-report.json`。用以下命令取 overall 与各工具状态：
 
 ```bash
 # overall（success/partial/failed）
-python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['overall'])"
+python3 -c "import json;print(json.load(open('./.precheck-report.json'))['overall'])"
 # 某工具状态
-python3 -c "import json,os;d=json.load(open(os.environ['PRECHECK_REPORT']));print([s for s in d['steps'] if s['name']=='ast-grep'])"
+python3 -c "import json;d=json.load(open('./.precheck-report.json'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
 # Superpowers 远端地址（供步骤 6 使用）
-python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])"
+python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])"
 ```
 
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
@@ -328,15 +329,15 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 
 **在线安装来源**：
 
-> 兜底：`$PRECHECK_REPORT` 由步骤 0 生成；若未设置或文件不存在，先回步骤 0 执行脚本生成报告，再读本节。
+> 兜底：`./.precheck-report.json` 由步骤 0 生成；若文件不存在，先回步骤 0 执行脚本生成报告，再读本节。
 
 ```bash
 # 从步骤 0 的 JSON 报告读取 Superpowers 远端地址
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])")"
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")"
 git clone "$CADENCE_SUPERPOWERS_GIT" "$HOME/.agents/superpowers"
 ```
 
-`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `$PRECHECK_REPORT` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
+`CADENCE_SUPERPOWERS_GIT` 必须从步骤 0 的 JSON 报告 `hints.superpowers_git` 显式读出赋值（该变量仅存在于脚本子进程内部，模型执行环境需按上例从 `./.precheck-report.json` 读取）；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -361,7 +362,7 @@ $HOME/.agents/superpowers/skills
 
 ```bash
 # 从步骤 0 的 JSON 报告读取 Superpowers 远端地址，确保 cn 模式走国内镜像而非残留的原 origin
-CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json,os;print(json.load(open(os.environ['PRECHECK_REPORT']))['hints']['superpowers_git'])")"
+CADENCE_SUPERPOWERS_GIT="$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")"
 cd "$HOME/.agents/superpowers"
 git remote set-url origin "$CADENCE_SUPERPOWERS_GIT"
 git fetch origin
