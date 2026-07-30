@@ -180,6 +180,30 @@ bash -c "cd \"$_SP\" && mkdir -p .claude/commands/opsx && touch .claude/commands
 assert_eq "含空格项目根 cd 后相对路径检查可用" "1" "$cd_ok"
 rm -rf "$_SP"
 
+# --- 16. 契约断言：SKILL.md 中的命令文本必须带引号（非自拼命令） ---
+SKILL_MD="$SCRIPT_DIR/../SKILL.md"
+# 16a. SKILL.md 中所有 cd <PROJECT_ROOT> 必须为 cd "<PROJECT_ROOT>"（出现未加引号即失败）
+_unq_cd="$(grep -cE 'cd <PROJECT_ROOT>' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无未加引号的 cd <PROJECT_ROOT>" "0" "$_unq_cd"
+# 16b. SKILL.md 中所有 bash <PRE_CHECK_SH> 必须为 bash "<PRE_CHECK_SH>"
+_unq_sh="$(grep -cE 'bash <PRE_CHECK_SH>' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无未加引号的 bash <PRE_CHECK_SH>" "0" "$_unq_sh"
+# 16c. SKILL.md 中重定向到报告必须写 "<REPORT>"（带引号）
+_unq_rep="$(grep -cE '> <REPORT>$| <REPORT>$' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无未加引号的报告重定向 <REPORT>" "0" "$_unq_rep"
+
+# --- 17. <PRE_CHECK_SH> 位于含空格路径中执行（模拟 skill 安装路径含空格） ---
+# 脚本依赖 mirrors/ 相对自身目录存在，故复制整个 scripts/ 目录（含 mirrors/）到含空格目录
+_SPSKILL="$(mktemp -d -t 'precheck skill dir.XXXXXX')"
+mkdir -p "$_SPSKILL"
+cp -r "$SCRIPT_DIR" "$_SPSKILL/scripts"
+_SPREP2="$(mktemp -t precheck-report.XXXXXX.json)"
+_spskill_ok=0
+bash -c "bash \"$_SPSKILL/scripts/pre-check.sh\" check > \"$_SPREP2\"" 2>/dev/null
+python3 -m json.tool "$_SPREP2" >/dev/null 2>&1 && _spskill_ok=1
+assert_eq "含空格路径的 <PRE_CHECK_SH>（含 mirrors/）可执行并产出合法 JSON" "1" "$_spskill_ok"
+rm -rf "$_SPSKILL"; rm -f "$_SPREP2"
+
 # --- 汇总 ---
 _total=$((PASS_COUNT + FAIL_COUNT))
 printf '%s/%s PASS\n' "$PASS_COUNT" "$_total"

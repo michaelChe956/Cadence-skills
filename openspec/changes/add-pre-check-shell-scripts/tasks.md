@@ -41,7 +41,7 @@
 ## 8. SKILL.md 改写
 
 - [x] 8.1 改写 `cadence-init/skills/pre-check/SKILL.md`：六工具的安装/验证正文替换为脚本调用约定（命令、参数、JSON 报告读取），保留 Superpowers 软链、OpenSpec 三客户端、Playwright、API Key 四项处理（映射 Requirement: 单一主脚本承接六工具检查与安装、六工具检查由脚本执行）
-- [x] 8.2 Superpowers 步骤改为读取 `$CADENCE_SUPERPOWERS_GIT`，移除正文硬编码 GitHub 地址，说明 cn 模式直接用国内镜像、不配 git 代理（映射 Requirement: Superpowers Git 地址镜像化）
+- [x] 8.2 Superpowers 步骤改为从 `<REPORT>` JSON 的 `hints.superpowers_git` 读取镜像地址（经 JSON 传递，非直接读脚本内部变量），移除正文硬编码 GitHub 地址，说明 cn 模式直接用国内镜像、不配 git 代理（映射 Requirement: Superpowers Git 地址镜像化）
 - [x] 8.3 更新快速参考表、no-interrupt 完成策略表与增量运行说明，与脚本行为一致（映射 Requirement: 六工具检查由脚本执行、脚本报告驱动 SKILL.md 后续动作）
 
 ## 9. 一致性核验

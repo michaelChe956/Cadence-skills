@@ -51,12 +51,12 @@ pre-check MUST 在 `scripts/mirrors/` 目录下以 `<name>.sh` 文件形式维�
 
 ### Requirement: Superpowers Git 地址镜像化
 
-SKILL.md 的 Superpowers 步骤 MUST 从镜像配置注入的 `$CADENCE_SUPERPOWERS_GIT` 读取 clone/pull 地址，MUST NOT 在正文中硬编码 GitHub 地址；使用国内镜像时 MUST 直接使用该地址，MUST NOT 额外配置 git 代理或修改 git 全局配置。
+镜像配置把 Superpowers Git 地址写入 JSON 报告的 `hints.superpowers_git`（`<REPORT>`）。SKILL.md 的 Superpowers 步骤 MUST 从 `<REPORT>` JSON 的 `hints.superpowers_git` 读取 clone/pull 地址，MUST NOT 在正文中硬编码 GitHub 地址，也 MUST NOT 依赖 `<REPORT>` 之外的来源（`$CADENCE_SUPERPOWERS_GIT` 仅是脚本子进程内部变量，不跨独立 shell 保留，模型不可直接读取）。使用国内镜像时 MUST 直接使用该地址，MUST NOT 额外配置 git 代理或修改 git 全局配置。
 
 #### Scenario: SKILL.md 读取镜像地址
 
 - **WHEN** SKILL.md 执行 Superpowers clone/pull
-- **THEN** 使用 `$CADENCE_SUPERPOWERS_GIT` 的值作为远端地址，正文不出现硬编码 github.com 地址
+- **THEN** 从 `<REPORT>` JSON 的 `hints.superpowers_git` 读出远端地址，正文不出现硬编码 github.com 地址，也不读取 `$CADENCE_SUPERPOWERS_GIT`
 
 #### Scenario: cn 模式下无代理
 

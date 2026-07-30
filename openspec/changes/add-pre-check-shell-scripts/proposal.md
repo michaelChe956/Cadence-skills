@@ -17,7 +17,7 @@
 - 脚本默认对"已就绪"工具执行毫秒级版本探测后秒跳过，不查远端、不重装；新增 `--upgrade` 开关，仅在显式携带时查询 latest 并升级需要升级的工具。升级版本以当前源为准：`--mirror cn` 以 npmmirror/清华镜像 latest 为准，通用源以 npmjs/pypi latest 为准（镜像即权威，不与另一源比对）。
 - 升级范围限定为 npm 系工具（ast-grep/codegraph/openspec）与 uv 本体；pi-mcp-adapter、uvx 临时包与 playwright-cli 不纳入升级。Playwright 为可选按需项，其安装与升级由 SKILL.md 在用户明确要求时处理，不进入脚本。
 - 镜像配置以 `mirrors/<name>.sh` 环境变量形式注入：`CADENCE_NPM_REGISTRY`、`CADENCE_PY_INDEX`、`CADENCE_SUPERPOWERS_GIT`。`cn.sh` 预置淘宝 npm 镜像、清华 pypi 镜像与国内 Superpowers Git 镜像地址；`default.sh` 预置官方源。
-- 改写 `pre-check/SKILL.md`：六个工具的安装/验证正文移交脚本，SKILL.md 改为"调用脚本 → 读 JSON 报告 → 处理脚本不管的四项（Superpowers 软链、OpenSpec 三客户端产物、Playwright、API Key 占位提醒）"；Superpowers clone/pull 地址改为读取镜像配置注入的 `$CADENCE_SUPERPOWERS_GIT`。
+- 改写 `pre-check/SKILL.md`：六个工具的安装/验证正文移交脚本，SKILL.md 改为"调用脚本 → 读 JSON 报告 → 处理脚本不管的四项（Superpowers 软链、OpenSpec 三客户端产物、Playwright、API Key 占位提醒）"；Superpowers clone/pull 地址经 JSON 报告 `<REPORT>` 的 `hints.superpowers_git` 传递（镜像配置写入报告，SKILL.md 从报告读取，而非直接读脚本内部变量 `$CADENCE_SUPERPOWERS_GIT`）。
 - 非目标：
   - 不修改 `rule-config` 与 `mcp-configuration`（后续单独 change）。
   - 脚本不处理 Superpowers 软链同步、OpenSpec 三客户端产物补齐、Playwright 安装、API Key 收集（这四项仍由 SKILL.md 驱动）。

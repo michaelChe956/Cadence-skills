@@ -178,7 +178,7 @@ digraph check_flow {
 **第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
 
 1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.codex/.pi` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
-2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录。
+2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录，也**不要**把脚本单独复制到别处执行——它依赖同目录下的 `mirrors/`（镜像配置），必须连同 skill 目录一起定位。
 
 **第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
 
