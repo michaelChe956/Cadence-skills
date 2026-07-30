@@ -142,6 +142,14 @@ add_step() {
   if [ -z "$STEPS_JSON" ]; then STEPS_JSON="$_item"; else STEPS_JSON="$STEPS_JSON,$_item"; fi
 }
 
+# 从 STEPS_JSON 删除指定 name 的旧步骤项（升级后用于替换 do_* 已加的 ready 项，避免重复）。
+# 每项均为无嵌套花括号的紧凑 JSON，可按 {"name":"<n>"...} 精确匹配删除后清理多余逗号。
+remove_step() {
+  _n="$(json_escape "$1")"
+  [ -n "$STEPS_JSON" ] || return 0
+  STEPS_JSON="$(printf '%s' "$STEPS_JSON" | sed -e "s|{\"name\":\"$_n\"[^{}]*}||g" -e 's/,,*/,/g' -e 's/^,//' -e 's/,$//')"
+}
+
 # 失败处理：no-interrupt 立即非零退出；否则计数并继续
 handle_failure() {
   _name="$1"; _msg="$2"
@@ -277,12 +285,23 @@ do_pi_mcp_adapter() {
 # 规范化版本号为可比较的三段数字（取首个形如 x.y.z 的子串）
 _norm_ver() { printf '%s' "$1" | sed -n 's/.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1; }
 
-# 版本比较：返回 0 表示 $1 < $2（落后需升级），否则非 0。依赖 sort -V（GNU/BSD 均有）。
+# 版本比较：返回 0 表示 $1 < $2（落后需升级），否则非 0。
+# 纯 bash 三段数字比较：不依赖 sort -V（BSD/mac sort 无 -V，曾致 mac 上静默判为不落后）。
 _ver_lt() {
   _a="$(_norm_ver "$1")"; _b="$(_norm_ver "$2")"
   [ -n "$_a" ] && [ -n "$_b" ] || return 1
   [ "$_a" = "$_b" ] && return 1
-  [ "$(printf '%s\n%s\n' "$_a" "$_b" | sort -V | head -n1)" = "$_a" ]
+  _a1="${_a%%.*}"; _ar="${_a#*.}"; _a2="${_ar%%.*}"; _a3="${_ar#*.}"
+  _b1="${_b%%.*}"; _br="${_b#*.}"; _b2="${_br%%.*}"; _b3="${_br#*.}"
+  # 空段兜底为 0；10# 强制十进制，避免前导零被当八进制
+  [ -n "$_a1" ] || _a1=0; [ -n "$_a2" ] || _a2=0; [ -n "$_a3" ] || _a3=0
+  [ -n "$_b1" ] || _b1=0; [ -n "$_b2" ] || _b2=0; [ -n "$_b3" ] || _b3=0
+  _a1=$((10#$_a1)); _a2=$((10#$_a2)); _a3=$((10#$_a3))
+  _b1=$((10#$_b1)); _b2=$((10#$_b2)); _b3=$((10#$_b3))
+  [ "$_a1" -lt "$_b1" ] && return 0; [ "$_a1" -gt "$_b1" ] && return 1
+  [ "$_a2" -lt "$_b2" ] && return 0; [ "$_a2" -gt "$_b2" ] && return 1
+  [ "$_a3" -lt "$_b3" ] && return 0
+  return 1
 }
 
 # 查询 npm 包当前源 latest 版本
@@ -302,12 +321,15 @@ upgrade_npm_tool() {
       _new="$(probe_version "$@")"
       # 校验升级结果：版本非空且已追到 latest 才记 upgraded
       if [ -n "$_new" ] && ! _ver_lt "$_new" "$_lat"; then
+        remove_step "$_name"   # 替换 do_* 已加的 ready 项，保证 steps[] 中同名仅一项
         add_step "$_name" "upgraded" "upgraded" "$_new" "from=$_cur to=$_new source=$CADENCE_NPM_REGISTRY"
-        return 2   # 返回 2 表示已升级（供调用方覆盖原 ready 项）
+        return 2   # 返回 2 表示已升级
       fi
     fi
-    # 升级失败：记录 failed，不谎报 upgraded
+    # 升级失败：计入 FAILED_COUNT 让 overall 反映失败；记录 failed，不谎报 upgraded
     _new="$(probe_version "$@")"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    remove_step "$_name"
     add_step "$_name" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
     log "${C_RED}❌ $_name 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
     return 0
@@ -326,12 +348,15 @@ upgrade_uv() {
       _new="$(probe_version uv --version)"
       # 校验升级结果：版本非空且已追到 latest 才记 upgraded
       if [ -n "$_new" ] && ! _ver_lt "$_new" "$_lat"; then
+        remove_step "uv"
         add_step "uv" "upgraded" "upgraded" "$_new" "from=$_cur to=$_new source=$CADENCE_PY_INDEX"
         return 2
       fi
     fi
-    # 升级失败：记录 failed，不谎报 upgraded
+    # 升级失败：计入 FAILED_COUNT 让 overall 反映失败；记录 failed，不谎报 upgraded
     _new="$(probe_version uv --version)"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    remove_step "uv"
     add_step "uv" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
     log "${C_RED}❌ uv 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
     return 0
