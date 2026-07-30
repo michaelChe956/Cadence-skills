@@ -49,11 +49,26 @@ USAGE
 # 加载镜像配置；未知 mirror 报错并非零退出
 load_mirror() {
   _name="$1"
+  # 安全：仅允许安全字符集（小写字母/数字/连字符/下划线），拒绝路径分隔符与 ../ 逃逸
+  case "$_name" in
+    *[!a-z0-9_-]*|"")
+      err "❌ 非法 mirror 名称: $_name（仅允许 a-z、0-9、-、_）"
+      exit 2 ;;
+  esac
   _file="$MIRRORS_DIR/$_name.sh"
   if [ ! -f "$_file" ]; then
     err "❌ 未知 mirror: $_name（未找到 $_file）"
     exit 2
   fi
+  # 目录边界校验：解析后的真实路径必须仍在 MIRRORS_DIR 内
+  _resolved="$(cd "$(dirname "$_file")" 2>/dev/null && pwd -P)/$(basename "$_file")"
+  _mirrors_resolved="$(cd "$MIRRORS_DIR" 2>/dev/null && pwd -P)"
+  case "$_resolved" in
+    "$_mirrors_resolved"/*) : ;;
+    *)
+      err "❌ mirror 路径越界: $_resolved（不在 $MIRRORS_DIR 内）"
+      exit 2 ;;
+  esac
   # shellcheck disable=SC1090
   . "$_file"
   : "${CADENCE_NPM_REGISTRY:?mirror 缺少 CADENCE_NPM_REGISTRY}"
@@ -115,9 +130,13 @@ log "${C_BLU}🐍 python index:${C_NC} $CADENCE_PY_INDEX"
 
 FAILED_COUNT=0
 
-# 执行命令并输出首行版本号；失败返回非零，不打印到 stdout/stderr（避免污染 JSON）
+# 执行命令并输出首行版本号；命令退出码非零或无输出时返回非零，不打印到 stdout/stderr（避免污染 JSON）
 probe_version() {
-  _out="$("$@" 2>/dev/null | head -n 1 | tr -d '\r')" || return 1
+  # 先单独执行命令并保留退出码（管道会丢失原命令退出码，导致误判 ready）
+  _out="$("$@" 2>/dev/null)"
+  _rc=$?
+  [ "$_rc" -eq 0 ] || return 1
+  _out="$(printf '%s' "$_out" | head -n 1 | tr -d '\r')"
   [ -n "$_out" ] || return 1
   printf '%s' "$_out"
 }

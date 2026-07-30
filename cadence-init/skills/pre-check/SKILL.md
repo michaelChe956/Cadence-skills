@@ -10,6 +10,8 @@ disable-model-invocation: true
 
 自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
+**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.codex/.pi` 写入待初始化项目根目录。
+
 ## 参数模式
 
 支持以下调用方式：
@@ -162,7 +164,7 @@ digraph check_flow {
 |------|----------------|----------|----------|
 | **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
 | （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
-| **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
+| **5. OpenSpec** | 脚本报告 `openspec` 项 + 三客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
@@ -261,15 +263,13 @@ ls ~/.claude/skills/playwright-cli
 - **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
 - **默认行为**：不安装、不启用；需要时由用户显式要求
 
-### 步骤 5：检查 OpenSpec
+### 步骤 5：检查 OpenSpec 三客户端产物
 
-```bash
-openspec --version
-```
+> **OpenSpec CLI 就绪以脚本报告为准**：openspec CLI 的探测/安装/复验由步骤 0 脚本统一完成，不再单独执行 `openspec --version`。仅当步骤 0 报告 `steps[]` 中 `name=openspec` 项为就绪（ready/installed/upgraded）时才继续本节；未就绪时先回步骤 0 处理。
 
 **行为（中文输出）**：
-- CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
-- CLI 未安装：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行三客户端产物检查
+- CLI 已就绪（脚本报告 `openspec` 项为 ready/installed/upgraded）：继续本节三客户端产物检查
+- CLI 未就绪：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行三客户端产物检查
 - `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
 **安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节三客户端产物检查。
@@ -314,7 +314,6 @@ cd "<PROJECT_ROOT>" && openspec update
 **验证命令**：
 
 ```bash
-cd "<PROJECT_ROOT>" && openspec --version
 cd "<PROJECT_ROOT>" && test -f .codex/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md

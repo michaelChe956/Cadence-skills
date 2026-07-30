@@ -53,7 +53,7 @@
 ### 决策 3：镜像配置经环境变量注入，不改用户全局配置
 
 - **选择**：`mirrors/cn.sh` 定义 `CADENCE_NPM_REGISTRY`、`CADENCE_PY_INDEX`、`CADENCE_SUPERPOWERS_GIT`；脚本在命令级注入（`npm --registry=`、uv 索引环境变量），并把 `CADENCE_SUPERPOWERS_GIT` 写入 JSON 报告的 `hints.superpowers_git`。SKILL.md 的 Superpowers 步骤从报告 `<REPORT>` 读取该地址用于 clone/pull（`$CADENCE_SUPERPOWERS_GIT` 仅是脚本子进程内部变量，不直接暴露给模型，经 JSON 传递）。不执行 `git config --global`、不写 `~/.npmrc`、不写 `~/.config/uv/uv.toml`。
-- **理由**：零副作用、可随 `--mirror` 即时切换、易回滚；改全局配置污染用户环境且卸载难回滚。
+- **理由**：镜像注入不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），可随 `--mirror` 即时切换、易回滚；改全局配置污染用户环境且卸载难回滚。注意“不修改全局配置”不等于完全无写入：`run` 会全局安装工具，Superpowers 步骤会更新本地仓库 origin（详见决策 8 与 SKILL.md 副作用说明）。
 - **备选否决**：脚本直接写用户全局 npm/uv/git 配置（副作用大、难回滚）；Superpowers 走 git 代理（用户已提供国内 Git 镜像，无需代理）。
 
 ### 决策 4：升级 opt-in，默认秒跳过不查远端
@@ -93,6 +93,7 @@
 - [国内 Git 镜像落后于 obra/superpowers 上游] → 这是用户自行维护的同步职责；`cn.sh` 注释说明需用户定期同步；通用源仍可用官方地址。
 - [`--upgrade` 升级到镜像 latest 引入未验证新版] → 升级为 opt-in，默认不触发；报告记录 `from`/`to`/`source` 便于追溯与回滚（重装旧版）。
 - [JSON 中混入工具自身 stdout 干扰解析] → 脚本内将各安装/探测命令输出重定向，仅在最终汇总处向 stdout 打印一次完整 JSON。
+- [真实 `run` 安装、联网 `--upgrade`、macOS Bash 3.2 未在隔离环境逐路径验证] → 已知限制：自动化测试只安全执行 `check`（不安装、不查远端）。缓解措施：脚本仅用 POSIX 可移植写法（不依赖 GNU 专属特性、无 bash 4+ 语法），版本探测先校验退出码；`run`/`--upgrade` 路径已在 Linux 真机手动验证过一次（含真实升级 ast-grep/codegraph/openspec）。mac 真机与干净机器从零安装未覆盖，经用户评估后接受该风险。
 - [no-interrupt 下脚本失败但 SKILL.md 误报成功] → 脚本失败时 `overall=failed` 且退出码非零，SKILL.md 以退出码 + `overall` 双重判定，禁止降级为警告。
 
 ## Migration Plan
