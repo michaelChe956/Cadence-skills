@@ -25,7 +25,9 @@ assert_fresh_change_contract() {
   return "$missing"
 }
 
-assert_fresh_change_contract
+if ! assert_fresh_change_contract; then
+  exit 1
+fi
 
 for required in "$REFERENCE" "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$OPENSPEC_WRAPPER" "$PUBLISH_HOOK"; do
   if [ ! -e "$required" ]; then
@@ -265,15 +267,18 @@ run_openspec "$case_root/config.yaml" no-interrupt replace ok
 after_first=$(sha256_file "$case_root/config.yaml")
 run_openspec "$case_root/config.yaml" no-interrupt replace ok
 after_second=$(sha256_file "$case_root/config.yaml")
+instructions_logged=yes
+for artifact in proposal design specs tasks; do
+  if ! rg -Fq "instructions $artifact --change cadence-rule-config-validation --json" "$case_root/instructions.log"; then
+    instructions_logged=no
+    break
+  fi
+done
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$after_first" = "$after_second" ] \
   && rg -q 'custom-context|custom-proposal|x-project-metadata|custom-owner' "$case_root/config.yaml" \
-  && rg -q 'instructions proposal' "$case_root/instructions.log" \
-  && rg -q 'instructions design' "$case_root/instructions.log" \
-  && rg -q 'instructions specs' "$case_root/instructions.log" \
-  && rg -q 'instructions tasks' "$case_root/instructions.log" \
-  && rg -Fq 'new change cadence-rule-config-validation' "$case_root/instructions.log" \
-  && rg -Fq -- '--change cadence-rule-config-validation --json' "$case_root/instructions.log"; then
+  && [ "$instructions_logged" = yes ] \
+  && rg -Fq 'new change cadence-rule-config-validation' "$case_root/instructions.log"; then
   assert_changed openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_first"
 else
   record_result openspec-real-instructions-idempotent "$RUN_STATUS" "$before" "$after_second" fail
