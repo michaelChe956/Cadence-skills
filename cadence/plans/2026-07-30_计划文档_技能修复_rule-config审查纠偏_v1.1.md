@@ -4,7 +4,7 @@
 
 **Change:** 无新增 Change。该计划只修复已确认的测试可移植性、测试断言与文档准确性；不改变 `rule-config` 的项目类型识别规则，保留 `env` 与 `.env` 的剪枝。
 
-**Goal:** 让生命周期回归能在 macOS（BSD 工具链）和 Linux（GNU 工具链）完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 18 个用例和验证模型；双平台验收必须覆盖优先使用 `sha256sum` 与仅有 `shasum -a 256` 时的回退路径。
+**Goal:** 让生命周期回归能在 macOS（BSD 工具链）和 Linux（GNU 工具链）完整执行，消除文件系统枚举顺序造成的假失败，并使计划与设计描述符合实际 22 个用例和验证模型；双平台验收必须覆盖优先使用 `sha256sum` 与仅有 `shasum -a 256` 时的回退路径。
 
 **Architecture:** 以 Bash、POSIX awk 与同目录临时文件的 `mv` 替换首个标记文本，避免 BSD/GNU `sed -i` 及 `0,/…/` 的方言差异；源码扫描测试只断言“恰好一个、位于业务目录、扩展名受支持”的结果。文档仅同步已实现的事实，不调整运行时 Skill 的剪枝列表。
 
@@ -39,7 +39,7 @@
 
 - [ ] **Step 2: 以可移植替换函数取代四处 GNU sed 调用**
 
-新增 `replace_first_visible_paragraph FILE REPLACEMENT`：用 POSIX awk 仅替换文件中第一次出现的 `首个用户可见段落`，写入同目录临时文件后 `mv` 回原路径。把 235、246、247、292、293 行的 GNU `sed -i '0,/…/s//'` 调用改为该函数；函数失败必须返回非零，且实现不得使用 BSD 或 GNU 专属选项。
+新增 `replace_first_visible_paragraph FILE REPLACEMENT`：用 POSIX awk 仅替换文件中第一次出现的 `首个用户可见段落`，写入同目录临时文件后 `mv` 回原路径。把 235、246、247、292、293 行的五处 GNU `sed -i '0,/…/s//'` 调用改为该函数；函数失败必须返回非零，且实现不得使用 BSD 或 GNU 专属选项。
 
 - [ ] **Step 3: 放宽业务源码结果的顺序假设**
 
@@ -61,6 +61,6 @@ openspec validate --all --strict
 git diff --check
 ```
 
-Expected: 生命周期测试 `SUMMARY pass=18 fail=0`，在 macOS 与 Linux 的原生工具链下都不需要 GNU sed PATH；其余三个命令退出 0。提交信息：`fix(cadence-init): 稳定 rule-config 生命周期回归测试`。
+Expected: 生命周期测试 `SUMMARY pass=22 fail=0`，在 macOS 与 Linux 的原生工具链下都不需要 GNU sed PATH；其余三个命令退出 0。提交信息：`fix(cadence-init): 稳定 rule-config 生命周期回归测试`。
 
-双平台验收还必须在受控 PATH 下分别验证：保留 `sha256sum` 时的默认路径，以及移除 `sha256sum`、保留 `shasum` 时的完整生命周期；后者必须同样得到 `SUMMARY pass=18 fail=0`。
+双平台验收还必须在受控 PATH 下分别验证：保留 `sha256sum` 时的默认路径，以及移除 `sha256sum`、保留 `shasum` 时的完整生命周期；后者必须同样得到 `SUMMARY pass=22 fail=0`。测试还必须覆盖 `env/.env` 剪枝、四类完整 `openspec instructions ... --change ... --json` 命令以及哈希工具缺失/命令失败的透明传播。

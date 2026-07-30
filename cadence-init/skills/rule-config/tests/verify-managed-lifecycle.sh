@@ -14,11 +14,19 @@ PUBLISH_HOOK="$TEST_DIR/fixtures/invalidate-candidate.sh"
 
 assert_fresh_change_contract() {
   local missing=0
-  for needle in \
-    'openspec new change cadence-rule-config-validation' \
-    '--change cadence-rule-config-validation --json'; do
+  for needle in 'openspec new change cadence-rule-config-validation'; do
     if ! rg -Fq -- "$needle" "$SKILL"; then
       printf '缺少 rule-config 候选验证约定: %s\n' "$needle" >&2
+      missing=1
+    fi
+  done
+  for instruction in \
+    'openspec instructions proposal --change cadence-rule-config-validation --json' \
+    'openspec instructions design --change cadence-rule-config-validation --json' \
+    'openspec instructions specs --change cadence-rule-config-validation --json' \
+    'openspec instructions tasks --change cadence-rule-config-validation --json'; do
+    if ! rg -Fq -- "$instruction" "$SKILL"; then
+      printf '缺少 rule-config 完整 OpenSpec instructions 命令: %s\n' "$instruction" >&2
       missing=1
     fi
   done
@@ -27,7 +35,7 @@ assert_fresh_change_contract() {
 
 assert_bounded_source_scan_contract() {
   local missing=0
-  for needle in 'find .' '-name .claude-plugin' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
+  for needle in 'find .' '-name .claude-plugin' '-name .venv' '-name venv' '-name env' '-name .env' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
     if ! rg -Fq -- "$needle" "$SKILL"; then
       printf '缺少 rule-config 有界源码扫描约定: %s\n' "$needle" >&2
       missing=1
@@ -271,7 +279,7 @@ assert_bounded_source_scan_behavior() {
   fixture="$TEST_ROOT/source-scan-with-business"
   mkdir -p "$fixture/application"
   touch "$fixture/application/second.ts" "$fixture/application/first.py"
-  for excluded_dir in .venv venv node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+  for excluded_dir in .venv venv env .env node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
     mkdir -p "$fixture/$excluded_dir"
     touch "$fixture/$excluded_dir/ignored.py"
   done
@@ -289,7 +297,7 @@ assert_bounded_source_scan_behavior() {
   fi
 
   fixture="$TEST_ROOT/source-scan-pruned-only"
-  for excluded_dir in .venv venv node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
+  for excluded_dir in .venv venv env .env node_modules vendor .claude-plugin cadence-init Cadence-skills build; do
     mkdir -p "$fixture/$excluded_dir"
     touch "$fixture/$excluded_dir/ignored.py"
   done
@@ -326,8 +334,87 @@ assert_bounded_source_scan_behavior() {
   fi
 }
 
+assert_sha256_tool_contract() {
+  local hash_file
+  local sha256_tools
+  local shasum_tools
+  local failing_tools
+  local no_hash_tools
+  local output
+  local status
+  local error_file
+
+  hash_file="$TEST_ROOT/hash-input"
+  printf 'managed lifecycle hash fixture\n' > "$hash_file"
+
+  sha256_tools="$TEST_ROOT/hash-tools-sha256sum"
+  mkdir -p "$sha256_tools"
+  ln -s "$(command -v awk)" "$sha256_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" sha256sum-selected' > "$sha256_tools/sha256sum"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" shasum-selected' > "$sha256_tools/shasum"
+  chmod +x "$sha256_tools/sha256sum" "$sha256_tools/shasum"
+  if output=$(PATH="$sha256_tools" sha256_file "$hash_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 0 ] && [ "$output" = 'sha256sum-selected' ]; then
+    record_result hash-prefers-sha256sum "$status" "$output" sha256sum-selected pass
+  else
+    record_result hash-prefers-sha256sum "$status" "$output" sha256sum-selected fail
+  fi
+
+  shasum_tools="$TEST_ROOT/hash-tools-shasum"
+  mkdir -p "$shasum_tools"
+  ln -s "$(command -v awk)" "$shasum_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" shasum-selected' > "$shasum_tools/shasum"
+  chmod +x "$shasum_tools/shasum"
+  if output=$(PATH="$shasum_tools" sha256_file "$hash_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 0 ] && [ "$output" = 'shasum-selected' ]; then
+    record_result hash-falls-back-to-shasum "$status" "$output" shasum-selected pass
+  else
+    record_result hash-falls-back-to-shasum "$status" "$output" shasum-selected fail
+  fi
+
+  failing_tools="$TEST_ROOT/hash-tools-failing"
+  mkdir -p "$failing_tools"
+  ln -s "$(command -v awk)" "$failing_tools/awk"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" sha256sum-failed >&2' 'exit 75' > "$failing_tools/sha256sum"
+  chmod +x "$failing_tools/sha256sum"
+  error_file="$TEST_ROOT/hash-failure.stderr"
+  if output=$(PATH="$failing_tools" sha256_file "$hash_file" 2> "$error_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 75 ] && rg -Fq 'sha256sum-failed' "$error_file"; then
+    record_result hash-command-failure-propagates "$status" "$output" 75 pass
+  else
+    record_result hash-command-failure-propagates "$status" "$output" 75 fail
+  fi
+
+  no_hash_tools="$TEST_ROOT/hash-tools-missing"
+  mkdir -p "$no_hash_tools"
+  error_file="$TEST_ROOT/hash-missing.stderr"
+  if output=$(PATH="$no_hash_tools" sha256_file "$hash_file" 2> "$error_file"); then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 127 ] && rg -Fq '缺少 SHA-256 工具：需要 sha256sum 或 shasum -a 256' "$error_file"; then
+    record_result hash-missing-tools-fails "$status" "$output" 127 pass
+  else
+    record_result hash-missing-tools-fails "$status" "$output" 127 fail
+  fi
+}
+
 set -e
 
+assert_sha256_tool_contract
 assert_bounded_source_scan_behavior
 
 # 1. 真实入口复制件在当前版本下必须幂等，不能退化为纯 kernel。
