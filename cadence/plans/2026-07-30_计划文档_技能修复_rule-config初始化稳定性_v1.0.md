@@ -47,7 +47,7 @@
 - Produces: 一个只存在于 mktemp -d 目录的 Change cadence-rule-config-validation，以及四次均带 --change cadence-rule-config-validation --json 的 instructions 调用。
 - Invariant: 目标 openspec/config.yaml 不参与临时 Change 创建；参考模型验证失败时保留 apply_openspec 的 53 失败关闭语义。
 
-- [ ] **Step 1: 先写会失败的 Skill 合同断言**
+- [x] **Step 1: 先写会失败的 Skill 合同断言**
 
 在 verify-managed-lifecycle.sh 声明 SKILL="$TEST_DIR/../SKILL.md"，并在既有依赖检查之前加入以下函数和调用，使当前旧 Skill 因缺少临时 Change 约定而失败。
 
@@ -68,7 +68,7 @@ assert_fresh_change_contract() {
 assert_fresh_change_contract
 ~~~
 
-- [ ] **Step 2: 运行失败态验证**
+- [x] **Step 2: 运行失败态验证**
 
 ~~~bash
 bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
@@ -76,7 +76,7 @@ bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 
 Expected: 非零退出，输出“缺少 rule-config 候选验证约定: openspec new change cadence-rule-config-validation”。这证明测试先于实现捕获了截图中的无活动 Change 缺陷。
 
-- [ ] **Step 3: 修改 Skill 的候选验证指令**
+- [x] **Step 3: 修改 Skill 的候选验证指令**
 
 在 SKILL.md 的 OpenSpec 配置处理第 10 条中，将未限定 Change 的四条 instructions 验证替换为以下要求：
 
@@ -93,7 +93,7 @@ openspec instructions tasks --change cadence-rule-config-validation --json
 
 同步调整第 12 条和完成报告文字，使失败报告中的命令包含带 --change 的实际命令；不得改变候选、备份或原子发布的既有约束。
 
-- [ ] **Step 4: 让参考模型自行创建临时 Change**
+- [x] **Step 4: 让参考模型自行创建临时 Change**
 
 在 managed-lifecycle-reference.sh 中删除 change_source 参数及复制逻辑。validate_openspec_candidate 使用固定局部变量，并在复制候选配置后创建 Change：
 
@@ -120,7 +120,7 @@ fi
 validate_openspec_candidate "$candidate"
 ~~~
 
-- [ ] **Step 5: 移除已归档 Change 的测试耦合并记录真实命令**
+- [x] **Step 5: 移除已归档 Change 的测试耦合并记录真实命令**
 
 删除 CHANGE_SOURCE 变量、依赖检查项和 run_openspec 的第六个参数。成功案例的断言除已有四类 artifact instructions 外，增加：
 
@@ -131,7 +131,7 @@ rg -Fq -- '--change cadence-rule-config-validation --json' "$case_root/instructi
 
 这使仪器化 OpenSpec 包装器证明参考模型确实从空临时根目录创建 Change 后再验证候选，而不是只检查文字。
 
-- [ ] **Step 6: 运行通过态回归**
+- [x] **Step 6: 运行通过态回归**
 
 ~~~bash
 bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
@@ -139,7 +139,7 @@ bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 
 Expected: 退出 0，末行是 SUMMARY pass=15 fail=0，且不再出现缺少测试依赖: .../openspec/changes/improve-progressive-disclosure-routing。若 OpenSpec CLI 的遥测仅写 stderr 但退出码为 0，以退出码和 summary 为准，不把遥测网络噪声当作候选验证失败。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ~~~bash
 git add cadence-init/skills/rule-config/SKILL.md \
@@ -165,7 +165,7 @@ git commit -m "fix(cadence-init): 为 rule-config 候选验证创建临时 chang
 - Produces: 至多一个符合扩展名且不位于剪枝目录的源码路径；无结果时仍可由既有主工程配置文件决定 Coding 项目。
 - Invariant: 扫描不得枚举 node_modules、.venv、venv、vendor 或框架/构建目录的全部内容；扫描命中首个有效源码后立即结束。
 
-- [ ] **Step 1: 扩展现有合同检查为失败态的源码扫描断言**
+- [x] **Step 1: 扩展现有合同检查为失败态的源码扫描断言**
 
 在 Task 1 的 assert_fresh_change_contract 后加入 assert_bounded_source_scan_contract，并在依赖检查前调用：
 
@@ -188,7 +188,7 @@ assert_bounded_source_scan_contract() {
 assert_bounded_source_scan_contract
 ~~~
 
-- [ ] **Step 2: 运行失败态验证**
+- [x] **Step 2: 运行失败态验证**
 
 ~~~bash
 bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
@@ -196,7 +196,7 @@ bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
 
 Expected: 非零退出，输出“缺少 rule-config 有界源码扫描约定: find .”或“仍存在无界源码 Glob 约定”。这是编辑 Skill 前对虚拟环境误扫描的回归保护。
 
-- [ ] **Step 3: 替换步骤 1a 的全仓 Glob 指令**
+- [x] **Step 3: 替换步骤 1a 的全仓 Glob 指令**
 
 在 SKILL.md 的步骤 1a：项目类型检测中删除先 Glob 后过滤的做法，改为要求一次有界的首命中扫描。写入以下命令，并说明它只用于项目类型判定：
 
@@ -212,7 +212,7 @@ find . \
 
 紧随命令规定：命令有输出即判定检测到业务源码；无输出时才继续检查已有的 package.json、pyproject.toml、Cargo.toml、go.mod、pom.xml、build.gradle 等主工程配置。删除旧的 cadence-init/、Cadence-skills/ 字符串后过滤列表，因为框架目录已经在遍历前被剪枝。
 
-- [ ] **Step 4: 运行通过态回归与格式检查**
+- [x] **Step 4: 运行通过态回归与格式检查**
 
 ~~~bash
 bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
@@ -221,7 +221,7 @@ git diff --check
 
 Expected: 生命周期测试退出 0 且输出 SUMMARY pass=15 fail=0；git diff --check 无输出。静态锚点同时证明 .venv、venv、node_modules、vendor 被剪枝并使用 -print -quit，不再允许截图所示的数万条依赖文件输出。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ~~~bash
 git add cadence-init/skills/rule-config/SKILL.md \
@@ -246,7 +246,7 @@ git commit -m "fix(cadence-init): 限制 rule-config 源码扫描范围"
 - Consumes: Task 1、Task 2 的已提交修复。
 - Produces: 新鲜的生命周期测试、OpenSpec 全量严格校验、空白格式检查和待审查 diff 证据。
 
-- [ ] **Step 1: 运行完整回归与 OpenSpec 严格校验**
+- [x] **Step 1: 运行完整回归与 OpenSpec 严格校验**
 
 ~~~bash
 bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh
@@ -255,7 +255,7 @@ openspec validate --all --strict
 
 Expected: 第一条退出 0 且输出 SUMMARY pass=15 fail=0；第二条对所有 specs 与 archived changes 无 invalid 结果。若严格校验报告报告历史 Purpose 字段中的占位文本，记录为基线问题，不修改无关 archive 内容。
 
-- [ ] **Step 2: 审查范围与格式**
+- [x] **Step 2: 审查范围与格式**
 
 ~~~bash
 git diff f370564..HEAD -- cadence-init/skills/rule-config/SKILL.md \
@@ -267,7 +267,7 @@ git status --short
 
 Expected: diff 只涉及本 Plan 的三个实现文件及已提交的 cadence/ 方案/计划文档；格式检查无输出；没有对 /Users/michaelche/Desktop/ontology 的工作树操作或待提交改动。
 
-- [ ] **Step 3: Push 已提交分支并发起审查**
+- [x] **Step 3: Push 已提交分支并发起审查**
 
 ~~~bash
 git push origin bugfix-b-0730
