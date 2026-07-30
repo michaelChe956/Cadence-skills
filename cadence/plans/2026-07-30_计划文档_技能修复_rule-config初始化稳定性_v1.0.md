@@ -16,7 +16,7 @@
 - 不新建 OpenSpec Change：这是已有规格覆盖的小型 Bug 修复，Plan 不扩大范围或改变验收标准。
 - 候选通过 YAML、结构和四类 instructions 验证前，目标 openspec/config.yaml MUST 保持未创建或原样不变；验证失败 MUST 不发布候选。
 - 临时验证 Change MUST 仅存在于临时验证根目录，固定名为 cadence-rule-config-validation，且不得依赖目标项目或仓库中某个活动 Change。
-- 项目类型检测 MUST 在首个未被剪枝目录下的常见源码文件出现后停止；MUST 剪枝 .venv、venv、node_modules、vendor 与框架/构建目录。
+- 项目类型检测 MUST 在首个未被剪枝目录下的常见源码文件出现后停止；MUST 剪枝 .venv、venv、node_modules、vendor、cadence-init、Cadence-skills 与框架/构建目录。
 - 生命周期测试 MUST 可独立执行，MUST 不引用已归档后消失的活动 Change 路径。
 - 不修改 .claude/rules/；不新增业务代码、依赖或自动化工具。
 - Markdown 嵌套代码块使用外层 4 个反引号、内层 3 个反引号。
@@ -172,7 +172,7 @@ git commit -m "fix(cadence-init): 为 rule-config 候选验证创建临时 chang
 ~~~bash
 assert_bounded_source_scan_contract() {
   local missing=0
-  for needle in 'find .' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-print -quit'; do
+  for needle in 'find .' '-name .venv' '-name venv' '-name node_modules' '-name vendor' '-name cadence-init' '-name Cadence-skills' '-print -quit'; do
     if ! rg -Fq -- "$needle" "$SKILL"; then
       printf '缺少 rule-config 有界源码扫描约定: %s\n' "$needle" >&2
       missing=1
@@ -202,7 +202,7 @@ Expected: 非零退出，输出“缺少 rule-config 有界源码扫描约定: f
 
 ~~~bash
 find . \
-  \( -type d \( -name .git -o -name .claude -o -name .codex -o -name .pi -o -name .codegraph \
+  \( -type d \( -name .git -o -name .claude -o -name .codex -o -name .pi -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
     -o -name node_modules -o -name vendor -o -name venv -o -name .venv -o -name env -o -name .env \
     -o -name dist -o -name build -o -name coverage -o -name .next -o -name target -o -name __pycache__ \) -prune \) \
   -o \( -type f \( -name '*.java' -o -name '*.js' -o -name '*.ts' -o -name '*.py' -o -name '*.go' \
