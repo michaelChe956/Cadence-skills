@@ -33,23 +33,23 @@
 - Consumes: 现有 `record_result`、`SKILL` 与临时测试根目录。
 - Produces: BSD/macOS 可执行的首个文本替换；与文件系统顺序无关的业务源码断言；显式 `return 0` 的候选验证成功路径。
 
-- [ ] **Step 1: 先写失败态覆盖**
+- [x] **Step 1: 先写失败态覆盖**
 
 在验证脚本中先添加一个测试辅助断言：当业务目录有 `first.py`、`second.ts` 时，任意一个单行 `./application/*.py` 或 `./application/*.ts` 都合格；多行、空值、剪枝目录路径和其他扩展名都不合格。运行该断言，确认旧的固定 `first.py` 比较无法满足新断言。
 
-- [ ] **Step 2: 以可移植替换函数取代四处 GNU sed 调用**
+- [x] **Step 2: 以可移植替换函数取代五处 GNU sed 调用**
 
 新增 `replace_first_visible_paragraph FILE REPLACEMENT`：用 POSIX awk 仅替换文件中第一次出现的 `首个用户可见段落`，写入同目录临时文件后 `mv` 回原路径。把 235、246、247、292、293 行的五处 GNU `sed -i '0,/…/s//'` 调用改为该函数；函数失败必须返回非零，且实现不得使用 BSD 或 GNU 专属选项。
 
-- [ ] **Step 3: 放宽业务源码结果的顺序假设**
+- [x] **Step 3: 放宽业务源码结果的顺序假设**
 
 新增 `is_single_application_source VALUE`：先以 `awk` 确认非空行数恰为 1，再只接受 `./application/*.py` 或 `./application/*.ts`。用它替换 `source-scan-prunes-excluded` 对 `./application/first.py` 的精确比较；保留“仅剪枝目录为空”和 `pyproject.toml` 回退断言。
 
-- [ ] **Step 4: 同步真实语义**
+- [x] **Step 4: 同步真实语义**
 
 在 `validate_openspec_candidate` 的成功清理后显式 `return 0`。设计文档 4.2 改为“候选在目标配置目录构建、验证在独立临时根目录运行”；4.3 删除未被测试覆盖的“无 --change 基线失败”说法。原计划的三处 `SUMMARY pass=15 fail=0` 改为 `SUMMARY pass=18 fail=0`，并说明 macOS/BSD sed 可直接运行，不依赖临时 GNU sed。
 
-- [ ] **Step 5: 验证、审查并提交**
+- [x] **Step 5: 验证、审查并提交**
 
 先记录 RED，再运行：
 
