@@ -265,3 +265,54 @@ do_pi_mcp_adapter() {
     fi
   fi
 }
+
+# --- 升级（opt-in）---
+# 仅在 UPGRADE=1 时调用。范围：ast-grep/codegraph/openspec（npm 系）+ uv 本体。
+# 不含 pi-mcp-adapter、uvx 临时包、playwright-cli。以当前源 latest 为准，不跨源比对。
+
+# 规范化版本号为可比较的三段数字（取首个形如 x.y.z 的子串）
+_norm_ver() { printf '%s' "$1" | sed -n 's/.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1; }
+
+# 版本比较：返回 0 表示 $1 < $2（落后需升级），否则非 0。依赖 sort -V（GNU/BSD 均有）。
+_ver_lt() {
+  _a="$(_norm_ver "$1")"; _b="$(_norm_ver "$2")"
+  [ -n "$_a" ] && [ -n "$_b" ] || return 1
+  [ "$_a" = "$_b" ] && return 1
+  [ "$(printf '%s\n%s\n' "$_a" "$_b" | sort -V | head -n1)" = "$_a" ]
+}
+
+# 查询 npm 包当前源 latest 版本
+npm_latest() {
+  npm view "$1" version "$(npm_registry_args)" 2>/dev/null | head -n1 | tr -d '\r'
+}
+
+# 升级某个 npm 工具：<显示名> <包名> <探测命令...>
+upgrade_npm_tool() {
+  _name="$1"; _pkg="$2"; shift 2
+  _cur="$(probe_version "$@")" || return 0   # 未安装则跳过升级（安装归 do_*）
+  _lat="$(npm_latest "$_pkg")"
+  [ -n "$_lat" ] || { log "${C_YEL}⚠️  $_name 无法查询 latest，跳过升级${C_NC}"; return 0; }
+  if _ver_lt "$_cur" "$_lat"; then
+    log "${C_YEL}⬆️  升级 $_name：$_cur → $_lat（来源 $CADENCE_NPM_REGISTRY）${C_NC}"
+    npm install -g "$_pkg@latest" "$(npm_registry_args)" >/dev/null 2>&1
+    _new="$(probe_version "$@")"
+    add_step "$_name" "upgraded" "upgraded" "$_new" "from=$_cur to=$_lat source=$CADENCE_NPM_REGISTRY"
+    return 2   # 返回 2 表示已升级（供调用方覆盖原 ready 项）
+  fi
+  return 0
+}
+
+# 升级 uv 本体
+upgrade_uv() {
+  _cur="$(probe_version uv --version)" || return 0
+  _lat="$(env "$(uv_index_env)" pip index versions uv 2>/dev/null | sed -n 's/.*(\([0-9][^)]*\)).*/\1/p' | head -n1)"
+  [ -n "$_lat" ] || { log "${C_YEL}⚠️  uv 无法查询 latest，跳过升级${C_NC}"; return 0; }
+  if _ver_lt "$_cur" "$_lat"; then
+    log "${C_YEL}⬆️  升级 uv：$_cur → $_lat（来源 $CADENCE_PY_INDEX）${C_NC}"
+    env "$(uv_index_env)" pip install -U uv >/dev/null 2>&1
+    _new="$(probe_version uv --version)"
+    add_step "uv" "upgraded" "upgraded" "$_new" "from=$_cur to=$_lat source=$CADENCE_PY_INDEX"
+    return 2
+  fi
+  return 0
+}
