@@ -532,7 +532,7 @@ def ensure_gitignore_line(root: Path, line: str, comment: str) -> str:
     if not line:
         return "skipped"
     gi = root / ".gitignore"
-    # 行级精确匹配判断（等价 grep -qxF）：按整行去首尾空白后比较。
+    # 行级精确匹配判断（等价 grep -qxF）：按整行精确相等比较（仅规范化行尾 CR）。
     if gi.is_file():
         try:
             existing = gi.read_text(encoding="utf-8")
@@ -2144,25 +2144,32 @@ def step_s5_scaffold(root: Path, intents: Intents, plan: dict, report: dict) -> 
     """S5 执行（Task 7 实现）：创建 cadence/ 目录结构 + 历史产物迁移。
 
     两模式行为（简报 Step 1）：
-      1. mkdir -p 17 个 CADENCE_DIRS 子目录（幂等，两模式都执行）；
+      1. mkdir -p cadence 根目录（仅根，迁移前不预建子目录，以保证 HM-01 三分支可达）；
       2. 历史目录检测：仅扫描 .claude/ 下 HISTORY_DIRS（16 个精确目录）；
          检测结果写入 report.history_detected（清单内存在的相对路径列表）；
       3. no-interrupt：**只写报告 actions**，不执行 mv/合并/rmdir/清理；
-      4. 普通模式：按 HM-01~03 迁移表处理：
-           * cadence/<dir> 不存在 → mv .claude/<dir> cadence/<dir>（HM-01）；
+         迁移循环虽不执行，但迁移前不预建子目录，故普通模式 HM-01 仍可达；
+      4. 普通模式：按 HM-01~03 迁移表处理（循环内按目标状态三分支）：
+           * cadence/<dir> 不存在 → mv .claude/<dir> cadence/<dir>（HM-01，整目录 mv）；
            * cadence/<dir> 已存在且为空 → 内容移入 + rmdir 源空目录（HM-02）；
            * cadence/<dir> 已存在且非空 → 跳过 + 报告冲突（HM-03，不进 decisions，直接 report conflict）。
+      5. 迁移循环结束后 mkdir -p 全部 17 个 CADENCE_DIRS 子目录（保证最终目录结构齐全，幂等）。
+
+    评审 I-1 修复（方案 B）：迁移前只 mkdir cadence 根目录。
+      历史实现先 mkdir -p 全部 17 子目录，导致 HM 循环中 dst.exists() 恒 True、
+      目标恒空，HM-01（整目录 mv）永不触发、全部落 HM-02，与 SKILL.md 迁移表
+      「目标不存在→mv」语义字面不符。方案 B 调整 mkdir 时机：迁移前只建根，
+      循环内按目标状态三分支（HM-01 不存在→shutil.move 整目录 mv 可达、HM-02 空、
+      HM-03 非空），循环后再补齐 17 子目录，action 标 moved 与契约字面一致。
     """
     actions_log: list = []
     cadence_root = root / "cadence"
 
-    # 1) mkdir -p 17 个子目录（幂等）
-    for sub in CADENCE_DIRS:
-        target_dir = cadence_root / sub
-        target_dir.mkdir(parents=True, exist_ok=True)
+    # 1) 迁移前只 mkdir cadence 根目录（不预建子目录，保证 HM-01 三分支可达）
+    cadence_root.mkdir(parents=True, exist_ok=True)
     actions_log.append({
         "path": "cadence/", "action": "created",
-        "detail": f"mkdir {len(CADENCE_DIRS)} dirs",
+        "detail": "mkdir cadence root (pre-migration)",
     })
 
     # 2) 历史目录检测：扫描 .claude/ 下 HISTORY_DIRS
@@ -2180,23 +2187,30 @@ def step_s5_scaffold(root: Path, intents: Intents, plan: dict, report: dict) -> 
             "path": "<history>", "action": "report-only",
             "detail": f"detected={detected}",
         })
+        # 迁移循环虽跳过，仍需补全最终子目录结构
+        for sub in CADENCE_DIRS:
+            (cadence_root / sub).mkdir(parents=True, exist_ok=True)
+        actions_log.append({
+            "path": "cadence/", "action": "created",
+            "detail": f"mkdir {len(CADENCE_DIRS)} subdirs (post-migration)",
+        })
         _record_step_actions(report, STEP_SCAFFOLD, actions_log)
         return
 
-    # 4) 普通模式：按 HM 表迁移
+    # 4) 普通模式：按 HM 表迁移（循环内按目标状态三分支）
     conflicts_log: list = []
     for d in HISTORY_DIRS:
         src = claude_dir / d
         if not src.exists():
             continue
         dst = cadence_root / d
-        # 判定目标状态
+        # 判定目标状态（迁移前未预建子目录，dst 不存在时为真实 HM-01）
         dst_exists = dst.exists()
         dst_nonempty = dst_exists and any(dst.iterdir())
 
         if not dst_exists:
-            # HM-01：目标不存在 → mv 源到目标
-            # 确保父目录存在（project-rules 等已在 mkdir 阶段创建）
+            # HM-01：目标不存在 → mv 整目录源到目标
+            # 确保父目录存在（project-rules 等 HISTORY_DIRS 子目录的父级即 cadence 根）
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
             actions_log.append({
@@ -2232,6 +2246,14 @@ def step_s5_scaffold(root: Path, intents: Intents, plan: dict, report: dict) -> 
                 "reason": f"target cadence/{d} nonempty",
                 "branch": "hm-03",
             })
+
+    # 5) 迁移循环结束后补全 17 个 CADENCE_DIRS 子目录（保证最终目录结构齐全，幂等）
+    for sub in CADENCE_DIRS:
+        (cadence_root / sub).mkdir(parents=True, exist_ok=True)
+    actions_log.append({
+        "path": "cadence/", "action": "created",
+        "detail": f"mkdir {len(CADENCE_DIRS)} subdirs (post-migration)",
+    })
 
     _record_step_actions(report, STEP_SCAFFOLD, actions_log)
     if conflicts_log:

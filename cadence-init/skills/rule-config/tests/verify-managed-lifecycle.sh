@@ -743,6 +743,43 @@ else
   record_result it-s5-history-normal "$RUN_STATUS" "$before_claude" "$after_claude" fail
 fi
 
+# C3b-2. HM-01 真实可达：普通模式下目标不存在的历史目录迁移后 action hm-01/moved、
+# 源目录消失、目标含原内容（评审 I-1 修复验证：迁移前只 mkdir cadence 根使三分支可达）。
+# 复用 C3b 的 fixture/REPORT：三个历史目录（prds/plans/docs）迁移前 cadence 下均不存在，
+# 修复后必须落入 HM-01（整目录 mv），而修复前全部落入 HM-02（merged）。
+hm01_status=$(python3 - "$case_root" "$REPORT" <<'PY' || printf '%s' 'fail')
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+report = json.load(open(sys.argv[2]))
+steps = report.get("steps", [])
+scaffold = next((s for s in steps if s.get("name") == "s5_scaffold"), {})
+actions = scaffold.get("actions", [])
+# 三个历史目录都必须标 hm-01/moved
+expected = {"prds", "plans", "docs"}
+hm01 = {
+    a.get("to", "").split("/")[-1]
+    for a in actions
+    if a.get("branch") == "hm-01" and a.get("action") == "moved"
+}
+if expected - hm01:
+    print("fail", file=sys.stderr)
+    sys.exit(1)
+# 源目录消失、目标含原内容
+for d in expected:
+    src = root / ".claude" / d
+    dst = root / "cadence" / d
+    if src.exists():
+        sys.exit(1)
+    if not dst.exists() or not (dst / "file.md").exists():
+        sys.exit(1)
+print("pass")
+PY
+record_result it-s5-history-hm01-reachable "$RUN_STATUS" hm-01 reachable "$([ "$hm01_status" = pass ] && printf pass || printf fail)"
+
+
 # C3c. 历史目录仅检测并报告（it-s5-history-report-only / NH-01 报告字段）
 case_root="$(mk_history_fixture fx-history-report)"
 run_script dry-run "$case_root" --no-interrupt
