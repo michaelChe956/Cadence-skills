@@ -76,7 +76,7 @@ except ImportError:
 
 # step name 约定（Task 3 it-budget 断言 s8_codegraph elapsed_ms 对齐）。
 STEP_DETECT = "s1_detect"
-STEP_TEMPLATES = "s2_templates"
+STEP_TEMPLATES = "s2_locate_templates"
 STEP_RULES_FILES = "s3_rules_files"
 STEP_ENTRY_FILES = "s4_entry_files"
 STEP_SCAFFOLD = "s5_scaffold"
@@ -121,11 +121,23 @@ PRUNE_DIRS = [
     "__pycache__",
 ]
 
-# 受支持的应用源码扩展名（detect_project 用）。
-SOURCE_EXTENSIONS = (
+# 受支持的应用源码扩展名（detect_project 用；13 个，逐字对齐 SKILL.md find 块
+# `*.java *.js *.ts *.py *.go *.php *.rs *.rb *.swift *.kt *.c *.cpp *.cs`）。
+# 以带点后缀形式存储，便于 fname.endswith(SOURCE_EXTS) 一次判定。
+SOURCE_EXTS = (
     ".java", ".js", ".ts", ".py", ".go", ".php", ".rs",
     ".rb", ".swift", ".kt", ".c", ".cpp", ".cs",
 )
+
+# S2 locate_templates 成对校验所需文件清单（与 SKILL.md 步骤 1b 一致）。
+# 在线/离线固定路径校验三件套；glob 回退路径额外校验 document-storage.md。
+TEMPLATE_REQUIRED = (
+    "agent-routing-kernel.md",
+    "language.md",
+    "openspec-superpowers-workflow.md",
+)
+# glob 回退路径额外要求的文件（S1b-02）。
+TEMPLATE_REQUIRED_FALLBACK = ("document-storage.md",)
 
 # 全局 T0：main() 入口第一行记录（budget_seconds_excluding_codegraph 基准）。
 T0: float = time.monotonic()
@@ -146,6 +158,10 @@ class PublishError(OSError):
 
 class BackupError(OSError):
     """备份失败（屏障终止零发布）。"""
+
+
+class TemplateError(OSError):
+    """模板定位失败（所有候选均不完整 → 终止并列缺失）。S2 locate_templates 用。"""
 
 
 # ---------------------------------------------------------------------------
@@ -459,19 +475,57 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "backup_needs": [],
     }
 
-    # --- S1 detect：项目类型 ---
+    # --- S1 detect：项目类型 + 技术栈 ---
     s1 = _step_skeleton(STEP_DETECT)
-    detected_type = _detect_project_type(root, intents)
-    plan["project_type"] = detected_type
+    detect_result = detect_project(root, intents)
+    plan["project_type"] = detect_result["project_type"]
+    plan["tech_stack"] = detect_result["tech_stack"]
     s1["status"] = "ok"
-    s1["note"] = f"project_type={detected_type}"
-    # 注：项目类型检测矛盾冲突（allowed=['coding','non-coding']）由后续 Task
-    # 完整实现 detect 逻辑时产生；当前骨架仅判定 project_type，不记 conflict。
+    s1["note"] = (
+        f"project_type={detect_result['project_type']}; "
+        f"evidence={detect_result['evidence']}"
+    )
+    s1["assets"] = [{
+        "path": "<project>",
+        "action": "detect",
+        "conflict": None,
+        "backup_needed": False,
+        "project_type": detect_result["project_type"],
+        "evidence": detect_result["evidence"],
+        "tech_stack": detect_result["tech_stack"],
+    }]
+    # 矛盾冲突项（allowed_decisions=['coding','non-coding']）
+    conflict = detect_result.get("conflict")
+    if conflict:
+        s1["conflicts"] = [conflict]
+        plan["conflicts"].append(conflict)
     plan["steps"][STEP_DETECT] = s1
 
-    # --- S2 locate templates：始终 ok（骨架） ---
+    # --- S2 locate templates：三级定位 ---
     s2 = _step_skeleton(STEP_TEMPLATES)
-    s2["status"] = "ok"
+    try:
+        rules_root, openspec_yaml = locate_templates()
+        s2["status"] = "ok"
+        s2["note"] = f"rules_root={rules_root}"
+        s2["assets"] = [{
+            "path": str(rules_root),
+            "action": "locate",
+            "conflict": None,
+            "backup_needed": False,
+            "openspec_yaml": str(openspec_yaml),
+        }]
+        plan["templates"] = {
+            "rules_root": str(rules_root),
+            "openspec_yaml": str(openspec_yaml),
+        }
+    except TemplateError as exc:
+        s2["status"] = "fail"
+        s2["note"] = str(exc)
+        plan["failure"] = {
+            "step": STEP_TEMPLATES,
+            "reason": str(exc),
+            "recovery": "检查模板安装路径或提供完整模板候选",
+        }
     plan["steps"][STEP_TEMPLATES] = s2
 
     # --- S3 rules files：探测 .claude/rules/*.md ---
@@ -599,14 +653,246 @@ def _append_backup_need(plan: dict, target: Path) -> None:
 
 
 def _detect_project_type(root: Path, intents: Intents) -> str:
-    """判定项目类型：显式覆盖 > 源码扫描。"""
+    """判定项目类型：显式覆盖 > 源码扫描 > 主工程配置 > non-coding。
+
+    保留为 compute_plan 内部辅助（旧骨架入口）；完整语义见 detect_project。
+    """
+    return detect_project(root, intents)["project_type"]
+
+
+# S2 locate_templates 固定路径的 rules 子目录后缀（相对 $HOME）。
+_ONLINE_RULES_SUBPATH = (
+    ".claude/plugins/marketplaces/cadence-skills-marketplace"
+    "/cadence-init/skills/rule-config/references/rules"
+)
+_OFFLINE_RULES_SUBPATH = (
+    ".claude/plugins/marketplaces/cadence-skills-local"
+    "/cadence-init/skills/rule-config/references/rules"
+)
+# glob 回退标识文件（相对任意搜索根）。
+_FALLBACK_GLOB_PATTERN = "**/cadence-init/skills/rule-config/references/rules/language.md"
+
+
+def detect_project(root: Path, intents: Intents) -> dict:
+    """S1 项目类型与技术栈检测。
+
+    返回 dict：
+      {
+        "project_type": "coding"|"non-coding",
+        "evidence": str,            # 检测证据（相对路径 / 主配置名 / "none"）
+        "tech_stack": {             # 五类技术栈检测（未检出写「未检测到」）
+          "language": str, "pkg_manager": str,
+          "test": str, "lint": str, "format": str, "coverage": "80%",
+        },
+        "conflict": dict|None,     # 矛盾时为 s1:project-type-conflict 条目
+      }
+
+    优先级（简报 Task 5）：intents.project_type 优先于检测结果；
+    用户指定与检测结果矛盾 → conflict=s1:project-type-conflict
+    （allowed_decisions=['coding','non-coding']）。
+    """
+    # 1) 自动检测：有界首命中源码扫描 → coding；否则查 6 个主工程配置；全无 → non-coding。
+    detected_type = "non-coding"
+    evidence = "none"
+    source_hit = next(_iter_source_files(root), None)
+    if source_hit is not None:
+        detected_type = "coding"
+        try:
+            evidence = f"source: {source_hit.relative_to(root)}"
+        except ValueError:
+            evidence = f"source: {source_hit}"
+    else:
+        main_cfg = _detect_main_config(root)
+        if main_cfg is not None:
+            detected_type = "coding"
+            evidence = f"main config: {main_cfg}"
+
+    # 2) intents.project_type 优先；矛盾判定 → conflict。
+    conflict = None
+    project_type = detected_type
     if intents.project_type in ("coding", "non-coding"):
-        return intents.project_type
-    # 扫描应用源码（有界剪枝）
-    for found in _iter_source_files(root):
-        _ = found  # 仅需判定存在性
-        return "coding"
-    return "non-coding"
+        project_type = intents.project_type
+        if intents.project_type != detected_type:
+            conflict = {
+                "conflict_id": "s1:project-type-conflict",
+                "asset": "<project>",
+                "detected_type": detected_type,
+                "user_type": intents.project_type,
+                "allowed_decisions": ["coding", "non-coding"],
+                "question": (
+                    f"检测结果为 {detected_type}，但用户指定为 {intents.project_type}"
+                ),
+                "recommendation": intents.project_type,
+            }
+
+    # 3) 技术栈检测（不受 project_type 覆盖影响，始终扫描配置文件）。
+    tech_stack = _detect_tech_stack(root)
+
+    return {
+        "project_type": project_type,
+        "evidence": evidence,
+        "tech_stack": tech_stack,
+        "conflict": conflict,
+    }
+
+
+# S1a-03：主工程配置清单（有界首命中扫描无源码时按此顺序查）。
+_MAIN_CONFIGS = (
+    "package.json",
+    "pyproject.toml",
+    "Cargo.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+)
+
+
+def _detect_main_config(root: Path) -> Optional[str]:
+    """检测根下的主工程配置文件（6 个），返回首个命中名或 None。"""
+    for name in _MAIN_CONFIGS:
+        if (root / name).is_file():
+            return name
+    return None
+
+
+def _detect_tech_stack(root: Path) -> dict:
+    """S4 技术栈检测五类（DF-02 / S4-01~03）。
+
+    返回 dict(language, pkg_manager, test, lint, format, coverage)。
+    未检出的字段写「未检测到」（不阻塞初始化）；coverage 默认 80%。
+    """
+    ts = {
+        "language": "未检测到",
+        "pkg_manager": "未检测到",
+        "test": "未检测到",
+        "lint": "未检测到",
+        "format": "未检测到",
+        "coverage": "80%",
+    }
+    package_json = root / "package.json"
+    if package_json.is_file():
+        ts["language"] = "JavaScript/TypeScript"
+        ts["pkg_manager"] = "pnpm"
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        scripts = data.get("scripts") if isinstance(data, dict) else None
+        if isinstance(scripts, dict):
+            for key in ("test", "lint", "format"):
+                val = scripts.get(key)
+                if isinstance(val, str) and val:
+                    ts[key] = val
+
+    requirements = root / "requirements.txt"
+    pyproject = root / "pyproject.toml"
+    has_python_cfg = requirements.is_file() or pyproject.is_file()
+    if has_python_cfg:
+        if ts["language"] == "未检测到":
+            ts["language"] = "Python"
+        ts["pkg_manager"] = "uv"
+        # 检测 pytest（requirements.txt 或 pyproject.toml 任一含 pytest）
+        py_text = ""
+        for p in (requirements, pyproject):
+            if p.is_file():
+                try:
+                    py_text += "\n" + p.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    pass
+        if "pytest" in py_text:
+            ts["test"] = "pytest"
+    return ts
+
+
+def locate_templates() -> tuple:
+    """S2 三级模板定位（S1b-01~04）。
+
+    返回 (rules_root: Path, openspec_yaml: Path)。
+
+    优先级：
+      1) 在线 ~/.claude/plugins/marketplaces/cadence-skills-marketplace/...
+      2) 离线 ~/.claude/plugins/marketplaces/cadence-skills-local/...
+      3) glob 回退 **/cadence-init/skills/rule-config/references/rules/language.md
+         （多候选取 mtime 最新）
+
+    成对校验（S1b-02）：每候选 rules/ 下须含 TEMPLATE_REQUIRED 三件套
+    （回退路径额外须含 document-storage.md）+ 同级 references/openspec/config.yaml；
+    缺任一则跳过该候选。全部候选不完整 → TemplateError 终止并列缺失。
+    """
+    home = Path(os.path.expanduser("~"))
+    candidates: list = []  # (rules_root, openspec_yaml, is_fallback)
+
+    online_rules = home / _ONLINE_RULES_SUBPATH
+    online_pair = _check_template_candidate(online_rules, fallback=False)
+    if online_pair is not None:
+        candidates.append((online_pair[0], online_pair[1], False))
+
+    offline_rules = home / _OFFLINE_RULES_SUBPATH
+    offline_pair = _check_template_candidate(offline_rules, fallback=False)
+    if offline_pair is not None:
+        candidates.append((offline_pair[0], offline_pair[1], False))
+
+    if not candidates:
+        # glob 回退：从 home 起搜索标识文件
+        fallback_candidates = _glob_fallback_candidates(home)
+        candidates.extend(fallback_candidates)
+
+    if not candidates:
+        raise TemplateError(
+            "模板定位失败：未找到任何完整的模板候选"
+            "（在线/离线/回退均不完整）"
+        )
+
+    # 多候选取 mtime 最新（按 openspec_yaml 的 mtime 比较稳定）。
+    best = max(candidates, key=lambda c: _candidate_mtime(c[1]))
+    return best[0], best[1]
+
+
+def _check_template_candidate(rules_root: Path, *, fallback: bool):
+    """校验单一候选完整性。返回 (rules_root, openspec_yaml) 或 None。
+
+    在线/离线校验 TEMPLATE_REQUIRED 三件套；回退额外校验 document-storage.md。
+    所有候选还须存在同级 references/openspec/config.yaml。
+    """
+    if not rules_root.is_dir():
+        return None
+    required = list(TEMPLATE_REQUIRED)
+    if fallback:
+        required = required + list(TEMPLATE_REQUIRED_FALLBACK)
+    for name in required:
+        if not (rules_root / name).is_file():
+            return None
+    openspec_yaml = rules_root.parent / "openspec" / "config.yaml"
+    if not openspec_yaml.is_file():
+        return None
+    return rules_root, openspec_yaml
+
+
+def _glob_fallback_candidates(home: Path) -> list:
+    """glob 回退候选收集：从 home 起搜索标识文件并成对校验。
+
+    返回 [(rules_root, openspec_yaml, True), ...]。
+    """
+    candidates: list = []
+    seen: set = set()
+    for lang_path in home.glob(_FALLBACK_GLOB_PATTERN):
+        rules_root = lang_path.parent
+        key = str(rules_root.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        pair = _check_template_candidate(rules_root, fallback=True)
+        if pair is not None:
+            candidates.append((pair[0], pair[1], True))
+    return candidates
+
+
+def _candidate_mtime(path: Path) -> float:
+    """安全读取文件 mtime（失败返回 0）。"""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def _iter_source_files(root: Path):
@@ -616,7 +902,7 @@ def _iter_source_files(root: Path):
         # 剪枝：原地修改 dirnames 跳过
         dirnames[:] = [d for d in dirnames if d not in prune_set]
         for fname in filenames:
-            if fname.endswith(SOURCE_EXTENSIONS):
+            if fname.endswith(SOURCE_EXTS):
                 yield Path(dirpath) / fname
                 return  # first-match 即可判定 coding
 
@@ -637,13 +923,28 @@ def _load_kernel_source() -> str:
 
 
 def step_s1_detect(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S1 执行（Task 5 实现）。骨架：仅回填 project_type 到报告。"""
-    report["project_type"] = plan.get("project_type", "non-coding")
+    """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。"""
+    detect_result = detect_project(root, intents)
+    report["project_type"] = detect_result["project_type"]
+    # tech_stack 写入报告（供后续 S4 入口文件技术栈章节使用）。
+    report["tech_stack"] = detect_result["tech_stack"]
+    report["evidence"] = detect_result["evidence"]
 
 
-def step_s2_templates(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S2 执行（Task 5 实现）。骨架：pass。"""
-    _ = (root, intents, plan, report)
+def step_s2_locate_templates(root: Path, intents: Intents, plan: dict, report: dict) -> None:
+    """S2 执行（Task 5 实现）：定位模板根路径并缓存到 plan/report 供后续步骤复用。"""
+    try:
+        rules_root, openspec_yaml = locate_templates()
+    except TemplateError as exc:
+        # 模板定位失败已在 compute_plan 记录；执行阶段不再重复抛出
+        report.setdefault("templates", {})
+        report["templates"]["error"] = str(exc)
+        return
+    plan["templates"] = {
+        "rules_root": str(rules_root),
+        "openspec_yaml": str(openspec_yaml),
+    }
+    report["templates"] = plan["templates"]
 
 
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
@@ -679,7 +980,7 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
 # 步骤名 → 执行函数映射
 STEP_FUNCS = {
     STEP_DETECT: step_s1_detect,
-    STEP_TEMPLATES: step_s2_templates,
+    STEP_TEMPLATES: step_s2_locate_templates,
     STEP_RULES_FILES: step_s3_rules_files,
     STEP_ENTRY_FILES: step_s4_entry_files,
     STEP_SCAFFOLD: step_s5_scaffold,

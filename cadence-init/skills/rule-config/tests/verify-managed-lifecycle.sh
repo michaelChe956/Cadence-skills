@@ -13,7 +13,7 @@
 #   { "overall": "ok|fail|degraded",
 #     "mode": "normal|no-interrupt",
 #     "budget_seconds_excluding_codegraph": <number>,
-#     "steps": [ { "name": "s1_detect|s2_templates|s3_rules_files|s4_entry_files|
+#     "steps": [ { "name": "s1_detect|s2_locate_templates|s3_rules_files|s4_entry_files|
 #                          s5_scaffold|s6_gitignore|s7_openspec_config|s8_codegraph",
 #                  "status": "ok|skip|degraded|fail",
 #                  "action": "<create|merge|replace|skip|...>",

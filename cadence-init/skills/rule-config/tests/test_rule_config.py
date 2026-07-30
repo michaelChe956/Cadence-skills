@@ -5,6 +5,7 @@
 # 加载方式与签名由 Plan 全局约束冻结，Task 4-9 必须逐字实现：
 #   rc.merge_markdown / rc.merge_yaml / rc.l0_block / rc.precheck_openspec_structure
 #   rc.backup_file / rc.atomic_write / rc.sha256_file / rc.classify_l1
+#   rc.detect_project / rc.locate_templates  （Task 5 实现）
 
 import hashlib
 import importlib.util
@@ -361,5 +362,255 @@ class TestClassifyL1(unittest.TestCase):
         self.assertEqual(rc.classify_l1(exact_old, L1_V1, self.known), "upgrade")
 
 
+# ---------------------------------------------------------------------------
+# Task 5：detect_project / locate_templates 纯函数单测（ut-detect_project-* / ut-locate_templates-*）
+# 用例清单来源：tests/skill-clause-map.md §2.8（S1a-01~05 / S1b-01~04）与 §2.5/2.6（DF-01/02、IA-02）。
+# 加载方式与 Task 4 一致；测试自建临时 fixture，不依赖仓库实际环境。
+# ---------------------------------------------------------------------------
+
+# locate_templates 成对校验所需的最小文件集（在线/离线路径三件套 + config.yaml）
+_ONLINE_RULES = ("agent-routing-kernel.md", "language.md", "openspec-superpowers-workflow.md")
+# 回退 glob 路径额外需要 document-storage.md（S1b-02）
+_FALLBACK_EXTRA = ("document-storage.md",)
+
+
+def _write_minimal_templates(rules_dir: Path, *, fallback: bool = False) -> None:
+    """在 rules_dir 下创建成对校验所需的最小模板占位文件 + 同级 openspec/config.yaml。"""
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    for name in _ONLINE_RULES:
+        (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
+    if fallback:
+        for name in _FALLBACK_EXTRA:
+            (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
+    openspec_dir = rules_dir.parent / "openspec"
+    openspec_dir.mkdir(parents=True, exist_ok=True)
+    (openspec_dir / "config.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+
+
+def _intents(**overrides):
+    """构造 rc.Intents，默认空意图。"""
+    defaults = dict(
+        no_interrupt=False,
+        project_type=None,
+        ignore_cadence=False,
+        enable_playwright=False,
+        enable_codegraph=False,
+        decisions=None,
+    )
+    defaults.update(overrides)
+    return rc.Intents(**defaults)
+
+
+class TestDetectProject(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    # --- ut-detect_project-coding / DF-01（检测到源码 → Coding）---
+    def test_source_file_detected_as_coding(self):
+        """ut-detect_project-coding / DF-01（首命中源码即判 Coding；evidence 记录相对路径）"""
+        (self.root / "app").mkdir()
+        (self.root / "app" / "main.py").write_text("print('hi')\n")
+        result = rc.detect_project(self.root, _intents())
+        self.assertEqual(result["project_type"], "coding")
+        self.assertIsInstance(result["evidence"], str)
+        self.assertTrue(result["evidence"])  # 非空证据
+
+    # --- ut-detect_project-noncoding / DF-01（无源码无主配置 → 非 Coding）---
+    def test_empty_project_is_noncoding(self):
+        """ut-detect_project-noncoding / DF-01（无源码无主配置 → non-coding）"""
+        (self.root / "README.md").write_text("docs only\n")
+        result = rc.detect_project(self.root, _intents())
+        self.assertEqual(result["project_type"], "non-coding")
+
+    # --- ut-detect_project-bounded-scan / S1a-01（剪枝目录内源码不触发；首命中即停）---
+    def test_pruned_dirs_skipped_and_first_match_stops(self):
+        """ut-detect_project-bounded-scan / S1a-01（剪枝目录内源码不触发 Coding；首命中即返回）"""
+        # node_modules 内有 .js（应被剪枝，不触发）
+        nm = self.root / "node_modules" / "pkg"
+        nm.mkdir(parents=True)
+        (nm / "index.js").write_text("module.exports = 1;\n")
+        # .venv 内有 .py（应被剪枝）
+        venv = self.root / ".venv" / "lib"
+        venv.mkdir(parents=True)
+        (venv / "x.py").write_text("x = 1\n")
+        result = rc.detect_project(self.root, _intents())
+        self.assertEqual(result["project_type"], "non-coding")
+        # 加入一个真实源码后应立即判 coding（首命中即停）
+        src = self.root / "src"
+        src.mkdir()
+        (src / "a.ts").write_text("export const x = 1;\n")
+        result2 = rc.detect_project(self.root, _intents())
+        self.assertEqual(result2["project_type"], "coding")
+
+    # --- ut-detect_project-main-config / S1a-03（仅主工程配置即判 Coding）---
+    def test_main_config_without_source_is_coding(self):
+        """ut-detect_project-main-config / S1a-03（仅 package.json/pyproject.toml 即判 Coding；evidence 记主配置）"""
+        (self.root / "package.json").write_text('{"name": "demo"}\n', encoding="utf-8")
+        result = rc.detect_project(self.root, _intents())
+        self.assertEqual(result["project_type"], "coding")
+        self.assertIn("package.json", result["evidence"])
+
+    # --- ut-detect_project-user-override / S1a-04（--project-type 优先于检测）---
+    def test_user_override_takes_precedence(self):
+        """ut-detect_project-user-override / S1a-04（intents.project_type 覆盖检测结果）"""
+        (self.root / "app.py").write_text("x = 1\n")  # 检测应为 coding
+        result = rc.detect_project(self.root, _intents(project_type="non-coding"))
+        self.assertEqual(result["project_type"], "non-coding")  # 用户指定优先
+
+    # --- ut-detect_project-conflict / IA-02（矛盾判定 → s1:project-type-conflict）---
+    def test_user_override_conflict_with_detection(self):
+        """ut-detect_project-conflict / IA-02（用户指定与检测矛盾 → conflict 字段标记 s1:project-type-conflict；project_type 仍取用户值）"""
+        (self.root / "app.py").write_text("x = 1\n")  # 检测为 coding
+        result = rc.detect_project(self.root, _intents(project_type="non-coding"))
+        self.assertEqual(result["project_type"], "non-coding")  # 用户值优先
+        conflict = result.get("conflict")
+        self.assertIsNotNone(conflict)
+        self.assertEqual(conflict["conflict_id"], "s1:project-type-conflict")
+        self.assertEqual(conflict["allowed_decisions"], ["coding", "non-coding"])
+
+    # --- ut-detect_project-techstack / S4-01（package.json scripts + pytest 检测 + 默认覆盖率 80%）---
+    def test_techstack_extracted_from_package_json_and_pytest(self):
+        """ut-detect_project-techstack / S4-01（package.json scripts 提取 test/lint/format；requirements.txt 检测 pytest；coverage 默认 80%）"""
+        import json as _json
+        (self.root / "package.json").write_text(_json.dumps({
+            "name": "demo",
+            "scripts": {"test": "vitest", "lint": "eslint .", "format": "prettier --write ."},
+        }), encoding="utf-8")
+        result = rc.detect_project(self.root, _intents())
+        ts = result["tech_stack"]
+        self.assertEqual(ts["test"], "vitest")
+        self.assertEqual(ts["lint"], "eslint .")
+        self.assertEqual(ts["format"], "prettier --write .")
+        self.assertEqual(ts["coverage"], "80%")
+
+    def test_techstack_pytest_detected_from_requirements(self):
+        """ut-detect_project-techstack / S4-01（requirements.txt 含 pytest → test 字段为 pytest）"""
+        (self.root / "requirements.txt").write_text("pytest\nrequests\n", encoding="utf-8")
+        result = rc.detect_project(self.root, _intents())
+        ts = result["tech_stack"]
+        self.assertEqual(ts["test"], "pytest")
+        # lint/format 未检出 → 未检测到
+        self.assertEqual(ts["lint"], "未检测到")
+        self.assertEqual(ts["format"], "未检测到")
+
+    def test_techstack_undetected_defaults(self):
+        """ut-detect_project-techstack / S4-03（无任何可检测配置 → 各命令写「未检测到」不阻塞）"""
+        (self.root / "README.md").write_text("docs\n")
+        result = rc.detect_project(self.root, _intents())
+        ts = result["tech_stack"]
+        self.assertEqual(ts["test"], "未检测到")
+        self.assertEqual(ts["lint"], "未检测到")
+        self.assertEqual(ts["format"], "未检测到")
+        # coverage 默认仍为 80%
+        self.assertEqual(ts["coverage"], "80%")
+
+
+class TestLocateTemplates(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name) / "fakehome"
+        self.home.mkdir()
+        # 记录原始 HOME，用 addCleanup 恢复
+        self._orig_home = os.environ.get("HOME")
+        os.environ["HOME"] = str(self.home)
+        self.addCleanup(self._restore_home)
+
+    def _restore_home(self):
+        if self._orig_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = self._orig_home
+
+    # --- ut-locate_templates-online / S1b-01（在线路径优先命中）---
+    def test_online_path_preferred(self):
+        """ut-locate_templates-online / S1b-01（在线 marketplace 路径完整时优先返回）"""
+        online = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(online)
+        rules_root, openspec_yaml = rc.locate_templates()
+        self.assertEqual(rules_root, online)
+        self.assertTrue(openspec_yaml.exists())
+        self.assertEqual(openspec_yaml.name, "config.yaml")
+
+    # --- ut-locate_templates-offline / S1b-01（离线路径命中）---
+    def test_offline_path_used_when_online_missing(self):
+        """ut-locate_templates-offline / S1b-01（在线缺失时回退到离线 cadence-skills-local）"""
+        offline = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(offline)
+        rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, offline)
+
+    # --- ut-locate_templates-fallback / S1b-01（glob 回退；需 document-storage.md）---
+    def test_glob_fallback_when_fixed_paths_missing(self):
+        """ut-locate_templates-fallback / S1b-01（固定路径均缺失时 glob 回退；候选需含 document-storage.md）"""
+        # 在 fakehome 下构造一个 glob 可命中的候选（带 document-storage.md）
+        dev_candidate = (
+            self.home / "workspace" / "proj" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(dev_candidate, fallback=True)
+        rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, dev_candidate)
+
+    # --- ut-locate_templates-pair-check / S1b-02（缺成对文件或 config.yaml 的候选被跳过）---
+    def test_incomplete_candidate_skipped(self):
+        """ut-locate_templates-pair-check / S1b-02（在线候选缺 config.yaml → 跳过；落到 glob 回退完整候选）"""
+        # 在线候选缺 config.yaml（不写 openspec/config.yaml）
+        online_rules = (
+            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
+            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+        )
+        online_rules.mkdir(parents=True)
+        for name in _ONLINE_RULES:
+            (online_rules / name).write_text("# x\n")
+        # 故意不写 openspec/config.yaml → 该候选不完整
+        # glob 回退候选完整（带 document-storage.md + config.yaml）
+        dev_candidate = (
+            self.home / "workspace" / "proj" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(dev_candidate, fallback=True)
+        rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, dev_candidate)
+
+    # --- ut-locate_templates-mtime-latest / S1b-03（多候选取 mtime 最新）---
+    def test_multiple_candidates_pick_latest_mtime(self):
+        """ut-locate_templates-mtime-latest / S1b-03（glob 多候选通过校验后取修改时间最新者）"""
+        old_candidate = (
+            self.home / "workspace" / "old" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        new_candidate = (
+            self.home / "workspace" / "new" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        _write_minimal_templates(old_candidate, fallback=True)
+        # 确保 new_candidate 的 mtime 严格大于 old_candidate
+        import time as _time
+        _time.sleep(0.05)
+        _write_minimal_templates(new_candidate, fallback=True)
+        # 将 old 的 language.md 触摸更新为新（模拟 old 更新），new 应仍胜出？
+        # 此处直接断言 new（mtime 更大）胜出
+        rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, new_candidate)
+
+    # --- ut-locate_templates-all-incomplete / S1b-04（全不完整 → TemplateError）---
+    def test_all_incomplete_raises_template_error(self):
+        """ut-locate_templates-all-incomplete / S1b-04（所有候选均不完整 → TemplateError 终止）"""
+        # 不创建任何模板候选；HOME 下无任何 cadence-init/skills/rule-config 路径
+        # glob 也无命中 → TemplateError
+        with self.assertRaises(rc.TemplateError):
+            rc.locate_templates()
+
+
 if __name__ == "__main__":
     unittest.main()
+
