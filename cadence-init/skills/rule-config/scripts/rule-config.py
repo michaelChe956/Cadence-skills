@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -189,6 +190,24 @@ GITIGNORE_CADENCE_LINE = "cadence/"
 GITIGNORE_CADENCE_COMMENT = "# Cadence 产物目录"
 GITIGNORE_CODEGRAPH_LINE = ".codegraph/"
 GITIGNORE_CODEGRAPH_COMMENT = "# CodeGraph 本地索引"
+
+# S8 CodeGraph：.codex/config.toml 追加的 MCP 服务区块（逐字常量）。
+# 简报明文：CODEX_MCP_BLOCK toml 文本 =
+#   [mcp_servers.codegraph]\ncommand = "codegraph"\nargs = ["serve", "--mcp"]
+# 用三引号逐行书写以保持可读；末尾含一个换行，确保追加到既有 toml 时与上文分隔。
+CODEX_MCP_BLOCK = (
+    '[mcp_servers.codegraph]\n'
+    'command = "codegraph"\n'
+    'args = ["serve", "--mcp"]\n'
+)
+
+# S8 CodeGraph：.mcp.json（Claude Code MCP 配置）兜底合并写入的 codegraph 条目。
+# 与 references 对齐：command="codegraph"、args=["serve","--mcp"]。
+# has_codegraph_mcp_mcpjson 据此键存在性判定配置是否齐全。
+MCPJSON_CODEGRAPH_ENTRY = {
+    "command": "codegraph",
+    "args": ["serve", "--mcp"],
+}
 
 
 def _load_reference(name: str) -> str:
@@ -550,6 +569,53 @@ def ensure_gitignore_line(root: Path, line: str, comment: str) -> str:
     ensure_parent(gi)
     atomic_write(gi, comment + "\n" + line + "\n")
     return "added"
+
+
+# ---------------------------------------------------------------------------
+# S8 CodeGraph：MCP 配置探测纯函数（Task 9）
+# ---------------------------------------------------------------------------
+# has_codegraph_mcp_mcpjson / has_codegraph_mcp_codex 判定双 MCP 配置是否齐全。
+# install 后再核验、仅补仍缺失方时调用。语义：
+#   * .mcp.json：解析 JSON，顶层含 mcpServers.codegraph 键即视为齐全（不校 args 值，
+#     因为 codegraph install 写入的 args=["mcp"] 与脚本兜底 args=["serve","--mcp"]
+#     均合法——只要 codegraph 条目存在即代表 MCP 已注册）。
+#   * .codex/config.toml：文本含 [mcp_servers.codegraph] 区块头即视为齐全
+#    （toml 无标准库；按区块头存在性判定，与 install 写入格式兼容）。
+
+
+def has_codegraph_mcp_mcpjson(root: Path) -> bool:
+    """判定 root/.mcp.json 是否已注册 codegraph MCP 条目。
+
+    解析 JSON；顶层 dict 含 mcpServers.codegraph 即 True。文件缺失/不可解析/
+    结构非 dict/无该键均返回 False（配置缺失，需补写）。
+    """
+    mcp_path = root / ".mcp.json"
+    raw = _safe_read(mcp_path)
+    if not raw:
+        return False
+    try:
+        doc = json.loads(raw)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(doc, dict):
+        return False
+    servers = doc.get("mcpServers")
+    if not isinstance(servers, dict):
+        return False
+    return "codegraph" in servers
+
+
+def has_codegraph_mcp_codex(root: Path) -> bool:
+    """判定 root/.codex/config.toml 是否已注册 codegraph MCP 区块。
+
+    按文本含 `[mcp_servers.codegraph]` 区块头判定（与 install 写入格式兼容）。
+    文件缺失/不含该区块头均返回 False（配置缺失，需补写）。
+    """
+    toml_path = root / ".codex" / "config.toml"
+    raw = _safe_read(toml_path)
+    if not raw:
+        return False
+    return "[mcp_servers.codegraph]" in raw
 
 
 # ---------------------------------------------------------------------------
@@ -2635,9 +2701,189 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
     _record_step_actions(report, STEP_OPENSPEC_CONFIG, actions_log)
 
 
+def _s8_record_elapsed(report: dict, elapsed_ms: int) -> None:
+    """将 S8 独立计时写入报告 s8_codegraph step 的 elapsed_ms 字段。
+
+    it-budget 断言 s8_codegraph step 必须含 elapsed_ms（Task 3 it-budget 契约）。
+    """
+    for step in report.get("steps", []):
+        if step.get("name") == STEP_CODEGRAPH:
+            step["elapsed_ms"] = elapsed_ms
+            return
+    report.setdefault("steps", []).append({
+        "name": STEP_CODEGRAPH, "status": "ok", "action": None,
+        "reason": "", "elapsed_ms": elapsed_ms, "assets": [],
+        "conflicts": [], "actions": [],
+    })
+
+
+def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
+    """核验并补齐双 MCP 配置（.mcp.json 与 .codex/config.toml）。
+
+    任一缺失则补写：
+      * .codex/config.toml：追加 CODEX_MCP_BLOCK（先 ensure_parent，
+        备份由全局屏障处理；此处读取既有文本末尾补换行后追加区块）；
+      * .mcp.json：兜底 JSON 合并——解析既有 JSON（缺失/不可解析视为 {}），
+        写入 mcpServers.codegraph = MCPJSON_CODEGRAPH_ENTRY，原子写回。
+    配置补写/备份/原子写失败 → 抛错终止（PublishError）。
+    """
+    # .codex/config.toml 补写
+    if not has_codegraph_mcp_codex(root):
+        toml_path = root / ".codex" / "config.toml"
+        existing_toml = _safe_read(toml_path) or ""
+        # 末尾确保换行分隔后追加区块
+        if existing_toml and not existing_toml.endswith("\n"):
+            existing_toml += "\n"
+        candidate = existing_toml + CODEX_MCP_BLOCK
+        try:
+            atomic_write(toml_path, candidate)
+        except PublishError:
+            raise
+        actions_log.append({
+            "path": ".codex/config.toml", "action": "published",
+            "branch": "codex-mcp-patched",
+        })
+    # .mcp.json 补写（兜底 JSON 合并）
+    if not has_codegraph_mcp_mcpjson(root):
+        mcp_path = root / ".mcp.json"
+        raw = _safe_read(mcp_path)
+        doc: dict = {}
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    doc = parsed
+            except (ValueError, TypeError):
+                # 不可解析 → 兆底为空 dict 重写（配置已损坏，按新配置覆盖）
+                doc = {}
+        servers = doc.get("mcpServers")
+        if not isinstance(servers, dict):
+            servers = {}
+            doc["mcpServers"] = servers
+        servers["codegraph"] = dict(MCPJSON_CODEGRAPH_ENTRY)
+        try:
+            atomic_write(mcp_path, json.dumps(doc, ensure_ascii=False, indent=2) + "\n")
+        except PublishError:
+            raise
+        actions_log.append({
+            "path": ".mcp.json", "action": "published",
+            "branch": "mcpjson-merged",
+        })
+
+
 def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S8 执行（Task 9 实现）。骨架：pass，但记录独立 elapsed_ms。"""
-    _ = (root, intents, plan, report)
+    """S8 执行（Task 9）：CodeGraph 增量矩阵与降级、独立计时。
+
+    启用条件 =（project_type=='coding' 或 intents.enable_codegraph）；否则 skip。
+    状态矩阵（简报 Step 1）：
+      * .codegraph/ 存在 → 仅调 codegraph status（不重复 install/init）；
+      * .codegraph/ 不存在 → codegraph install（cwd=project_root）→
+        核验双 MCP 配置、仅补仍缺失方 → codegraph init（cwd=project_root）。
+    失败降级（简报 Step 2；S8 唯一例外：仅 install/init/status 子命令失败可 degraded）：
+      * install 失败 → 仍补齐双配置 + status=degraded + note（不再 init/status）；
+      * init/status 失败 → degraded + note；
+      * 配置补写/备份/原子写失败 → 抛错终止（PublishError）。
+    预算口径：S8 全程 elapsed_ms 单独计时；budget_seconds_excluding_codegraph
+    在 S7 完成点计算（S8 不计入 budget）。
+    """
+    t_start = time.monotonic()
+    actions_log: list = []
+    project_type = plan.get("project_type", "non-coding")
+    notes: list = []
+    degraded = False
+
+    # 启用条件
+    if not (project_type == "coding" or intents.enable_codegraph):
+        actions_log.append({
+            "action": "skip",
+            "reason": f"project_type={project_type}; enable_codegraph=False",
+            "branch": "codegraph-skip",
+        })
+        _record_step_actions(report, STEP_CODEGRAPH, actions_log)
+        _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
+        return
+
+    codegraph_dir = root / ".codegraph"
+    codegraph_exists = codegraph_dir.is_dir()
+
+    try:
+        if codegraph_exists:
+            # .codegraph/ 存在 → 仅调 status（不重复 install/init）
+            actions_log.append({
+                "action": "status-only", "branch": "codegraph-existing",
+                "detail": ".codegraph/ 已存在，仅执行 codegraph status",
+            })
+            status_rc = subprocess.run(
+                ["codegraph", "status"], cwd=str(root),
+            ).returncode
+            if status_rc != 0:
+                degraded = True
+                notes.append(f"codegraph status 失败（rc={status_rc}）")
+                actions_log.append({
+                    "action": "degraded", "branch": "status-failed",
+                    "detail": f"codegraph status rc={status_rc}",
+                })
+        else:
+            # .codegraph/ 不存在 → install → 核验补配置 → init
+            install_rc = subprocess.run(
+                ["codegraph", "install", "--target=claude,codex",
+                 "--location=local", "--yes"],
+                cwd=str(root),
+            ).returncode
+            actions_log.append({
+                "action": "install", "branch": "codegraph-install",
+                "detail": f"install rc={install_rc}",
+            })
+            if install_rc != 0:
+                # install 失败 → 仍补齐双配置 + degraded（不再 init/status）
+                notes.append(f"codegraph install 失败（rc={install_rc}）")
+                degraded = True
+                # 配置补写失败 → 抛错终止（配置补写不允许降级）
+                _s8_ensure_mcp_configs(root, report, actions_log)
+                actions_log.append({
+                    "action": "degraded", "branch": "install-failed",
+                    "detail": "install 失败，已补齐双 MCP 配置",
+                })
+            else:
+                # install 成功 → 核验补配置 → init
+                _s8_ensure_mcp_configs(root, report, actions_log)
+                init_rc = subprocess.run(
+                    ["codegraph", "init"], cwd=str(root),
+                ).returncode
+                actions_log.append({
+                    "action": "init", "branch": "codegraph-init",
+                    "detail": f"init rc={init_rc}",
+                })
+                if init_rc != 0:
+                    degraded = True
+                    notes.append(f"codegraph init 失败（rc={init_rc}）")
+                    actions_log.append({
+                        "action": "degraded", "branch": "init-failed",
+                        "detail": f"codegraph init rc={init_rc}",
+                    })
+    except PublishError:
+        # 配置补写/备份/原子写失败 → 抛错终止（S8 唯一不允许降级的路径）
+        _record_step_actions(report, STEP_CODEGRAPH, actions_log)
+        _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
+        raise
+
+    # 记录动作与独立计时
+    _record_step_actions(report, STEP_CODEGRAPH, actions_log)
+    _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
+
+    # 降级标记（不影响退出码；overall 由 ok 转为 degraded）
+    if degraded:
+        report["overall"] = "degraded"
+        # note 记录到 s8 step 的 reason 字段
+        for step in report.get("steps", []):
+            if step.get("name") == STEP_CODEGRAPH:
+                step["status"] = "degraded"
+                existing_reason = step.get("reason") or ""
+                note_text = "; ".join(notes)
+                step["reason"] = (existing_reason + "; " + note_text).strip("; ") \
+                    if existing_reason else note_text
+                break
+
 
 
 # 步骤名 → 执行函数映射
