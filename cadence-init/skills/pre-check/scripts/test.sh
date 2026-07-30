@@ -109,6 +109,49 @@ assert_eq "无 npm config set/git config --global/.npmrc/uv.toml 写入" "0" "$_
 _inst="$(bash "$PRE_CHECK" check 2>&1 >/dev/null | grep -c '正在安装' || true)"
 assert_eq "check 模式 stderr 无“正在安装”" "0" "$_inst"
 
+# --- 11. SKILL.md 流程级：不 cd 进 skill 目录、报告独占、命令自包含 ---
+SKILL_MD="$SCRIPT_DIR/../SKILL.md"
+
+# 11a. SKILL.md 不出现相对脚本调用 "bash scripts/pre-check.sh"（应用 <PRE_CHECK_SH> 绝对路径）
+_bad11a="$(grep -c 'bash scripts/pre-check\.sh' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无 bash scripts/pre-check.sh 相对调用" "0" "$_bad11a"
+
+# 11b. SKILL.md 不出现 "cd \$HOME/.agents/superpowers"（应用 git -C 自包含）
+_bad11b="$(grep -c 'cd "\$HOME/\.agents/superpowers"' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无 cd 进 superpowers 目录（用 git -C）" "0" "$_bad11b"
+
+# 11c. SKILL.md 引导使用独占报告路径（含时间戳占位），不依赖固定相对 ./.precheck-report.json
+_bad11c="$(grep -c '\./\.precheck-report\.json' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无固定相对 ./.precheck-report.json（用独占路径）" "0" "$_bad11c"
+
+# 11d. SKILL.md 含 <PROJECT_ROOT> 与 <REPORT> 占位（自包含绝对路径约定）
+_has11d="$(grep -c 'PROJECT_ROOT' "$SKILL_MD" || true)"
+[ "$_has11d" -gt 0 ]
+assert_true "SKILL.md 含 <PROJECT_ROOT> 绝对路径约定" "$?"
+
+# --- 12. 跨 cwd + 独占报告：在不同 cwd 执行脚本，报告写各自独占路径、互不影响 ---
+# 模拟 Agent 独立 shell：在两个不同目录用绝对路径调用脚本，报告写到项目根独占路径
+_PROJ_A="$(mktemp -d -t precheck-projA.XXXXXX)"
+_PROJ_B="$(mktemp -d -t precheck-projB.XXXXXX)"
+_REP_A="$_PROJ_A/.precheck-report-a.json"
+_REP_B="$_PROJ_B/.precheck-report-b.json"
+bash -c "cd '$_PROJ_A' && bash '$PRE_CHECK' check > '$_REP_A'" 2>/dev/null
+bash -c "cd '$_PROJ_B' && bash '$PRE_CHECK' check > '$_REP_B'" 2>/dev/null
+# 两报告都应存在且为合法 JSON（独占、互未覆盖）
+_ok12=0
+python3 -m json.tool "$_REP_A" >/dev/null 2>&1 && python3 -m json.tool "$_REP_B" >/dev/null 2>&1 && _ok12=1
+assert_eq "跨 cwd 独占报告各自可解析（互未覆盖）" "1" "$_ok12"
+
+# 12b. 跨独立 shell 读取：在第三个 shell（不同 cwd）用绝对路径读 _REP_A
+_ov12="$(bash -c "cd / && python3 -c \"import json;print(json.load(open('$_REP_A'))['overall'])\"" 2>/dev/null)"
+assert_eq "独立 shell（不同 cwd）按绝对路径读报告 overall" "success" "$_ov12"
+
+# 12c. skill 目录不被写入报告（脚本绝对路径调用，报告写项目根）
+[ ! -e "$SCRIPT_DIR/../.precheck-report.json" ] && [ ! -e "$SCRIPT_DIR/.precheck-report.json" ]
+assert_true "skill 目录无报告残留（不污染源码）" "$?"
+
+rm -rf "$_PROJ_A" "$_PROJ_B"
+
 # --- 汇总 ---
 _total=$((PASS_COUNT + FAIL_COUNT))
 printf '%s/%s PASS\n' "$PASS_COUNT" "$_total"

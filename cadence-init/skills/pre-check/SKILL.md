@@ -117,7 +117,7 @@ digraph when_to_use {
 - 部分存在：只修复缺失部分。
 - 冲突存在：不覆盖用户文件，中文警告并给出人工处理建议。
 - 单项失败：报告失败和手动命令，其他已就绪项不回滚。
-- 脚本化执行：六个基础工具由 `scripts/pre-check.sh` 毫秒级本地版本探测，已就绪工具秒跳过、不查远端、不重装；仅缺失或携带 `--upgrade` 时才执行安装/升级。
+- 脚本化执行：六个基础工具由 `<PRE_CHECK_SH>`（pre-check skill 的关联脚本，完整绝对路径）毫秒级本地版本探测，已就绪工具秒跳过、不查远端、不重装；仅缺失或携带 `--upgrade` 时才执行安装/升级。
 
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
@@ -160,7 +160,7 @@ digraph check_flow {
 
 | 步骤 | 检查命令或路径 | 成功标志 | 失败处理 |
 |------|----------------|----------|----------|
-| **1-6. 基础工具** | `bash scripts/pre-check.sh run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
+| **1-6. 基础工具** | `bash <PRE_CHECK_SH> run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
 | （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
 | **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
@@ -173,43 +173,50 @@ digraph check_flow {
 
 六个基础工具（npx、uvx、ast-grep、codegraph、openspec CLI、pi-mcp-adapter）的就绪探测、缺失安装与安装后复验统一由脚本完成，不再逐条执行安装命令。
 
-**执行目录**：以下所有命令均在**用户项目根目录**执行（即你运行 `/pre-check` 时所在的目录）。openspec 产物、`.claude/.codex/.pi`、报告文件都落在该项目根。
+**自包含原则（关键）**：Agent 的每条命令都在**独立 shell** 中执行，工作目录（cwd）、环境变量、上一条命令的状态**都不跨命令保留**。因此本 Skill 的每条命令都必须**完全自包含**：用绝对路径，不依赖 cwd，不依赖环境变量，不依赖前一条命令设置的任何东西。
 
-**脚本位置**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`（与 skill-creator 的 `scripts/` 约定一致）。**模型根据自身安装环境定位该 skill 目录，拼出脚本的完整绝对路径后调用**——例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`。脚本只读，**不要** `cd` 进 skill 目录执行。下文以 `<PRE_CHECK_SH>` 指代该完整绝对路径，调用时替换为实际路径。
+**第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
 
-**调用命令**：报告写入项目根的 `./.precheck-report.json`（相对项目根的固定字面路径，每次执行覆盖写；为临时文件，用完需清理，建议加入项目 `.gitignore`）。按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）：
+1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物、`.claude/.codex/.pi`、报告文件都落在该目录。
+2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录。
+
+**第二步——确定独占报告路径 `<REPORT>`**：为避免并发/重复运行互相覆盖，报告用**每次调用独占**的绝对路径 `<PROJECT_ROOT>/.precheck-report-<时间戳>.json`。执行一次 `echo "$(pwd)/.precheck-report-$(date +%s).json"` 得到字面值并记住，后续命令直接写出它。
+
+**调用命令**：按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）。把 `<PRE_CHECK_SH>` 与 `<REPORT>` 替换为上面记住的字面值：
 
 ```bash
 # 通用源，普通模式
-bash <PRE_CHECK_SH> run > ./.precheck-report.json
+bash <PRE_CHECK_SH> run > <REPORT>
 
 # 大陆镜像源
-bash <PRE_CHECK_SH> run --mirror cn > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn > <REPORT>
 
 # no-interrupt 模式（任一基础工具失败即非零退出）
-bash <PRE_CHECK_SH> run --mirror cn --no-interrupt > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn --no-interrupt > <REPORT>
 
 # 仅探测不安装（摸底）
-bash <PRE_CHECK_SH> check --mirror cn > ./.precheck-report.json
+bash <PRE_CHECK_SH> check --mirror cn > <REPORT>
 
 # 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash <PRE_CHECK_SH> run --mirror cn --upgrade > ./.precheck-report.json
+bash <PRE_CHECK_SH> run --mirror cn --upgrade > <REPORT>
 ```
 
-脚本向 stdout 输出单份 JSON，重定向到项目根的 `./.precheck-report.json`；stderr 彩色摘要直接显示。**报告路径是字面常量，模型在后续每条命令中直接写出它，不依赖环境变量或上一条命令的工作目录**（Agent 各命令独立 shell，环境变量与 cwd 不跨命令保留）。
+脚本向 stdout 输出单份 JSON，重定向到 `<REPORT>`（项目根下的独占绝对路径）；stderr 彩色摘要直接显示。
 
-**读取结果**：报告 JSON 由上面的调用命令写入项目根的 `./.precheck-report.json`。用以下命令取 overall 与各工具状态（每条命令自包含，用字面路径）：
+**读取结果**：报告 JSON 已写入独占路径 `<REPORT>`。用以下命令取 overall 与各工具状态（每条命令自包含，写出 `<REPORT>` 字面值）：
 
 ```bash
 # overall（success/partial/failed）
-python3 -c "import json;print(json.load(open('./.precheck-report.json'))['overall'])"
+python3 -c "import json;print(json.load(open('<REPORT>'))['overall'])"
 # 某工具状态
-python3 -c "import json;d=json.load(open('./.precheck-report.json'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
+python3 -c "import json;d=json.load(open('<REPORT>'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
 # Superpowers 远端地址（供步骤 6 使用）
-python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])"
+python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])"
 ```
 
-**报告生命周期**：报告是临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。**全部检查完成后删除它**：`rm -f ./.precheck-report.json`。
+**报告生命周期**：报告是临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件（`<REPORT>` 是含时间戳的字面值）：
+- 成功路径：全部检查完成后 `rm -f <REPORT>`。
+- 失败路径：任一失败终止或报告后，同样 `rm -f <REPORT>`，避免残留。
 
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
 
@@ -233,11 +240,11 @@ playwright-cli --help
 
 **安装命令**：
 
-> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 必须在**用户项目根目录**执行，其 skills 产物写入当前项目对应位置。
+> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 的 skills 产物写入当前项目，须 `cd <PROJECT_ROOT>`（项目根绝对路径）后执行，确保在独立 shell 下落到项目根。
 
 ```bash
-npm install -g @playwright/cli@latest   # 全局安装 CLI
-playwright-cli install --skills          # 在用户项目根目录执行
+npm install -g @playwright/cli@latest        # 全局安装 CLI（任意目录均可）
+cd <PROJECT_ROOT> && playwright-cli install --skills   # skills 产物写入项目根，须 cd <PROJECT_ROOT>
 ```
 
 **验证安装**：
@@ -269,18 +276,17 @@ openspec --version
 
 **初始化与更新命令**：
 
-> **执行位置**：以下 `openspec init`/`openspec update` 及后续 `.claude/.codex/.pi` 相对路径检查，均在**用户项目根目录**执行（与步骤 0 同一工作目录），产物写入该项目根，不写入 Skill 目录。
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd <PROJECT_ROOT> && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
 
 ```bash
 # 三客户端产物均缺失（新项目）
-openspec init --tools claude,codex,pi
+cd <PROJECT_ROOT> && openspec init --tools claude,codex,pi
 
 # 仅 pi 产物缺失
-openspec init --tools pi
-openspec update
+cd <PROJECT_ROOT> && openspec init --tools pi && openspec update
 
 # 三客户端产物齐全
-openspec update
+cd <PROJECT_ROOT> && openspec update
 ```
 
 **增量要求**：
@@ -308,12 +314,12 @@ openspec update
 **验证命令**：
 
 ```bash
-openspec --version
-test -f .codex/skills/openspec-propose/SKILL.md
-test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
-test -f .pi/skills/openspec-propose/SKILL.md
-test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
-test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
+cd <PROJECT_ROOT> && openspec --version
+cd <PROJECT_ROOT> && test -f .codex/skills/openspec-propose/SKILL.md
+cd <PROJECT_ROOT> && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+cd <PROJECT_ROOT> && test -f .pi/skills/openspec-propose/SKILL.md
+cd <PROJECT_ROOT> && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
+cd <PROJECT_ROOT> && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
 
 > 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
@@ -332,14 +338,14 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 
 **在线安装来源**：
 
-> **执行位置与产物**：以下命令在**用户项目根目录**执行（读项目根的 `./.precheck-report.json`），clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。若 `./.precheck-report.json` 不存在，先回步骤 0 生成报告再读本节。
+> **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（项目根下独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
 
 ```bash
-# 单条命令自包含：从项目根报告读出 Superpowers 远端地址并 clone（同一 shell 内完成）
-git clone "$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")" "$HOME/.agents/superpowers"
+# 单条命令自包含：从 <REPORT> 读出 Superpowers 远端地址并 clone（同一 shell 内完成）
+git clone "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" "$HOME/.agents/superpowers"
 ```
 
-Superpowers 远端地址必须从项目根 `./.precheck-report.json` 的 `hints.superpowers_git` 读出；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
+Superpowers 远端地址必须从 `<REPORT>` 的 `hints.superpowers_git` 读出；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -362,11 +368,11 @@ $HOME/.agents/superpowers/skills
 
 **Git 更新逻辑**：
 
-> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用项目根的 `./.precheck-report.json`（在项目根执行）。
+> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 的独占绝对路径字面值）。
 
 ```bash
-# 从项目根报告读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
-git -C "$HOME/.agents/superpowers" remote set-url origin "$(python3 -c "import json;print(json.load(open('./.precheck-report.json'))['hints']['superpowers_git'])")" && \
+# 从 <REPORT> 读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
+git -C "$HOME/.agents/superpowers" remote set-url origin "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" && \
 git -C "$HOME/.agents/superpowers" fetch origin && \
 git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
 ```
@@ -433,11 +439,11 @@ test -d "$HOME/.pi/agent/skills"
 |------|------|----------|
 | **npx 安装失败** | Node.js 未安装 | 先安装 Node.js |
 | **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
-| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash scripts/pre-check.sh run` |
-| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash scripts/pre-check.sh run` |
-| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash scripts/pre-check.sh run` |
+| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
+| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
+| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash <PRE_CHECK_SH> run` |
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
 | **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
-| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash scripts/pre-check.sh run`，或修复 pi 环境后重新运行 `/pre-check` |
+| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash <PRE_CHECK_SH> run`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
