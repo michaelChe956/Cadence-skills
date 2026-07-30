@@ -10,6 +10,8 @@ disable-model-invocation: true
 
 自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
+**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.codex/.pi` 写入待初始化项目根目录。
+
 ## 参数模式
 
 支持以下调用方式：
@@ -21,7 +23,7 @@ disable-model-invocation: true
 ```
 
 - 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
-- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过和失败后继续策略。
+- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过策略；单项工具失败不阻塞其他检查项的就绪探测，但整体判定为失败（`overall` 为 `partial`/`failed` 或任一步骤 failed）时不得进入 OpenSpec、Superpowers 等下游步骤（详见步骤 0 判定规则）。
 - 两种模式互斥；不得把 `no-interrupt` 规则应用到普通模式。
 
 ### no-interrupt 通用规则
@@ -38,13 +40,9 @@ disable-model-invocation: true
 
 | 项目 | 完成条件 | 失败动作 |
 |------|----------|----------|
-| npx | `npx --version` 成功 | 立即终止 |
-| uvx | `uvx --version` 成功 | 立即终止 |
-| ast-grep | `ast-grep --version` 成功 | 立即终止 |
-| codegraph | `codegraph version` 成功 | 立即终止 |
-| OpenSpec | CLI 和 claude/codex/pi 三客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
+| 六个基础工具 | 脚本 `run --no-interrupt` 退出码为 0 且 JSON `overall=success` | 立即终止 |
+| OpenSpec 三客户端产物 | claude/codex/pi 三客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
 | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
-| pi MCP Adapter | 条件项：`command -v pi` 成功时 adapter 安装并验证成功；pi 可执行文件不存在时跳过 | pi 可执行文件存在但安装失败：立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 
 `no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
@@ -121,6 +119,7 @@ digraph when_to_use {
 - 部分存在：只修复缺失部分。
 - 冲突存在：不覆盖用户文件，中文警告并给出人工处理建议。
 - 单项失败：报告失败和手动命令，其他已就绪项不回滚。
+- 脚本化执行：六个基础工具由 `<PRE_CHECK_SH>`（pre-check skill 的关联脚本，完整绝对路径）毫秒级本地版本探测，已就绪工具秒跳过、不查远端、不重装；仅缺失或携带 `--upgrade` 时才执行安装/升级。
 
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
@@ -137,79 +136,25 @@ digraph check_flow {
     node [shape=box, style="rounded"];
 
     start [label="开始检查", shape=ellipse];
-
-    check_npx [label="检查 npx", shape=diamond];
-    install_npx [label="安装 npx"];
-    npx_done [label="npx 就绪"];
-
-    check_uvx [label="检查 uvx", shape=diamond];
-    install_uvx [label="安装 uvx"];
-    uvx_done [label="uvx 就绪"];
-
-    check_ast_grep [label="检查 ast-grep", shape=diamond];
-    install_ast_grep [label="安装 ast-grep"];
-    ast_grep_done [label="ast-grep 就绪"];
-
-    check_codegraph [label="检查 codegraph", shape=diamond];
-    install_codegraph [label="安装 codegraph"];
-    codegraph_done [label="codegraph 就绪"];
-
-    check_openspec [label="检查 OpenSpec", shape=diamond];
-    install_openspec [label="安装 OpenSpec CLI"];
-    sync_openspec [label="初始化或更新 OpenSpec 指令文件"];
-    openspec_done [label="OpenSpec 就绪"];
-
-    check_superpowers [label="检查 Superpowers", shape=diamond];
-    clone_superpowers [label="在线 clone 或提示离线复制"];
-    sync_superpowers [label="更新仓库并同步软链"];
-    superpowers_done [label="Superpowers 就绪"];
-
-    check_pi_mcp [label="PATH 中存在 pi 可执行文件?", shape=diamond];
-    install_pi_mcp [label="检查/安装 pi-mcp-adapter"];
-    skip_pi_mcp [label="跳过 pi MCP Adapter 检查"];
-    optional_playwright [label="用户明确要求时安装 Playwright", shape=box];
-    remind_apikey [label="默认展示 API Key 占位提醒"];
-
+    run_script [label="步骤 0：执行脚本\n六工具探测；npx 仅探测\n(缺失提示装 Node.js)；\n其余安装/复验/升级"];
+    read_report [label="读取 JSON 报告\noverall + steps[]"];
+    judge [label="overall 判定", shape=diamond];
+    fail_stop [label="失败处理：\nno-interrupt 终止\n普通模式报告不继续"];
+    openspec_clients [label="步骤 5：OpenSpec 三客户端产物补齐"];
+    superpowers_sync [label="步骤 6：Superpowers clone/更新 + 四层软链"];
+    playwright [label="可选：用户明确要求时安装 Playwright", shape=box];
+    apikey [label="API Key 占位提醒"];
     end [label="检查完成", shape=ellipse];
 
-    start -> check_npx;
-    check_npx -> install_npx [label="未安装"];
-    check_npx -> check_uvx [label="已安装"];
-    install_npx -> npx_done;
-    npx_done -> check_uvx;
-
-    check_uvx -> install_uvx [label="未安装"];
-    check_uvx -> check_ast_grep [label="已安装"];
-    install_uvx -> uvx_done;
-    uvx_done -> check_ast_grep;
-
-    check_ast_grep -> install_ast_grep [label="未安装"];
-    check_ast_grep -> check_codegraph [label="已安装"];
-    install_ast_grep -> ast_grep_done;
-    ast_grep_done -> check_codegraph;
-
-    check_codegraph -> install_codegraph [label="未安装"];
-    check_codegraph -> check_openspec [label="已安装"];
-    install_codegraph -> codegraph_done;
-    codegraph_done -> check_openspec;
-
-    check_openspec -> install_openspec [label="CLI 未安装"];
-    check_openspec -> sync_openspec [label="CLI 已安装"];
-    install_openspec -> sync_openspec;
-    sync_openspec -> openspec_done;
-    openspec_done -> check_superpowers;
-
-    check_superpowers -> clone_superpowers [label="来源缺失"];
-    check_superpowers -> sync_superpowers [label="来源存在"];
-    clone_superpowers -> sync_superpowers;
-    sync_superpowers -> superpowers_done;
-    superpowers_done -> check_pi_mcp;
-    check_pi_mcp -> install_pi_mcp [label="是"];
-    check_pi_mcp -> skip_pi_mcp [label="否"];
-    install_pi_mcp -> optional_playwright;
-    skip_pi_mcp -> optional_playwright;
-    optional_playwright -> remind_apikey;
-    remind_apikey -> end;
+    start -> run_script;
+    run_script -> read_report;
+    read_report -> judge;
+    judge -> fail_stop [label="partial / failed / 非零退出"];
+    judge -> openspec_clients [label="success"];
+    openspec_clients -> superpowers_sync;
+    superpowers_sync -> playwright;
+    playwright -> apikey;
+    apikey -> end;
 }
 ```
 
@@ -217,37 +162,70 @@ digraph check_flow {
 
 | 步骤 | 检查命令或路径 | 成功标志 | 失败处理 |
 |------|----------------|----------|----------|
-| **1. npx** | `npx --version` | 输出版本号 | 自动安装稳定版本 |
-| **2. uvx** | `uvx --version` | 输出版本号 | 自动安装稳定版本 |
-| **3. ast-grep** | `ast-grep --version` | 输出版本号 | 自动全局安装 `@ast-grep/cli` |
-| **4. codegraph** | `codegraph version` | 输出版本号 | 自动全局安装 `@colbymchenry/codegraph` |
-| **5. OpenSpec** | `openspec --version`、三客户端产物状态 | CLI 和所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
+| **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
+| （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
+| **5. OpenSpec** | 脚本报告 `openspec` 项 + 三客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
-| **7. pi MCP Adapter（条件）** | `command -v pi >/dev/null 2>&1`；就绪判定为 `pi list` 含 `pi-mcp-adapter` 或 `~/.pi/agent/npm/node_modules/pi-mcp-adapter` 存在 | pi 可执行文件存在时 adapter 已安装；不存在时跳过 | pi 可执行文件存在且 adapter 缺失时执行 `pi install npm:pi-mcp-adapter` |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
 ## 实施步骤
 
-### 步骤 1：检查 npx
+### 步骤 0：执行脚本完成六个基础工具检查
+
+六个基础工具（npx、uvx、ast-grep、codegraph、openspec CLI、pi-mcp-adapter）的就绪探测、缺失安装与安装后复验统一由脚本完成，不再逐条执行安装命令。
+
+**自包含原则（关键）**：Agent 的每条命令都在**独立 shell** 中执行，工作目录（cwd）、环境变量、上一条命令的状态**都不跨命令保留**。因此本 Skill 的每条命令都必须**完全自包含**：用绝对路径，不依赖 cwd，不依赖环境变量，不依赖前一条命令设置的任何东西。
+
+**第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
+
+1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.codex/.pi` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
+2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录，也**不要**把脚本单独复制到别处执行——它依赖同目录下的 `mirrors/`（镜像配置），必须连同 skill 目录一起定位。
+
+**第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
+
+**调用命令**：按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）。把 `<PRE_CHECK_SH>` 与 `<REPORT>` 替换为上面记住的字面值：
 
 ```bash
-npx --version
+# 通用源，普通模式
+bash "<PRE_CHECK_SH>" run > "<REPORT>"
+
+# 大陆镜像源
+bash "<PRE_CHECK_SH>" run --mirror cn > "<REPORT>"
+
+# no-interrupt 模式（任一基础工具失败即非零退出）
+bash "<PRE_CHECK_SH>" run --mirror cn --no-interrupt > "<REPORT>"
+
+# 仅探测不安装（摸底）
+bash "<PRE_CHECK_SH>" check --mirror cn > "<REPORT>"
+
+# 升级已装工具到当前源 latest（npm 系 + uv 本体）
+bash "<PRE_CHECK_SH>" run --mirror cn --upgrade > "<REPORT>"
 ```
 
-**行为（中文输出）**：
-- 已安装：报告 "✓ npx 已安装（版本：{版本号}）"
-- 未安装：报告 "正在安装 npx..."，自动安装，完成后报告 "✓ npx 安装成功"
+脚本向 stdout 输出单份 JSON，重定向到 `"<REPORT>"`（`/tmp` 下的独占绝对路径）；stderr 彩色摘要直接显示。
 
-### 步骤 2：检查 uvx
+**读取结果**：报告 JSON 已写入独占路径 `<REPORT>`。用以下命令取 overall 与各工具状态（每条命令自包含，写出 `<REPORT>` 字面值并加引号）：
 
 ```bash
-uvx --version
+# overall（success/partial/failed）
+python3 -c "import json;print(json.load(open('<REPORT>'))['overall'])"
+# 某工具状态
+python3 -c "import json;d=json.load(open('<REPORT>'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
+# Superpowers 远端地址（供步骤 6 使用）
+python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])"
 ```
 
-**行为（中文输出）**：
-- 已安装：报告 "✓ uvx 已安装（版本：{版本号}）"
-- 未安装：报告 "正在安装 uvx..."，自动安装，完成后报告 "✓ uvx 安装成功"
+**报告生命周期**：报告是 `/tmp` 下的临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件：
+- 成功路径：全部检查完成后 `rm -f "<REPORT>"`。
+- 失败路径：任一失败终止或报告后，同样 `rm -f "<REPORT>"`，避免残留。
+
+**JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
+
+**判定规则**：
+- `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 三客户端检查与步骤 6 的 Superpowers 同步。
+- `overall` 为 `partial` 或 `failed`，或任一 `steps[].status=failed`，或脚本非零退出：no-interrupt 模式立即终止 `/pre-check` 并报告失败；普通模式报告失败项与恢复建议，**不得继续后续步骤，不宣称成功**。
+- pi-mcp-adapter 的 `status=skipped`（action=pi-not-found）不算失败。
 
 ### 可选步骤：检查 playwright-cli
 
@@ -264,9 +242,11 @@ playwright-cli --help
 
 **安装命令**：
 
+> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 的 skills 产物写入当前项目，须 `cd "<PROJECT_ROOT>"`（项目根绝对路径）后执行，确保在独立 shell 下落到项目根。
+
 ```bash
-npm install -g @playwright/cli@latest
-playwright-cli install --skills
+npm install -g @playwright/cli@latest        # 全局安装 CLI（任意目录均可）
+cd "<PROJECT_ROOT>" && playwright-cli install --skills   # skills 产物写入项目根，须 cd "<PROJECT_ROOT>"
 ```
 
 **验证安装**：
@@ -283,71 +263,30 @@ ls ~/.claude/skills/playwright-cli
 - **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
 - **默认行为**：不安装、不启用；需要时由用户显式要求
 
-### 步骤 3：检查 ast-grep
+### 步骤 5：检查 OpenSpec 三客户端产物
 
-```bash
-ast-grep --version
-```
+> **OpenSpec CLI 就绪以脚本报告为准**：openspec CLI 的探测/安装/复验由步骤 0 脚本统一完成，不再单独执行 `openspec --version`。仅当步骤 0 报告 `steps[]` 中 `name=openspec` 项为就绪（ready/installed/upgraded）时才继续本节；未就绪时先回步骤 0 处理。
 
 **行为（中文输出）**：
-- 已安装：报告 "✓ ast-grep 已安装（版本：{版本号}）"
-- 未安装：报告 "正在安装 ast-grep..."，执行 `npm i @ast-grep/cli -g`，完成后报告 "✓ ast-grep 安装成功"
-
-**安装命令**：
-
-```bash
-npm i @ast-grep/cli -g
-```
-
-### 步骤 4：检查 codegraph
-
-```bash
-codegraph version
-```
-
-**行为（中文输出）**：
-- 已安装：报告 "✓ codegraph 已安装（版本：{版本号}）"
-- 未安装：报告 "正在安装 codegraph..."，执行 `npm i -g @colbymchenry/codegraph`，完成后报告 "✓ codegraph 安装成功"
-
-**安装命令**：
-
-```bash
-npm i -g @colbymchenry/codegraph
-```
-
-**增量要求**：
-- 如果老项目已完成 `/pre-check`，重新运行时必须跳过已安装工具，只补装缺失的 codegraph。
-- codegraph 安装后只验证 codegraph，不重新安装 npx/uvx/ast-grep。
-
-### 步骤 5：检查 OpenSpec
-
-```bash
-openspec --version
-```
-
-**行为（中文输出）**：
-- CLI 已安装：报告 "✓ OpenSpec CLI 已安装（版本：{版本号}）"
-- CLI 未安装：报告 "正在安装 OpenSpec CLI..."，执行 `npm install -g @fission-ai/openspec@latest`，完成后再次验证
+- CLI 已就绪（脚本报告 `openspec` 项为 ready/installed/upgraded）：继续本节三客户端产物检查
+- CLI 未就绪：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行三客户端产物检查
 - `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
-**安装命令**：
-
-```bash
-npm install -g @fission-ai/openspec@latest
-```
+**安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节三客户端产物检查。
 
 **初始化与更新命令**：
 
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
+
 ```bash
 # 三客户端产物均缺失（新项目）
-openspec init --tools claude,codex,pi
+cd "<PROJECT_ROOT>" && openspec init --tools claude,codex,pi
 
 # 仅 pi 产物缺失
-openspec init --tools pi
-openspec update
+cd "<PROJECT_ROOT>" && openspec init --tools pi && openspec update
 
 # 三客户端产物齐全
-openspec update
+cd "<PROJECT_ROOT>" && openspec update
 ```
 
 **增量要求**：
@@ -369,18 +308,17 @@ openspec update
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
   - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
-- `--tools pi` 需要 OpenSpec CLI >= 1.4.1；`/pre-check` 的安装命令始终安装 `@fission-ai/openspec@latest`，版本不足时先升级 CLI。
+- `--tools pi` 需要 OpenSpec CLI >= 1.4.1；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
 - 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
 
 **验证命令**：
 
 ```bash
-openspec --version
-test -f .codex/skills/openspec-propose/SKILL.md
-test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
-test -f .pi/skills/openspec-propose/SKILL.md
-test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
-test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
+cd "<PROJECT_ROOT>" && test -f .codex/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
+cd "<PROJECT_ROOT>" && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
 ```
 
 > 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
@@ -399,9 +337,14 @@ test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc 
 
 **在线安装来源**：
 
+> **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（`/tmp` 下 mktemp 生成的独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
+
 ```bash
-git clone https://github.com/obra/superpowers "$HOME/.agents/superpowers"
+# 单条命令自包含：从 <REPORT> 读出 Superpowers 远端地址并 clone（同一 shell 内完成）
+git clone "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" "$HOME/.agents/superpowers"
 ```
+
+Superpowers 远端地址必须从 `<REPORT>` 的 `hints.superpowers_git` 读出；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
 
 **离线安装方式**：
 
@@ -424,11 +367,13 @@ $HOME/.agents/superpowers/skills
 
 **Git 更新逻辑**：
 
+> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 在 `/tmp` 生成的独占绝对路径字面值）。
+
 ```bash
-cd "$HOME/.agents/superpowers"
-git fetch --all
-git rev-parse --abbrev-ref --symbolic-full-name @{u}
-git pull --ff-only
+# 从 <REPORT> 读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
+git -C "$HOME/.agents/superpowers" remote set-url origin "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" && \
+git -C "$HOME/.agents/superpowers" fetch origin && \
+git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
 ```
 
 **软链同步逻辑**：
@@ -460,42 +405,6 @@ test -d "$HOME/.pi/agent/skills"
 - 只补齐缺失软链或更新指向旧来源的软链。
 - 离线安装目录有效时，不要求 `.git` 存在，不尝试 Git 更新。
 - 在线 clone 或 Git 更新失败时，不删除已有离线目录或已有软链。
-
-### 步骤 7：检查 pi MCP Adapter（条件检查）
-
-> 条件项：仅在 PATH 中存在 pi 可执行文件时执行；pi 可执行文件不存在时跳过且不算失败（语义同 Playwright 的条件跳过，不违反 no-interrupt 完成门槛）。
-
-**触发条件（成功时执行检查）**：
-
-```bash
-command -v pi >/dev/null 2>&1
-```
-
-**就绪判定（满足任一即视为已安装）**：
-
-```bash
-pi list | grep pi-mcp-adapter
-test -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
-```
-
-**安装命令**：
-
-```bash
-pi install npm:pi-mcp-adapter
-```
-
-**行为（中文输出）**：
-- pi 可执行文件不存在：报告 "✓ 未检测到 pi 可执行文件，跳过 pi MCP Adapter 检查"，不调用 `pi list` 或 `pi install`，继续后续步骤；no-interrupt 模式不因此失败关闭
-- 已安装：报告 "✓ pi-mcp-adapter 已安装"
-- 未安装：报告 "正在安装 pi-mcp-adapter..."，执行安装命令，完成后按就绪判定验证并报告 "✓ pi-mcp-adapter 安装成功"
-- 安装失败：普通模式报告失败原因与手动命令 `pi install npm:pi-mcp-adapter`；no-interrupt 模式立即终止并给出恢复建议，不得宣称初始化成功
-
-**说明**：
-
-- **用途**：pi 官方不提供原生 MCP 支持。pi-mcp-adapter 是第三方 pi 扩展，安装后自动读取项目 `.mcp.json`（标准 stdio 与 HTTP 配置），使 pi 获得与 `.mcp.json` 一致的 MCP 能力。
-- **安装位置**：使用 `pi install npm:pi-mcp-adapter` 全局安装，写入 `~/.pi/agent/settings.json`；实际包目录为 `~/.pi/agent/npm/node_modules/pi-mcp-adapter`，可执行文件软链为 `~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter`，一次安装对所有项目生效。
-- **增量要求**：已安装时跳过；pi 可执行文件不存在时不调用 `pi list` 或 `pi install`，不报错、不影响其他检查结果。
-- **版本策略**：不锁定版本，与框架对 npx/uvx 等工具的"安装稳定版本"策略一致；如该包不可用，报告并提示用户可自行选择其他 pi MCP 扩展。
 
 ### 默认步骤：API Key 占位配置提醒
 
@@ -529,11 +438,11 @@ pi install npm:pi-mcp-adapter
 |------|------|----------|
 | **npx 安装失败** | Node.js 未安装 | 先安装 Node.js |
 | **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
-| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i @ast-grep/cli -g` |
-| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm i -g @colbymchenry/codegraph` |
-| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境，或手动执行 `npm install -g @fission-ai/openspec@latest` |
+| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
+| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
+| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
 | **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
-| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后手动执行 `pi install npm:pi-mcp-adapter`，或修复 pi 环境后重新运行 `/pre-check` |
+| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash "<PRE_CHECK_SH>" run`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
