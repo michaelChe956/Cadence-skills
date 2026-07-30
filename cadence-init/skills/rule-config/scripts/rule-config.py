@@ -375,13 +375,27 @@ def validate_decisions(plan: dict, decisions: list) -> list:
       * 缺失：plan 有冲突但 decisions 未提供（无 --decisions 时 decisions=[]）；
       * 未知：decisions 含 plan 不认识的 conflict_id；
       * 重复：同一 conflict_id 出现多次；
-      * 过期：decision 与该冲突的实际可选决策集不符。
+      * 过期：decision 不在该冲突的 allowed_decisions 集合内（含空 decision）。
 
     仅普通模式且 plan 有冲突时调用（no-interrupt 模式按权威规则自动决策）。
+
+    每个 conflict 条目应携带 allowed_decisions（list[str]），由 compute_plan
+    按资产类型生成（如规则文件/L0/L1 → ['replace','keep']）。decision 不在
+    该集合内即记为「过期」违规（区别于「缺失」）。
     """
     violations: list = []
     plan_conflicts = plan.get("conflicts", []) or []
-    plan_ids = {c.get("conflict_id") for c in plan_conflicts if c.get("conflict_id")}
+    # conflict_id -> 允许的决策集（缺失时退化为 ['replace','keep']）
+    allowed_by_id: dict = {}
+    for c in plan_conflicts:
+        cid = c.get("conflict_id")
+        if not cid:
+            continue
+        allowed = c.get("allowed_decisions")
+        if not isinstance(allowed, list) or not allowed:
+            allowed = ["replace", "keep"]
+        allowed_by_id[cid] = allowed
+    plan_ids = set(allowed_by_id.keys())
 
     # decisions 索引
     seen: dict = {}
@@ -401,10 +415,12 @@ def validate_decisions(plan: dict, decisions: list) -> list:
             violations.append(f"重复 conflict_id：{cid}")
             continue
         seen[cid] = decision
-        # 过期：decision=keep 对需要 replace 的冲突判定为无效。
-        # 骨架：accept/reject 的可选集由后续 Task 细化；此处仅校验非空 decision。
-        if not decision:
-            violations.append(f"缺少决策：{cid}")
+        # 过期：decision 不在该冲突的允许决策集内（含空 decision）。
+        allowed = allowed_by_id[cid]
+        if not decision or decision not in allowed:
+            violations.append(
+                f"决策过期：{cid} 的 decision={decision!r} 不在允许集 {allowed}"
+            )
 
     # 缺失：plan 有冲突但 decisions 未覆盖
     missing = plan_ids - set(seen.keys())
@@ -449,6 +465,8 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     plan["project_type"] = detected_type
     s1["status"] = "ok"
     s1["note"] = f"project_type={detected_type}"
+    # 注：项目类型检测矛盾冲突（allowed=['coding','non-coding']）由后续 Task
+    # 完整实现 detect 逻辑时产生；当前骨架仅判定 project_type，不记 conflict。
     plan["steps"][STEP_DETECT] = s1
 
     # --- S2 locate templates：始终 ok（骨架） ---
@@ -467,7 +485,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict": None,
                 "backup_needed": True,
             })
-            plan["backup_needs"].append(rule_file)
+            _append_backup_need(plan, rule_file)
     s3["status"] = "ok"
     plan["steps"][STEP_RULES_FILES] = s3
 
@@ -510,10 +528,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict_id": conflict_id,
                 "asset": entry_name,
                 "state": state,
+                "allowed_decisions": ["replace", "keep"],
                 "question": f"入口文件 {entry_name} 的 L0 受管区块状态为 {state}",
                 "recommendation": "replace",
             })
-            plan["backup_needs"].append(entry_path)
+            _append_backup_need(plan, entry_path)
     s4["status"] = "ok"
     plan["steps"][STEP_ENTRY_FILES] = s4
 
@@ -528,6 +547,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     plan["steps"][STEP_GITIGNORE] = s6
 
     # --- S7 openspec config：探测 openspec/config.yaml ---
+    # 骨架：当前不产生 conflict（rules.apply 类型/结构冲突由 Task 8 实现）。
+    # 后续 Task 8 在此产生 openspec 冲突时，allowed_decisions 应为
+    # ['remove_apply','keep']（见 validate_decisions 的 allowed_decisions 约定）。
     s7 = _step_skeleton(STEP_OPENSPEC_CONFIG)
     config_path = root / "openspec" / "config.yaml"
     if config_path.exists():
@@ -537,7 +559,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             "conflict": None,
             "backup_needed": True,
         })
-        plan["backup_needs"].append(config_path)
+        _append_backup_need(plan, config_path)
     s7["status"] = "ok"
     plan["steps"][STEP_OPENSPEC_CONFIG] = s7
 
@@ -561,6 +583,19 @@ def _step_skeleton(name: str) -> dict:
         "conflicts": [],
         "note": "",
     }
+
+
+def _append_backup_need(plan: dict, target: Path) -> None:
+    """将 target 加入 plan.backup_needs（去重，避免重复备份）。
+
+    按规范字符串形式去重（M-4）：同一文件可能被多个步骤探测到，
+    备份屏障只应备份一次。
+    """
+    backup_needs = plan.setdefault("backup_needs", [])
+    key = str(target)
+    if any(str(existing) == key for existing in backup_needs):
+        return
+    backup_needs.append(target)
 
 
 def _detect_project_type(root: Path, intents: Intents) -> str:
@@ -859,6 +894,15 @@ def main(argv: Optional[list] = None) -> int:
     root = Path(args.project_root).resolve()
     report_path = Path(args.report).resolve()
     decisions_path = Path(args.decisions).resolve() if args.decisions else None
+
+    # --report 必须位于项目根之外（Plan L22 全局约束：脚本拒绝根内路径）。
+    # 若 report 路径在项目根内 → stderr 输出错误 + exit 2。
+    # 注意：不尝试写报告文件，因为报告路径本身非法。
+    try:
+        validate_external_path(report_path, root)
+    except UsageError as exc:
+        sys.stderr.write(f"rule-config: {exc}\n")
+        return 2
 
     # decisions 必须位于项目根之外（外部输入；根内 → UsageError，退出码 2）
     if decisions_path is not None:

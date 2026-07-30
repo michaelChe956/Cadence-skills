@@ -653,10 +653,13 @@ else
   record_result it-decisions-lacking "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C2d. 决策与新鲜计划不符（decision=keep 但冲突实际需要 replace 判定）
+# C2d. 决策与新鲜计划不符（decision=keep-foreign-value 不在冲突允许集内 → 「过期」违规）
+# 注：decisions 完整覆盖两个冲突（s4:CLAUDE.md 用非法 decision、s4:AGENTS.md 用合法 keep），
+# 使唯一违规为 s4:CLAUDE.md 的「过期」，确保真正经 allowed_decisions 过期路径判定，
+# 而非靠「缺失 s4:AGENTS.md」绕过。
 case_root="$(mk_drift_fixture fx-decisions-stale)"
 dec_file="$TEST_ROOT/decisions-stale.json"
-write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep-foreign-value"}]'
+write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep-foreign-value"},{"conflict_id":"s4:AGENTS.md","decision":"keep"}]'
 before=$(tree_hash "$case_root")
 run_script apply "$case_root" --decisions "$dec_file"
 after=$(tree_hash "$case_root")
@@ -664,6 +667,25 @@ if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
   record_result it-decisions-stale "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-decisions-stale "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C2e. --report 指向项目根内 → 越权拒绝（it-usage-report-inside-root / XC + Plan L22）。
+# Plan L22 全局约束：--report 与 --decisions 路径 MUST 在项目根外（脚本拒绝根内路径）。
+# 断言退出码 2（usage）、fixture 零写入（不产生报告文件，因路径本身非法）。
+# 注：run_script helper 硬编码 --report 为 /tmp 外部路径，无法覆盖测试；本用例直接调脚本。
+case_root="$TEST_ROOT/fx-report-inside-root"
+mkdir -p "$case_root"
+printf '# placeholder\n' > "$case_root/README.md"
+before=$(tree_hash "$case_root")
+set +e
+python3 "$SCRIPT" dry-run --project-root "$case_root" --report "$case_root/report.json" --no-interrupt >/dev/null 2>&1
+report_status=$?
+set -e
+after=$(tree_hash "$case_root")
+if [ "$report_status" -eq 2 ] && [ "$before" = "$after" ] && [ ! -f "$case_root/report.json" ]; then
+  record_result it-usage-report-inside-root "$report_status" "$before" "$after" pass
+else
+  record_result it-usage-report-inside-root "$report_status" "$before" "$after" fail
 fi
 
 # C3. 历史目录两模式（it-s5-history-* / NH-01~03）。
