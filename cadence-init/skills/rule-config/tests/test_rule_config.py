@@ -908,6 +908,157 @@ class TestStepS4EntryFiles(unittest.TestCase):
         self.assertIn("- 用户规则", result)
 
 
+class TestStepS7OpenspecConfig(unittest.TestCase):
+    """step_s7_openspec_config 集成断言：create/merge/rules.apply/结构冲突。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.openspec_yaml = Path(__file__).resolve().parents[1] / "references" / "openspec" / "config.yaml"
+        self.tpl = self.openspec_yaml.read_text(encoding="utf-8")
+
+    def _base_plan(self, **overrides):
+        plan = {
+            "project_type": "non-coding",
+            "templates": {"openspec_yaml": str(self.openspec_yaml)},
+            "decisions_map": {},
+            "steps": {},
+        }
+        plan.update(overrides)
+        return plan
+
+    def test_create_when_missing(self):
+        """ut-step_s7-create / OS-01（目标不存在 → 候选=模板，原子创建）"""
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "create",
+                    "conflict": None, "backup_needed": False,
+                }],
+            }
+        })
+        rc.step_s7_openspec_config(self.root, _intents(no_interrupt=True), plan, {})
+        target = self.root / "openspec" / "config.yaml"
+        self.assertTrue(target.exists())
+        # 内容应为模板的安全 dump 形式（merge_yaml 幂等点）
+        merged, _ = rc.merge_yaml(self.tpl, "")
+        self.assertEqual(target.read_text(encoding="utf-8"), merged)
+
+    def test_merge_no_conflict_publishes(self):
+        """ut-step_s7-merge / OS-02（无冲突 → 保守合并去重发布）"""
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text("schema: spec-driven\ncontext: |\n  项目上下文\n", encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "merge",
+                    "conflict": None, "backup_needed": True,
+                }],
+            }
+        })
+        rc.step_s7_openspec_config(self.root, _intents(no_interrupt=True), plan, {})
+        doc = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+        self.assertIn("项目上下文", doc["context"])
+        self.assertEqual(doc["schema"], "spec-driven")
+
+    def test_rules_apply_no_interrupt_removed(self):
+        """ut-step_s7-rules-apply-remove / OS-N8（no-interrupt → 候选移除 rules.apply）"""
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(
+            "schema: spec-driven\nrules:\n  proposal:\n    - custom\n  apply:\n    - x\n",
+            encoding="utf-8",
+        )
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "keep",
+                    "conflict": {"kind": "rules.apply", "value": ["x"]},
+                    "backup_needed": True,
+                }],
+            }
+        })
+        rc.step_s7_openspec_config(self.root, _intents(no_interrupt=True), plan, {})
+        doc = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+        self.assertNotIn("apply", doc.get("rules", {}))
+        self.assertIn("custom", doc["rules"]["proposal"])
+
+    def test_rules_apply_normal_default_keep_preserved(self):
+        """ut-step_s7-rules-apply-keep / OS 行（普通模式无决策 → 保留原文件）"""
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        original = "schema: spec-driven\nrules:\n  apply:\n    - x\n"
+        cfg.write_text(original, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "keep",
+                    "conflict": {"kind": "rules.apply", "value": ["x"]},
+                    "backup_needed": True,
+                }],
+            }
+        })
+        rc.step_s7_openspec_config(self.root, _intents(), plan, {})
+        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+
+    def test_structure_conflict_no_interrupt_raises(self):
+        """ut-step_s7-structure-terminate / OS-N9（no-interrupt 结构冲突 → 终止原文件不变）"""
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        original = "schema: spec-driven\nrules:\n  proposal: invalid-string\n"
+        cfg.write_text(original, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "keep",
+                    "conflict": {
+                        "kind": "structure", "fields": ["rules.proposal"],
+                        "field_types": {"rules.proposal": "str"},
+                    },
+                    "backup_needed": True,
+                }],
+            }
+        })
+        with self.assertRaises(rc.PublishError):
+            rc.step_s7_openspec_config(
+                self.root, _intents(no_interrupt=True), plan, {}
+            )
+        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+
+    def test_structure_conflict_normal_preserved(self):
+        """ut-step_s7-structure-preserve / OS-N9（普通模式结构冲突 → 保留+报告 status=0）"""
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        original = "schema: spec-driven\nrules:\n  proposal: invalid-string\n"
+        cfg.write_text(original, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_OPENSPEC_CONFIG: {
+                "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
+                "assets": [{
+                    "path": "openspec/config.yaml", "action": "keep",
+                    "conflict": {
+                        "kind": "structure", "fields": ["rules.proposal"],
+                        "field_types": {"rules.proposal": "str"},
+                    },
+                    "backup_needed": True,
+                }],
+            }
+        })
+        report = {"steps": [rc._step_skeleton(rc.STEP_OPENSPEC_CONFIG)]}
+        rc.step_s7_openspec_config(self.root, _intents(), plan, report)
+        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+        # 报告含结构冲突字段路径
+        s7_conflicts = report["steps"][0].get("conflicts", [])
+        self.assertTrue(any(c.get("kind") == "structure" for c in s7_conflicts))
+
+
 class TestEnsureSummaryLines(unittest.TestCase):
     """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
 

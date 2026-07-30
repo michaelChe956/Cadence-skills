@@ -134,7 +134,10 @@ tree_hash() {
   local root=$1
   (
     cd "$root" || exit 1
-    find . -type f -not -path './.git/*' | sort | while IFS= read -r f; do
+    # 排除 .git 与 cadence 备份文件（<file>.cadence-backup-<ts>）；
+    # 备份是脚本恢复产物，非对项目源文件的修改，「零写入」断言应聚焦源文件。
+    find . -type f -not -path './.git/*' \
+      -not -name '*.cadence-backup-*' | sort | while IFS= read -r f; do
       printf '%s\0' "$f"
     done | xargs -0 sha256sum 2>/dev/null | sha256sum | awk '{print $1}'
   ) || return $?
@@ -800,6 +803,17 @@ cp "$TEST_DIR/../references/rules/README.md" "$case_root/.claude/rules/" 2>/dev/
 mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
 printf 'legacy\n' > "$case_root/.claude/prds/old.md"
 printf 'existing\n' > "$case_root/cadence/prds/keep.md"
+# 预置幂等的 openspec/config.yaml（merge_yaml 的安全输出点），
+# 使 S7 merge 后字节不变，不干扰 S5 HM-03 的全树零写入断言。
+mkdir -p "$case_root/openspec"
+python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
+rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
+tpl = open('$CONFIG_TEMPLATE').read()
+m, _ = rc.merge_yaml(tpl, '')
+open('$case_root/openspec/config.yaml', 'w').write(m)
+"
 before=$(tree_hash "$case_root")
 run_script apply "$case_root"
 after=$(tree_hash "$case_root")
