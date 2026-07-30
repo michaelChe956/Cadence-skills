@@ -9,7 +9,7 @@
 - 最小列（逐字）：`SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言`
 - 测试 ID 命名（逐字）：单测 `ut-<函数>-<场景>`，集成 `it-<步骤>-<场景>`，静态 `sc-<条款>`
 - fixture 命名（逐字）：`fx-<场景>`
-- 条款编号：十张表沿用 design D2 行 ID 基线（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~04、SM-01~03、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 62 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
+- 条款编号：十张表沿用 design D2 行 ID 基线（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~04、SM-01~03、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 60 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
 - 适用模式取值：`普通` / `no-interrupt` / `两模式`。
 - 脚本函数名为 Task 4+ 将实现的目标名（`merge_markdown` / `merge_yaml` / `l0_block` / `classify_l1` / `precheck_openspec_structure` / `backup_file` / `atomic_write` / `sha256_file` / `detect_project` / `locate_templates` / `step_rules_files` / `step_entry_files` / `step_scaffold` / `step_gitignore` / `step_openspec_config` / `step_codegraph`）；静态与 Agent 行为条款记为 `references/merge-semantics.md` 对应节或 `—（静态）`。
 - 故障注入约定（design D6）：原子发布失败以目标目录 `chmod 555` 复现，备份失败以只读父目录复现，对应 fixture 记 `fx-readonly-target` / `fx-readonly-parent`。
@@ -18,7 +18,7 @@
 
 | 节 | SKILL 行号区间 | 条款编号 | 数量 |
 |----|----------------|----------|------|
-| frontmatter | 1-4 | FM-01 | 1 |
+| frontmatter | 1-5 | FM-01 | 1 |
 | 概述 | 9-11 | OV-01 | 1 |
 | 参数模式 | 13-25 | PM-01~03 | 3 |
 | no-interrupt 通用规则 | 27-33 | NR-01~05 | 5 |
@@ -53,7 +53,7 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 1-4 | FM-01 frontmatter 含 `disable-model-invocation: true` 且瘦身（Task 9/10）后保留 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-frontmatter-disable-model-invocation | SKILL.md frontmatter 解析出 `disable-model-invocation: true` |
+| 1-5 | FM-01 frontmatter 含 `disable-model-invocation: true` 且瘦身（Task 9/10）后保留 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-frontmatter-disable-model-invocation | SKILL.md frontmatter 解析出 `disable-model-invocation: true` |
 | 9-11 | OV-01 默认无人工交互策略，按自动检测结果与保守默认值继续 | 两模式 | references/merge-semantics.md 概述节 | fx-empty-project | it-apply-default-policy | 无参数 apply 全程无提问、按默认值完成且报告记录默认值 |
 | 13-21 | PM-01 三种调用形式；完整 token `no-interrupt` 与 `--no-interrupt` 等价，裸 token 一律规范化为 `--no-interrupt` 透传 | 两模式 | —（Agent 参数解析，design D3） | fx-empty-project | it-cli-bare-token | 以裸 token 调用与以 `--no-interrupt` 调用产生相同模式与相同报告 `mode` 字段 |
 | 23 | PM-01b（含 PM-01）token 必须是完整 token，子串不触发 | 两模式 | —（Agent 参数解析） | fx-empty-project | it-cli-token-substring | `xno-interruptx` 等子串不进入 no-interrupt 模式 |
@@ -130,14 +130,14 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 119-137 | S1a-01 一次有界首命中扫描判定项目类型；剪枝目录与源码扩展名清单原样 | 两模式 | detect_project | fx-coding-project | ut-detect_project-bounded-scan | 剪枝目录内源码不触发 Coding 判定；首命中即返回 |
 | 121-137 | S1a-02 find 命令剪枝清单文本契约（沿用静态提取先例） | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-find-prune-list | 从 SKILL.md 提取的 find 命令与脚本内剪枝清单逐项一致 |
-| 139-146 | S1a-03 有输出或存在主工程配置→Coding；全无→非 Coding；检测结果记入报告 | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-main-config | 仅含 `package.json`/`pyproject.toml` 等主配置即判 Coding；报告记录检测证据 |
-| 146 | S1a-04 用户明确指定项目类型时以用户指定为准（`--project-type`） | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-user-override | `--project-type coding` 覆盖检测结果并记入报告 |
-| 139-141 | S1a-05 无人工交互模式下不等待用户确认 | no-interrupt | detect_project | fx-empty-project | it-s1-no-confirm | no-interrupt 下检测直接落报告，无提问冲突项 |
-| 148-166 | S1b-01 模板目录三级定位：在线安装路径→离线安装路径→开发回退 Glob | 两模式 | locate_templates | fx-templates-online / fx-templates-offline / fx-templates-dev | ut-locate_templates-online / ut-locate_templates-offline / ut-locate_templates-fallback | 各级候选按优先级命中并返回成对路径 |
-| 150-166 | S1b-02 每候选成对校验 rules 三件套（回退另需 document-storage.md）+ 同级 `references/openspec/config.yaml`；缺 config.yaml 不得选用 | 两模式 | locate_templates | fx-templates-incomplete | ut-locate_templates-pair-check | 缺任一成对文件的候选被跳过 |
-| 163-166 | S1b-03 回退路径多候选取修改时间最新者 | 两模式 | locate_templates | fx-templates-multi | ut-locate_templates-mtime-latest | 返回 mtime 最新的通过验证候选 |
-| 166 | S1b-04 全部候选不完整时终止并报告缺失模板 | 两模式 | locate_templates | fx-templates-all-incomplete | ut-locate_templates-all-incomplete / it-s2-templates-missing | 非零退出；报告列出各候选缺失项；目标项目零写入 |
-| 168-170 | S1c-01 创建 `.claude/rules`（幂等） | 两模式 | step_rules_files | fx-empty-project | it-s3-mkdir-idempotent | 重复运行不报错、目录权限不变 |
+| 131/133-135 | S1a-03 有输出或存在主工程配置→Coding；全无→非 Coding；检测结果记入报告 | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-main-config | 仅含 `package.json`/`pyproject.toml` 等主配置即判 Coding；报告记录检测证据 |
+| 136 | S1a-04 用户明确指定项目类型时以用户指定为准（`--project-type`） | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-user-override | `--project-type coding` 覆盖检测结果并记入报告 |
+| 133 | S1a-05 无人工交互模式下不等待用户确认 | no-interrupt | detect_project | fx-empty-project | it-s1-no-confirm | no-interrupt 下检测直接落报告，无提问冲突项 |
+| 138-157 | S1b-01 模板目录三级定位：在线安装路径→离线安装路径→开发回退 Glob | 两模式 | locate_templates | fx-templates-online / fx-templates-offline / fx-templates-dev | ut-locate_templates-online / ut-locate_templates-offline / ut-locate_templates-fallback | 各级候选按优先级命中并返回成对路径 |
+| 143/147/156/159 | S1b-02 每候选成对校验 rules 三件套（回退另需 document-storage.md）+ 同级 `references/openspec/config.yaml`；缺 config.yaml 不得选用 | 两模式 | locate_templates | fx-templates-incomplete | ut-locate_templates-pair-check | 缺任一成对文件的候选被跳过 |
+| 157 | S1b-03 回退路径多候选取修改时间最新者 | 两模式 | locate_templates | fx-templates-multi | ut-locate_templates-mtime-latest | 返回 mtime 最新的通过验证候选 |
+| 159 | S1b-04 全部候选不完整时终止并报告缺失模板 | 两模式 | locate_templates | fx-templates-all-incomplete | ut-locate_templates-all-incomplete / it-s2-templates-missing | 非零退出；报告列出各候选缺失项；目标项目零写入 |
+| 161-165 | S1c-01 创建 `.claude/rules`（幂等） | 两模式 | step_rules_files | fx-empty-project | it-s3-mkdir-idempotent | 重复运行不报错、目录权限不变 |
 | 171-181 | S1d-01 九行复制表：7 个必选 + `code-reading.md` 全项目 + `code-usage` 按项目类型二选一 | 两模式 | step_rules_files | fx-empty-project | it-s3-rules-files | 9 个目标文件按条件集齐，内容与模板一致 |
 | 179-180 | S1d-02 `code-usage-coding.md`/`code-usage-noncoding.md` 按步骤 1a 结果写入同一目标 `code-usage.md` | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | it-s3-code-usage-variant | Coding 项目 `code-usage.md` 内容= coding 模板；非 Coding = noncoding 模板 |
 | 183 | S1d-03（L1 独立分支）除 `openspec-superpowers-workflow.md` 外普通规则遵循不覆盖；带 `cadence-framework-rule` 标记的 L1 按版本升级特例处理 | 两模式 | step_rules_files / classify_l1 | fx-existing-rules | it-s3-l1-independent | 普通规则已存在时不覆盖；L1 文件走 L1 表版本化分支而非 RF-02 |
@@ -208,7 +208,7 @@
 | 501-503 | S9-01 检测条件：Coding 项目默认启用、非 Coding 默认跳过 | 两模式 | step_codegraph | fx-coding-project | it-s8-codegraph-default-coding | Coding 项目执行 install+init 流程 |
 | 513-517 | S9-02 用户明确要求时即使未检测到源码也允许执行（`--enable-codegraph`，只控 S8 不改项目类型连带语义） | 两模式 | step_codegraph | fx-noncoding-project | it-s8-codegraph-explicit-enable | 非 Coding + `--enable-codegraph` 执行 S8；规则 2 文本与默认角色仍按非 Coding |
 | 519-539 | S9-03 安装后强制核验 `.mcp.json` 与 `.codex/config.toml` 双配置，缺一按参照补齐 | 两模式 | step_codegraph | fx-mcp-partial | it-s8-codegraph-reverify | install 成功后仍逐文件核验并补齐缺失方 |
-| 541-556 | S9-04 配置范围：`--location=local` 只写项目级；`.codegraph/` 入 gitignore；`codegraph.json` 不入 gitignore | 两模式 | step_codegraph / step_gitignore | fx-empty-project | it-s8-codegraph-scope | 不写全局配置；gitignore 含 `.codegraph/` 不含 `codegraph.json` |
+| 550-554 | S9-04 配置范围：`--location=local` 只写项目级；`.codegraph/` 入 gitignore；`codegraph.json` 不入 gitignore | 两模式 | step_codegraph / step_gitignore | fx-empty-project | it-s8-codegraph-scope | 不写全局配置；gitignore 含 `.codegraph/` 不含 `codegraph.json` |
 | 560 | CS-01 `.codegraph/` 不存在→Coding 默认执行 install 与 init | 两模式 | step_codegraph | fx-coding-project | it-s8-codegraph-fresh | `.codegraph/` 生成；两配置文件含 CodeGraph MCP |
 | 561 | CS-02 `.codegraph/` 已存在→运行 `codegraph status` 报告已初始化，不重复 init | 两模式 | step_codegraph | fx-codegraph-existing | it-s8-codegraph-existing | init 未再次执行（调用计数=0）；status 结果入报告 |
 | 562 | CS-03 `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP→跳过不重复写入 | 两模式 | step_codegraph | fx-mcp-complete | it-s8-codegraph-both-present | 两配置文件 sha256 不变 |
@@ -250,12 +250,12 @@
 | 639 | OS-N7 四个 artifact 数组按完整字符串去重追加模板规则，保留项目额外规则与原顺序 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-rules-append | 数组合并去重且顺序稳定；额外规则保留 |
 | 640 | OS-N8 禁止创建 `rules.apply`；已有 `rules.apply`：普通须确认（无响应保留并报告；确认移除先备份）；no-interrupt 先备份成功后才在候选中移除 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-remove / it-s7-openspec-apply-keep | no-interrupt 备份后候选无 `rules.apply`；普通 `keep` 决策保留并报告；任何分支不虚构 apply artifact |
 | 641 | OS-N9 YAML 无法可靠解析不得静默重写：普通保留并报告；no-interrupt 先备份，仍无法无损构建候选则终止 | 两模式 | merge_yaml / backup_file | fx-openspec-unparseable | it-s7-openspec-unparseable | 原文件不变；备份存在；报告解析冲突 |
-| 642-651 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 全部成功且能读取 context 与对应 rules；不得以 instructions apply 验证（design D4 拟删除，删除前现行语义以此为准） | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-instructions | 四类命令成功且输出含公共 context 与对应 artifact rules（Task 实施时按 D4 删除后将本行标记为已废止条款） |
-| 652 | OS-N11 全部验证通过后才允许同文件系统原子替换发布；目标原本不存在也以原子创建发布，不得半成品 | 两模式 | atomic_write | fx-empty-project | ut-atomic_write-publish / it-s7-openspec-create | 发布经 `os.replace()`；中途失败无半成品目标 |
-| 653 | OS-N12 任一候选验证失败立即终止；报告失败 artifact、实际命令与错误；报告候选清理/保留结果；原文件不变；目标原本不存在时不得创建 | 两模式 | step_openspec_config | fx-openspec-incompatible | it-s7-openspec-validate-fail | 报告含失败 artifact 与实际命令；无目标文件残留 |
-| 654 | OS-N13 原子替换/创建失败立即终止并保持或恢复原文件；不得声称成功 | 两模式 | atomic_write | fx-readonly-target | ut-atomic_write-fail / it-s7-openspec-publish-fail | 非零退出；原文件保持/恢复；报告不声称成功 |
-| 657-659 | OS-B1 备份名固定 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`；所有需备份分支写入前完成备份；备份失败不得部分合并/删除键 | 两模式 | backup_file | fx-openspec-existing | ut-backup_file-openspec-naming | 备份路径精确匹配固定名；备份失败时零合并动作 |
-| 661-662 | OS-B2 完成报告逐项清单（新增 context 行、分组规则、无效键、备份路径、冲突字段、验证结果、候选处理、发布结果、四命令结果）；无新增也明确报告幂等跳过 | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-report-fields | 报告字段逐项齐全；幂等运行报告"幂等跳过" |
+| 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 全部成功且能读取 context 与对应 rules；不得以 instructions apply 验证（design D4 拟删除，删除前现行语义以此为准） | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-instructions | 四类命令成功且输出含公共 context 与对应 artifact rules（Task 实施时按 D4 删除后将本行标记为已废止条款） |
+| 658 | OS-N11 全部验证通过后才允许同文件系统原子替换发布；目标原本不存在也以原子创建发布，不得半成品 | 两模式 | atomic_write | fx-empty-project | ut-atomic_write-publish / it-s7-openspec-create | 发布经 `os.replace()`；中途失败无半成品目标 |
+| 659 | OS-N12 任一候选验证失败立即终止；报告失败 artifact、实际命令与错误；报告候选清理/保留结果；原文件不变；目标原本不存在时不得创建 | 两模式 | step_openspec_config | fx-openspec-incompatible | it-s7-openspec-validate-fail | 报告含失败 artifact 与实际命令；无目标文件残留 |
+| 660 | OS-N13 原子替换/创建失败立即终止并保持或恢复原文件；不得声称成功 | 两模式 | atomic_write | fx-readonly-target | ut-atomic_write-fail / it-s7-openspec-publish-fail | 非零退出；原文件保持/恢复；报告不声称成功 |
+| 662 | OS-B1 备份名固定 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`；所有需备份分支写入前完成备份；备份失败不得部分合并/删除键 | 两模式 | backup_file | fx-openspec-existing | ut-backup_file-openspec-naming | 备份路径精确匹配固定名；备份失败时零合并动作 |
+| 675 | OS-B2 完成报告逐项清单（新增 context 行、分组规则、无效键、备份路径、冲突字段、验证结果、候选处理、发布结果、四命令结果）；无新增也明确报告幂等跳过 | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-report-fields | 报告字段逐项齐全；幂等运行报告"幂等跳过" |
 | 666 | OS-01 配置不存在→从模板构建候选，验证通过后原子创建（两模式同动作） | 两模式 | step_openspec_config / atomic_write | fx-empty-project | it-s7-openspec-create | 原子创建成功；内容与模板基础一致 |
 | 667 | OS-02 配置可解析且无 `rules.apply`→候选中保守合并，完整行/字符串去重（两模式同动作） | 两模式 | merge_yaml | fx-openspec-existing | it-s7-openspec-merge | 合并去重结果与单测基准一致 |
 | 668 | OS-03 目标字段结构/类型不兼容→普通保留并报告不发布；no-interrupt 先备份，无法无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure | fx-openspec-incompatible | it-s7-openspec-incompatible-modes | 两模式分支动作与报告字段符合表义 |
@@ -359,7 +359,7 @@
 | CodeGraph 增量 | 734-743（数据行 736-743） | 8 | CG-01~08 → 2.22 | ✅ 一一对应 |
 | 历史目录迁移 | 429-433（数据行 431-433） | 3 | HM-01~03 → 2.11 | ✅ 一一对应 |
 
-合计 62 行，全部映射到测试 ID；Task 3.1 矩阵行数验收以此为准。
+合计 60 行，全部映射到测试 ID；Task 3.1 矩阵行数验收以此为准。
 
 ### 3.2 缺口清单逐条确认
 
