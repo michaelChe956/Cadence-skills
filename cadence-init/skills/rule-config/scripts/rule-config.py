@@ -240,6 +240,23 @@ BASE_AGENTS_MD = """# AGENTS.md
 RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/code-usage.md`"
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
 
+# 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
+# _ensure_summary_lines 按完整块匹配（块内任一关键行缺失即视为整块缺失，整块追加）。
+RULE6_BLOCK_CLAUDE = (
+    "### 6. 项目个性化规则（强制规则）\n"
+    "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
+    "- 禁止在 `rules/` 目录中添加用户自定义规则\n"
+    "- 禁止直接修改 `rules/` 目录下的框架内置规则文件\n"
+    "- 详见 `cadence/project-rules/README.md`"
+)
+RULE6_BLOCK_AGENTS = (
+    "### 6. 项目个性化规则\n"
+    "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
+    "- 禁止在 `.claude/rules/` 目录中添加用户自定义规则\n"
+    "- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件\n"
+    "- 详见 `cadence/project-rules/README.md`"
+)
+
 # 决策枚举（规则文件/L0/L1 冲突）：replace | keep。
 DECISION_REPLACE = "replace"
 DECISION_KEEP = "keep"
@@ -545,10 +562,12 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
     if not tpl_sections:
         return template
 
-    # 以 key 索引项目章节；同名判定按 key（级别 + 去编号标题）。
+    # 以 key 收集项目章节；同名章节（同一 key）的内容全部保留，后续去重。
+    # 重要（评审 Important 4）：项目侧多个同名章节不能只保留第一个，
+    # 必须把所有同名章节的正文行合并进该 key 的项目补充。
     old_by_key: dict = {}
     for sec in old_sections:
-        old_by_key.setdefault(sec.key, sec)
+        old_by_key.setdefault(sec.key, []).extend(sec.body_lines)
 
     merged: list = []
     used_keys: set = set()
@@ -556,13 +575,16 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
         used_keys.add(tsec.key)
         body = list(tsec.body_lines)
         if tsec.key in old_by_key:
-            old_sec = old_by_key[tsec.key]
-            # 项目独有行 = 项目章节中模板未出现的完整行（按完整行去重、保序）。
+            project_body = old_by_key[tsec.key]
+            # 项目独有行 = 项目章节中模板未出现的完整行。
             template_lines = set(_dedup_lines_preserve_order(body))
-            project_only = [
-                line for line in old_sec.body_lines
+            project_only_raw = [
+                line for line in project_body
                 if line not in template_lines and line.strip()
             ]
+            # 重要（评审 Important 3）：项目补充部分对项目侧独有行也按完整行去重、保序
+            # （NC-07），避免项目侧自身重复行在合并结果中出现两次。
+            project_only = _dedup_lines_preserve_order(project_only_raw)
             if project_only:
                 # NC-03：同名章节正文 = 模板正文 + \n\n**项目补充**\n + 项目去重行。
                 body.append("")
@@ -574,9 +596,32 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
         ))
 
     # 项目独有章节（模板无同名 key）按原序追加。
+    # 重要（评审 Important 4 扩展）：项目侧多个同名独有章节合并为一个章节，
+    # 正文按完整行去重保序（NC-07），不整个丢失也不重复。
+    project_only_sections: dict = {}
+    project_only_order: list = []
     for osec in old_sections:
-        if osec.key not in used_keys:
-            merged.append(osec)
+        if osec.key in used_keys:
+            continue
+        if osec.key not in project_only_sections:
+            project_only_sections[osec.key] = osec
+            project_only_order.append(osec.key)
+            # 首次出现时对其正文去重。
+            project_only_sections[osec.key] = Section(
+                level=osec.level, key=osec.key, title=osec.title,
+                body_lines=_dedup_lines_preserve_order(osec.body_lines),
+            )
+        else:
+            base = project_only_sections[osec.key]
+            merged_body = _dedup_lines_preserve_order(
+                base.body_lines + osec.body_lines
+            )
+            project_only_sections[osec.key] = Section(
+                level=base.level, key=base.key, title=base.title,
+                body_lines=merged_body,
+            )
+    for key in project_only_order:
+        merged.append(project_only_sections[key])
 
     return render_sections(merged)
 
@@ -603,7 +648,11 @@ def l0_block(text: str, source: str) -> str:
         block_start = begin_idx
         block_end = end_idx + len(L0_END)
         block = text[block_start:block_end]
-        return "skip" if block.strip() == source.strip() else "drift"
+        # 重要（评审 Important 5）：逐字比对区块内容，不 strip() 整个区块
+        # （避免吞掉首部/内部空白差异）。仅对尾随换行做 rstrip，以容忍
+        # 规范源文件末尾的换行符与入口切片之间的尾随换行差异（文件系统层面，
+        # 非区块内容差异）。首部/内部任何字符差异均判 drift。
+        return "skip" if block.rstrip("\n") == source.rstrip("\n") else "drift"
 
     # 恰有一个 v1 标记 → 先看是否成对旧版标记（upgrade），否则单侧 broken。
     if has_begin or has_end:
@@ -1760,7 +1809,7 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
             text = text.replace(variant, rule2_text, 1)
 
     # --- 步骤 3：缺失摘要行追加（仅 create/insert）---
-    text = _ensure_summary_lines(text, entry_name)
+    text = _ensure_summary_lines(text, entry_name, project_type)
 
     # --- 步骤 4：技术栈块追加（仅 create；insert 不追加以尊重用户内容）---
     if state == "create":
@@ -1865,14 +1914,29 @@ def _strip_l0_marker_lines_only(text: str) -> str:
     return "\n".join(kept)
 
 
-def _ensure_summary_lines(text: str, entry_name: str) -> str:
+def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-coding") -> str:
     """确保 ## 强制规则 章节含所有标准摘要行；缺失则追加到章节末尾。
+
+    覆盖 7 类摘要：语言(1)/代码使用(2)/文档存储(3)/Markdown(4)/MCP(5)/
+    项目个性化(6)/代码阅读(7)。其中：
+      * 规则 2 摘要按项目类型选文本（Coding→遵循 TDD；非 Coding→非必要不编写）；
+      * 规则 6 摘要是多行块，按完整块匹配（块内任一关键行缺失即整块追加）。
 
     摘要编号冲突 → 保留原文，追加缺失行（不重新编号）。
     """
+    # 规则 2 摘要按项目类型选择当前应有的文本。
+    rule2_text = (
+        RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+    )
+    # 规则 6 多行块按入口选择。
+    rule6_block = (
+        RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
+    )
+
     required = [
         "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
-        "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules` 目录下** → 详见 `.claude/rules/document-storage.md`",
+        rule2_text,
+        "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
         "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
     ]
     # CLAUDE.md 与 AGENTS.md 的 MCP 摘要行文本略有不同，按入口选择。
@@ -1880,6 +1944,7 @@ def _ensure_summary_lines(text: str, entry_name: str) -> str:
         required.append("- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`")
     else:
         required.append("- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`")
+    required.append(rule6_block)
     required.append("- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`")
 
     lines = text.splitlines()
@@ -1905,9 +1970,11 @@ def _ensure_summary_lines(text: str, entry_name: str) -> str:
     if not missing:
         return text
     # 在章节末尾追加缺失行（保留原文，不重新编号）。
-    # 插入位置：end_idx 前（章节末尾）。
-    insert_block = list(missing)
-    new_lines = lines[:end_idx] + insert_block + lines[end_idx:]
+    # 多行块（规则 6）展开为多行；单行摘要原样追加。
+    insert_lines = []
+    for item in missing:
+        insert_lines.extend(item.split("\n"))
+    new_lines = lines[:end_idx] + insert_lines + lines[end_idx:]
     return "\n".join(new_lines)
 
 

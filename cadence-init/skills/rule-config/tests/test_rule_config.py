@@ -86,6 +86,37 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertIn("- Python", out)
         self.assertLess(out.index("必须使用中文回答"), out.index("## 项目技术栈"))
 
+    def test_project_only_duplicate_lines_deduped_in_supplement(self):
+        """ut-merge_markdown-project-supplement-dedup / NC-07（项目补充部分对项目侧独有行也去重）"""
+        # 项目侧同名章节内同一独有行出现两次 → 合并结果只保留一次。
+        tpl = "## A\ntpl-line\n"
+        old = "## A\ntpl-line\n项目独有X\n项目独有X\n"
+        out = rc.merge_markdown(tpl, old)
+        self.assertEqual(out.count("项目独有X"), 1)
+        self.assertIn("项目补充", out)
+
+    def test_project_multiple_same_name_sections_merged(self):
+        """ut-merge_markdown-project-multiple-same-name / NC-02+NC-07（项目侧多个同名章节内容都保留，去重）"""
+        # 项目侧两个同名 ## 备注 章节 → 两段内容都保留（去重），不整个丢失。
+        tpl = "# T\n\n## 主\n主文\n"
+        old = "# T\n\n## 备注\n备注一\n\n## 备注\n备注二\n"
+        out = rc.merge_markdown(tpl, old)
+        # 两个备注行都保留
+        self.assertIn("备注一", out)
+        self.assertIn("备注二", out)
+        # 只有一个 ## 备注 章节标题（项目独有同名章节合并为一个）
+        self.assertEqual(out.count("## 备注"), 1)
+
+    def test_project_multiple_same_name_sections_dedup_overlapping(self):
+        """ut-merge_markdown-project-multiple-same-name-dedup / NC-07（多同名章节重叠行去重）"""
+        # 项目侧两个同名章节含重叠行 → 重叠行只保留一次。
+        tpl = "# T\n\n## 主\n主文\n"
+        old = "# T\n\n## 备注\n共享行\n备注一\n\n## 备注\n共享行\n备注二\n"
+        out = rc.merge_markdown(tpl, old)
+        self.assertEqual(out.count("共享行"), 1)
+        self.assertIn("备注一", out)
+        self.assertIn("备注二", out)
+
 
 class TestL0Block(unittest.TestCase):
     def test_skip_when_v1_block_matches_source(self):
@@ -123,6 +154,16 @@ class TestL0Block(unittest.TestCase):
         """ut-l0_block-broken / L0-P10（标记顺序错误）"""
         text = V1_END + "\n内容\n" + V1_START + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "broken")
+
+    def test_skip_requires_verbatim_match_no_strip(self):
+        """ut-l0_block-verbatim / L0-P6（逐字比对：首尾空白差异即 drift，不 strip）"""
+        # 区块内容与 source 逐字一致 → skip
+        text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
+        self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
+        # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
+        source_with_leading_space = V1_START + " " + L0_SOURCE[len(V1_START):]
+        text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
+        self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
 
 
 class TestMergeYaml(unittest.TestCase):
@@ -865,6 +906,79 @@ class TestStepS4EntryFiles(unittest.TestCase):
         # 区块外保留用户内容（漂移内容被移除）
         self.assertNotIn("漂移内容", result)
         self.assertIn("- 用户规则", result)
+
+
+class TestEnsureSummaryLines(unittest.TestCase):
+    """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
+
+    def _base_rules_section(self, drop_lines=()):
+        """构造一个含规则 1/3/4/5/7 但缺规则 2/6 的 ## 强制规则 章节（CLAUDE.md 风格）。"""
+        lines = [
+            "# CLAUDE.md",
+            "",
+            "说明",
+            "",
+            "## 强制规则",
+            "",
+            "> **🔴 必须遵守 - 无例外**",
+            "",
+            "### 1. 语言规则",
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+            "",
+            "### 3. 文档存储规则",
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
+            "",
+            "### 4. Markdown 格式规则",
+            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+            "",
+            "### 5. MCP Server 使用规则",
+            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`",
+            "",
+            "### 7. 代码阅读规则",
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
+            "",
+        ]
+        return "\n".join(lines)
+
+    def test_missing_rule2_and_rule6_are_added_claude_noncoding(self):
+        """ut-ensure_summary-missing-rule2-rule6 / Important 1（CLAUDE.md 非 Coding：补回规则 2 非必要 + 规则 6 块）"""
+        text = self._base_rules_section()
+        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        # 规则 2（非 Coding 文本）被补回
+        self.assertIn(rc.RULE2_TEXT_NONCODING, out)
+        self.assertNotIn(rc.RULE2_TEXT_CODING, out)
+        # 规则 6 多行块被补回（至少首行 + 末行）
+        self.assertIn("### 6. 项目个性化规则（强制规则）", out)
+        self.assertIn("- 详见 `cadence/project-rules/README.md`", out)
+
+    def test_missing_rule2_coding_variant_added_for_coding_project(self):
+        """ut-ensure_summary-rule2-coding / Important 1（Coding 项目补回规则 2 = 遵循 TDD）"""
+        text = self._base_rules_section()
+        out = rc._ensure_summary_lines(text, "CLAUDE.md", "coding")
+        self.assertIn(rc.RULE2_TEXT_CODING, out)
+        self.assertNotIn(rc.RULE2_TEXT_NONCODING, out)
+
+    def test_complete_section_unchanged(self):
+        """ut-ensure_summary-complete-unchanged / Important 1（7 类摘要齐全则不动）"""
+        # BASE_CLAUDE_MD 本身含 7 条摘要 → 不应改动
+        out = rc._ensure_summary_lines(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding")
+        self.assertEqual(out, rc.BASE_CLAUDE_MD)
+
+    def test_agents_rule6_block_variant(self):
+        """ut-ensure_summary-agents-rule6 / Important 1（AGENTS.md 规则 6 块文本与 CLAUDE.md 不同）"""
+        # 构造 AGENTS.md 风格、缺规则 6 的章节
+        text = (
+            "# AGENTS.md\n\n说明\n\n## 强制规则\n\n"
+            "### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+            "### 2. 代码使用规则\n" + rc.RULE2_TEXT_NONCODING + "\n\n"
+            "### 3. 文档存储规则\n- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`\n\n"
+            "### 4. Markdown 格式规则\n- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`\n\n"
+            "### 5. MCP Server 使用规则\n- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`\n\n"
+            "### 7. 代码阅读规则\n- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
+        )
+        out = rc._ensure_summary_lines(text, "AGENTS.md", "non-coding")
+        self.assertIn("### 6. 项目个性化规则\n", out)
+        self.assertIn("- 禁止在 `.claude/rules/` 目录中添加用户自定义规则", out)
 
 
 if __name__ == "__main__":

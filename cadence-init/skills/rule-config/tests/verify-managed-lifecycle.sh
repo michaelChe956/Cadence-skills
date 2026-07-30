@@ -410,12 +410,18 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 assert_same it-s4-idempotent "$RUN_STATUS" "$before" "$after" 0
 
-# B2. 当前 L0 漂移在普通模式无响应时必须保留真实入口全文（it-s4-drift-normal / L0-P7）。
+# B2. 当前 L0 漂移在普通模式无响应时必须 fail closed + 零写入（it-s4-drift-normal / L0-P7）。
+# 评审裁决修正：与 it-decisions-missing 语义对齐——普通模式 apply 遇 conflict 无 --decisions
+# 必须 status≠0 且零写入（fail closed）。原期望 status=0 与权威用例矛盾。
 case_root="$(mk_entry_fixture fx-l0-drift '本地漂移段落' '')"
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root"
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
-assert_same it-s4-drift-normal "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
+  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" fail
+fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
 case_root="$(mk_entry_fixture fx-l0-drift-replace '本地漂移段落' '另一个漂移段落')"
@@ -483,7 +489,13 @@ l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
 before=$(sha256_file "$l1_target")
 run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
-assert_same it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" 0
+# 评审裁决修正：与 it-decisions-missing 语义对齐——普通模式 apply 遇 L1 conflict
+# 无 --decisions 必须 status≠0 且零写入（fail closed）。原期望 status=0 与权威用例矛盾。
+if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
+  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" fail
+fi
 # 备份失败：父目录只读
 # 注意（评审 M3）：原实现用上一段的 $after（普通模式运行后状态）作为备份失败比对基准，
 # 隐含「L1-02 普通模式零写入」假设。改为显式取故障注入运行前的目标 hash（before_fail）
