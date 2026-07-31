@@ -52,12 +52,12 @@ load_mirror() {
   # 安全：仅允许安全字符集（小写字母/数字/连字符/下划线），拒绝路径分隔符与 ../ 逃逸
   case "$_name" in
     *[!a-z0-9_-]*|"")
-      err "❌ 非法 mirror 名称: $_name（仅允许 a-z、0-9、-、_）"
+      err "❌ 非法 mirror 名称: ${_name}（仅允许 a-z、0-9、-、_）"
       exit 2 ;;
   esac
   _file="$MIRRORS_DIR/$_name.sh"
   if [ ! -f "$_file" ]; then
-    err "❌ 未知 mirror: $_name（未找到 $_file）"
+    err "❌ 未知 mirror: ${_name}（未找到 ${_file}）"
     exit 2
   fi
   # 目录边界校验：解析后的真实路径必须仍在 MIRRORS_DIR 内
@@ -66,7 +66,7 @@ load_mirror() {
   case "$_resolved" in
     "$_mirrors_resolved"/*) : ;;
     *)
-      err "❌ mirror 路径越界: $_resolved（不在 $MIRRORS_DIR 内）"
+      err "❌ mirror 路径越界: ${_resolved}（不在 $MIRRORS_DIR 内）"
       exit 2 ;;
   esac
   # shellcheck disable=SC1090
@@ -199,7 +199,7 @@ _try_install() {  # _try_install <描述> <安装命令...>
 do_npx() {
   if _v="$(probe_version npx --version)"; then
     add_step "npx" "ready" "already-installed" "$_v" ""
-    log "${C_GRN}✓ npx 已安装（$_v）${C_NC}"
+    log "${C_GRN}✓ npx 已安装（${_v}）${C_NC}"
   else
     # npx 随 Node.js/npm 提供，无法独立安装
     add_step "npx" "failed" "install-unavailable" "" "npx 未安装；需先安装 Node.js（脚本不自动安装 Node 运行时）"
@@ -210,7 +210,7 @@ do_npx() {
 do_uvx() {
   if _v="$(probe_version uvx --version)"; then
     add_step "uvx" "ready" "already-installed" "$_v" ""
-    log "${C_GRN}✓ uvx 已安装（$_v）${C_NC}"
+    log "${C_GRN}✓ uvx 已安装（${_v}）${C_NC}"
   else
     if [ "$MODE" = "run" ]; then
       # 经 pip 安装 uv（提供 uvx），走当前源
@@ -219,7 +219,7 @@ do_uvx() {
     fi
     if _v="$(probe_version uvx --version)"; then
       add_step "uvx" "installed" "installed-via-pip" "$_v" ""
-      log "${C_GRN}✓ uvx 安装成功（$_v）${C_NC}"
+      log "${C_GRN}✓ uvx 安装成功（${_v}）${C_NC}"
     else
       if [ "$MODE" = "check" ]; then
         add_step "uvx" "failed" "not-ready" "" "uvx 未就绪（check 模式未安装）"
@@ -234,12 +234,12 @@ do_uvx() {
 do_ast_grep() {
   if _v="$(probe_version ast-grep --version)"; then
     add_step "ast-grep" "ready" "already-installed" "$_v" ""
-    log "${C_GRN}✓ ast-grep 已安装（$_v）${C_NC}"
+    log "${C_GRN}✓ ast-grep 已安装（${_v}）${C_NC}"
   else
     _try_install "ast-grep" npm i @ast-grep/cli -g "$(npm_registry_args)"
     if _v="$(probe_version ast-grep --version)"; then
       add_step "ast-grep" "installed" "installed-via-npm" "$_v" ""
-      log "${C_GRN}✓ ast-grep 安装成功（$_v）${C_NC}"
+      log "${C_GRN}✓ ast-grep 安装成功（${_v}）${C_NC}"
     else
       if [ "$MODE" = "check" ]; then
         add_step "ast-grep" "failed" "not-ready" "" "ast-grep 未就绪（check 模式未安装）"
@@ -254,12 +254,12 @@ do_ast_grep() {
 do_codegraph() {
   if _v="$(probe_version codegraph version)"; then
     add_step "codegraph" "ready" "already-installed" "$_v" ""
-    log "${C_GRN}✓ codegraph 已安装（$_v）${C_NC}"
+    log "${C_GRN}✓ codegraph 已安装（${_v}）${C_NC}"
   else
     _try_install "codegraph" npm i -g @colbymchenry/codegraph "$(npm_registry_args)"
     if _v="$(probe_version codegraph version)"; then
       add_step "codegraph" "installed" "installed-via-npm" "$_v" ""
-      log "${C_GRN}✓ codegraph 安装成功（$_v）${C_NC}"
+      log "${C_GRN}✓ codegraph 安装成功（${_v}）${C_NC}"
     else
       if [ "$MODE" = "check" ]; then
         add_step "codegraph" "failed" "not-ready" "" "codegraph 未就绪（check 模式未安装）"
@@ -274,12 +274,12 @@ do_codegraph() {
 do_openspec() {
   if _v="$(probe_version openspec --version)"; then
     add_step "openspec" "ready" "already-installed" "$_v" ""
-    log "${C_GRN}✓ openspec 已安装（$_v）${C_NC}"
+    log "${C_GRN}✓ openspec 已安装（${_v}）${C_NC}"
   else
     _try_install "openspec" npm install -g @fission-ai/openspec@latest "$(npm_registry_args)"
     if _v="$(probe_version openspec --version)"; then
       add_step "openspec" "installed" "installed-via-npm" "$_v" ""
-      log "${C_GRN}✓ openspec 安装成功（$_v）${C_NC}"
+      log "${C_GRN}✓ openspec 安装成功（${_v}）${C_NC}"
     else
       if [ "$MODE" = "check" ]; then
         add_step "openspec" "failed" "not-ready" "" "openspec 未就绪（check 模式未安装）"
@@ -355,7 +355,7 @@ upgrade_npm_tool() {
   _lat="$(npm_latest "$_pkg")"
   [ -n "$_lat" ] || { log "${C_YEL}⚠️  $_name 无法查询 latest，跳过升级${C_NC}"; return 0; }
   if _ver_lt "$_cur" "$_lat"; then
-    log "${C_YEL}⬆️  升级 $_name：$_cur → $_lat（来源 $CADENCE_NPM_REGISTRY）${C_NC}"
+    log "${C_YEL}⬆️  升级 ${_name}：$_cur → ${_lat}（来源 ${CADENCE_NPM_REGISTRY}）${C_NC}"
     if npm install -g "$_pkg@latest" "$(npm_registry_args)" >/dev/null 2>&1; then
       _new="$(probe_version "$@")"
       # 校验升级结果：版本非空且已追到 latest 才记 upgraded
@@ -370,7 +370,7 @@ upgrade_npm_tool() {
     FAILED_COUNT=$((FAILED_COUNT + 1))
     remove_step "$_name"
     add_step "$_name" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
-    log "${C_RED}❌ $_name 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    log "${C_RED}❌ $_name 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
     if [ "$NO_INTERRUPT" = "1" ]; then
       err "🛑 no-interrupt 模式：升级失败立即终止"
       emit_report "failed"
@@ -387,7 +387,7 @@ upgrade_uv() {
   _lat="$(env $(uv_index_env) pip index versions uv 2>/dev/null | sed -n 's/.*(\([0-9][^)]*\)).*/\1/p' | head -n1)"
   [ -n "$_lat" ] || { log "${C_YEL}⚠️  uv 无法查询 latest，跳过升级${C_NC}"; return 0; }
   if _ver_lt "$_cur" "$_lat"; then
-    log "${C_YEL}⬆️  升级 uv：$_cur → $_lat（来源 $CADENCE_PY_INDEX）${C_NC}"
+    log "${C_YEL}⬆️  升级 uv：$_cur → ${_lat}（来源 ${CADENCE_PY_INDEX}）${C_NC}"
     if env $(uv_index_env) pip install -U uv >/dev/null 2>&1; then
       _new="$(probe_version uv --version)"
       # 校验升级结果：版本非空且已追到 latest 才记 upgraded
@@ -402,7 +402,7 @@ upgrade_uv() {
     FAILED_COUNT=$((FAILED_COUNT + 1))
     remove_step "uv"
     add_step "uv" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
-    log "${C_RED}❌ uv 升级失败（目标 $_lat，当前 ${_new:-未知}）${C_NC}"
+    log "${C_RED}❌ uv 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
     if [ "$NO_INTERRUPT" = "1" ]; then
       err "🛑 no-interrupt 模式：升级失败立即终止"
       emit_report "failed"
