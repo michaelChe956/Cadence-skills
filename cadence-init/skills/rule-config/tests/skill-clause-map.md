@@ -2,6 +2,7 @@
 
 > 版本：v1.0（2026-07-30）
 > 依据：现行 `cadence-init/skills/rule-config/SKILL.md`（758 行，权威行为定义）+ OpenSpec change `script-rule-config-for-speed` design D2 行 ID 基线。
+> 行号基准：SKILL 行号区间基于瘦身前 758 行版本（行号对账基准），新 SKILL.md 已瘦身为编排骨架，语义正文见 references/merge-semantics.md。
 > 用途：Task 2/3 的用例清单来源；Task 10 语义迁移矩阵正文来源。本文档作为测试文件提交，后续任何脚本行为变更必须先与本文档对账。
 
 ## 0. 命名与列定义
