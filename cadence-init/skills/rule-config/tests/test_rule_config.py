@@ -1890,6 +1890,43 @@ class TestReportCompleteness(unittest.TestCase):
             self.assertGreater(step["elapsed_ms"], 0, f"{name} 未真实计时")
 
 
+class TestDriftConflictNoInterruptAction(unittest.TestCase):
+    """P1-1：no-interrupt 下 drift 冲突条目携带真实执行动作字段，避免 recommendation=keep 误导。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "language.md").write_text("# 项目自定义语言规则\n\n与模板不同。\n", encoding="utf-8")
+
+    def _compute(self, **overrides):
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
+        ):
+            return rc.compute_plan(self.root, _intents(**overrides))
+
+    def test_no_interrupt_marks_real_action(self):
+        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 冲突含 no_interrupt_action=markdown-merge，recommendation 不变）"""
+        plan = self._compute(no_interrupt=True)
+        s3 = plan["steps"][rc.STEP_RULES_FILES]
+        entry = next(c for c in s3["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
+        self.assertEqual(entry["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(entry["recommendation"], "keep")
+        top = next(c for c in plan["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
+        self.assertEqual(top["no_interrupt_action"], "markdown-merge")
+
+    def test_normal_mode_omits_field(self):
+        """ut-compute-plan-normal-no-action-field / P1-1（普通模式冲突条目不新增字段）"""
+        plan = self._compute()
+        s3 = plan["steps"][rc.STEP_RULES_FILES]
+        self.assertFalse(any("no_interrupt_action" in c for c in s3["conflicts"]))
+        self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
+
+
 class TestCodegraphSectionMissing(unittest.TestCase):
     """codex 终审 I5 / RF-04：老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并。"""
 

@@ -1449,21 +1449,28 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 # codex 三轮 C3（方案 X）：普通规则文件 drift 同 L1/L0 回归 A 类——
                 # recommendation=keep 为安全默认（保留用户内容可恢复），普通模式
                 # 无响应时默认保留并报告 status=0，不 fail closed。
-                s3["conflicts"].append({
+                s3_conflict = {
                     "conflict_id": conflict_id, "asset": rel, "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
                     "default_keep": True,
-                })
-                plan["conflicts"].append({
+                }
+                top_conflict = {
                     "conflict_id": conflict_id, "asset": rel, "kind": "rules",
                     "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
                     "default_keep": True,
-                })
+                }
+                if intents.no_interrupt:
+                    # P1-1：no-interrupt 实际执行为章节合并写盘；显式标注真实动作，
+                    # 避免安全默认 recommendation=keep 误导为"保留原文件不动"。
+                    s3_conflict["no_interrupt_action"] = "markdown-merge"
+                    top_conflict["no_interrupt_action"] = "markdown-merge"
+                s3["conflicts"].append(s3_conflict)
+                plan["conflicts"].append(top_conflict)
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
     s3["elapsed_ms"] = int((time.monotonic() - t_s3) * 1000)  # codex 终审 I4：真实计时
