@@ -555,23 +555,27 @@ class TestDetectProject(unittest.TestCase):
         self.assertEqual(result["project_type"], "coding")
         self.assertIn("package.json", result["evidence"])
 
-    # --- ut-detect_project-user-override / S1a-04（--project-type 优先于检测）---
-    def test_user_override_takes_precedence(self):
-        """ut-detect_project-user-override / S1a-04（intents.project_type 覆盖检测结果）"""
+    # --- ut-detect_project-ignores-cli / IA-02（重构：detect 只返回检测结果，CLI 完全不参与）---
+    def test_detect_ignores_cli_project_type(self):
+        """ut-detect_project-ignores-cli / IA-02 重构（detect_project 只做自动检测；
+        intents.project_type 不影响检测结果，也不产生任何冲突）"""
         (self.root / "app.py").write_text("x = 1\n")  # 检测应为 coding
+        # CLI 写 non-coding，检测结果仍应为 coding，且不再产 s1 冲突
         result = rc.detect_project(self.root, _intents(project_type="non-coding"))
-        self.assertEqual(result["project_type"], "non-coding")  # 用户指定优先
+        self.assertEqual(result["project_type"], "coding")
+        self.assertIsNone(result.get("conflict"))
 
-    # --- ut-detect_project-conflict / IA-02（矛盾判定 → s1:project-type-conflict）---
-    def test_user_override_conflict_with_detection(self):
-        """ut-detect_project-conflict / IA-02（用户指定与检测矛盾 → conflict 字段标记 s1:project-type-conflict；project_type 仍取用户值）"""
-        (self.root / "app.py").write_text("x = 1\n")  # 检测为 coding
-        result = rc.detect_project(self.root, _intents(project_type="non-coding"))
-        self.assertEqual(result["project_type"], "non-coding")  # 用户值优先
-        conflict = result.get("conflict")
-        self.assertIsNotNone(conflict)
-        self.assertEqual(conflict["conflict_id"], "s1:project-type-conflict")
-        self.assertEqual(conflict["allowed_decisions"], ["coding", "non-coding"])
+    # --- ut-detect_project-no-conflict-key / IA-02 重构（conflict 字段不再产生）---
+    def test_detect_never_produces_project_type_conflict(self):
+        """ut-detect_project-no-conflict / IA-02 重构（任意 detect+CLI 组合都不产冲突）
+
+        用户裁决：删除 s1:project-type-conflict 机制；detect 只返回检测结果。
+        """
+        (self.root / "app.py").write_text("x = 1\n")  # 检测 coding + CLI non-coding
+        for cli in (None, "coding", "non-coding"):
+            result = rc.detect_project(self.root, _intents(project_type=cli))
+            self.assertEqual(result["project_type"], "coding")
+            self.assertIsNone(result.get("conflict"))
 
     # --- ut-detect_project-techstack / S4-01（package.json scripts + pytest 检测 + 默认覆盖率 80%）---
     def test_techstack_extracted_from_package_json_and_pytest(self):
@@ -1715,49 +1719,80 @@ class TestFilterBackupNeeds(unittest.TestCase):
         self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [stray])
 
 
-class TestApplyS1DecisionToProjectType(unittest.TestCase):
-    """ut-apply-s1-decision / codex 四轮 Critical 真bug
+class TestFinalProjectTypeTwoModeRules(unittest.TestCase):
+    """ut-final-project-type / IA-02 重构（codex 五轮）
 
-    s1:project-type-conflict 决策消费覆盖 plan.project_type（merge-semantics §11.6
-    「decision=coding/non-coding 时按对应类型执行」）。修复前决策只校验不消费。
+    用户裁决的项目类型规则（删除 s1:project-type-conflict 后的唯一确定结果）：
+      - no-interrupt：final = 检测结果（CLI --project-type 完全忽略）
+      - 普通模式：检测 coding → coding（无论 CLI）；检测 non-coding + CLI coding → coding；
+        检测 non-coding + CLI 不写或 non-coding → non-coding
+    覆盖范围 = 两模式行表 + no-interrupt 忽略 CLI。
     """
 
-    def _plan_with_s1_conflict(self, project_type, decision):
-        return {
-            "project_type": project_type,
-            "decisions_map": (
-                {rc.S1_PROJECT_TYPE_CONFLICT_ID: decision}
-                if decision is not None else {}
-            ),
-            "conflicts": [{
-                "conflict_id": rc.S1_PROJECT_TYPE_CONFLICT_ID,
-                "allowed_decisions": ["coding", "non-coding"],
-            }],
-        }
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
 
-    def test_decision_coding_overrides_cli_noncoding(self):
-        """决策 coding 覆盖 CLI non-coding 初值（正例：决策优先于命令行初值）"""
-        plan = self._plan_with_s1_conflict("non-coding", "coding")
-        rc._apply_s1_decision_to_project_type(plan)
+    def _coding_root(self):
+        (self.root / "application").mkdir(exist_ok=True)
+        (self.root / "application" / "app.py").write_text("x = 1\n")
+
+    def _noncoding_root(self):
+        (self.root / "README.md").write_text("docs only\n")
+
+    def _compute(self, **intents_overrides):
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
+        ):
+            return rc.compute_plan(self.root, _intents(**intents_overrides))
+
+    # --- 行表 1：no-interrupt + 检测 non-coding + CLI coding → non-coding（CLI 被忽略）---
+    def test_no_interrupt_ignores_cli_coding_when_detected_noncoding(self):
+        self._noncoding_root()
+        plan = self._compute(no_interrupt=True, project_type="coding")
+        self.assertEqual(plan["project_type"], "non-coding")
+
+    # --- 行表 2：no-interrupt + 检测 coding → coding（CLI 忽略，无论写什么）---
+    def test_no_interrupt_detected_coding_ignores_cli_noncoding(self):
+        self._coding_root()
+        plan = self._compute(no_interrupt=True, project_type="non-coding")
         self.assertEqual(plan["project_type"], "coding")
 
-    def test_decision_noncoding_overrides_cli_coding(self):
-        """决策 non-coding 覆盖 CLI coding 初值（反例：与正例决策均与 CLI 不同值）"""
-        plan = self._plan_with_s1_conflict("coding", "non-coding")
-        rc._apply_s1_decision_to_project_type(plan)
+    # --- 行表 3：普通模式 + 检测 non-coding + CLI coding → coding（CLI 提升）---
+    def test_normal_cli_promotes_noncoding_to_coding(self):
+        self._noncoding_root()
+        plan = self._compute(no_interrupt=False, project_type="coding")
+        self.assertEqual(plan["project_type"], "coding")
+
+    # --- 行表 4：普通模式 + 检测 coding → coding（无论 CLI）---
+    def test_normal_detected_coding_stays_coding(self):
+        self._coding_root()
+        plan = self._compute(no_interrupt=False, project_type="non-coding")
+        self.assertEqual(plan["project_type"], "coding")
+
+    # --- 行表 5：普通模式 + 检测 non-coding + 无 CLI → non-coding ---
+    def test_normal_detected_noncoding_no_cli_stays_noncoding(self):
+        self._noncoding_root()
+        plan = self._compute(no_interrupt=False, project_type=None)
         self.assertEqual(plan["project_type"], "non-coding")
 
-    def test_no_s1_decision_keeps_plan_value(self):
-        """无 s1 决策（decisions_map 缺该 id）→ project_type 不变（dry-run / no-interrupt）"""
-        plan = self._plan_with_s1_conflict("non-coding", None)
-        rc._apply_s1_decision_to_project_type(plan)
+    # --- 行表 5b：普通模式 + 检测 non-coding + CLI non-coding → non-coding ---
+    def test_normal_detected_noncoding_cli_noncoding_stays_noncoding(self):
+        self._noncoding_root()
+        plan = self._compute(no_interrupt=False, project_type="non-coding")
         self.assertEqual(plan["project_type"], "non-coding")
 
-    def test_illegal_s1_decision_ignored(self):
-        """非法决策值（validate_decisions 已拦截；本函数防御性忽略，不破坏 plan）"""
-        plan = self._plan_with_s1_conflict("non-coding", "maybe")
-        rc._apply_s1_decision_to_project_type(plan)
-        self.assertEqual(plan["project_type"], "non-coding")
+    # --- 连带：重构后 compute_plan 不再产 s1:project-type-conflict ---
+    def test_compute_plan_no_s1_project_type_conflict(self):
+        self._coding_root()
+        for cli in (None, "coding", "non-coding"):
+            for ni in (True, False):
+                plan = self._compute(no_interrupt=ni, project_type=cli)
+                ids = [c.get("conflict_id") for c in plan.get("conflicts", [])]
+                self.assertNotIn("s1:project-type-conflict", ids)
 
 
 class TestReportCompleteness(unittest.TestCase):

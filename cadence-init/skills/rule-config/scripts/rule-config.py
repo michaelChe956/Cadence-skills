@@ -1210,39 +1210,31 @@ def validate_decisions(plan: dict, decisions: list) -> list:
     return violations
 
 
-# s1:project-type-conflict 冲突标识（唯一 B 类 fail-closed 冲突）。
-S1_PROJECT_TYPE_CONFLICT_ID = "s1:project-type-conflict"
-
-
-def _apply_s1_decision_to_project_type(plan: dict) -> None:
-    """将 s1:project-type-conflict 的用户决策应用到 plan.project_type（codex 四轮 Critical）。
-
-    背景（codex 四轮 Critical 真bug）：compute_plan 与 step_s1_detect 此前只用
-    intents.project_type（CLI 初值）判定 project_type，把 s1 决策放进 decisions_map
-    却不消费；导致「检测 coding + CLI non-coding + 决策 coding」场景下 project_type
-    仍按 CLI=non-coding，S8 codegraph 跳过，违反 merge-semantics §11.6
-    「decision=coding/non-coding 时按对应类型执行」。
-
-    本函数在 apply 执行阶段（decisions 校验通过、decisions_map 已入 plan 后）调用：
-    若 plan.conflicts 含 s1:project-type-conflict 且 decisions_map 含合法决策
-    （'coding'/'non-coding'，已由 validate_decisions 保证），用决策值覆盖
-    plan.project_type。CLI --project-type 是用户在命令行的初值，s1 冲突是「检测
-    矛盾」触发的；当 s1 冲突存在且有决策时，决策优先于 CLI 初值（用户在看到
-    冲突后的明确回答）。
-
-    dry-run 计划阶段不调用本函数（project_type 仍用 CLI/detect，冲突照样产生
-    供 Agent 提问）；仅 apply 阶段在 S1 detect 之后、S8 codegraph 启用判定之前
-    应用，使 S8 等依赖 project_type 的步骤按最终决策执行。
-    """
-    decisions_map = plan.get("decisions_map", {}) or {}
-    decision = decisions_map.get(S1_PROJECT_TYPE_CONFLICT_ID)
-    if decision in ("coding", "non-coding"):
-        plan["project_type"] = decision
-
-
 # ---------------------------------------------------------------------------
 # compute_plan：只读探测，填充 steps/conflicts/backup_needs（S1-S8 骨架）
 # ---------------------------------------------------------------------------
+
+
+def _compute_final_project_type(detected_type: str, intents: Intents) -> str:
+    """根据用户裁决的两模式规则计算最终 project_type（codex 五轮重构）。
+
+    规则（删除 s1:project-type-conflict 后的唯⼀确定结果）：
+      - no-interrupt：final = detected_type（CLI --project-type 完全忽略）
+      - 普通模式：
+          1) 检测 coding → coding（无论 CLI 写什么）
+          2) 检测 non-coding + CLI coding → coding（CLI 仅能提升）
+          3) 检测 non-coding + CLI 不写或 non-coding → non-coding
+
+    等价实现：普通模式下 final = 'coding' if (detected=='coding'
+    or intents.project_type=='coding') else 'non-coding'。
+    """
+    if detected_type == "coding":
+        return "coding"
+    # detected == 'non-coding'
+    if intents.no_interrupt:
+        return "non-coding"  # no-interrupt：CLI 完全忽略
+    # 普通模式：CLI coding 可提升 non-coding → coding；其余保持 non-coding
+    return "coding" if intents.project_type == "coding" else "non-coding"
 
 
 def compute_plan(root: Path, intents: Intents) -> dict:
@@ -1257,7 +1249,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
       }
 
     本骨架实现：
-      * S1 detect：判定 project_type（扫描源码文件）；
+      * S1 detect：自动检测项目类型（检测结果）+ 两模式规则计算最终 project_type
+        （codex 五轮重构：no-interrupt 以检测为准、普通模式 CLI 仅提升；
+        s1:project-type-conflict 冲突已删除）；
       * S2-S7：对入口文件 / 规则文件 / openspec config 做存在性与漂移探测，
         产生 conflict 条目（普通模式需 decisions 响应）；
       * backup_needs：汇总所有将被修改/替换的现有文件。
@@ -1270,14 +1264,21 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     }
 
     # --- S1 detect：项目类型 + 技术栈 ---
+    # codex 五轮重构：detect 只返回检测结果；最终 project_type 由两模式规则计算
+    # （no-interrupt 以检测为准、普通模式 CLI 仅提升）。s1:project-type-conflict
+    # 冲突机制已删除——任意检测+CLI 组合都有唯⼀确定结果，不再产冲突。
     s1 = _step_skeleton(STEP_DETECT)
     t_s1 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     detect_result = detect_project(root, intents)
-    plan["project_type"] = detect_result["project_type"]
+    final_project_type = _compute_final_project_type(
+        detect_result["project_type"], intents
+    )
+    plan["project_type"] = final_project_type
     plan["tech_stack"] = detect_result["tech_stack"]
     s1["status"] = "ok"
     s1["note"] = (
-        f"project_type={detect_result['project_type']}; "
+        f"project_type={final_project_type}; "
+        f"detected_type={detect_result['project_type']}; "
         f"evidence={detect_result['evidence']}"
     )
     s1["assets"] = [{
@@ -1285,15 +1286,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "action": "detect",
         "conflict": None,
         "backup_needed": False,
-        "project_type": detect_result["project_type"],
+        "detected_type": detect_result["project_type"],
+        "project_type": final_project_type,
         "evidence": detect_result["evidence"],
         "tech_stack": detect_result["tech_stack"],
     }]
-    # 矛盾冲突项（allowed_decisions=['coding','non-coding']）
-    conflict = detect_result.get("conflict")
-    if conflict:
-        s1["conflicts"] = [conflict]
-        plan["conflicts"].append(conflict)
     s1["elapsed_ms"] = int((time.monotonic() - t_s1) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_DETECT] = s1
 
@@ -1390,7 +1387,8 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 # 是脚本认可的安全默认（保留原状可恢复），普通模式无响应（Agent 写
                 # keep 或决策缺失）时默认保留并报告 status=0，与实现「keep→不写盘」
                 # 一致，不 fail closed。default_keep=True 使 validate_decisions 对该
-                # 冲突缺失决策不记违规。仅 s1:project-type-conflict 仍为 B 类。
+                # 冲突缺失决策不记违规。codex 五轮：s1:project-type-conflict 已删除，
+                # 当前系统所有冲突均为 A 类（default_keep 保留兜底），无 B 类触发。
                 s3["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "state": state,
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
@@ -1708,9 +1706,10 @@ def _append_backup_need(plan: dict, target: Path) -> None:
 
 
 def _detect_project_type(root: Path, intents: Intents) -> str:
-    """判定项目类型：显式覆盖 > 源码扫描 > 主工程配置 > non-coding。
+    """判定项目类型（检测结果）：源码扫描 > 主工程配置 > non-coding。
 
     保留为 compute_plan 内部辅助（旧骨架入口）；完整语义见 detect_project。
+    codex 五轮重构：仅返回检测结果，不应用 CLI（与 detect_project 一致）。
     """
     return detect_project(root, intents)["project_type"]
 
@@ -1729,22 +1728,22 @@ _FALLBACK_GLOB_PATTERN = "**/cadence-init/skills/rule-config/references/rules/la
 
 
 def detect_project(root: Path, intents: Intents) -> dict:
-    """S1 项目类型与技术栈检测。
+    """S1 项目类型与技术栈检测（codex 五轮重构：只返回检测结果）。
 
     返回 dict：
       {
-        "project_type": "coding"|"non-coding",
+        "project_type": "coding"|"non-coding",   # 等同 detected_type（检测结果）
         "evidence": str,            # 检测证据（相对路径 / 主配置名 / "none"）
         "tech_stack": {             # 五类技术栈检测（未检出写「未检测到」）
           "language": str, "pkg_manager": str,
           "test": str, "lint": str, "format": str, "coverage": "80%",
         },
-        "conflict": dict|None,     # 矛盾时为 s1:project-type-conflict 条目
       }
 
-    优先级（简报 Task 5）：intents.project_type 优先于检测结果；
-    用户指定与检测结果矛盾 → conflict=s1:project-type-conflict
-    （allowed_decisions=['coding','non-coding']）。
+    用户裁决的项目类型规则（删除 s1:project-type-conflict 后）：detect 只负责自动检测，
+    **完全不读取 intents**（既不应用 CLI --project-type，也不产生任何冲突）。最终
+    project_type 的两模式裁决（no-interrupt 以检测为准、普通模式 CLI 仅提升）由
+    compute_plan 在 detect 之上计算。intents 参数保留只为签名兼容（未来扩展）。
     """
     # 1) 自动检测：有界首命中源码扫描 → coding；否则查 6 个主工程配置；全无 → non-coding。
     detected_type = "non-coding"
@@ -1762,32 +1761,13 @@ def detect_project(root: Path, intents: Intents) -> dict:
             detected_type = "coding"
             evidence = f"main config: {main_cfg}"
 
-    # 2) intents.project_type 优先；矛盾判定 → conflict。
-    conflict = None
-    project_type = detected_type
-    if intents.project_type in ("coding", "non-coding"):
-        project_type = intents.project_type
-        if intents.project_type != detected_type:
-            conflict = {
-                "conflict_id": "s1:project-type-conflict",
-                "asset": "<project>",
-                "detected_type": detected_type,
-                "user_type": intents.project_type,
-                "allowed_decisions": ["coding", "non-coding"],
-                "question": (
-                    f"检测结果为 {detected_type}，但用户指定为 {intents.project_type}"
-                ),
-                "recommendation": intents.project_type,
-            }
-
-    # 3) 技术栈检测（不受 project_type 覆盖影响，始终扫描配置文件）。
+    # 2) 技术栈检测（不受 project_type 影响，始终扫描配置文件）。
     tech_stack = _detect_tech_stack(root)
 
     return {
-        "project_type": project_type,
+        "project_type": detected_type,
         "evidence": evidence,
         "tech_stack": tech_stack,
-        "conflict": conflict,
     }
 
 
@@ -2019,17 +1999,12 @@ def _load_kernel_source() -> str:
 def step_s1_detect(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。
 
-    codex 四轮 Critical：apply 执行阶段 run_apply 已在 decisions 校验后调用
-    _apply_s1_decision_to_project_type 把 s1 决策覆盖到 plan.project_type。本步骤
-    detect_project(root, intents) 仍按 CLI 初值 detect（用于 tech_stack/evidence）；
-    当 plan.project_type 已被决策覆盖（与 detect 值不同）时，以 plan 的最终值为准
-    同步到 report，保证报告与后续 S8 等步骤看到的 project_type 一致。
+    codex 五轮重构：project_type 已在 compute_plan 阶段按两模式规则计算为最终值
+    （plan["project_type"]）；detect_project 在此只用于补全 tech_stack/evidence。
+    s1 决策消费机制已删除（无 s1 冲突）。
     """
     detect_result = detect_project(root, intents)
-    # plan.project_type 优先（apply 阶段已消费 s1 决策覆盖；dry-run/无决策时与
-    # detect_result 一致）。
-    final_project_type = plan.get("project_type") or detect_result["project_type"]
-    report["project_type"] = final_project_type
+    report["project_type"] = plan.get("project_type") or detect_result["project_type"]
     # tech_stack 写入报告（供后续 S4 入口文件技术栈章节使用）。
     report["tech_stack"] = detect_result["tech_stack"]
     report["evidence"] = detect_result["evidence"]
@@ -3366,14 +3341,8 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
                 if cid is not None:
                     decisions_map[cid] = decision
         plan["decisions_map"] = decisions_map
-        # codex 四轮 Critical：消费 s1:project-type-conflict 决策覆盖 plan.project_type
-        # （在 decisions 校验通过后、S1/S8 执行前应用；见 _apply_s1_decision_to_project_type）。
-        _apply_s1_decision_to_project_type(plan)
     else:
         plan["decisions_map"] = {}
-        # no-interrupt 模式不读 decisions；decisions_map 为空，本调用为空操作
-        # （保留以防未来扩展；当前 no-interrupt 按 intents/detect 决定 project_type）。
-        _apply_s1_decision_to_project_type(plan)
 
     # 3. 全局备份屏障：汇总 plan 全部 backup_needs 逐一 backup_file
     # codex 终审 I3：屏障只收集真实写入需求（keep 决策与幂等候选剔除）。

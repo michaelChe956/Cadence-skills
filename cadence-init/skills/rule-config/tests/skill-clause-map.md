@@ -112,7 +112,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 83 | IA-01 即将覆盖已有非空文件（规则文件 drift）→先询问；**无响应则默认 keep 保留并报告 status=0**（A 类，有安全默认，§11.6）；决策 `keep`→不覆盖跳过，决策 `replace`→备份后覆盖 | 普通 | step_rules_files（决策枚举 `replace\|keep`；drift 标 `default_keep: true`，无响应默认 keep） | fx-existing-rules | it-s3-normal-keep-decision（keep 分支）/ it-s3-rules-drift-replace（replace 分支，待补） | drift 冲突标识 `s3:<rel>`；无 decisions 时 apply status=0 且文件不变（default_keep）；decisions 为 `keep` 时文件不变且报告跳过 |
-| 84 | IA-02 检测结果互相矛盾且影响规则选择→先询问；无响应按非 Coding 处理（固定冲突标识 `s1:project-type-conflict`） | 普通 | detect_project | fx-contradict-detection | it-s1-project-type-conflict | dry-run 报告含 `s1:project-type-conflict`；无决策时 apply 拒绝；decision=`non-coding` 时按非 Coding 执行 |
+| 84 | IA-02 项目类型判定两模式规则（codex 五轮重构）：no-interrupt 以检测结果为准（CLI 完全忽略）；普通模式 CLI `--project-type coding` 仅能把 non-coding 提升为 coding，检测为 coding 时无论 CLI 取何值均为 coding；任一组合唯⼀确定，不产生冲突 | 两模式 | detect_project / compute_plan | fx-s1-no-interrupt-ignores-cli / fx-s1-no-interrupt-detect-coding / fx-s1-normal-cli-promotes / fx-s1-normal-detect-coding / fx-s1-normal-no-cli-noncoding | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding | 五用例覆盖两模式行表；final `project_type` 与 S8 启用/跳过与预期一致 |
 | 85 | IA-03 用户明确要求启用默认跳过项但缺少必要信息→问最少必要信息；无响应跳过该可选项 | 普通 | —（Agent 提问，design D3） | fx-empty-project | sc-ia-optional-ask | SKILL.md 保留"最少必要信息/无响应跳过"文本 |
 | 86 | IA-04 迁移旧目录目标非空→不询问、不合并，直接跳过并报告冲突 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-no-ask | dry-run/apply 计划不生成该目录的提问冲突项，报告直接记冲突跳过 |
 | 87 | IA-05 需要真实密钥→不询问真实密钥，只写占位符并提示替换 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-ia-secrets-placeholder | 全文无索取真实密钥的指令文本；占位符约定保留 |
@@ -132,7 +132,7 @@
 | 119-137 | S1a-01 一次有界首命中扫描判定项目类型；剪枝目录与源码扩展名清单原样 | 两模式 | detect_project | fx-coding-project | ut-detect_project-bounded-scan | 剪枝目录内源码不触发 Coding 判定；首命中即返回 |
 | 121-137 | S1a-02 find 命令剪枝清单文本契约（沿用静态提取先例） | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-find-prune-list | 从 SKILL.md 提取的 find 命令与脚本内剪枝清单逐项一致 |
 | 131/133-135 | S1a-03 有输出或存在主工程配置→Coding；全无→非 Coding；检测结果记入报告 | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-main-config | 仅含 `package.json`/`pyproject.toml` 等主配置即判 Coding；报告记录检测证据 |
-| 136 | S1a-04 用户明确指定项目类型时以用户指定为准（`--project-type`） | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-user-override | `--project-type coding` 覆盖检测结果并记入报告 |
+| 136 | S1a-04 项目类型按两模式唯⼀规则确定（`--project-type`：普通模式仅提升 non-coding→coding；no-interrupt 完全忽略；codex 五轮重构，原「用户指定优先」与 s1 冲突已删） | 两模式 | detect_project / compute_plan | fx-noncoding-project / fx-coding-project | ut-detect_project-ignores-cli / ut-final-project-type-* / it-s1-normal-cli-promotes / it-s1-no-interrupt-ignores-cli | 检测结果 + CLI 按两模式规则计算 final `project_type`；detect 不读取 CLI |
 | 133 | S1a-05 无人工交互模式下不等待用户确认 | no-interrupt | detect_project | fx-empty-project | it-s1-no-confirm | no-interrupt 下检测直接落报告，无提问冲突项 |
 | 138-157 | S1b-01 模板目录三级定位：在线安装路径→离线安装路径→开发回退 Glob | 两模式 | locate_templates | fx-templates-online / fx-templates-offline / fx-templates-dev | ut-locate_templates-online / ut-locate_templates-offline / ut-locate_templates-fallback | 各级候选按优先级命中并返回成对路径 |
 | 143/147/156/159 | S1b-02 每候选成对校验 rules 三件套（回退另需 document-storage.md）+ 同级 `references/openspec/config.yaml`；缺 config.yaml 不得选用 | 两模式 | locate_templates | fx-templates-incomplete | ut-locate_templates-pair-check | 缺任一成对文件的候选被跳过 |
@@ -338,7 +338,7 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | —（D3） | XC-01 dry-run 零写入：只输出计划（动作、冲突、备份需求），`--report`/`--decisions` 路径必须位于项目根之外 | 两模式 | step_* 全流水线 | fx-existing-rules | it-dryrun-zero-write | dry-run 前后项目目录全量 sha256 快照一致；项目根内报告/决策路径被拒绝 |
 | —（D3） | XC-02 用户意图四参数透传：`--project-type` / `--ignore-cadence` / `--enable-playwright` / `--enable-codegraph` | 两模式 | —（CLI 入口） | fx-empty-project | it-intent-params | 四参数各自独立生效且组合不互相污染；报告记录参数来源 |
-| —（D3） | XC-03 decisions 四类异常：文件缺失或无法解析 / 含未知或重复 `conflict_id` / 冲突缺少决策 / 决策与新鲜计划不符，任一即非零退出且零写入 | 普通 | —（apply 入口决策校验） | fx-contradict-detection（s1 B 类冲突，codex 三轮 C3） | it-decisions-missing / it-decisions-unknown / it-decisions-lacking / it-decisions-stale / ut-compute_plan-recommendation-keep（recommendation 一律保守 keep，终审 C-1） | 四类异常各自非零退出、报告含原因、项目目录零写入；计划无冲突时不要求决策文件。codex 三轮 C3：drift 类冲突已回归 A 类（default_keep），「缺失」「空缺」两类异常改用唯一 B 类冲突 s1:project-type-conflict 验证 |
+| —（D3） | XC-03 decisions 异常：文件缺失或无法解析 / 含未知或重复 `conflict_id` / 冲突缺少决策 / 决策与新鲜计划不符，任一即非零退出且零写入；计划无冲突时不要求决策文件 | 普通 | —（apply 入口决策校验） | fx-decisions-no-conflict / fx-decisions-unknown / fx-decisions-stale | it-decisions-no-conflict-not-required / it-decisions-unknown / it-decisions-stale / ut-compute_plan-recommendation-keep（recommendation 一律保守 keep，终审 C-1） | 异常各自非零退出、报告含原因、项目目录零写入；计划无冲突时不要求决策文件。codex 五轮：s1:project-type-conflict 已删除（项目类型判定重构），当前系统无 B 类冲突；原 it-decisions-missing/lacking 依赖唯一 B 类验证「决策缺失/空缺」fail-closed，现改为 it-decisions-no-conflict-not-required 验证「无冲突时不要求决策」 |
 | —（D3） | XC-04 no-interrupt 不读取也不要求决策文件，全部冲突内部按权威规则决策并记录 | no-interrupt | merge_markdown / merge_yaml | fx-existing-rules | it-entry-base-created（任一 no-interrupt 无 `--decisions` 成功用例） | 提供决策文件被忽略；冲突按 NC/OS/L1/L0 表内部决策并入报告 |
 | —（D6） | XC-05 预算计时：空项目 `apply --no-interrupt` 报告 `budget_seconds_excluding_codegraph < 60` | no-interrupt | —（报告计时字段） | fx-empty-project | it-budget | 报告计时字段存在且 < 60；S8 耗时单独列出 |
 | —（D1） | XC-06 PyYAML 缺失以退出码 77 退出且报告照常写出 | 两模式 | merge_yaml | fx-no-pyyaml | ut-merge_yaml-missing-dependency | 退出码恰为 77；stderr 说明；报告含 hints |
@@ -375,14 +375,14 @@
 | 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ |
 | 7 | Markdown 不可解析回退 | ut-merge_markdown-unparseable-fallback（NC-08） | ✅ |
 | 8 | 摘要编号冲突 | it-entry-summary-number-conflict（SM-03） | ✅ |
-| 9 | 检测矛盾 | it-s1-conflict-noncoding-default（IA-02，固定标识 `s1:project-type-conflict`） | ✅ |
+| 9 | 项目类型判定两模式规则（codex 五轮重构，原「检测矛盾」已删） | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding | ✅ |
 | 10 | 意图参数透传 | it-intent-params（XC-02，四参数） | ✅ |
 | 11 | 裸 token | sc-bare-token（PM-01） | ✅ |
 | 12 | disable-model-invocation | sc-disable-model-invocation（FM-01） | ✅ |
 | 13 | L1 独立分支 | ut-step_s3-l1-red-line（S1d-03，SKILL 183 行） | ✅ |
 | 14 | 基础入口文本 | it-entry-base-created（L0-P5/L0-01，含基础模板全文断言） | ✅ |
 | 15 | dry-run 零写入 | it-dryrun-zero-write（XC-01） | ✅ |
-| 16 | decisions 四类异常 | it-decisions-missing / it-decisions-unknown / it-decisions-lacking / it-decisions-stale（XC-03） | ✅ |
+| 16 | decisions 异常与无冲突豁免 | it-decisions-no-conflict-not-required / it-decisions-unknown / it-decisions-stale（XC-03） | ✅ |
 | 17 | 全局备份屏障 | it-s4-backup-barrier（L0-P4/L0-07）+ it-s7-openspec-backup-fail-modes（OS-N4/OS-08）+ it-s3-l1-backup-failure-preserved（L1-07） | ✅ |
 
 ### 3.3 非表条款覆盖声明

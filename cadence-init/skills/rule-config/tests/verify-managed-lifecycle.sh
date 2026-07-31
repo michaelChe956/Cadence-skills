@@ -639,9 +639,9 @@ before=$(sha256_file "$l1_target")
 run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
 # codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep 为安全默认，
-# 普通模式无响应时默认保留并报告 status=0，不 fail closed。与 it-s4-drift-normal、
-# it-decisions-missing（改用 s1 B 类冲突）语义一致。Agent 写 keep 决策路径见
-# it-l1-drift-normal-keep-default。
+# 普通模式无响应时默认保留并报告 status=0，不 fail closed。与 it-s4-drift-normal
+# 语义一致（codex 五轮：s1 冲突已删，当前无 B 类冲突，所有冲突均 A 类保留兜底）。
+# Agent 写 keep 决策路径见 it-l1-drift-normal-keep-default。
 if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
   record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" pass
 else
@@ -792,11 +792,15 @@ else
   record_result it-dryrun-zero-write "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C2. decisions 四类异常（it-decisions-* / XC-03）：普通模式各自非零退出、零写入。
-# codex 三轮 C3（方案 X）：drift 类冲突已回归 A 类（default_keep），缺失决策不 fail；
-# 「决策缺失」与「决策空缺」两类异常必须用唯一 B 类冲突 s1:project-type-conflict
-# （检测出 coding 与 --project-type non-coding 矛盾）来验证。「未知 conflict_id」
-# 与「决策过期」两类异常针对决策内容错误，对任意冲突均生效，沿用 drift fixture。
+# C2. decisions 异常与无冲突豁免（it-decisions-* / XC-03）。
+# codex 五轮重构：s1:project-type-conflict 已删除（项目类型判定重构），当前系统无
+# B 类冲突（所有冲突均为 A 类 default_keep 保留兜底）。原 it-decisions-missing /
+# it-decisions-lacking 依赖唯一 B 类冲突验证「决策缺失/空缺」fail-closed；B 类被
+# 删除后这两类异常失去唯一可触发 fixture，按用户裁决改为验证重构后语义：
+# 「普通模式计划无冲突时不要求决策文件」（it-decisions-no-conflict-not-required）。
+# 「未知 conflict_id」与「决策过期」两类异常针对决策内容错误，对任意冲突均生效，
+# 沿用 drift fixture（drift 为 A 类 default_keep，但未知/过期 decision 仍会被
+# validate_decisions 拒绝并 fail-closed）。
 mk_drift_fixture() {
   local root="$TEST_ROOT/$1"
   mkdir -p "$root"
@@ -806,26 +810,21 @@ mk_drift_fixture() {
   printf '%s\n' "$root"
 }
 
-# B 类冲突 fixture：源码检出 coding + --project-type non-coding → s1:project-type-conflict。
-mk_project_conflict_fixture() {
-  local root="$TEST_ROOT/$1"
-  mkdir -p "$root/application"
-  printf 'x=1\n' > "$root/application/app.py"
-  printf '%s\n' "$root"
-}
-
-# C2a. 决策文件缺失（唯一 B 类冲突 s1:project-type-conflict 无 --decisions）
-case_root="$(mk_project_conflict_fixture fx-decisions-missing)"
+# C2a. 普通模式无冲突时不要求决策文件（重构后语义：B 类已删，无冲突→不校验 decisions）
+# fixture：空项目（non-coding、无 drift）→ 计划无任何冲突；不带 --decisions 应成功。
+case_root="$TEST_ROOT/fx-decisions-no-conflict"
+mkdir -p "$case_root"
+printf 'docs only\n' > "$case_root/README.md"
 before=$(tree_hash "$case_root")
-run_script apply "$case_root" --project-type non-coding
+run_script apply "$case_root"
 after=$(tree_hash "$case_root")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
-  record_result it-decisions-missing "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && jqr "['conflicts']" 2>/dev/null | grep -q '\[\]'; then
+  record_result it-decisions-no-conflict-not-required "$RUN_STATUS" "$before" "$after" pass
 else
-  record_result it-decisions-missing "$RUN_STATUS" "$before" "$after" fail
+  record_result it-decisions-no-conflict-not-required "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C2b. 决策文件含未知 conflict_id
+# C2b. 决策文件含未知 conflict_id（drift A 类 fixture + 未知 cid → fail-closed）
 case_root="$(mk_drift_fixture fx-decisions-unknown)"
 dec_file="$TEST_ROOT/decisions-unknown.json"
 write_decisions "$dec_file" '[{"conflict_id":"s4:unknown:id","decision":"replace"}]'
@@ -838,20 +837,7 @@ else
   record_result it-decisions-unknown "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C2c. 冲突缺少决策（唯一 B 类冲突 s1:project-type-conflict 决策文件空）
-case_root="$(mk_project_conflict_fixture fx-decisions-lacking)"
-dec_file="$TEST_ROOT/decisions-lacking.json"
-write_decisions "$dec_file" '[]'
-before=$(tree_hash "$case_root")
-run_script apply "$case_root" --project-type non-coding --decisions "$dec_file"
-after=$(tree_hash "$case_root")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
-  record_result it-decisions-lacking "$RUN_STATUS" "$before" "$after" pass
-else
-  record_result it-decisions-lacking "$RUN_STATUS" "$before" "$after" fail
-fi
-
-# C2d. 决策与新鲜计划不符（decision=keep-foreign-value 不在冲突允许集内 → 「过期」违规）
+# C2c. 决策与新鲜计划不符（decision=keep-foreign-value 不在冲突允许集内 → 「过期」违规）
 # 注：decisions 完整覆盖两个冲突（s4:CLAUDE.md 用非法 decision、s4:AGENTS.md 用合法 keep），
 # 使唯一违规为 s4:CLAUDE.md 的「过期」，确保真正经 allowed_decisions 过期路径判定，
 # 而非靠「缺失 s4:AGENTS.md」绕过。
@@ -1265,66 +1251,87 @@ else
   record_result it-s8-codegraph-explicit-enable "$RUN_STATUS" absent absent fail
 fi
 
-# C11. s1 项目类型冲突（it-s1-conflict-noncoding-default / IA-02）
-# 检测矛盾（源码检出 coding 与用户声明 non-coding 冲突）→ no-interrupt 按 non-coding 决策。
-# 修复（Task 11）：原 fixture 仅有 application/app.py + docs/，不构成矛盾（有源码即应判 coding）；
-# 补 --project-type non-coding 作为非 coding 标识，使 fixture 真正触发 s1:project-type-conflict。
-case_root="$TEST_ROOT/fx-contradict-detection"
-mkdir -p "$case_root/application" "$case_root/docs"
-printf 'x=1\n' > "$case_root/application/app.py"
-run_script apply "$case_root" --no-interrupt --project-type non-coding
-if [ "$RUN_STATUS" -eq 0 ] && jqr "['project_type']" 2>/dev/null | grep -qi 'non-coding' \
-  && jqr "['conflicts']" 2>/dev/null | grep -q 's1:project-type-conflict'; then
-  record_result it-s1-conflict-noncoding-default "$RUN_STATUS" present present pass
-else
-  record_result it-s1-conflict-noncoding-default "$RUN_STATUS" present missing fail
-fi
+# C11. 项目类型判定两模式规则（it-s1-* / IA-02 重构，codex 五轮）
+# 用户裁决：删除 s1:project-type-conflict 冲突机制。项目类型按两模式唯⼀确定结果计算：
+#   - no-interrupt：project_type = 检测结果（CLI --project-type 完全忽略）
+#   - 普通模式：检测 coding → coding（无论 CLI）；检测 non-coding + CLI coding → coding；
+#     检测 non-coding + CLI 不写或 non-coding → non-coding
+# S8 codegraph 启用条件 =（final project_type=='coding' 或 --enable-codegraph）。
+# 重要边界（用户明示）：不存在「non-coding 项目靠 --project-type coding 在 no-interrupt
+# 装 codegraph」的场景，外层用户到不了这个路径，不为它加任何逻辑或测试。
 
-# C11a. s1 决策 coding 覆盖 CLI non-coding 并启用 S8 codegraph
-# （it-s1-decision-coding-enables-codegraph / codex 四轮 Critical 真bug）
-# 场景：检测 coding + CLI --project-type non-coding 产生 s1:project-type-conflict；
-#       用户提供决策 coding → apply 阶段 project_type 按决策=coding，S8 codegraph 启用。
-# 修复前 bug：决策只校验不消费，project_type 仍按 CLI=non-coding，S8 跳过（违反
-#            merge-semantics §11.6「decision=coding 时按对应类型执行」）。
-case_root="$(mk_coding_fixture fx-s1-decision-coding)"
-dec_file="$TEST_ROOT/decisions-s1-coding.json"
-write_decisions "$dec_file" '[{"conflict_id":"s1:project-type-conflict","decision":"coding"}]'
-fake_bin="$TEST_ROOT/fake-bin-s1-decision-coding"
-mkdir -p "$fake_bin"
-fake_codegraph "$fake_bin" 0 0 0 1
-RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type non-coding --decisions "$dec_file"
-if [ "$RUN_STATUS" -eq 0 ] \
-  && jqr "['project_type']" 2>/dev/null | grep -qix 'coding' \
-  && [ -d "$case_root/.codegraph" ] \
-  && [ -f "$case_root/.mcp.json" ] \
-  && [ -f "$case_root/.codex/config.toml" ]; then
-  record_result it-s1-decision-coding-enables-codegraph "$RUN_STATUS" present present pass
-else
-  record_result it-s1-decision-coding-enables-codegraph "$RUN_STATUS" present missing fail
-fi
-
-# C11b. s1 决策 non-coding 覆盖 CLI coding 并跳过 S8 codegraph
-# （it-s1-decision-noncoding-skips-codegraph / codex 四轮 Critical 正反对照）
-# 场景：检测 non-coding + CLI --project-type coding 产生 s1:project-type-conflict；
-#       决策=non-coding → apply 阶段 project_type 按决策=non-coding，S8 codegraph 跳过。
-# 设计意图（merge-semantics §11.6）：决策值覆盖 CLI 初值（用户在看到冲突后的明确回答
-#       优先于命令行初值）；与 C11a 形成正反对照，两组决策均与 CLI 不同值，
-#       真正验证决策消费而非 CLI 同值巧合。
-case_root="$TEST_ROOT/fx-s1-decision-noncoding"
+# C11a. no-interrupt + 检测 non-coding + CLI coding → non-coding（CLI 被忽略）+ S8 跳过
+case_root="$TEST_ROOT/fx-s1-no-interrupt-ignores-cli"
 mkdir -p "$case_root"
 printf 'docs only\n' > "$case_root/README.md"
-dec_file="$TEST_ROOT/decisions-s1-noncoding.json"
-write_decisions "$dec_file" '[{"conflict_id":"s1:project-type-conflict","decision":"non-coding"}]'
-fake_bin="$TEST_ROOT/fake-bin-s1-decision-noncoding"
+fake_bin="$TEST_ROOT/fake-bin-s1-no-interrupt-ignores-cli"
 mkdir -p "$fake_bin"
 fake_codegraph "$fake_bin" 0 0 0 1
-RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type coding --decisions "$dec_file"
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt --project-type coding
 if [ "$RUN_STATUS" -eq 0 ] \
   && jqr "['project_type']" 2>/dev/null | grep -qix 'non-coding' \
   && [ ! -d "$case_root/.codegraph" ]; then
-  record_result it-s1-decision-noncoding-skips-codegraph "$RUN_STATUS" present absent pass
+  record_result it-s1-no-interrupt-ignores-cli "$RUN_STATUS" present absent pass
 else
-  record_result it-s1-decision-noncoding-skips-codegraph "$RUN_STATUS" present present fail
+  record_result it-s1-no-interrupt-ignores-cli "$RUN_STATUS" present present fail
+fi
+
+# C11b. no-interrupt + 检测 coding → coding + S8 启用（CLI 忽略）
+case_root="$(mk_coding_fixture fx-s1-no-interrupt-detect-coding)"
+fake_bin="$TEST_ROOT/fake-bin-s1-no-interrupt-detect-coding"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt --project-type non-coding
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'coding' \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ]; then
+  record_result it-s1-no-interrupt-detect-coding "$RUN_STATUS" present present pass
+else
+  record_result it-s1-no-interrupt-detect-coding "$RUN_STATUS" present missing fail
+fi
+
+# C11c. 普通模式 + 检测 non-coding + CLI coding → coding（CLI 提升）+ S8 启用
+case_root="$TEST_ROOT/fx-s1-normal-cli-promotes"
+mkdir -p "$case_root"
+printf 'docs only\n' > "$case_root/README.md"
+fake_bin="$TEST_ROOT/fake-bin-s1-normal-cli-promotes"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type coding
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'coding' \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ]; then
+  record_result it-s1-normal-cli-promotes "$RUN_STATUS" present present pass
+else
+  record_result it-s1-normal-cli-promotes "$RUN_STATUS" present missing fail
+fi
+
+# C11d. 普通模式 + 检测 coding → coding（CLI non-coding 被忽略，检测优先）
+case_root="$(mk_coding_fixture fx-s1-normal-detect-coding)"
+fake_bin="$TEST_ROOT/fake-bin-s1-normal-detect-coding"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type non-coding
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'coding'; then
+  record_result it-s1-normal-detect-coding "$RUN_STATUS" present present pass
+else
+  record_result it-s1-normal-detect-coding "$RUN_STATUS" present missing fail
+fi
+
+# C11e. 普通模式 + 检测 non-coding + 无 CLI → non-coding
+case_root="$TEST_ROOT/fx-s1-normal-no-cli-noncoding"
+mkdir -p "$case_root"
+printf 'docs only\n' > "$case_root/README.md"
+run_script apply "$case_root"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'non-coding' \
+  && [ ! -d "$case_root/.codegraph" ]; then
+  record_result it-s1-normal-no-cli-noncoding "$RUN_STATUS" present absent pass
+else
+  record_result it-s1-normal-no-cli-noncoding "$RUN_STATUS" present present fail
 fi
 
 # C12. 用户意图四参数透传（it-intent-params / XC-02）

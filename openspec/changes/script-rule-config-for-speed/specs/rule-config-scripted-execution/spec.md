@@ -17,23 +17,24 @@
 - **THEN** Agent SHALL 逐条询问用户（每次一问、给推荐默认项）
 - **AND** 用户决策 MUST 以决策文件传入 `apply`，脚本按决策执行
 - **AND** 决策缺失、包含未知或重复冲突标识、或与 `apply` 时新鲜计划不符时，脚本 MUST 失败关闭、非零退出、写出报告且零写入，不得按默认猜测执行
-- **AND** 上述「决策缺失即失败关闭」仅适用于无安全默认的冲突（唯一为项目类型检测矛盾 `s1:project-type-conflict`：检测结果互相冲突且影响后续所有规则选择，「保留检测矛盾」不能作为可继续的安全默认）；对具备安全默认的冲突（`rules.apply` / `structure` / `unparseable`、L0 drift / broken（L0-03/L0-06）、L1 drift / unmarked（L1-04~06）、规则文件 drift（RF-02b）这类 `recommendation=keep` 的合并矩阵条目），决策缺失时脚本 SHALL 按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；该例外 MUST 在计划冲突条目以 `default_keep: true` 显式标注，未标注的冲突缺失仍 MUST 失败关闭
+- **AND** 计划无冲突时不要求决策文件（decisions 机制保留供未来冲突复用）；当前系统所有冲突均为具备安全默认的冲突（A 类：凡 `recommendation=keep` 的合并矩阵条目，决策缺失时脚本 SHALL 按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭），脚本 MUST 在计划冲突条目以 `default_keep: true` 显式标注。项目类型检测不再产生冲突（见下「项目类型判定两模式规则」），故当前无无安全默认的 B 类冲突；`default_keep` 机制代码保留兜底，但当前无 B 类触发
 
 #### Scenario: dry-run 零写入
 - **WHEN** 脚本以 `dry-run` 运行
 - **THEN** 目标项目任何文件 MUST 保持运行前后内容一致
 - **AND** 输出的计划 MUST 列出每个资产的动作类型、冲突项和备份需求
 
+#### Scenario: 项目类型判定两模式规则
+- **WHEN** 脚本检测项目类型（检测结果为 `coding` 或 `non-coding`）
+- **THEN** no-interrupt 模式下最终 `project_type` MUST 等于检测结果，CLI `--project-type` 完全忽略
+- **AND** 普通模式下最终 `project_type` 按以下唯⼀规则确定：检测为 `coding` 时为 `coding`（无论 CLI）；检测为 `non-coding` 且 CLI `--project-type coding` 时提升为 `coding`；检测为 `non-coding` 且 CLI 不写或为 `non-coding` 时为 `non-coding`
+- **AND** 任一检测+CLI 组合都有唯⼀确定结果，不产生项目类型冲突，无需决策文件响应
+- **AND** 项目类型相关的其他语义（规则 2 文本、默认角色、CodeGraph 启用等）MUST 保持以最终 `project_type` 为准；非 Coding 项目取值不变
+
 #### Scenario: 用户意图参数透传
 - **WHEN** 用户在命令中明确指定项目类型、要求忽略 `cadence/` 或要求启用 Playwright
 - **THEN** Agent MUST 将对应意图作为 CLI 参数传给脚本
-- **AND** 显式项目类型 MUST 优先于自动检测结果，`--ignore-cadence` 时 SHALL 将 `cadence/` 追加到 `.gitignore`，`--enable-playwright` 时 SHALL 创建 Playwright 规则与摘要
-
-#### Scenario: 检测结果矛盾的保守默认
-- **WHEN** 项目类型检测结果互相矛盾且会影响规则选择
-- **THEN** 普通模式 SHALL 询问用户；无响应时 Agent MUST 将 `non-coding` 决策写入决策文件再 apply
-- **AND** 该冲突 SHALL 仅在普通模式以冲突标识 `s1:project-type-conflict` 进入决策文件，枚举值为 `coding|non-coding`
-- **AND** no-interrupt 模式 MUST 内部按 `non-coding` 保守决策继续，并在报告中记录该冲突标识与所采用的决策
+- **AND** 显式项目类型在普通模式下仅能把检测为 non-coding 的项目提升为 coding；检测为 coding 时无论 CLI 取何值均为 coding；no-interrupt 模式下 CLI `--project-type` 完全忽略，以检测结果为准（见上「项目类型判定两模式规则」）；`--ignore-cadence` 时 SHALL 将 `cadence/` 追加到 `.gitignore`，`--enable-playwright` 时 SHALL 创建 Playwright 规则与摘要
 
 #### Scenario: 非 Coding 项目显式启用 CodeGraph
 - **WHEN** 用户明确要求启用 CodeGraph 但项目未检测到源码

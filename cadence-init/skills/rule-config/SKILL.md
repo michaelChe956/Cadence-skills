@@ -32,7 +32,7 @@ disable-model-invocation: true
 
 | 用户意图 | 脚本标志 | 语义 |
 |----------|----------|------|
-| 指定项目类型 | `--project-type coding\|non-coding` | 覆盖自动检测结果；与检测结果矛盾时记入 `s1:project-type-conflict` 冲突 |
+| 指定项目类型 | `--project-type coding\|non-coding` | 普通模式下仅能把检测为 non-coding 的项目提升为 coding；no-interrupt 模式完全忽略（以检测结果为准） |
 | 忽略产物目录 | `--ignore-cadence` | 将 `cadence/` 追加到 `.gitignore`（默认不追加） |
 | 启用 Playwright | `--enable-playwright` | 创建 `.claude/rules/playwright.md` 并补摘要（默认跳过） |
 | 强制启用 CodeGraph | `--enable-codegraph` | 非 Coding 项目也执行 CodeGraph 安装与初始化（默认仅 Coding 项目） |
@@ -62,8 +62,8 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 1. **dry-run**：脚本只读探测目标项目，报告给出计划动作、冲突清单（`conflicts`，含 `conflict_id`、`question`、`recommendation`、`allowed_decisions`）与备份需求，对项目零写入。
 2. **读 plan**：Agent 读取报告中的计划与冲突清单。
 3. **逐条提问**：对每个冲突用 `AskUserQuestion` 逐条提问；每次只问一个冲突，问题必须附带脚本给出的推荐默认项（`recommendation`）。
-4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。不得在无决策文件的情况下直接 apply（脚本将失败关闭、零写入）。**具备安全默认的冲突**（凡 `recommendation=keep` 的冲突：`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b）、report-only 的规则文件缺 CodeGraph 段落提示，详见 `references/merge-semantics.md` §11.6 A 类）即使决策文件缺该项，脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。**无安全默认的冲突**（唯一为**类型矛盾** `s1:project-type-conflict`：检测结果互相冲突且影响后续所有规则选择）缺失决策仍 MUST 失败关闭——脚本不替用户猜测项目类型，普通模式无响应或决策缺失即非零退出、零写入。
-5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、**无安全默认的冲突（B 类，唯一为 `s1:project-type-conflict`）缺失决策**、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）；`s1:project-type-conflict` 的决策（`coding|non-coding`）优先于 CLI `--project-type` 初值，apply 阶段按决策覆盖最终 `project_type`（影响规则 2 文本、默认角色、S8 codegraph 启用等）。
+4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b）、report-only 的规则文件缺 CodeGraph 段落提示，详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
+5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）。计划无冲突时不要求决策文件。
 
 ### no-interrupt 模式
 
@@ -83,7 +83,7 @@ find . \
     -o -name '*.cpp' -o -name '*.cs' \) -print -quit \)
 ```
 
-扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**；两者全无 → **非 Coding 项目**。用户显式指定项目类型（`--project-type`）时以用户指定为准。
+扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**；两者全无 → **非 Coding 项目**。项目类型按两模式唯⼀规则确定最终 `project_type`：no-interrupt 模式以检测结果为准（`--project-type` 完全忽略）；普通模式下 `--project-type coding` 仅能把检测为 non-coding 的项目提升为 coding（检测为 coding 时无论 CLI 取何值均为 coding）。
 
 ## 报告解读
 

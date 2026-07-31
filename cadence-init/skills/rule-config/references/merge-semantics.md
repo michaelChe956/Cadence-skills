@@ -255,7 +255,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
   - L1 协作规则 drift/unmarked（L1-04/L1-05/L1-06，冲突标识 `s3:<rel>`、kind=`l1`）：`replace` / `keep`（A 类，脚本标 `default_keep: true`，无响应默认 keep 保留并报告 status=0）。
   - L0 受管区块 drift/broken（L0-03/L0-06，冲突标识 `s4:<entry>`）：`replace` / `keep`（A 类，脚本标 `default_keep: true`，无响应默认 keep 保留并报告 status=0）。
   - OpenSpec `rules.apply`（OS-04，冲突标识 `s7:openspec/config.yaml`）：`remove_apply` / `keep`（A 类，脚本标 `default_keep: true`，缺失默认 keep）。
-  - 项目类型检测矛盾：`non-coding` / `coding`（IA-02，固定冲突标识 `s1:project-type-conflict`）。
+  - ~~项目类型检测矛盾：`non-coding` / `coding`（IA-02，固定冲突标识 `s1:project-type-conflict`）~~（codex 五轮已删除：项目类型判定重构为两模式唯⼀规则，不再产生冲突，详见 spec/design「项目类型判定两模式规则」）。
 - **allowed_decisions**：每个 conflict_id 的 decision 必须在其资产类型对应的枚举内；超出枚举的决策视为非法。report-only 冲突（RF-04）不进 decisions 集、无 `allowed_decisions`。
 - **default_keep 语义**（见 §11.6 详细说明）：普通模式下，缺失决策的默认动作因资产类型而异。
 
@@ -263,7 +263,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 1. 决策文件缺失或无法解析（普通模式提供决策文件时）。
 2. 决策含未知或重复 `conflict_id`。
-3. 计划存在的冲突缺少对应决策。
+3. 计划存在的冲突缺少对应决策（codex 五轮：当前系统所有冲突均为 A 类 `default_keep`，缺失决策不记违规、按保留兜底；本机制保留供未来引入无安全默认的冲突时复用）。
 4. 决策与新鲜计划不符（stale）。
 
 计划无冲突时不要求决策文件；no-interrupt 模式不读取也不要求决策文件，全部冲突按十张表内部规则决策（XC-04，对应测试 `it-entry-base-created`——任一 no-interrupt 无 `--decisions` 成功用例）。
@@ -294,10 +294,14 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 **裁决原则（codex 三轮 C3 / 方案 X）**：凡 `recommendation=keep` 的冲突都具备脚本认可的
 安全默认（保留原状可恢复 + 全局备份屏障兜底），普通模式无响应时统一为「保留并报告 status=0」，
-归 A 类并标 `default_keep: true`；唯一无安全默认的是类型矛盾（`s1:project-type-conflict`），
-其检测结果互相冲突且影响后续所有规则选择，「保留检测矛盾」不能作为可继续的安全默认，
-归 B 类 fail closed。此裁决与脚本实现（`compute_plan` 对 keep 推荐 + apply keep 分支不写盘）
-以及 SKILL.md「无响应→把推荐默认决策写入 decisions.json」语义完全一致，不再自相矛盾。
+归 A 类并标 `default_keep: true`。此裁决与脚本实现（`compute_plan` 对 keep 推荐 + apply keep 分支不写盘）
+以及 SKILL.md「无响应→把推荐默认决策写入 decisions.json」语义完全一致。
+
+**codex 五轮重构（项目类型判定重构）**：原唯一无安全默认的 B 类冲突 `s1:project-type-conflict`
+（项目类型检测矛盾）已删除——用户裁决新规则后，任一检测+CLI 组合都有唯⼀确定结果
+（no-interrupt 以检测为准、普通模式 CLI 仅提升，详见 spec/design「项目类型判定两模式规则」），
+不再产生项目类型冲突。**当前系统所有冲突均为 A 类**（`default_keep` 保留兜底），无 B 类 fail-closed
+触发；`default_keep` 与 `validate_decisions` 机制代码保留兜底供未来冲突复用，但当前无 B 类。
 
 **A. 有安全默认的冲突 → 保留并报告（status=0）**：
 
@@ -329,26 +333,31 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 **B. 无安全默认的冲突 → fail closed（非零退出）**：
 
-- s1 类型矛盾（IA-02，固定冲突标识 `s1:project-type-conflict`）：检测结果互相矛盾且
-  影响规则选择时，普通模式询问用户；**无响应或决策缺失时 fail closed**（非零退出、零写入）。
-  类型矛盾没有「保留原状」这一安全默认——检测结果自相冲突意味着后续规则选择（规则 2 文本、
-  默认角色、CodeGraph 启用等）无从落脚，脚本不替用户猜测类型。dry-run 报告含
-  `s1:project-type-conflict`；decision=`non-coding`/`coding` 时按对应类型执行；
-  no-interrupt 内部按 `non-coding` 保守决策并在报告中记录。
+**codex 五轮重构后当前系统无 B 类冲突。** 项目类型检测矛盾（原 `s1:project-type-conflict`，
+IA-02）已删除：用户裁决的新规则下任一检测+CLI 组合都有唯⼀确定结果，不再产生冲突、
+无需询问、无需决策文件响应（详见 spec/design「项目类型判定两模式规则」）。`default_keep`
+与 `validate_decisions` 机制代码保留兜底，若未来引入新的无安全默认冲突可重新启用 B 类
+fail-closed，但当前无任何 B 类触发。
 
+> 说明（codex 五轮重构历史）：原 `s1:project-type-conflict` 是「检测与 CLI 矛盾时」的唯一 B 类
+> fail-closed 冲突；codex 四轮曾为其补「决策消费覆盖 project_type」逻辑。五轮用户裁决删除整个
+> s1 冲突机制（项目类型判定重构为两模式唯⼀规则），连带删除 `_apply_s1_decision_to_project_type`、
+> 决策 schema 中 `s1` 处理与 `allowed_decisions=['coding','non-coding']`。`default_keep`/`validate_decisions`
+> 机制代码本身保留（供未来冲突复用），但当前所有冲突均为 A 类保留兜底。
+>
 > 说明（codex 三轮 C3 纠正历史）：第二轮曾把 L0-03/06、L1-04/05/06、RF-02b 强行改为
 > B 类 fail closed，理由是「其保留原状并非脚本认可的安全默认」。但这与脚本实现
 > （三者 `recommendation=keep` 且 apply keep 分支不写盘）、SKILL.md「无响应→写推荐默认决策」、
-> spec.md「普通模式无响应 MUST NOT 覆盖」同时矛盾，制造 C3 指出的语义冲突。本轮按方案 X
-> 回归：凡 `recommendation=keep` 的冲突统一为 A 类（保留并报告 status=0），仅 s1 类型矛盾
-> 为 B 类 fail closed。
+> spec.md「普通模式无响应 MUST NOT 覆盖」同时矛盾，制造 C3 指出的语义冲突。三轮按方案 X
+> 回归：凡 `recommendation=keep` 的冲突统一为 A 类（保留并报告 status=0）。五轮进一步删除
+> s1 类型矛盾（项目类型判定重构），当前无 B 类。
 
 **区分原则**：当冲突的「保留原状」对应一个 `recommendation=keep`（脚本认可的安全可恢复动作）
 时，缺失决策默认保留并报告，`status=0`，脚本在计划条目标 `default_keep: true`（RF-04 为
-report-only，不进 decisions 集）；唯一例外是 s1 类型矛盾，其检测自相冲突无安全默认，缺失
-决策 fail closed。脚本实现必须在 `compute_plan` 阶段对每个冲突标注其 default_keep 归属
-（A 类标 `default_keep: true`，B 类 s1 不标），并在报告中明示；`validate_decisions` 对未标
-`default_keep` 的冲突缺失决策即判违规并 fail closed（仅 s1 适用）。
+report-only，不进 decisions 集）。codex 五轮重构后，项目类型不再产生冲突（两模式唯⼀规则），
+**当前系统所有冲突均为 A 类**；脚本实现必须在 `compute_plan` 阶段对每个冲突标注其 default_keep
+归属（当前均为 A 类，标 `default_keep: true`），并在报告中明示；`validate_decisions` 机制
+代码保留兜底，但当前无 B 类 fail-closed 触发。
 
 ### 11.7 context 追加修正（5 行而非"四行"）
 
