@@ -48,12 +48,12 @@ assert_true "bash -n pre-check.sh 语法通过" "$?"
 bash "$PRE_CHECK" check 2>/dev/null > "$SMOKE_DIR/default.json"
 _rc=$?
 python3 -m json.tool "$SMOKE_DIR/default.json" >/dev/null 2>&1
-assert_true "check(default) stdout 为合法 JSON（exit=$_rc）" "$?"
+assert_true "check(default) stdout 为合法 JSON（exit=${_rc}）" "$?"
 
 bash "$PRE_CHECK" check --mirror cn 2>/dev/null > "$SMOKE_DIR/cn.json"
 _rc=$?
 python3 -m json.tool "$SMOKE_DIR/cn.json" >/dev/null 2>&1
-assert_true "check(cn) stdout 为合法 JSON（exit=$_rc）" "$?"
+assert_true "check(cn) stdout 为合法 JSON（exit=${_rc}）" "$?"
 
 # --- 3. JSON 含 overall/steps/next_actions/hints.superpowers_git ---
 _keys="$(python3 -c "
