@@ -1040,10 +1040,10 @@ printf 'x=1\n' > "$case_root/application/app.py"
 before=$(sha256_file "$case_root/.codegraph" 2>/dev/null || printf 'dir')
 fake_bin="$TEST_ROOT/fake-bin-existing"
 mkdir -p "$fake_bin"
-# .codegraph 已存在 → 脚本只调 status（status_rc=1 仍应报 degraded，与 C10c 断言一致）
-fake_codegraph "$fake_bin" 0 0 1 1
+# .codegraph 已存在 → 脚本只调 status；status_rc=0 → overall=ok（与 C10c status_rc=1 degraded 区分）
+fake_codegraph "$fake_bin" 0 0 0 1
 RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
-if [ "$RUN_STATUS" -eq 0 ] && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
+if [ "$RUN_STATUS" -eq 0 ] && jqr "['overall']" 2>/dev/null | grep -qix 'ok'; then
   record_result it-s8-codegraph-existing "$RUN_STATUS" present present pass
 else
   record_result it-s8-codegraph-existing "$RUN_STATUS" present missing fail
@@ -1081,12 +1081,15 @@ else
 fi
 
 # C11. s1 项目类型冲突（it-s1-conflict-noncoding-default / IA-02）
-# 检测矛盾（同时存在源码与非 coding 标识）→ no-interrupt 按 non-coding 决策
+# 检测矛盾（源码检出 coding 与用户声明 non-coding 冲突）→ no-interrupt 按 non-coding 决策。
+# 修复（Task 11）：原 fixture 仅有 application/app.py + docs/，不构成矛盾（有源码即应判 coding）；
+# 补 --project-type non-coding 作为非 coding 标识，使 fixture 真正触发 s1:project-type-conflict。
 case_root="$TEST_ROOT/fx-contradict-detection"
 mkdir -p "$case_root/application" "$case_root/docs"
 printf 'x=1\n' > "$case_root/application/app.py"
-run_script apply "$case_root" --no-interrupt
-if [ "$RUN_STATUS" -eq 0 ] && jqr "['project_type']" 2>/dev/null | grep -qi 'non-coding'; then
+run_script apply "$case_root" --no-interrupt --project-type non-coding
+if [ "$RUN_STATUS" -eq 0 ] && jqr "['project_type']" 2>/dev/null | grep -qi 'non-coding' \
+  && jqr "['conflicts']" 2>/dev/null | grep -q 's1:project-type-conflict'; then
   record_result it-s1-conflict-noncoding-default "$RUN_STATUS" present present pass
 else
   record_result it-s1-conflict-noncoding-default "$RUN_STATUS" present missing fail
