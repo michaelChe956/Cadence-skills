@@ -1169,6 +1169,381 @@ else
 fi
 
 # ============================================================================
+# C16. 终审修复回归（C-1/C-2/I-2/I-4 集成证据 + I-3 缺口补齐）
+# ============================================================================
+
+# C16a. L0 insert 两模式确定性：普通模式无 decisions 直接插入（it-s4-insert / L0-05 + 终审 I-2）。
+# 修复前：insert 被冲突化，普通模式 keep 决策 → L0 永不插入。
+case_root="$TEST_ROOT/fx-entry-no-markers"
+mkdir -p "$case_root"
+printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\n\n1. 用户规则\n' > "$case_root/CLAUDE.md"
+printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
+run_script apply "$case_root"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
+  && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
+  record_result it-s4-insert "$RUN_STATUS" absent present pass
+else
+  record_result it-s4-insert "$RUN_STATUS" absent absent fail
+fi
+
+# C16b. L0 upgrade 两模式确定性：普通模式无 decisions 备份后升级（it-s4-upgrade / L0-04 + 终审 I-2）。
+case_root="$TEST_ROOT/fx-entry-v0-markers"
+mkdir -p "$case_root"
+printf '# CLAUDE.md\n\n前置\n\n<!-- cadence-managed:openspec-superpowers-routing:v0:start -->\n旧版\n<!-- cadence-managed:openspec-superpowers-routing:v0:end -->\n\n后置\n' > "$case_root/CLAUDE.md"
+printf '# AGENTS.md\n\n<!-- cadence-managed:openspec-superpowers-routing:v0:start -->\n旧\n<!-- cadence-managed:openspec-superpowers-routing:v0:end -->\n' > "$case_root/AGENTS.md"
+run_script apply "$case_root"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && compgen -G "$case_root/CLAUDE.md.cadence-backup-*" >/dev/null \
+  && compgen -G "$case_root/AGENTS.md.cadence-backup-*" >/dev/null \
+  && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
+  && ! grep -q 'routing:v0' "$case_root/CLAUDE.md" \
+  && grep -q '后置' "$case_root/CLAUDE.md"; then
+  record_result it-s4-upgrade "$RUN_STATUS" v0 v1 pass
+else
+  record_result it-s4-upgrade "$RUN_STATUS" v0 v0 fail
+fi
+
+# C16c. codegraph 二进制缺失 → install 失败降级路径（it-s8-codegraph-binary-missing / CS-07 + 终审 C-2）。
+# PATH 换为全空目录（python3 以绝对路径调用），subprocess 必抛 FileNotFoundError。
+case_root="$(mk_coding_fixture fx-codegraph-binary-missing)"
+empty_bin="$TEST_ROOT/empty-bin"
+mkdir -p "$empty_bin"
+REPORT="$(mktemp /tmp/rule-config-report.XXXXXX)"
+set +e
+PATH="$empty_bin" "$(command -v python3)" "$SCRIPT" apply --project-root "$case_root" --report "$REPORT" --no-interrupt >/dev/null 2>&1
+RUN_STATUS=$?
+set -e
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qi 'degraded'; then
+  record_result it-s8-codegraph-binary-missing "$RUN_STATUS" present present pass
+else
+  record_result it-s8-codegraph-binary-missing "$RUN_STATUS" present missing fail
+fi
+
+# C16d. 失败报告 schema（it-apply-failure-report-fields / NR-05 + 终审 I-4）：
+# overall 收敛 ok/degraded/fail 三值（不得为 crashed）；failure.file 填实际失败文件。
+case_root="$TEST_ROOT/fx-failure-report-fields"
+mkdir -p "$case_root/openspec"
+printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -ne 0 ] && python3 - "$REPORT" <<'PY'
+import json
+import sys
+
+d = json.load(open(sys.argv[1]))
+assert d.get("overall") in ("ok", "degraded", "fail"), "overall 必须收敛三值"
+assert d.get("overall") == "fail", "执行异常落 fail（非 crashed）"
+f = d.get("failure") or {}
+assert f.get("file") == "openspec/config.yaml", f"failure.file 应为实际失败文件: {f.get('file')}"
+assert f.get("reason"), "failure.reason 必填"
+assert f.get("recovery"), "failure.recovery 必填"
+assert d.get("backups"), "已完成项目（backups）必须逐项列出"
+PY
+then
+  record_result it-apply-failure-report-fields "$RUN_STATUS" present present pass
+else
+  record_result it-apply-failure-report-fields "$RUN_STATUS" present missing fail
+fi
+
+# C16e. 模板全缺 → fail closed 非零退出、目标项目零写入（it-s2-templates-missing / §11.5 S1b-04）。
+# HOME 换为空目录使在线/离线/glob 回退候选全部不完整。
+case_root="$TEST_ROOT/fx-templates-missing"
+mkdir -p "$case_root"
+printf '# placeholder\n' > "$case_root/README.md"
+fake_home="$TEST_ROOT/fake-home-empty"
+mkdir -p "$fake_home"
+before=$(tree_hash "$case_root")
+REPORT="$(mktemp /tmp/rule-config-report.XXXXXX)"
+set +e
+HOME="$fake_home" "$(command -v python3)" "$SCRIPT" apply --project-root "$case_root" --report "$REPORT" --no-interrupt >/dev/null 2>&1
+RUN_STATUS=$?
+set -e
+after=$(tree_hash "$case_root")
+if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qix 'fail'; then
+  record_result it-s2-templates-missing "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s2-templates-missing "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16f. 空项目创建全套（it-s3-create / NC-01；it-s3-rules-create / RF-01；
+# it-s3-code-reading-backfill / RF-03+OP-02；it-s3-l1-create / L1-01；it-s3-l1-idempotent / L1-02）。
+case_root="$TEST_ROOT/fx-empty-create-all"
+mkdir -p "$case_root"
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] && [ -f "$case_root/.claude/rules/language.md" ] \
+  && cmp -s "$case_root/.claude/rules/language.md" "$TEST_DIR/../references/rules/language.md"; then
+  record_result it-s3-create "$RUN_STATUS" absent present pass
+else
+  record_result it-s3-create "$RUN_STATUS" absent missing fail
+fi
+rules_all_present=1
+for f in agent-routing-kernel.md language.md document-storage.md markdown-format.md \
+         mcp-servers.md code-reading.md code-usage-coding.md code-usage-noncoding.md; do
+  [ -f "$case_root/.claude/rules/$f" ] || rules_all_present=0
+done
+if [ "$RUN_STATUS" -eq 0 ] && [ "$rules_all_present" -eq 1 ]; then
+  record_result it-s3-rules-create "$RUN_STATUS" absent present pass
+else
+  record_result it-s3-rules-create "$RUN_STATUS" absent missing fail
+fi
+if [ "$RUN_STATUS" -eq 0 ] && [ -f "$case_root/.claude/rules/code-reading.md" ] \
+  && cmp -s "$case_root/.claude/rules/code-reading.md" "$TEST_DIR/../references/rules/code-reading.md"; then
+  record_result it-s3-code-reading-backfill "$RUN_STATUS" absent present pass
+else
+  record_result it-s3-code-reading-backfill "$RUN_STATUS" absent missing fail
+fi
+if [ "$RUN_STATUS" -eq 0 ] && cmp -s "$case_root/.claude/rules/openspec-superpowers-workflow.md" "$L1_SOURCE"; then
+  record_result it-s3-l1-create "$RUN_STATUS" absent present pass
+else
+  record_result it-s3-l1-create "$RUN_STATUS" absent missing fail
+fi
+l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
+before=$(sha256_file "$l1_target")
+run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$l1_target")
+assert_same it-s3-l1-idempotent "$RUN_STATUS" "$before" "$after" 0
+
+# C16g. openspec/config.yaml 不存在 → 从模板原子创建（it-s7-openspec-create / OS-01）。
+case_root="$TEST_ROOT/fx-openspec-create"
+mkdir -p "$case_root"
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] && [ -f "$case_root/openspec/config.yaml" ] \
+  && assert_openspec_merged_fields "$case_root/openspec/config.yaml" 'spec-driven'; then
+  record_result it-s7-openspec-create "$RUN_STATUS" absent present pass
+else
+  record_result it-s7-openspec-create "$RUN_STATUS" absent missing fail
+fi
+
+# C16h. codegraph 全新初始化（it-s8-codegraph-fresh / CS-01+CG-03）。
+case_root="$(mk_coding_fixture fx-codegraph-fresh)"
+fake_bin="$TEST_ROOT/fake-bin-fresh"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -d "$case_root/.codegraph" ] \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qix 'ok'; then
+  record_result it-s8-codegraph-fresh "$RUN_STATUS" absent present pass
+else
+  record_result it-s8-codegraph-fresh "$RUN_STATUS" absent missing fail
+fi
+
+# C16i. 双配置已齐全 → 跳过不重复写入（it-s8-codegraph-both-present / CS-03+CG-04）。
+case_root="$TEST_ROOT/fx-codegraph-both-present"
+mkdir -p "$case_root/.codegraph" "$case_root/.codex" "$case_root/application"
+printf 'x=1\n' > "$case_root/application/app.py"
+printf '{ "mcpServers": { "codegraph": { "command": "codegraph", "args": ["mcp"] } } }\n' > "$case_root/.mcp.json"
+printf '[mcp_servers.codegraph]\ncommand = "codegraph"\nargs = ["mcp"]\n' > "$case_root/.codex/config.toml"
+before=$(sha256_pair "$case_root/.mcp.json" "$case_root/.codex/config.toml")
+fake_bin="$TEST_ROOT/fake-bin-both-present"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+after=$(sha256_pair "$case_root/.mcp.json" "$case_root/.codex/config.toml")
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qix 'ok'; then
+  record_result it-s8-codegraph-both-present "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s8-codegraph-both-present "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16j. .mcp.json 有、.codex/config.toml 缺 → 仅补 toml，.mcp.json 不动
+# （it-s8-codegraph-toml-missing / CS-04+CG-05）。
+case_root="$(mk_coding_fixture fx-codegraph-toml-missing)"
+printf '{ "mcpServers": { "codegraph": { "command": "codegraph", "args": ["mcp"] }, "other": { "command": "other" } } }\n' > "$case_root/.mcp.json"
+before=$(sha256_file "$case_root/.mcp.json")
+fake_bin="$TEST_ROOT/fake-bin-toml-missing"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$case_root/.mcp.json")
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && grep -q '\[mcp_servers.codegraph\]' "$case_root/.codex/config.toml" \
+  && [ "$before" = "$after" ]; then
+  record_result it-s8-codegraph-toml-missing "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s8-codegraph-toml-missing "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16k. .mcp.json 缺 → 兜底 JSON 合并补齐，.codex/config.toml 不动
+# （it-s8-codegraph-mcp-missing / CS-05）。
+case_root="$(mk_coding_fixture fx-codegraph-mcp-missing)"
+mkdir -p "$case_root/.codex"
+printf '[mcp_servers.codegraph]\ncommand = "codegraph"\nargs = ["mcp"]\n' > "$case_root/.codex/config.toml"
+before=$(sha256_file "$case_root/.codex/config.toml")
+fake_bin="$TEST_ROOT/fake-bin-mcp-missing"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$case_root/.codex/config.toml")
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/.mcp.json" ] \
+  && python3 -c "import json;d=json.load(open('$case_root/.mcp.json'));assert 'codegraph' in d['mcpServers']" \
+  && [ "$before" = "$after" ]; then
+  record_result it-s8-codegraph-mcp-missing "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s8-codegraph-mcp-missing "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16l. install 后二次核验、只补缺失方（it-s8-codegraph-install-reverify / CS-06+CG-06）。
+# .mcp.json 含 codegraph + 其他 server；install 成功（不写配置）→ 仅新建 toml，.mcp.json 逐字不变。
+case_root="$(mk_coding_fixture fx-codegraph-install-reverify)"
+printf '{ "mcpServers": { "codegraph": { "command": "codegraph", "args": ["mcp"] }, "keep-me": { "command": "keep" } } }\n' > "$case_root/.mcp.json"
+before=$(sha256_file "$case_root/.mcp.json")
+fake_bin="$TEST_ROOT/fake-bin-install-reverify"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$case_root/.mcp.json")
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" = "$after" ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && grep -q '\[mcp_servers.codegraph\]' "$case_root/.codex/config.toml"; then
+  record_result it-s8-codegraph-install-reverify "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s8-codegraph-install-reverify "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16m. 老项目补齐 CodeGraph（it-s8-codegraph-backfill / CG-01）：
+# 已跑过 rule-config（入口/规则/openspec 均幂等）但无 codegraph 配置 → 只补 codegraph 相关项，
+# 入口、规则、openspec 配置 sha256 不变。
+case_root="$TEST_ROOT/fx-codegraph-backfill"
+mkdir -p "$case_root/.claude/rules" "$case_root/openspec" "$case_root/application"
+printf 'x=1\n' > "$case_root/application/app.py"
+cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
+cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
+cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
+rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
+tpl = open('$CONFIG_TEMPLATE').read()
+m, _ = rc.merge_yaml(tpl, '')
+open('$case_root/openspec/config.yaml', 'w').write(m)
+"
+before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
+before_cfg=$(sha256_file "$case_root/openspec/config.yaml")
+before_rules=$(sha256_file "$case_root/.claude/rules/language.md")
+fake_bin="$TEST_ROOT/fake-bin-backfill"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && grep -q '^\.codegraph/' "$case_root/.gitignore" \
+  && [ "$before" = "$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")" ] \
+  && [ "$before_cfg" = "$(sha256_file "$case_root/openspec/config.yaml")" ] \
+  && [ "$before_rules" = "$(sha256_file "$case_root/.claude/rules/language.md")" ]; then
+  record_result it-s8-codegraph-backfill "$RUN_STATUS" present present pass
+else
+  record_result it-s8-codegraph-backfill "$RUN_STATUS" present missing fail
+fi
+
+# C16n. HM-02：cadence/<dir> 已存在且为空 → 内容移入 + 清理空源目录（it-s5-history-merge-empty）。
+case_root="$TEST_ROOT/fx-history-merge-empty"
+mkdir -p "$case_root/.claude/rules" "$case_root/.claude/plans" "$case_root/cadence/plans" "$case_root/openspec"
+cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
+cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
+cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+printf 'legacy-plan\n' > "$case_root/.claude/plans/old.md"
+python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
+rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
+tpl = open('$CONFIG_TEMPLATE').read()
+m, _ = rc.merge_yaml(tpl, '')
+open('$case_root/openspec/config.yaml', 'w').write(m)
+"
+run_script apply "$case_root"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/cadence/plans/old.md" ] \
+  && grep -q 'legacy-plan' "$case_root/cadence/plans/old.md" \
+  && [ ! -e "$case_root/.claude/plans" ]; then
+  record_result it-s5-history-merge-empty "$RUN_STATUS" present moved pass
+else
+  record_result it-s5-history-merge-empty "$RUN_STATUS" present present fail
+fi
+
+# C16o. 禁止迁移 rules/commands/skills（it-s5-history-forbidden / S6-01）。
+case_root="$TEST_ROOT/fx-history-forbidden"
+mkdir -p "$case_root/.claude/rules" "$case_root/.claude/commands" "$case_root/.claude/skills" "$case_root/openspec"
+cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
+cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
+cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+printf 'user-command\n' > "$case_root/.claude/commands/custom.md"
+printf 'user-skill\n' > "$case_root/.claude/skills/custom.md"
+python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
+rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
+tpl = open('$CONFIG_TEMPLATE').read()
+m, _ = rc.merge_yaml(tpl, '')
+open('$case_root/openspec/config.yaml', 'w').write(m)
+"
+before=$(sha256_pair "$case_root/.claude/commands/custom.md" "$case_root/.claude/skills/custom.md")
+run_script apply "$case_root"
+after=$(sha256_pair "$case_root/.claude/commands/custom.md" "$case_root/.claude/skills/custom.md")
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] \
+  && [ ! -e "$case_root/cadence/commands" ] && [ ! -e "$case_root/cadence/skills" ]; then
+  record_result it-s5-history-forbidden "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s5-history-forbidden "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16p. .codegraph/ gitignore 幂等（it-s6-gitignore-codegraph-idempotent / CG-07）。
+case_root="$(mk_coding_fixture fx-gitignore-codegraph-idempotent)"
+run_script apply "$case_root" --no-interrupt
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$(grep -c '^\.codegraph/' "$case_root/.gitignore")" -eq 1 ]; then
+  record_result it-s6-gitignore-codegraph-idempotent "$RUN_STATUS" once once pass
+else
+  record_result it-s6-gitignore-codegraph-idempotent "$RUN_STATUS" once duplicated fail
+fi
+
+# C16q. codegraph.json 保留且不入 gitignore（it-s6-codegraph-json-keep / CG-08）。
+case_root="$(mk_coding_fixture fx-codegraph-json-keep)"
+printf '{ "index": true }\n' > "$case_root/codegraph.json"
+before=$(sha256_file "$case_root/codegraph.json")
+run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$case_root/codegraph.json")
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] \
+  && ! grep -q 'codegraph\.json' "$case_root/.gitignore"; then
+  record_result it-s6-codegraph-json-keep "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s6-codegraph-json-keep "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C16r. openspec 必要备份失败 → 终止零写入（it-s7-openspec-backup-fail-modes / OS-08 + OS-N4）。
+case_root="$TEST_ROOT/fx-openspec-backup-fail"
+mkdir -p "$case_root/openspec"
+printf 'schema: spec-driven\nrules:\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
+before=$(sha256_file "$case_root/openspec/config.yaml")
+saved_mode=$(stat -c %a "$case_root/openspec" 2>/dev/null || stat -f %Lp "$case_root/openspec")
+chmod 555 "$case_root/openspec"
+run_script apply "$case_root" --no-interrupt
+inject_status=$RUN_STATUS
+chmod "$saved_mode" "$case_root/openspec"
+after=$(sha256_file "$case_root/openspec/config.yaml")
+if [ "$inject_status" -ne 0 ] && [ "$before" = "$after" ] \
+  && [ ! -f "$case_root/CLAUDE.md" ] \
+  && jqr "['overall']" 2>/dev/null | grep -qix 'fail'; then
+  record_result it-s7-openspec-backup-fail-modes "$inject_status" "$before" "$after" pass
+else
+  record_result it-s7-openspec-backup-fail-modes "$inject_status" "$before" "$after" fail
+fi
+
+# ============================================================================
 # D. 静态契约检查 sc-*（全部可执行，record_result 五参逐字调用）
 # ============================================================================
 

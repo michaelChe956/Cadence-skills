@@ -69,7 +69,7 @@
 | 30 | NR-02 禁止等待输入、超时或推荐默认值继续 | no-interrupt | —（静态） | —（仓库内 SKILL.md） | sc-ni-no-wait | no-interrupt 章节不含"询问/等待/超时"指令 |
 | 31 | NR-03 冲突按确定性规则合并，不得跳过后继续 | no-interrupt | merge_markdown / merge_yaml | fx-existing-rules | it-apply-conflict-deterministic | 同一冲突 fixture 两次运行产物 sha256 一致，报告无"跳过冲突文件"项 |
 | 32 | NR-04 无法安全合并先备份；备份或写入失败立即报错终止 | no-interrupt | backup_file / atomic_write | fx-readonly-parent | it-apply-backup-fail-abort | 备份失败时非零退出、目标文件零改动、报告含失败文件与原因 |
-| 33 | NR-05 失败报告含失败文件、失败原因、已完成项目、恢复建议 | no-interrupt | —（报告 schema） | fx-readonly-parent | it-apply-failure-report-fields | 失败报告四字段齐全且已完成步骤逐项列出 |
+| 33 | NR-05 失败报告含失败文件、失败原因、已完成项目、恢复建议 | no-interrupt | —（报告 schema） | fx-readonly-parent | it-apply-failure-report-fields / ut-run_apply-fail-schema / ut-extract-failure-file-message | 失败报告四字段齐全且已完成步骤逐项列出；overall 收敛 ok/degraded/fail 三值（终审 I-4） |
 
 ### 2.3 no-interrupt 权威合并规则（NC-01~08，SKILL 39-48 行表）
 
@@ -82,7 +82,7 @@
 | 45 | NC-05 `openspec/config.yaml` 已存在→保留 schema、context 与四个 artifact 额外规则，仅追加缺失内容；发现 `rules.apply` 先备份再移除 | no-interrupt | merge_yaml | fx-openspec-existing | ut-merge_yaml-preserve-existing | schema/项目 context/额外规则原样保留；模板缺失内容追加；`rules.apply` 仅在备份成功后移除 |
 | 46 | NC-06 OpenSpec YAML 无法可靠解析或结构/类型不兼容→先备份；无法证明无损规范化则终止，原文件不变；备份成功≠授权破坏性重写 | no-interrupt | precheck_openspec_structure / merge_yaml / backup_file | fx-openspec-unparseable | ut-merge_yaml-unparseable-abort | 无法解析时返回终止信号；目标文件 sha256 不变；已创建备份存在 |
 | 47 | NC-07 内容完全重复→只保留一份 | no-interrupt | merge_markdown / merge_yaml | fx-md-duplicate | ut-merge_markdown-dedupe | 重复行/章节只出现一次 |
-| 48 | NC-08 Markdown 无法可靠解析→先备份，再写标准结构，原内容附加到"原项目补充" | no-interrupt | merge_markdown / backup_file | fx-markdown-unparseable | ut-merge_markdown-unparseable-fallback | 输出为标准结构；原文完整出现在"原项目补充"；备份存在 |
+| 48 | NC-08 Markdown 无法可靠解析（或无 ATX 标题/有实质前言，终审 I-1 同路径）→先备份，再写标准结构，原内容附加到"原项目补充" | no-interrupt | merge_markdown / backup_file | fx-markdown-unparseable | ut-merge_markdown-unparseable-fallback / ut-merge_markdown-no-headings-fallback / ut-merge_markdown-preamble-fallback / it-s3-markdown-unparseable-fallback | 输出为标准结构；原文完整出现在"原项目补充"；备份存在 |
 
 ### 2.4 权威合并辅助条款（NB）与历史目录规则（NH）
 
@@ -90,7 +90,7 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 50 | NB-01 同名章节以"标题级别 + 去除开头编号后的标题文本"识别 | 两模式 | merge_markdown | fx-md-numbered-headings | ut-merge_markdown-section-identity | `## 1. 语言规则` 与 `## 语言规则` 识别为同名章节；级别不同不判同名 |
 | 50 | NB-02 备份命名 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`，禁止删除原始内容 | 两模式 | backup_file | fx-existing-rules | ut-backup_file-naming | 备份文件名匹配正则 `.*\.cadence-backup-[0-9]{14}$`；原文件仍在 |
-| 54 | NH-01 no-interrupt 只检测 16 个精确历史目录清单 | no-interrupt | step_scaffold | fx-history-dirs | it-s5-history-detect-list | 报告检出目录恰为清单内存在的目录；清单外同名目录不检出 |
+| 54 | NH-01 no-interrupt 只检测 16 个精确历史目录清单 | no-interrupt | step_scaffold | fx-history-dirs | it-s5-history-report-only | 报告检出目录恰为清单内存在的目录；清单外同名目录不检出 |
 | 55 | NH-02 检测到历史目录仅写报告，不 mv、不合并、不删除、不清理空目录 | no-interrupt | step_scaffold | fx-history-dirs | it-s5-history-no-interrupt | apply 后 `.claude/<dir>` 与 `cadence/<dir>` sha256/清单均不变，报告含检出清单 |
 | 56 | NH-03 本规则只覆盖 no-interrupt；普通模式继续原有历史产物迁移步骤 | 普通 | step_scaffold | fx-history-dirs | it-s5-history-normal | 普通模式按 HM-01~03 执行迁移/跳过并报告 |
 
@@ -104,14 +104,14 @@
 | 69 | DF-04 `cadence/` 默认不加入 `.gitignore` | 两模式 | step_gitignore | fx-empty-project | it-s6-cadence-gitignore-default | `.gitignore` 不含 `cadence/` 行 |
 | 70 | DF-05 代码阅读规则所有项目创建；非 Coding 只跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-all-projects | 非 Coding 项目仍存在 `.claude/rules/code-reading.md` |
 | 71 | DF-06 CodeGraph 初始化 Coding 默认启用、非 Coding 默认跳过 | 两模式 | step_codegraph | fx-noncoding-project | it-s8-codegraph-skip-noncoding | 非 Coding 项目不生成 `.codegraph/`，报告记录跳过原因 |
-| 72 | DF-07 Playwright 规则默认跳过，仅用户明确要求时启用 | 两模式 | step_rules_files | fx-empty-project | it-s10-playwright-skip | 默认不产生 `.claude/rules/playwright.md` 与摘要 |
-| 73 | DF-08 已存在文件默认不覆盖，只补齐缺失文件/摘要/配置块 | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | it-s3-rules-no-overwrite | 已存在规则文件 sha256 不变；缺失项补齐；报告区分新增/跳过 |
+| 72 | DF-07 Playwright 规则默认跳过，仅用户明确要求时启用 | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip | 默认不产生 `.claude/rules/playwright.md` 与摘要 |
+| 73 | DF-08 已存在文件默认不覆盖，只补齐缺失文件/摘要/配置块 | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | it-s3-normal-keep-decision | 已存在规则文件 sha256 不变；缺失项补齐；报告区分新增/跳过 |
 
 ### 2.6 人工交互策略表（IA-01~05）与提问规则（IA-R1~R4）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 83 | IA-01 即将覆盖已有非空文件→先询问；无响应则不覆盖、跳过并报告 | 普通 | step_rules_files（决策枚举 `replace\|keep`） | fx-existing-rules | it-apply-decision-keep | decisions 为 `keep` 时文件不变且报告跳过 |
+| 83 | IA-01 即将覆盖已有非空文件→先询问；无响应则不覆盖、跳过并报告 | 普通 | step_rules_files（决策枚举 `replace\|keep`） | fx-existing-rules | it-s3-normal-keep-decision | decisions 为 `keep` 时文件不变且报告跳过 |
 | 84 | IA-02 检测结果互相矛盾且影响规则选择→先询问；无响应按非 Coding 处理（固定冲突标识 `s1:project-type-conflict`） | 普通 | detect_project | fx-contradict-detection | it-s1-project-type-conflict | dry-run 报告含 `s1:project-type-conflict`；无决策时 apply 拒绝；decision=`non-coding` 时按非 Coding 执行 |
 | 85 | IA-03 用户明确要求启用默认跳过项但缺少必要信息→问最少必要信息；无响应跳过该可选项 | 普通 | —（Agent 提问，design D3） | fx-empty-project | sc-ia-optional-ask | SKILL.md 保留"最少必要信息/无响应跳过"文本 |
 | 86 | IA-04 迁移旧目录目标非空→不询问、不合并，直接跳过并报告冲突 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-no-ask | dry-run/apply 计划不生成该目录的提问冲突项，报告直接记冲突跳过 |
@@ -151,12 +151,12 @@
 | 190 | L0-P2 双入口统一预检：标记、版本、完整内容、交互结果、目标动作、全部备份需求 | 两模式 | l0_block / step_entry_files | fx-l0-drift | it-s4-unified-precheck | dry-run 计划同时列出 CLAUDE.md 与 AGENTS.md 各自分支与备份需求 |
 | 191 | L0-P3 写入任一入口前先创建本次全部 L0 备份 | 两模式 | backup_file / step_entry_files | fx-l0-drift | it-s4-backup-before-write | 备份时间戳早于入口写入；备份清单与预检需求一致 |
 | 192 | L0-P4 任一必要备份失败→立即终止，双入口均不得写入，区块内外保持原样 | 两模式 | backup_file | fx-readonly-parent | it-s4-backup-barrier | CLAUDE.md/AGENTS.md sha256 均不变；非零退出；已建备份不扩大损害 |
-| 193 | L0-P5 目标入口不存在→创建基础入口，L0 放在文件说明之后、`## 强制规则` 之前 | 两模式 | l0_block / step_entry_files | fx-empty-project | it-s4-entry-create | 新建入口含基础模板全文；L0 位置在文件说明与 `## 强制规则` 之间（基础入口文本断言） |
+| 193 | L0-P5 目标入口不存在→创建基础入口，L0 放在文件说明之后、`## 强制规则` 之前 | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 新建入口含基础模板全文；L0 位置在文件说明与 `## 强制规则` 之间（基础入口文本断言） |
 | 194 | L0-P6 当前 v1 标记成对且区块与规范源完全一致→跳过 | 两模式 | l0_block | fx-entry-idempotent | it-s4-idempotent | 两入口 sha256 不变；报告幂等跳过 |
-| 195 | L0-P7 当前 v1 标记成对但区块不一致→视为本地修改：普通询问（无响应保留并报告；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replace | 普通无决策保留原文；no-interrupt 备份后区块=规范源 |
+| 195 | L0-P7 当前 v1 标记成对但区块不一致→视为本地修改：普通询问（无响应保留并报告；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 普通无决策保留原文；no-interrupt 备份后区块=规范源 |
 | 196 | L0-P8 两个标记都不存在→在首个 `## 强制规则` 前插入；无该标题则在文件说明后插入 | 两模式 | l0_block | fx-entry-no-markers | ut-l0_block-insert-position | 插入位置符合两分支；原文内容不动 |
 | 197 | L0-P9 成对受支持旧版本标记→纳入备份屏障，屏障通过后升级为当前 v1 并报告 | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade | 备份存在；区块替换为当前 v1；报告记升级 |
-| 198 | L0-P10 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 屏障通过后写入单一 L0 区块并报告 | 两模式 | l0_block | fx-l0-broken-markers | it-s4-broken-markers | 处理后 start/end 标记各出现一次；区块外前置/后置/本地内容原样保留 |
+| 198 | L0-P10 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 屏障通过后写入单一 L0 区块并报告 | 两模式 | l0_block | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后 start/end 标记各出现一次；区块外前置/后置/本地内容原样保留 |
 | 199 | L0-P11 区块外项目技术栈、命令、业务规则和用户内容必须原样保留 | 两模式 | l0_block | fx-l0-drift | it-s4-outside-preserved | 区块外内容 sha256 处理前后一致 |
 | 200 | L0-P12 CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义 | 两模式 | step_entry_files | fx-l0-drift | it-s4-dual-entry-consistency | 两入口受管区块 sha256 相同 |
 | 203-241 | S2-T1 CLAUDE.md 基础模板结构（含规则 1~7 摘要、`## 项目信息`、currentDate） | 两模式 | step_entry_files | fx-empty-project | it-s4-entry-template-claude | 新建 CLAUDE.md 含全部必备章节与摘要行 |
@@ -181,7 +181,7 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 431 | HM-01 `cadence/<dir>` 不存在→将 `.claude/<dir>` 移动到 `cadence/<dir>` | 普通 | step_scaffold | fx-history-dirs | it-s5-history-move | 移动后源不存在、目标内容一致 |
+| 431 | HM-01 `cadence/<dir>` 不存在→将 `.claude/<dir>` 移动到 `cadence/<dir>` | 普通 | step_scaffold | fx-history-dirs | it-s5-history-hm01-reachable | 移动后源不存在、目标内容一致 |
 | 432 | HM-02 `cadence/<dir>` 已存在且为空→内容移入并清理空源目录 | 普通 | step_scaffold | fx-history-target-empty | it-s5-history-merge-empty | 全部条目移入目标；源目录被移除或为空 |
 | 433 | HM-03 `cadence/<dir>` 已存在且非空→跳过该目录并报告冲突，要求用户手动处理 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-skip | 源与目标均不变；报告含冲突目录与手动处理提示 |
 | 435-437 | S6-01 禁止迁移 `.claude/rules`、`.claude/commands`、`.claude/skills` | 普通 | step_scaffold | fx-history-forbidden | it-s5-history-forbidden | 三个禁止目录存在时原地不动且不在迁移清单 |
@@ -216,7 +216,7 @@
 | 563 | CS-04 `.mcp.json` 有、`.codex/config.toml` 缺 `[mcp_servers.codegraph]`→参照 `.mcp.json` 手动补齐 toml | 两模式 | step_codegraph | fx-mcp-toml-missing | it-s8-codegraph-toml-missing | toml 增加 `[mcp_servers.codegraph]` 块且其余内容不变 |
 | 564 | CS-05 `.mcp.json` 缺 CodeGraph MCP→按 mcp-configuration 兜底配置补齐 `.mcp.json`，再同步补齐 toml | 两模式 | step_codegraph | fx-mcp-missing | it-s8-codegraph-mcp-missing | 两配置文件均含 CodeGraph MCP 兜底配置 |
 | 565 | CS-06 Claude/Codex 缺 CodeGraph MCP server→执行 install 后必须再次核验两个配置文件 | 两模式 | step_codegraph | fx-mcp-partial | it-s8-codegraph-install-reverify | install 调用后发生二次核验且仅补齐仍缺失方 |
-| 566 | CS-07 `codegraph install` 失败→提供兜底配置并分别补齐两文件（design D3：步骤标记 degraded 并继续；补写/备份/原子写失败仍终止） | 两模式 | step_codegraph | fx-codegraph-install-fail | it-s8-codegraph-install-fail | 步骤状态 degraded；两配置文件由脚本补齐；整体不因此失败 |
+| 566 | CS-07 `codegraph install` 失败→提供兜底配置并分别补齐两文件（design D3：步骤标记 degraded 并继续；补写/备份/原子写失败仍终止） | 两模式 | step_codegraph | fx-codegraph-install-fail | it-s8-codegraph-install-fail / it-s8-codegraph-binary-missing / ut-step_s8-binary-missing-degraded（二进制缺失同降级路径，终审 C-2） | 步骤状态 degraded；两配置文件由脚本补齐；整体不因此失败 |
 | 567 | CS-08 `codegraph init` 失败→报告语言/目录规模/`codegraph.json` 提示，不阻塞其他初始化项 | 两模式 | step_codegraph | fx-codegraph-init-fail | it-s8-codegraph-init-fail | 步骤 degraded；后续步骤照常；报告含人工配置建议 |
 | 569-575 | S9-05 `.gitignore` 增量追加 `.codegraph/`，行级幂等 | 两模式 | step_gitignore | fx-gitignore-existing | it-s6-gitignore-codegraph-idempotent | 重复运行不重复追加 |
 | 577-580 | S9-06 重复运行只补缺失项、不覆盖已有配置；执行前内部计算清单、执行后报告展示 | 两模式 | step_codegraph | fx-codegraph-existing | it-s8-codegraph-incremental-report | 报告含本次新增/更新清单；已有配置不变 |
@@ -225,18 +225,18 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 584-598 | S10-01 检测条件：用户明确要求浏览器自动化（`--enable-playwright`）时创建规则文件并加摘要 | 两模式 | step_rules_files / step_entry_files | fx-empty-project | it-s10-playwright-enable | 启用后规则文件与双入口摘要存在 |
-| 596-600 | S10-02 默认跳过：不创建规则、不加摘要（分支一） | 两模式 | step_rules_files | fx-empty-project | it-s10-playwright-skip | 无 `playwright.md`、无摘要；报告记默认跳过 |
-| 600 | S10-03 启用时已存在规则文件不覆盖、缺摘要只追加 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s10-playwright-no-overwrite | 已有 `playwright.md` sha256 不变 |
+| 584-598 | S10-01 检测条件：用户明确要求浏览器自动化（`--enable-playwright`）时创建规则文件并加摘要 | 两模式 | step_rules_files / step_entry_files | fx-empty-project | it-s3-playwright-enable | 启用后规则文件与双入口摘要存在 |
+| 596-600 | S10-02 默认跳过：不创建规则、不加摘要（分支一） | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip | 无 `playwright.md`、无摘要；报告记默认跳过 |
+| 600 | S10-03 启用时已存在规则文件不覆盖、缺摘要只追加 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-playwright-no-overwrite | 已有 `playwright.md` sha256 不变 |
 
 ### 2.16 增量运行：规则文件增量（RF-01~04，SKILL 610-615 行表）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 612 | RF-01 文件不存在→从模板根路径读取并创建 | 两模式 | step_rules_files | fx-empty-project | it-s3-rules-create | 缺失文件按模板创建 |
-| 613 | RF-02 文件已存在→不自动覆盖，报告已存在 | 两模式 | step_rules_files | fx-existing-rules | it-s3-rules-no-overwrite | 已有文件 sha256 不变；报告记"已存在" |
+| 613 | RF-02 文件已存在→不自动覆盖，报告已存在 | 两模式 | step_rules_files | fx-existing-rules | it-s3-normal-keep-decision | 已有文件 sha256 不变；报告记"已存在" |
 | 614 | RF-03 新增 `code-reading.md`→所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-existing-rules | it-s3-code-reading-backfill | 老项目重跑补齐 `code-reading.md` |
-| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→不自动覆盖，报告需用户手动合并 | 两模式 | step_rules_files | fx-rules-missing-codegraph-section | it-s3-codegraph-section-missing | 文件不变；报告含手动合并提示 |
+| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→不自动覆盖，报告需用户手动合并 | 两模式 | step_rules_files | fx-rules-missing-codegraph-section | it-s3-codegraph-section-missing（待补：脚本暂未实现该检测分支） | 文件不变；报告含手动合并提示 |
 
 ### 2.17 增量运行：OpenSpec 配置（OS-N1~N13 编号条款 + OS-01~08，SKILL 664-673 行表）
 
@@ -244,26 +244,26 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 633 | OS-N1 候选在同文件系统临时工作区构建；此阶段不得直接创建/覆盖/修改目标；目标存在时以原配置为候选基础，禁止模板整体覆盖 | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-candidate-isolation | dry-run/候选阶段目标文件 sha256 不变；候选以原配置为基础 |
 | 634 | OS-N2 结构预检：根为映射；schema 缺失或可保留标量；context 缺失或字符串；rules 缺失或映射；四个 artifact 缺失或字符串数组；自定义键与 artifact 规则原样保留 | 两模式 | precheck_openspec_structure | fx-openspec-type-matrix | ut-precheck_openspec_structure-type-matrix | 全类型矩阵逐类通过/拒绝判定正确（design D6 YAML 全类型矩阵） |
-| 635 | OS-N3 结构/类型不兼容→普通保留并报告字段路径/实际类型/冲突；no-interrupt 先备份，无法证明无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure / backup_file | fx-openspec-incompatible | it-s7-openspec-incompatible | 报告含字段路径与实际类型；原文件 sha256 不变 |
-| 636 | OS-N4 候选处理不取消既有备份要求；必要备份失败时终止、候选不发布、原文件不变 | 两模式 | backup_file | fx-readonly-parent | it-s7-openspec-backup-fail | 非零退出；目标不变；无半成品候选残留 |
+| 635 | OS-N3 结构/类型不兼容→普通保留并报告字段路径/实际类型/冲突；no-interrupt 先备份，无法证明无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure / backup_file | fx-openspec-incompatible | it-s7-openspec-yaml-type-conflict-backed-up-preserved | 报告含字段路径与实际类型；原文件 sha256 不变 |
+| 636 | OS-N4 候选处理不取消既有备份要求；必要备份失败时终止、候选不发布、原文件不变 | 两模式 | backup_file | fx-readonly-parent | it-s7-openspec-backup-fail-modes | 非零退出；目标不变；无半成品候选残留 |
 | 637 | OS-N5 预检通过后保留已有 schema；未设置时写入 `spec-driven` | 两模式 | merge_yaml | fx-openspec-no-schema | ut-merge_yaml-schema-default | 已有 schema 保留；缺失时写入 `spec-driven` |
 | 638 | OS-N6 模板四行 Cadence 协作 context 按完整行去重追加，保留原顺序与项目上下文 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-context-append | 追加按完整行去重；原顺序与项目技术栈等内容保留 |
 | 639 | OS-N7 四个 artifact 数组按完整字符串去重追加模板规则，保留项目额外规则与原顺序 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-rules-append | 数组合并去重且顺序稳定；额外规则保留 |
-| 640 | OS-N8 禁止创建 `rules.apply`；已有 `rules.apply`：普通须确认（无响应保留并报告；确认移除先备份）；no-interrupt 先备份成功后才在候选中移除 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-remove / it-s7-openspec-apply-keep | no-interrupt 备份后候选无 `rules.apply`；普通 `keep` 决策保留并报告；任何分支不虚构 apply artifact |
-| 641 | OS-N9 YAML 无法可靠解析不得静默重写：普通保留并报告；no-interrupt 先备份，仍无法无损构建候选则终止 | 两模式 | merge_yaml / backup_file | fx-openspec-unparseable | it-s7-openspec-unparseable | 原文件不变；备份存在；报告解析冲突 |
-| 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 全部成功且能读取 context 与对应 rules；不得以 instructions apply 验证（design D4 拟删除，删除前现行语义以此为准） | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-instructions | 四类命令成功且输出含公共 context 与对应 artifact rules（Task 实施时按 D4 删除后将本行标记为已废止条款） |
+| 640 | OS-N8 禁止创建 `rules.apply`；已有 `rules.apply`：普通须确认（无响应保留并报告；确认移除先备份）；no-interrupt 先备份成功后才在候选中移除 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-backed-up-removed / it-s7-openspec-normal-preserved | no-interrupt 备份后候选无 `rules.apply`；普通 `keep` 决策保留并报告；任何分支不虚构 apply artifact |
+| 641 | OS-N9 YAML 无法可靠解析不得静默重写：普通保留并报告；no-interrupt 先备份，仍无法无损构建候选则终止 | 两模式 | merge_yaml / backup_file | fx-openspec-unparseable | it-s7-openspec-invalid-yaml-backed-up-preserved | 原文件不变；备份存在；报告解析冲突 |
+| 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 全部成功且能读取 context 与对应 rules；不得以 instructions apply 验证（design D4 拟删除，删除前现行语义以此为准） | 两模式 | step_openspec_config | fx-openspec-existing | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） | 四类命令成功且输出含公共 context 与对应 artifact rules（Task 实施时按 D4 删除后将本行标记为已废止条款） |
 | 658 | OS-N11 全部验证通过后才允许同文件系统原子替换发布；目标原本不存在也以原子创建发布，不得半成品 | 两模式 | atomic_write | fx-empty-project | ut-atomic_write-publish / it-s7-openspec-create | 发布经 `os.replace()`；中途失败无半成品目标 |
 | 659 | OS-N12 任一候选验证失败立即终止；报告失败 artifact、实际命令与错误；报告候选清理/保留结果；原文件不变；目标原本不存在时不得创建 | 两模式 | step_openspec_config | fx-openspec-incompatible | it-s7-openspec-validate-fail | 报告含失败 artifact 与实际命令；无目标文件残留 |
-| 660 | OS-N13 原子替换/创建失败立即终止并保持或恢复原文件；不得声称成功 | 两模式 | atomic_write | fx-readonly-target | ut-atomic_write-fail / it-s7-openspec-publish-fail | 非零退出；原文件保持/恢复；报告不声称成功 |
+| 660 | OS-N13 原子替换/创建失败立即终止并保持或恢复原文件；不得声称成功 | 两模式 | atomic_write | fx-readonly-target | ut-atomic_write-fail / it-s7-openspec-publish-failure-preserved | 非零退出；原文件保持/恢复；报告不声称成功 |
 | 662 | OS-B1 备份名固定 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`；所有需备份分支写入前完成备份；备份失败不得部分合并/删除键 | 两模式 | backup_file | fx-openspec-existing | ut-backup_file-openspec-naming | 备份路径精确匹配固定名；备份失败时零合并动作 |
 | 675 | OS-B2 完成报告逐项清单（新增 context 行、分组规则、无效键、备份路径、冲突字段、验证结果、候选处理、发布结果、四命令结果）；无新增也明确报告幂等跳过 | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-report-fields | 报告字段逐项齐全；幂等运行报告"幂等跳过" |
 | 666 | OS-01 配置不存在→从模板构建候选，验证通过后原子创建（两模式同动作） | 两模式 | step_openspec_config / atomic_write | fx-empty-project | it-s7-openspec-create | 原子创建成功；内容与模板基础一致 |
-| 667 | OS-02 配置可解析且无 `rules.apply`→候选中保守合并，完整行/字符串去重（两模式同动作） | 两模式 | merge_yaml | fx-openspec-existing | it-s7-openspec-merge | 合并去重结果与单测基准一致 |
-| 668 | OS-03 目标字段结构/类型不兼容→普通保留并报告不发布；no-interrupt 先备份，无法无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure | fx-openspec-incompatible | it-s7-openspec-incompatible-modes | 两模式分支动作与报告字段符合表义 |
-| 669 | OS-04 存在 `rules.apply`→普通询问（无响应保留并报告；确认并备份后候选中移除）；no-interrupt 备份成功后移除并继续合并 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-modes | 普通 `remove_apply`/`keep` 决策生效；no-interrupt 备份后移除且合并继续 |
-| 670 | OS-05 YAML 无法可靠解析→普通保留并报告；no-interrupt 先备份，仍无法无损合并则终止不改原文件 | 两模式 | merge_yaml | fx-openspec-unparseable | it-s7-openspec-unparseable-modes | 两模式原文件均不变；no-interrupt 有备份 |
-| 671 | OS-06 任一候选 instructions 验证失败→两模式均终止并报告失败 artifact、实际命令与错误；原文件不变 | 两模式 | step_openspec_config | fx-openspec-instructions-fail | it-s7-openspec-instructions-fail | 非零退出；报告含 `--change cadence-rule-config-validation --json` 实际命令；原文件不变（随 D4 删除后转为结构预检失败分支） |
-| 672 | OS-07 原子发布失败→两模式均终止并保持或恢复原文件，不得声称成功 | 两模式 | atomic_write | fx-readonly-target | it-s7-openspec-publish-fail | 原文件 sha256 不变或恢复；报告非成功 |
+| 667 | OS-02 配置可解析且无 `rules.apply`→候选中保守合并，完整行/字符串去重（两模式同动作） | 两模式 | merge_yaml | fx-openspec-existing | it-s7-openspec-merge-idempotent | 合并去重结果与单测基准一致 |
+| 668 | OS-03 目标字段结构/类型不兼容→普通保留并报告不发布；no-interrupt 先备份，无法无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure | fx-openspec-incompatible | it-s7-openspec-yaml-type-conflict-backed-up-preserved（no-interrupt 分支；普通分支仅单测覆盖 `test_structure_conflict_normal_preserved`） | 两模式分支动作与报告字段符合表义 |
+| 669 | OS-04 存在 `rules.apply`→普通询问（无响应保留并报告；确认并备份后候选中移除）；no-interrupt 备份成功后移除并继续合并 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-backed-up-removed / it-s7-openspec-normal-preserved | 普通 `remove_apply`/`keep` 决策生效；no-interrupt 备份后移除且合并继续 |
+| 670 | OS-05 YAML 无法可靠解析→普通保留并报告；no-interrupt 先备份，仍无法无损合并则终止不改原文件 | 两模式 | merge_yaml | fx-openspec-unparseable | it-s7-openspec-invalid-yaml-backed-up-preserved（no-interrupt 分支；普通分支与 OS-03 同代码路径，仅单测覆盖） | 两模式原文件均不变；no-interrupt 有备份 |
+| 671 | OS-06 任一候选 instructions 验证失败→两模式均终止并报告失败 artifact、实际命令与错误；原文件不变 | 两模式 | step_openspec_config | fx-openspec-instructions-fail | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） | 非零退出；报告含 `--change cadence-rule-config-validation --json` 实际命令；原文件不变（随 D4 删除后转为结构预检失败分支） |
+| 672 | OS-07 原子发布失败→两模式均终止并保持或恢复原文件，不得声称成功 | 两模式 | atomic_write | fx-readonly-target | it-s7-openspec-publish-failure-preserved | 原文件 sha256 不变或恢复；报告非成功 |
 | 673 | OS-08 任一必要备份失败→两模式均终止且不改原文件 | 两模式 | backup_file | fx-readonly-parent | it-s7-openspec-backup-fail-modes | 原文件不变；非零退出 |
 
 ### 2.18 增量运行：L1 协作规则（L1-01~07，SKILL 679-687 行表）
@@ -272,11 +272,11 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 681 | L1-01 文件不存在→创建 v1（两模式同动作） | 两模式 | step_rules_files | fx-empty-project | it-s3-l1-create | 创建内容与框架 v1 规范源逐字一致 |
 | 682 | L1-02 完整内容与当前框架 v1 一致→跳过（两模式同动作） | 两模式 | classify_l1 / sha256_file | fx-l1-current | ut-classify_l1-current / it-s3-l1-idempotent | 判定 current；文件不变；报告跳过 |
-| 683 | L1-03 版本标记受支持且完整内容与对应旧版规范逐字一致→备份后升级（两模式同动作） | 两模式 | classify_l1 / backup_file | fx-l1-old-version | ut-classify_l1-old-version / it-s3-l1-upgrade | 判定 old-version；备份存在；内容升级为 v1 |
-| 684 | L1-04 仅旧版标记匹配但内容与旧版规范不同→归入"与任何已知框架版本不匹配"：普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-old-marker-drift | ut-classify_l1-old-marker-drift / it-s3-l1-old-marker-drift | 判定 mismatch 而非 old-version；两模式分支动作符合表义 |
-| 685 | L1-05 当前 v1 标记存在但完整内容不同→同归入"不匹配"，分支同 L1-04 | 两模式 | classify_l1 | fx-l1-v1-marker-drift | ut-classify_l1-v1-marker-drift / it-s3-l1-v1-marker-drift | 判定 mismatch；不得仅凭标记当作 current 跳过 |
-| 686 | L1-06 文件无标记或与已知版本不匹配→普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-unmarked | ut-classify_l1-unmarked / it-s3-l1-unmarked | 判定 unmarked；两模式分支动作符合表义 |
-| 687 | L1-07 任何需要 L1 备份的分支备份失败→终止且不得替换原文件（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s3-l1-backup-fail | 原文件 sha256 不变；非零退出 |
+| 683 | L1-03 版本标记受支持且完整内容与对应旧版规范逐字一致→备份后升级（两模式同动作） | 两模式 | classify_l1 / backup_file | fx-l1-old-version | ut-classify_l1-old-version / it-s3-l1-upgrade（仅单测覆盖：仓库仅 v1 规范源，upgrade 分支无法集成复现，待补） | 判定 old-version；备份存在；内容升级为 v1 |
+| 684 | L1-04 仅旧版标记匹配但内容与旧版规范不同→归入"与任何已知框架版本不匹配"：普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-old-marker-drift | ut-classify_l1-old-marker-drift / it-s3-l1-old-marker-drift（仅单测覆盖：同 L1-03，待补） | 判定 mismatch 而非 old-version；两模式分支动作符合表义 |
+| 685 | L1-05 当前 v1 标记存在但完整内容不同→同归入"不匹配"，分支同 L1-04 | 两模式 | classify_l1 | fx-l1-v1-marker-drift | ut-classify_l1-v1-marker-drift / it-l1-drift-replace | 判定 mismatch；不得仅凭标记当作 current 跳过 |
+| 686 | L1-06 文件无标记或与已知版本不匹配→普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-unmarked | ut-classify_l1-unmarked / it-l1-unknown-replace | 判定 unmarked；两模式分支动作符合表义 |
+| 687 | L1-07 任何需要 L1 备份的分支备份失败→终止且不得替换原文件（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s3-l1-backup-failure-preserved | 原文件 sha256 不变；非零退出 |
 | 689 | L1-B1 备份名固定 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS` | 两模式 | backup_file | fx-l1-old-version | ut-backup_file-l1-naming | 备份路径精确匹配固定名 |
 | 689 | L1-B2 标记只用于候选版本定位；最终识别必须比较完整文件内容；不得仅凭标记识别版本；不得把无标记文件当已知框架版本覆盖 | 两模式 | classify_l1 / sha256_file | fx-l1-v1-marker-drift | ut-classify_l1-full-compare | 分类依据为完整内容比较而非标记 |
 
@@ -285,31 +285,31 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 691-694 | L0-B1 写入前统一预检 + 全部必要备份屏障；任一备份失败双入口均不得写入 | 两模式 | step_entry_files / backup_file | fx-readonly-parent | it-s4-backup-barrier | 屏障失败时双入口零写入（与 L0-P2~P4 互证） |
-| 699 | L0-01 入口不存在→创建基础入口并插入当前 v1（两模式同动作） | 两模式 | l0_block / step_entry_files | fx-empty-project | it-s4-entry-create | 基础入口文本与 L0 v1 均存在，位置正确 |
+| 699 | L0-01 入口不存在→创建基础入口并插入当前 v1（两模式同动作） | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 基础入口文本与 L0 v1 均存在，位置正确 |
 | 700 | L0-02 当前 v1 区块与规范源完整一致→跳过不重复写入（两模式同动作） | 两模式 | l0_block / sha256_file | fx-entry-idempotent | it-s4-idempotent | 双入口 sha256 不变 |
-| 701 | L0-03 当前 v1 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应保留并报告）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replace | 两模式分支动作符合表义；区块外内容保留 |
-| 702 | L0-04 受支持旧版本标记成对→备份成功后升级到当前 v1 并报告（两模式同动作） | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade | 备份存在；区块=当前 v1 |
-| 703 | L0-05 无 L0 标记→插入当前 v1，入口原内容保留（两模式同动作） | 两模式 | l0_block | fx-entry-no-markers | it-s4-insert | 插入位置正确；原内容 sha256 不变 |
-| 704 | L0-06 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 先备份成功后写入单一当前 v1 区块并报告 | 两模式 | l0_block / backup_file | fx-l0-broken-markers | it-s4-broken-markers | 处理后标记成对且唯一；区块外内容保留 |
-| 705 | L0-07 任何 L0 备份失败→终止本次 L0 更新，双入口均不得写入（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s4-backup-barrier-modes | 双入口零写入；非零退出 |
+| 701 | L0-03 当前 v1 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应保留并报告）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 两模式分支动作符合表义；区块外内容保留 |
+| 702 | L0-04 受支持旧版本标记成对→备份成功后升级到当前 v1 并报告（两模式同动作） | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade / ut-compute_plan-l0-upgrade-deterministic | 备份存在；区块=当前 v1 |
+| 703 | L0-05 无 L0 标记→插入当前 v1，入口原内容保留（两模式同动作） | 两模式 | l0_block | fx-entry-no-markers | it-s4-insert / ut-compute_plan-l0-insert-deterministic / ut-step_s4-insert-normal-executes | 插入位置正确；原内容 sha256 不变 |
+| 704 | L0-06 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 先备份成功后写入单一当前 v1 区块并报告 | 两模式 | l0_block / backup_file | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后标记成对且唯一；区块外内容保留 |
+| 705 | L0-07 任何 L0 备份失败→终止本次 L0 更新，双入口均不得写入（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s4-backup-barrier | 双入口零写入；非零退出 |
 | 707 | L0-B2 所有场景必须保持 L0 受管区块外内容原样 | 两模式 | l0_block / sha256_file | fx-l0-drift | it-s4-outside-preserved | 区块外 sha256 处理前后一致 |
 
 ### 2.20 增量运行：摘要引用（SM-01~03，SKILL 713-717 行表）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 715 | SM-01 摘要行已存在→跳过不重复写入 | 两模式 | step_entry_files | fx-entry-idempotent | it-s4-summary-idempotent | 摘要行只出现一次；文件其余内容不变 |
-| 716 | SM-02 摘要行缺失→追加到 `## 强制规则` 章节末尾 | 两模式 | step_entry_files | fx-entry-missing-summary | it-s4-summary-append | 追加位置在 `## 强制规则` 章节末尾 |
-| 717 | SM-03 规则编号与现有内容冲突→不覆盖原内容，追加缺失摘要并在报告说明可能需人工整理编号 | 两模式 | step_entry_files | fx-summary-number-conflict | it-s4-summary-number-conflict | 原编号行保留；缺失摘要追加；报告含人工整理提示 |
+| 715 | SM-01 摘要行已存在→跳过不重复写入 | 两模式 | step_entry_files | fx-entry-idempotent | it-s4-idempotent | 摘要行只出现一次；文件其余内容不变 |
+| 716 | SM-02 摘要行缺失→追加到 `## 强制规则` 章节末尾 | 两模式 | step_entry_files | fx-entry-missing-summary | it-entry-summary-number-conflict（同一用例含缺失摘要追加断言） | 追加位置在 `## 强制规则` 章节末尾 |
+| 717 | SM-03 规则编号与现有内容冲突→不覆盖原内容，追加缺失摘要并在报告说明可能需人工整理编号 | 两模式 | step_entry_files | fx-summary-number-conflict | it-entry-summary-number-conflict | 原编号行保留；缺失摘要追加；报告含人工整理提示 |
 
 ### 2.21 增量运行：可选规则（OP-01~04，SKILL 723-728 行表）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 725 | OP-01 规则文件和摘要均已存在→视为已启用，仅检查完整性 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-optional-complete | 文件与摘要不重写；报告完整性结果 |
+| 725 | OP-01 规则文件和摘要均已存在→视为已启用，仅检查完整性 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-optional-complete（待补） | 文件与摘要不重写；报告完整性结果 |
 | 726 | OP-02 代码阅读规则缺失→所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-backfill | 规则文件补齐；CodeGraph 不初始化 |
-| 727 | OP-03 Playwright 规则缺失→默认跳过，用户明确要求时新增 | 两模式 | step_rules_files | fx-empty-project | it-s10-playwright-skip / it-s10-playwright-enable | 两分支动作符合表义 |
-| 728 | OP-04 无法判断历史选择→按默认值处理，不询问 | 两模式 | step_rules_files | fx-existing-rules | it-s3-optional-default-no-ask | 不生成提问冲突项；按默认值执行并报告 |
+| 727 | OP-03 Playwright 规则缺失→默认跳过，用户明确要求时新增 | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip / it-s3-playwright-enable | 两分支动作符合表义 |
+| 728 | OP-04 无法判断历史选择→按默认值处理，不询问 | 两模式 | step_rules_files | fx-existing-rules | it-s3-playwright-skip（默认跳过不询问分支） | 不生成提问冲突项；按默认值执行并报告 |
 
 ### 2.22 增量运行：CodeGraph（CG-01~08，SKILL 734-743 行表）
 
@@ -335,11 +335,11 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| —（D3） | XC-01 dry-run 零写入：只输出计划（动作、冲突、备份需求），`--report`/`--decisions` 路径必须位于项目根之外 | 两模式 | step_* 全流水线 | fx-existing-rules | it-dry-run-zero-write | dry-run 前后项目目录全量 sha256 快照一致；项目根内报告/决策路径被拒绝 |
-| —（D3） | XC-02 用户意图四参数透传：`--project-type` / `--ignore-cadence` / `--enable-playwright` / `--enable-codegraph` | 两模式 | —（CLI 入口） | fx-empty-project | it-cli-intent-params | 四参数各自独立生效且组合不互相污染；报告记录参数来源 |
-| —（D3） | XC-03 decisions 四类异常：文件缺失或无法解析 / 含未知或重复 `conflict_id` / 冲突缺少决策 / 决策与新鲜计划不符，任一即非零退出且零写入 | 普通 | —（apply 入口决策校验） | fx-l0-drift | it-apply-decisions-missing-file / it-apply-decisions-unknown-id / it-apply-decisions-lacking / it-apply-decisions-stale | 四类异常各自非零退出、报告含原因、项目目录零写入；计划无冲突时不要求决策文件 |
-| —（D3） | XC-04 no-interrupt 不读取也不要求决策文件，全部冲突内部按权威规则决策并记录 | no-interrupt | merge_markdown / merge_yaml | fx-existing-rules | it-apply-no-interrupt-no-decisions | 提供决策文件被忽略；冲突按 NC/OS/L1/L0 表内部决策并入报告 |
-| —（D6） | XC-05 预算计时：空项目 `apply --no-interrupt` 报告 `budget_seconds_excluding_codegraph < 60` | no-interrupt | —（报告计时字段） | fx-empty-project | it-apply-budget | 报告计时字段存在且 < 60；S8 耗时单独列出 |
+| —（D3） | XC-01 dry-run 零写入：只输出计划（动作、冲突、备份需求），`--report`/`--decisions` 路径必须位于项目根之外 | 两模式 | step_* 全流水线 | fx-existing-rules | it-dryrun-zero-write | dry-run 前后项目目录全量 sha256 快照一致；项目根内报告/决策路径被拒绝 |
+| —（D3） | XC-02 用户意图四参数透传：`--project-type` / `--ignore-cadence` / `--enable-playwright` / `--enable-codegraph` | 两模式 | —（CLI 入口） | fx-empty-project | it-intent-params | 四参数各自独立生效且组合不互相污染；报告记录参数来源 |
+| —（D3） | XC-03 decisions 四类异常：文件缺失或无法解析 / 含未知或重复 `conflict_id` / 冲突缺少决策 / 决策与新鲜计划不符，任一即非零退出且零写入 | 普通 | —（apply 入口决策校验） | fx-l0-drift | it-decisions-missing / it-decisions-unknown / it-decisions-lacking / it-decisions-stale / ut-compute_plan-recommendation-keep（recommendation 一律保守 keep，终审 C-1） | 四类异常各自非零退出、报告含原因、项目目录零写入；计划无冲突时不要求决策文件 |
+| —（D3） | XC-04 no-interrupt 不读取也不要求决策文件，全部冲突内部按权威规则决策并记录 | no-interrupt | merge_markdown / merge_yaml | fx-existing-rules | it-entry-base-created（任一 no-interrupt 无 `--decisions` 成功用例） | 提供决策文件被忽略；冲突按 NC/OS/L1/L0 表内部决策并入报告 |
+| —（D6） | XC-05 预算计时：空项目 `apply --no-interrupt` 报告 `budget_seconds_excluding_codegraph < 60` | no-interrupt | —（报告计时字段） | fx-empty-project | it-budget | 报告计时字段存在且 < 60；S8 耗时单独列出 |
 | —（D1） | XC-06 PyYAML 缺失以退出码 77 退出且报告照常写出 | 两模式 | merge_yaml | fx-no-pyyaml | ut-merge_yaml-missing-dependency | 退出码恰为 77；stderr 说明；报告含 hints |
 | —（D3） | XC-07 横切原子写 `os.replace()` 与 sha256 工具 | 两模式 | atomic_write / sha256_file | fx-empty-project | ut-atomic_write-replace / ut-sha256_file-basic | 写入经原子替换；sha256 结果与系统工具一致（含 sha256sum/shasum 回退环境） |
 
@@ -367,22 +367,22 @@
 | # | 缺口项 | 测试 ID | 状态 |
 |---|--------|---------|------|
 | 1 | 历史目录两模式 | it-s5-history-no-interrupt（NH-02）/ it-s5-history-normal（NH-03） | ✅ |
-| 2 | 普通规则不覆盖 | it-s3-rules-no-overwrite（RF-02、DF-08） | ✅ |
-| 3 | 技术栈/包管理器/覆盖率 80% | it-s1-techstack（DF-02）/ it-s1-pkg-manager（S3-01）/ it-s4-coverage-80（S4-05） | ✅ |
-| 4 | gitignore 两分支 | it-s6-cadence-gitignore-default / it-s6-cadence-gitignore-ignore（S7-01/02） | ✅ |
-| 5 | Playwright 两分支 | it-s10-playwright-skip / it-s10-playwright-enable（S10-01/02、OP-03） | ✅ |
+| 2 | 普通规则不覆盖 | it-s3-normal-keep-decision（RF-02、DF-08） | ✅ |
+| 3 | 技术栈/包管理器/覆盖率 80% | it-s1-techstack-written（DF-02 / S3-01 / S4-05 同用例覆盖） | ✅ |
+| 4 | gitignore 两分支 | it-s6-gitignore-default / it-s6-gitignore-ignore（S7-01/02） | ✅ |
+| 5 | Playwright 两分支 | it-s3-playwright-skip / it-s3-playwright-enable（S10-01/02、OP-03） | ✅ |
 | 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ |
 | 7 | Markdown 不可解析回退 | ut-merge_markdown-unparseable-fallback（NC-08） | ✅ |
-| 8 | 摘要编号冲突 | it-s4-summary-number-conflict（SM-03） | ✅ |
-| 9 | 检测矛盾 | it-s1-project-type-conflict（IA-02，固定标识 `s1:project-type-conflict`） | ✅ |
-| 10 | 意图参数透传 | it-cli-intent-params（XC-02，四参数） | ✅ |
-| 11 | 裸 token | it-cli-bare-token（PM-01） | ✅ |
-| 12 | disable-model-invocation | sc-frontmatter-disable-model-invocation（FM-01） | ✅ |
-| 13 | L1 独立分支 | it-s3-l1-independent（S1d-03，SKILL 183 行） | ✅ |
-| 14 | 基础入口文本 | it-s4-entry-create（L0-P5/L0-01，含基础模板全文断言） | ✅ |
-| 15 | dry-run 零写入 | it-dry-run-zero-write（XC-01） | ✅ |
-| 16 | decisions 四类异常 | it-apply-decisions-missing-file / it-apply-decisions-unknown-id / it-apply-decisions-lacking / it-apply-decisions-stale（XC-03） | ✅ |
-| 17 | 全局备份屏障 | it-s4-backup-barrier（L0-P4/L0-07）+ it-s7-openspec-backup-fail（OS-N4/OS-08）+ it-s3-l1-backup-fail（L1-07） | ✅ |
+| 8 | 摘要编号冲突 | it-entry-summary-number-conflict（SM-03） | ✅ |
+| 9 | 检测矛盾 | it-s1-conflict-noncoding-default（IA-02，固定标识 `s1:project-type-conflict`） | ✅ |
+| 10 | 意图参数透传 | it-intent-params（XC-02，四参数） | ✅ |
+| 11 | 裸 token | sc-bare-token（PM-01） | ✅ |
+| 12 | disable-model-invocation | sc-disable-model-invocation（FM-01） | ✅ |
+| 13 | L1 独立分支 | ut-step_s3-l1-red-line（S1d-03，SKILL 183 行） | ✅ |
+| 14 | 基础入口文本 | it-entry-base-created（L0-P5/L0-01，含基础模板全文断言） | ✅ |
+| 15 | dry-run 零写入 | it-dryrun-zero-write（XC-01） | ✅ |
+| 16 | decisions 四类异常 | it-decisions-missing / it-decisions-unknown / it-decisions-lacking / it-decisions-stale（XC-03） | ✅ |
+| 17 | 全局备份屏障 | it-s4-backup-barrier（L0-P4/L0-07）+ it-s7-openspec-backup-fail-modes（OS-N4/OS-08）+ it-s3-l1-backup-failure-preserved（L1-07） | ✅ |
 
 ### 3.3 非表条款覆盖声明
 

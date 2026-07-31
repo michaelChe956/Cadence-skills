@@ -38,7 +38,7 @@
 | NC-05 | `openspec/config.yaml` | 配置已存在且可解析、无 `rules.apply` | 遵循 OS 表（见 §2）保守合并；交互分支见 OS-04 | 保留已有 `schema`、项目 context 和 proposal、design、specs、tasks 的额外规则，仅追加模板缺失内容 | 按 OS-B1 备份命名（见 §11.1） | 报告保留字段与新增内容清单 | `ut-merge_yaml-preserve-existing` |
 | NC-06 | `openspec/config.yaml` | OpenSpec YAML 无法可靠解析或目标字段结构/类型不兼容 | 保留原文件并报告具体字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化时终止，保持原文件不变并报告冲突；备份成功不代表允许破坏性重写 | 先成功备份原文件（§11.1）；备份失败立即终止且不修改原文件 | 报告字段路径、实际类型、冲突说明与终止原因 | `ut-merge_yaml-unparseable-abort` |
 | NC-07 | 任意待合并文件 | 内容完全重复 | 跳过重复项并报告 | 只保留一份 | 无（无实质修改） | 报告去重前后的条目数 | `ut-merge_markdown-dedupe` |
-| NC-08 | Markdown 文件 | Markdown 无法可靠解析 | 保留原文件并报告，不写标准结构 | 先备份，再写标准结构，并把原内容附加到"原项目补充" | 写入前按 §11.1 备份原文件 | 报告标准结构已写入、原内容位置（"原项目补充"）与备份路径 | `ut-merge_markdown-unparseable-fallback` |
+| NC-08 | Markdown 文件 | Markdown 无法可靠解析；或 existing 无任何 ATX 标题 / 首个标题前有实质前言（终审 I-1：章节合并会静默丢弃原文，同走本行 fallback） | 保留原文件并报告，不写标准结构 | 先备份，再写标准结构，并把原内容附加到"原项目补充" | 写入前按 §11.1 备份原文件 | 报告标准结构已写入、原内容位置（"原项目补充"）与备份路径 | `ut-merge_markdown-unparseable-fallback` / `ut-merge_markdown-no-headings-fallback` / `ut-merge_markdown-preamble-fallback` / `it-s3-markdown-unparseable-fallback` |
 
 **辅助条款（两模式共用）**：
 
@@ -55,12 +55,12 @@
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | OS-01 | `openspec/config.yaml` | 配置不存在 | 从模板构建候选，结构预检 + 四类 instructions 验证通过后原子创建 | 同普通模式（两模式同动作） | 无（无原文件）；原子创建仍须经同文件系统 `os.replace()` | 报告原子创建成功、内容来源（模板基础） | `it-s7-openspec-create` / `ut-atomic_write-publish` |
-| OS-02 | `openspec/config.yaml` | 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/完整字符串去重 | 同普通模式（两模式同动作） | 按 OS-B1 备份命名（§11.1） | 报告新增 context 行、按 proposal/design/specs/tasks 分组的合并规则 | `it-s7-openspec-merge` |
-| OS-03 | `openspec/config.yaml` 目标字段 | 目标字段结构/类型不兼容（根非映射、schema 非标量、context 非字符串、rules 非映射、artifact 非字符串数组等） | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止且不改原文件。普通：无需备份（不改原文件） | 报告字段路径、实际类型、冲突说明；no-interrupt 另报备份路径与终止原因 | `it-s7-openspec-incompatible-modes` |
-| OS-04 | `openspec/config.yaml` 的 `rules.apply` | 存在 `rules.apply`（禁止创建的键） | 询问；无响应则保留并报告；确认移除时先创建备份，备份成功后在候选中移除并继续合并 | 先创建备份；备份成功后在候选中移除并继续合并 | 移除分支：先成功备份原文件（OS-B1，§11.1）；任何必要备份失败立即终止且不修改原文件 | 报告 `rules.apply` 处理结果（保留/移除）、备份路径；保留分支说明无虚构 apply artifact | `it-s7-openspec-apply-modes` / `it-s7-openspec-apply-remove` / `it-s7-openspec-apply-keep` |
-| OS-05 | `openspec/config.yaml` | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止。普通：无需备份 | 报告解析冲突、原文件状态；no-interrupt 另报备份路径 | `it-s7-openspec-unparseable-modes` |
-| OS-06 | 临时 Change `cadence-rule-config-validation` 的四类 instructions 验证 | 任一候选 `openspec instructions <artifact> --change cadence-rule-config-validation --json` 验证失败 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 | 同普通模式（两模式同动作） | 无（不改原文件；候选在临时工作区） | 报告失败 artifact、实际命令（含 `--change cadence-rule-config-validation --json`）、错误信息、候选清理/保留结果 | `it-s7-openspec-instructions-fail`（随 design D4 删除 instructions 验证后本行转为"结构预检失败"分支） |
-| OS-07 | `openspec/config.yaml` 发布 | 原子替换/原子创建失败 | 终止并保持或恢复原文件；目标原本不存在时保持不存在；不得声称成功 | 同普通模式（两模式同动作） | 发布失败不扩大损害；已建备份保留 | 报告发布失败原因、原文件状态（保持/恢复/不存在）、明确"未声称成功" | `it-s7-openspec-publish-fail` / `ut-atomic_write-fail` |
+| OS-02 | `openspec/config.yaml` | 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/完整字符串去重 | 同普通模式（两模式同动作） | 按 OS-B1 备份命名（§11.1） | 报告新增 context 行、按 proposal/design/specs/tasks 分组的合并规则 | `it-s7-openspec-merge-idempotent` |
+| OS-03 | `openspec/config.yaml` 目标字段 | 目标字段结构/类型不兼容（根非映射、schema 非标量、context 非字符串、rules 非映射、artifact 非字符串数组等） | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止且不改原文件。普通：无需备份（不改原文件） | 报告字段路径、实际类型、冲突说明；no-interrupt 另报备份路径与终止原因 | `it-s7-openspec-yaml-type-conflict-backed-up-preserved`（no-interrupt 分支；普通分支仅单测覆盖 `test_structure_conflict_normal_preserved`） |
+| OS-04 | `openspec/config.yaml` 的 `rules.apply` | 存在 `rules.apply`（禁止创建的键） | 询问；无响应则保留并报告；确认移除时先创建备份，备份成功后在候选中移除并继续合并 | 先创建备份；备份成功后在候选中移除并继续合并 | 移除分支：先成功备份原文件（OS-B1，§11.1）；任何必要备份失败立即终止且不修改原文件 | 报告 `rules.apply` 处理结果（保留/移除）、备份路径；保留分支说明无虚构 apply artifact | `it-s7-openspec-apply-backed-up-removed`（移除分支）/ `it-s7-openspec-normal-preserved`（保留分支） |
+| OS-05 | `openspec/config.yaml` | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止。普通：无需备份 | 报告解析冲突、原文件状态；no-interrupt 另报备份路径 | `it-s7-openspec-invalid-yaml-backed-up-preserved`（no-interrupt 分支；普通分支与 OS-03 同代码路径，仅单测覆盖） |
+| OS-06 | 临时 Change `cadence-rule-config-validation` 的四类 instructions 验证 | 任一候选 `openspec instructions <artifact> --change cadence-rule-config-validation --json` 验证失败 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 | 同普通模式（两模式同动作） | 无（不改原文件；候选在临时工作区） | 报告失败 artifact、实际命令（含 `--change cadence-rule-config-validation --json`）、错误信息、候选清理/保留结果 | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） |
+| OS-07 | `openspec/config.yaml` 发布 | 原子替换/原子创建失败 | 终止并保持或恢复原文件；目标原本不存在时保持不存在；不得声称成功 | 同普通模式（两模式同动作） | 发布失败不扩大损害；已建备份保留 | 报告发布失败原因、原文件状态（保持/恢复/不存在）、明确"未声称成功" | `it-s7-openspec-publish-failure-preserved` / `ut-atomic_write-fail` |
 | OS-08 | `openspec/config.yaml` 任一必要备份分支 | 任一必要备份失败 | 终止且不改原文件；候选不发布 | 同普通模式（两模式同动作） | 备份失败本身即终止条件；不得部分合并 context、artifact 规则或删除无效键 | 报告失败备份路径、失败原因、候选不发布结果 | `it-s7-openspec-backup-fail-modes` |
 
 **辅助条款（OS-N1~N13，SKILL 633-660 行；两模式共用，分支差异见上表）**：
@@ -93,11 +93,11 @@
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | L1-01 | `.claude/rules/openspec-superpowers-workflow.md` | 文件不存在 | 创建 v1（内容与框架 v1 规范源逐字一致） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与版本 v1 | `it-s3-l1-create` |
 | L1-02 | 同上 | 文件完整内容与当前框架 v1 一致 | 跳过 | 同普通模式（两模式同动作） | 无（不改文件） | 报告幂等跳过、判定 `current` | `ut-classify_l1-current` / `it-s3-l1-idempotent` |
-| L1-03 | 同上 | 版本标记受支持且完整内容与对应旧版规范逐字一致 | 备份后升级为当前 v1 | 同普通模式（两模式同动作） | 按 L1-B1 备份命名（§11.1）；备份失败终止且不得替换原文件 | 报告判定 `old-version`、备份路径、升级到 v1 | `ut-classify_l1-old-version` / `it-s3-l1-upgrade` |
-| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；询问，无响应则保留并报告 | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）；no-interrupt 另报备份路径与替换 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift` |
-| L1-05 | 同上 | 当前 v1 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，询问，无响应保留并报告 | 同 L1-04：归入"不匹配"，备份后以框架 v1 替换并报告 | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-s3-l1-v1-marker-drift` |
-| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-s3-l1-unmarked` |
-| L1-07 | 同上任意需 L1 备份的分支 | 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 同普通模式（两模式同动作） | 备份失败本身即终止条件 | 报告失败备份路径、失败原因、原文件不变 | `it-s3-l1-backup-fail` |
+| L1-03 | 同上 | 版本标记受支持且完整内容与对应旧版规范逐字一致 | 备份后升级为当前 v1 | 同普通模式（两模式同动作） | 按 L1-B1 备份命名（§11.1）；备份失败终止且不得替换原文件 | 报告判定 `old-version`、备份路径、升级到 v1 | `ut-classify_l1-old-version` / `it-s3-l1-upgrade`（仅单测覆盖：仓库仅存在 v1 规范源，upgrade 分支无法集成复现，待补） |
+| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；询问，无响应则保留并报告 | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）；no-interrupt 另报备份路径与替换 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift`（仅单测覆盖：同 L1-03 无法集成复现，待补） |
+| L1-05 | 同上 | 当前 v1 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，询问，无响应保留并报告 | 同 L1-04：归入"不匹配"，备份后以框架 v1 替换并报告 | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-l1-drift-replace` |
+| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-l1-unknown-replace` |
+| L1-07 | 同上任意需 L1 备份的分支 | 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 同普通模式（两模式同动作） | 备份失败本身即终止条件 | 报告失败备份路径、失败原因、原文件不变 | `it-s3-l1-backup-failure-preserved` |
 
 **辅助条款（L1-B1/L1-B2，SKILL 689 行）**：
 
@@ -113,13 +113,13 @@
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v1（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v1、插入位置 | `it-s4-entry-create` |
+| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v1（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v1、插入位置 | `it-entry-base-created` |
 | L0-02 | 入口的 L0 受管区块 | 当前 v1 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` |
-| L0-03 | 同上 | 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，无响应则保留并报告 | 先备份，成功后替换为规范源当前 v1 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replace` |
+| L0-03 | 同上 | 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，无响应则保留并报告 | 先备份，成功后替换为规范源当前 v1 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replaced-outside-preserved` |
 | L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v1 并报告 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、升级到 v1 | `it-s4-upgrade` |
 | L0-05 | 同上 | 无 L0 标记 | 插入当前 v1，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
-| L0-06 | 同上 | 单侧标记或标记顺序错误 | 询问；无响应则保留并报告 | 先备份，成功后写入单一当前 v1 区块并报告 | no-interrupt：先成功备份（§11.1）。任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；区块外内容保留 | `it-s4-broken-markers` |
-| L0-07 | 同上任意需 L0 备份的分支 | 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 同普通模式（两模式同动作） | 备份失败本身即终止条件（全局屏障，见 §11.2） | 报告失败备份路径、失败原因、双入口零写入 | `it-s4-backup-barrier-modes` |
+| L0-06 | 同上 | 单侧标记或标记顺序错误 | 询问；无响应则保留并报告 | 先备份，成功后写入单一当前 v1 区块并报告 | no-interrupt：先成功备份（§11.1）。任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` |
+| L0-07 | 同上任意需 L0 备份的分支 | 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 同普通模式（两模式同动作） | 备份失败本身即终止条件（全局屏障，见 §11.2） | 报告失败备份路径、失败原因、双入口零写入 | `it-s4-backup-barrier` |
 
 **辅助条款（L0-B1/L0-B2；L0-P1~P12 互证）**：
 
@@ -135,9 +135,9 @@
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | RF-01 | `.claude/rules/*.md` 普通规则文件 | 文件不存在 | 从模板根路径读取并创建 | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与来源模板 | `it-s3-rules-create` |
-| RF-02 | 同上 | 文件已存在 | 不自动覆盖，报告已存在 | 同普通模式（两模式同动作） | 无（不改文件） | 报告"已存在"；原文件 sha256 不变 | `it-s3-rules-no-overwrite` |
+| RF-02 | 同上 | 文件已存在 | 不自动覆盖，报告已存在 | 同普通模式（两模式同动作） | 无（不改文件） | 报告"已存在"；原文件 sha256 不变 | `it-s3-normal-keep-decision` |
 | RF-03 | `.claude/rules/code-reading.md` | 新增 `code-reading.md`（老项目补齐） | 所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 同普通模式（两模式同动作） | 无（新增，无原文件） | 报告补齐 `code-reading.md`；非 Coding 记录跳过 CodeGraph 初始化 | `it-s3-code-reading-backfill` |
-| RF-04 | 已存在的普通规则文件 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 | 同普通模式（两模式同动作） | 无（不改文件） | 报告文件路径与"需用户手动合并 CodeGraph 段落"提示 | `it-s3-codegraph-section-missing` |
+| RF-04 | 已存在的普通规则文件 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 | 同普通模式（两模式同动作） | 无（不改文件） | 报告文件路径与"需用户手动合并 CodeGraph 段落"提示 | `it-s3-codegraph-section-missing`（待补：脚本暂未实现"缺 CodeGraph 段落→报告手动合并"检测分支） |
 
 ## 6. 摘要引用增量（SM-01~03）
 
@@ -146,9 +146,9 @@
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| SM-01 | CLAUDE.md / AGENTS.md 的规则摘要行 | 摘要行已存在 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改文件） | 报告摘要行只出现一次；文件其余内容不变 | `it-s4-summary-idempotent` |
-| SM-02 | 同上 | 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 | 同普通模式（两模式同动作） | 无（追加单行；L0 区块本身按 L0 表处理） | 报告追加位置（`## 强制规则` 章节末尾）与摘要内容 | `it-s4-summary-append` |
-| SM-03 | 同上 | 规则编号与现有内容冲突 | 不覆盖原内容，追加缺失摘要并在报告中说明可能需要人工整理编号 | 同普通模式（两模式同动作） | 无（不改原编号行） | 报告保留的原编号行、追加的缺失摘要、"可能需人工整理编号"提示 | `it-s4-summary-number-conflict` |
+| SM-01 | CLAUDE.md / AGENTS.md 的规则摘要行 | 摘要行已存在 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改文件） | 报告摘要行只出现一次；文件其余内容不变 | `it-s4-idempotent` |
+| SM-02 | 同上 | 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 | 同普通模式（两模式同动作） | 无（追加单行；L0 区块本身按 L0 表处理） | 报告追加位置（`## 强制规则` 章节末尾）与摘要内容 | `it-entry-summary-number-conflict`（同一用例含缺失摘要追加断言） |
+| SM-03 | 同上 | 规则编号与现有内容冲突 | 不覆盖原内容，追加缺失摘要并在报告中说明可能需要人工整理编号 | 同普通模式（两模式同动作） | 无（不改原编号行） | 报告保留的原编号行、追加的缺失摘要、"可能需人工整理编号"提示 | `it-entry-summary-number-conflict` |
 
 ## 7. 可选规则增量（OP-01~04）
 
@@ -157,10 +157,10 @@
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| OP-01 | 可选规则文件 + 摘要（code-reading / playwright 等） | 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 | 同普通模式（两模式同动作） | 无（不改文件） | 报告完整性检查结果；文件与摘要不重写 | `it-s3-optional-complete` |
+| OP-01 | 可选规则文件 + 摘要（code-reading / playwright 等） | 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 | 同普通模式（两模式同动作） | 无（不改文件） | 报告完整性检查结果；文件与摘要不重写 | `it-s3-optional-complete`（待补） |
 | OP-02 | `.claude/rules/code-reading.md` | 代码阅读规则缺失 | 所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 同普通模式（两模式同动作） | 无（新增） | 报告规则文件补齐；非 Coding 记录跳过 CodeGraph 初始化 | `it-s3-code-reading-backfill` |
-| OP-03 | `.claude/rules/playwright.md` | Playwright 规则缺失 | 默认跳过，用户明确要求时新增 | 同普通模式（两模式同动作；no-interrupt 下"用户明确要求"由意图参数 `--enable-playwright` 表达） | 无（默认跳过；新增时无原文件） | 报告默认跳过或按 `--enable-playwright` 新增 | `it-s10-playwright-skip` / `it-s10-playwright-enable` |
-| OP-04 | 可选规则历史选择 | 无法判断历史选择 | 按本节默认值处理，不询问 | 同普通模式（两模式同动作；no-interrupt 本就不询问） | 无（不询问，不改文件） | 报告按默认值执行；不生成提问冲突项 | `it-s3-optional-default-no-ask` |
+| OP-03 | `.claude/rules/playwright.md` | Playwright 规则缺失 | 默认跳过，用户明确要求时新增 | 同普通模式（两模式同动作；no-interrupt 下"用户明确要求"由意图参数 `--enable-playwright` 表达） | 无（默认跳过；新增时无原文件） | 报告默认跳过或按 `--enable-playwright` 新增 | `it-s3-playwright-skip` / `it-s3-playwright-enable` |
+| OP-04 | 可选规则历史选择 | 无法判断历史选择 | 按本节默认值处理，不询问 | 同普通模式（两模式同动作；no-interrupt 本就不询问） | 无（不询问，不改文件） | 报告按默认值执行；不生成提问冲突项 | `it-s3-playwright-skip`（默认跳过不询问分支） |
 
 ## 8. CodeGraph 已存在状态（CS-01~08）
 
@@ -175,7 +175,7 @@
 | CS-04 | 同上 | `.mcp.json` 有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 `.codex/config.toml` | 同普通模式（两模式同动作） | 无（增量补 toml 块；按 §11.1 配置补齐不要求备份，除非破坏既有内容，破坏性写入仍按 §11.1） | 报告 toml 补齐的块；其余内容不变 | `it-s8-codegraph-toml-missing` |
 | CS-05 | 同上 | `.mcp.json` 缺少 CodeGraph MCP | 按 `mcp-configuration.md` 兜底配置补齐 `.mcp.json`，再同步补齐 `.codex/config.toml` | 同普通模式（两模式同动作） | 同 CS-04 | 报告两文件均补齐兜底配置 | `it-s8-codegraph-mcp-missing` |
 | CS-06 | 同上 | Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 后必须再次核验两个配置文件 | 同普通模式（两模式同动作） | 同 CS-04 | 报告 install 调用、二次核验、仅补缺失方 | `it-s8-codegraph-install-reverify` |
-| CS-07 | 同上 | `codegraph install` 失败 | 提供 `mcp-configuration.md` 手动兜底配置，并分别补齐 `.mcp.json` 与 `.codex/config.toml` | 同普通模式（两模式同动作）；步骤标记 `degraded` 并继续，补写/备份/原子写失败仍终止（design D3） | 同 CS-04 | 报告步骤状态 `degraded`、两文件由脚本补齐、整体不因此失败 | `it-s8-codegraph-install-fail` |
+| CS-07 | 同上 | `codegraph install` 失败 | 提供 `mcp-configuration.md` 手动兜底配置，并分别补齐 `.mcp.json` 与 `.codex/config.toml` | 同普通模式（两模式同动作）；步骤标记 `degraded` 并继续，补写/备份/原子写失败仍终止（design D3） | 同 CS-04 | 报告步骤状态 `degraded`、两文件由脚本补齐、整体不因此失败 | `it-s8-codegraph-install-fail` / `it-s8-codegraph-binary-missing`（codegraph 二进制缺失/不可执行同走本行降级路径，终审 C-2） |
 | CS-08 | `.codegraph/` | `codegraph init` 失败 | 报告项目语言、目录规模或 `codegraph.json` 可能需要人工配置，不阻塞其他初始化项 | 同普通模式（两模式同动作）；步骤标记 `degraded` | 无（不改文件） | 报告步骤 `degraded`、后续步骤照常、含人工配置建议 | `it-s8-codegraph-init-fail` |
 
 ## 9. CodeGraph 增量（CG-01~08）
@@ -201,13 +201,13 @@
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| HM-01 | `.claude/<dir>` → `cadence/<dir>`（16 个历史目录之一） | `cadence/<dir>` 不存在 | 将 `.claude/<dir>` 移动到 `cadence/<dir>` | 不执行迁移（按 NH-02 仅报告） | 无（mv 不要求备份；目标为空目录） | 报告源不存在、目标内容一致 | `it-s5-history-move` |
+| HM-01 | `.claude/<dir>` → `cadence/<dir>`（16 个历史目录之一） | `cadence/<dir>` 不存在 | 将 `.claude/<dir>` 移动到 `cadence/<dir>` | 不执行迁移（按 NH-02 仅报告） | 无（mv 不要求备份；目标为空目录） | 报告源不存在、目标内容一致 | `it-s5-history-hm01-reachable` |
 | HM-02 | 同上 | `cadence/<dir>` 已存在且为空 | 将 `.claude/<dir>` 的内容移动到 `cadence/<dir>`，并清理空源目录 | 不执行迁移（按 NH-02 仅报告） | 无 | 报告全部条目移入目标；源目录被移除或为空 | `it-s5-history-merge-empty` |
 | HM-03 | 同上 | `cadence/<dir>` 已存在且非空 | 跳过该目录并报告冲突，要求用户手动处理 | 不执行迁移（按 NH-02 仅报告） | 无（不移动） | 报告源与目标均不变；含冲突目录与手动处理提示 | `it-s5-history-conflict-skip` |
 
 **辅助条款（NH-01~03，SKILL 54-56 行；no-interrupt 专用）**：
 
-- **NH-01 检测清单**：no-interrupt 只检测 16 个精确历史目录：`.claude/prds`、`.claude/analysis`、`.claude/analysis-docs`、`.claude/docs`、`.claude/designs`、`.claude/designs-reviews`、`.claude/plans`、`.claude/readmes`、`.claude/modaos`、`.claude/models`、`.claude/architecture`、`.claude/notes`、`.claude/logs`、`.claude/reports`、`.claude/project-rules`、`.claude/cache`。清单外同名目录不检出。对应测试 `it-s5-history-detect-list`。
+- **NH-01 检测清单**：no-interrupt 只检测 16 个精确历史目录：`.claude/prds`、`.claude/analysis`、`.claude/analysis-docs`、`.claude/docs`、`.claude/designs`、`.claude/designs-reviews`、`.claude/plans`、`.claude/readmes`、`.claude/modaos`、`.claude/models`、`.claude/architecture`、`.claude/notes`、`.claude/logs`、`.claude/reports`、`.claude/project-rules`、`.claude/cache`。清单外同名目录不检出。对应测试 `it-s5-history-report-only`。
 - **NH-02 仅报告不动手**：检测到历史目录仅写入执行报告，不执行 `mv`、目录内容合并、目录删除或空目录清理。对应测试 `it-s5-history-no-interrupt`。
 - **NH-03 模式归属**：本规则只覆盖 no-interrupt；普通模式继续执行 HM-01~03 的历史产物迁移步骤。对应测试 `it-s5-history-normal`。
 - **禁止迁移**（S6-01，SKILL 435-437 行）：普通模式下禁止迁移 `.claude/rules`、`.claude/commands`、`.claude/skills`。对应测试 `it-s5-history-forbidden`。
@@ -236,7 +236,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 2. 全量备份 — 一次性创建本次预检出的所有必要 L0 备份（CLAUDE.md 与 AGENTS.md 各自需要的备份）。
 3. 发布 — 仅当步骤 2 全部成功后，才按 L0 表分支写入对应入口。
 
-屏障失败语义：步骤 2 任一备份失败 → 步骤 3 不执行，双入口零写入，已建备份不扩大损害（不回滚已成功备份，但不再写入入口）。对应测试 `it-s4-backup-barrier` / `it-s4-backup-barrier-modes`（L0-P4 / L0-07 / L0-B1 互证）。OpenSpec（OS-N4/OS-08）与 L1（L1-07）各自有等价的"必要备份失败即终止"屏障，但不跨资产；只有 L0 是跨双入口的全局屏障。
+屏障失败语义：步骤 2 任一备份失败 → 步骤 3 不执行，双入口零写入，已建备份不扩大损害（不回滚已成功备份，但不再写入入口）。对应测试 `it-s4-backup-barrier`（L0-P4 / L0-07 / L0-B1 互证）。OpenSpec（OS-N4/OS-08）与 L1（L1-07）各自有等价的"必要备份失败即终止"屏障，但不跨资产；只有 L0 是跨双入口的全局屏障。
 
 ### 11.3 报告要求（失败关闭与 schema）
 
@@ -250,7 +250,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 - **conflict_id 格式**：`<step>:<资产>[:<分支>]`。`<step>` 为步骤标识（如 `s1`、`s3`、`s4`、`s7`）；`<资产>` 为受冲突的文件或配置块标识；可选 `<分支>` 用于同步骤同资产的多分支冲突。
 - **decision 枚举**：按资产类型取值：
-  - 普通规则文件覆盖冲突：`replace` / `keep`（IA-01，对应测试 `it-apply-decision-keep`）。
+  - 普通规则文件覆盖冲突：`replace` / `keep`（IA-01，对应测试 `it-s3-normal-keep-decision`）。
   - OpenSpec `rules.apply`：`remove_apply` / `keep`（OS-04）。
   - L1 协作规则不匹配：`replace_v1` / `keep`（L1-04/L1-05/L1-06）。
   - L0 受管区块漂移：`replace_v1` / `keep`（L0-03/L0-06）。
@@ -265,7 +265,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 3. 计划存在的冲突缺少对应决策。
 4. 决策与新鲜计划不符（stale）。
 
-计划无冲突时不要求决策文件；no-interrupt 模式不读取也不要求决策文件，全部冲突按十张表内部规则决策（XC-04，对应测试 `it-apply-no-interrupt-no-decisions`）。
+计划无冲突时不要求决策文件；no-interrupt 模式不读取也不要求决策文件，全部冲突按十张表内部规则决策（XC-04，对应测试 `it-entry-base-created`——任一 no-interrupt 无 `--decisions` 成功用例）。
 
 ### 11.4 原子发布
 
@@ -273,7 +273,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 - 适用：OpenSpec 配置发布（OS-07/OS-N11/OS-N13）、所有需要写入目标文件的合并分支。
 - 失败处理：原子替换/原子创建失败时立即终止，保持或恢复原文件（目标原本不存在时保持不存在），不得声称成功（OS-07）。
 - 故障注入（design D6）：原子发布失败以目标目录 `chmod 555` 复现（`fx-readonly-target`）；备份失败以只读父目录复现（`fx-readonly-parent`）。
-- 对应测试：`ut-atomic_write-publish`、`ut-atomic_write-replace`、`ut-atomic_write-fail`、`it-s7-openspec-publish-fail`。
+- 对应测试：`ut-atomic_write-publish`、`ut-atomic_write-replace`、`ut-atomic_write-fail`、`it-s7-openspec-publish-failure-preserved`。
 
 ### 11.5 模板三级定位
 
@@ -327,3 +327,13 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 - 行 ID、SKILL 行号区间、测试 ID 三者在 `merge-semantics.md`、`SKILL.md`、`skill-clause-map.md` 三处必须一致。
 - 新增或修改脚本行为必须先更新本文件，再同步 `skill-clause-map.md` 的对应行（测试 ID、关键断言），保持对账可追溯。
 - 已知演进点（OS-N10/OS-06 的 instructions 验证随 design D4 删除）按"标记已废止而非删除"处理，本文件与映射表同步保留行 ID。
+
+**2026-07-30 终审对账（I-3）**：本文件"对应测试 ID"列曾与 harness 实际用例名存在 47 处悬空，已逐一处理——
+改名的回写为真实用例名（如 `it-s10-playwright-*`→`it-s3-playwright-*`、`it-s4-entry-create`→`it-entry-base-created`、
+`it-s4-drift-replace`→`it-s4-drift-replaced-outside-preserved`、`it-s7-openspec-publish-fail`→`it-s7-openspec-publish-failure-preserved` 等）；
+真缺口的补集成用例（CS-03~06、CG-01/05/06、`it-s2-templates-missing`、`it-s3-create`、`it-s3-rules-create`、
+`it-s3-code-reading-backfill`、`it-s3-l1-create`、`it-s3-l1-idempotent`、`it-s7-openspec-create`、`it-s7-openspec-backup-fail-modes`、
+`it-s5-history-merge-empty`、`it-s5-history-forbidden`、`it-s6-gitignore-codegraph-idempotent`、`it-s6-codegraph-json-keep`、
+`it-s4-insert`、`it-s4-upgrade`、`it-s8-codegraph-binary-missing`、`it-apply-failure-report-fields`）；
+无法集成复现或行为缺口的在行内显式标注"仅单测覆盖/待补"（`it-s3-l1-upgrade`、`it-s3-l1-old-marker-drift`、
+`it-s3-codegraph-section-missing`、`it-s3-optional-complete`、OS-06 已废止、OS-03/OS-05 普通分支）。

@@ -18,6 +18,8 @@ from pathlib import Path
 
 import yaml
 
+from unittest import mock
+
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "rule-config.py"
 spec = importlib.util.spec_from_file_location("rule_config", SCRIPT_PATH)
 rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
@@ -116,6 +118,38 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertEqual(out.count("共享行"), 1)
         self.assertIn("备注一", out)
         self.assertIn("备注二", out)
+
+    def test_no_headings_returns_none(self):
+        """ut-merge_markdown-no-headings-fallback / NC-08 + 终审 I-1
+        （existing 无任何 ATX 标题但有实质内容 → None，走 NC-08 fallback，不静默丢弃原文）"""
+        tpl = "# T\n\n## A\ntpl-a\n"
+        self.assertIsNone(rc.merge_markdown(tpl, "无标题用户内容"))
+        # 多行无标题内容同样返回 None
+        self.assertIsNone(rc.merge_markdown(tpl, "第一行\n第二行\n"))
+
+    def test_substantial_preamble_returns_none(self):
+        """ut-merge_markdown-preamble-fallback / NC-08 + 终审 I-1
+        （首个标题前有实质前言 → None；parse_sections 会舍弃前言，合并将丢失原文）"""
+        tpl = "# T\n\n## A\ntpl-a\n"
+        old = "重要前言说明\n\n## A\nold-a\n"
+        self.assertIsNone(rc.merge_markdown(tpl, old))
+
+    def test_blank_preamble_still_merges(self):
+        """ut-merge_markdown-blank-preamble-ok / 终审 I-1 边界
+        （首个标题前仅空白行 → 正常章节合并，不误伤）"""
+        tpl = "# T\n\n## A\ntpl-a\n"
+        old = "\n\n## A\nold-a\n"
+        out = rc.merge_markdown(tpl, old)
+        self.assertIsNotNone(out)
+        self.assertIn("old-a", out)
+
+    def test_empty_existing_still_returns_template_merge(self):
+        """ut-merge_markdown-empty-existing-ok / 终审 I-1 边界
+        （existing 为空/纯空白 → 无内容可丢，返回模板合并结果而非 None）"""
+        tpl = "# T\n\n## A\ntpl-a\n"
+        # render_sections 不保留末尾换行 → 期望为 rstrip 后的模板
+        self.assertEqual(rc.merge_markdown(tpl, ""), tpl.rstrip("\n"))
+        self.assertEqual(rc.merge_markdown(tpl, "\n\n"), tpl.rstrip("\n"))
 
 
 class TestL0Block(unittest.TestCase):
@@ -1184,6 +1218,216 @@ class TestEnsureGitignoreLine(unittest.TestCase):
         # 整行精确为 cadence/ 的行恰一条（不计 cadence/foo 这种子串行）
         exact = [ln for ln in gi.splitlines() if ln == "cadence/"]
         self.assertEqual(len(exact), 1)
+
+
+class TestComputePlanFinalReview(unittest.TestCase):
+    """终审修复回归：C-1 recommendation 保守默认；I-2 L0 insert/upgrade 确定性动作。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+        self.rules_root = self.refs / "rules"
+        self.openspec_yaml = self.refs / "openspec" / "config.yaml"
+        # 隔离 locate_templates 的真实 HOME 三级搜索，固定指向 skill 自带 references
+        patcher = mock.patch.object(
+            rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _conflicts_by_id(self, plan):
+        return {c["conflict_id"]: c for c in plan.get("conflicts", [])}
+
+    def test_recommendations_are_conservative_keep(self):
+        """ut-compute_plan-recommendation-keep / 终审 C-1
+        （s3 普通 drift / s3 L1 / s4 L0 drift / s7 rules.apply 的 recommendation
+        一律为保守 keep，不得推荐覆盖型决策）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "language.md").write_text("本地漂移\n", encoding="utf-8")
+        (rules_dir / rc.L1_RULE_FILENAME).write_text("L1 本地漂移\n", encoding="utf-8")
+        (self.root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+        )
+        (self.root / "AGENTS.md").write_text("# AGENTS.md\n无标记\n", encoding="utf-8")
+        (self.root / "openspec").mkdir()
+        (self.root / "openspec" / "config.yaml").write_text(
+            "schema: spec-driven\nrules:\n  apply:\n    - x\n", encoding="utf-8"
+        )
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        # s3 普通 drift / s3 L1 / s4 drift / s7 rules.apply 均产冲突且推荐 keep
+        expected = [
+            "s3:.claude/rules/language.md",
+            f"s3:.claude/rules/{rc.L1_RULE_FILENAME}",
+            "s4:CLAUDE.md",
+            "s7:openspec/config.yaml",
+        ]
+        for cid in expected:
+            self.assertIn(cid, conflicts)
+            self.assertEqual(conflicts[cid].get("recommendation"), "keep", cid)
+        # allowed_decisions 枚举不变（推荐保守不等于收窄决策空间）
+        self.assertEqual(
+            conflicts["s3:.claude/rules/language.md"]["allowed_decisions"],
+            ["replace", "keep"],
+        )
+        self.assertEqual(
+            conflicts["s7:openspec/config.yaml"]["allowed_decisions"],
+            ["remove_apply", "keep"],
+        )
+
+    def test_insert_is_deterministic_action_not_conflict(self):
+        """ut-compute_plan-l0-insert-deterministic / 终审 I-2 + L0-05
+        （无 L0 标记 → insert 确定性动作：不产冲突、不要求备份）"""
+        (self.root / "CLAUDE.md").write_text("# CLAUDE.md\n\n用户内容\n", encoding="utf-8")
+        (self.root / "AGENTS.md").write_text("# AGENTS.md\n\n用户内容\n", encoding="utf-8")
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        self.assertNotIn("s4:CLAUDE.md", conflicts)
+        self.assertNotIn("s4:AGENTS.md", conflicts)
+        assets = {
+            a["path"]: a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
+        }
+        self.assertEqual(assets["CLAUDE.md"]["action"], "insert")
+        self.assertEqual(assets["CLAUDE.md"]["backup_needed"], False)
+        self.assertNotIn(self.root / "CLAUDE.md", plan["backup_needs"])
+
+    def test_upgrade_is_deterministic_action_with_backup(self):
+        """ut-compute_plan-l0-upgrade-deterministic / 终审 I-2 + L0-04
+        （旧版标记成对 → upgrade 确定性动作：不产冲突、纳入备份屏障）"""
+        (self.root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n" + V0_START + "\n旧版\n" + V0_END + "\n", encoding="utf-8"
+        )
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        self.assertNotIn("s4:CLAUDE.md", conflicts)
+        assets = {
+            a["path"]: a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
+        }
+        self.assertEqual(assets["CLAUDE.md"]["action"], "upgrade")
+        self.assertEqual(assets["CLAUDE.md"]["backup_needed"], True)
+        self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
+
+    def test_drift_still_conflict_with_allowed_decisions(self):
+        """ut-compute_plan-l0-drift-conflict / 终审 I-2 边界
+        （drift/broken 仍产 decision 冲突，allowed_decisions=['replace','keep']）"""
+        (self.root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+        )
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        self.assertIn("s4:CLAUDE.md", conflicts)
+        self.assertEqual(
+            conflicts["s4:CLAUDE.md"]["allowed_decisions"], ["replace", "keep"]
+        )
+
+    def test_step_s4_insert_executes_in_normal_mode_without_decisions(self):
+        """ut-step_s4-insert-normal-executes / 终审 I-2 + L0-05
+        （普通模式无 decisions：insert 确定性执行，L0 插入且用户内容保留）"""
+        entry = self.root / "CLAUDE.md"
+        entry.write_text("# CLAUDE.md\n\n用户自定义内容\n", encoding="utf-8")
+        plan = {
+            "project_type": "non-coding",
+            "templates": {"rules_root": str(self.rules_root)},
+            "decisions_map": {},
+            "steps": {
+                rc.STEP_ENTRY_FILES: {
+                    "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                    "assets": [{
+                        "path": "CLAUDE.md", "action": "insert",
+                        "conflict": "insert", "backup_needed": False,
+                    }],
+                }
+            },
+        }
+        rc.step_s4_entry_files(self.root, _intents(), plan, {})
+        text = entry.read_text(encoding="utf-8")
+        self.assertIn(rc.L0_BEGIN, text)
+        self.assertIn("用户自定义内容", text)
+
+
+class TestStepS8BinaryMissing(unittest.TestCase):
+    """终审 C-2：codegraph 二进制缺失 → install 失败降级路径（CS-07），不 crashed。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_binary_missing_degraded_with_dual_configs(self):
+        """ut-step_s8-binary-missing-degraded / 终审 C-2 + CS-07
+        （subprocess 抛 FileNotFoundError → overall=degraded + 双配置补齐 + note，不抛错）"""
+        plan = {"project_type": "coding"}
+        report = {"overall": "ok", "steps": []}
+        with mock.patch.object(
+            rc.subprocess, "run", side_effect=FileNotFoundError("codegraph")
+        ):
+            rc.step_s8_codegraph(self.root, _intents(no_interrupt=True), plan, report)
+        self.assertEqual(report["overall"], "degraded")
+        self.assertTrue((self.root / ".mcp.json").is_file())
+        self.assertTrue((self.root / ".codex" / "config.toml").is_file())
+        step = next(s for s in report["steps"] if s["name"] == rc.STEP_CODEGRAPH)
+        self.assertEqual(step["status"], "degraded")
+        self.assertIn("codegraph", step["reason"])
+        self.assertIn("elapsed_ms", step)
+
+
+class TestFailureSchemaFinalReview(unittest.TestCase):
+    """终审 I-4：overall 收敛 ok/degraded/fail；failure.file 从异常上下文提取。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+
+    def test_extract_failure_file_from_message(self):
+        """ut-extract-failure-file-message / 终审 I-4（从异常消息提取受管文件路径）"""
+        exc = rc.PublishError("openspec/config.yaml unparseable，无法无损规范化")
+        self.assertEqual(
+            rc._extract_failure_file(exc, "s7_openspec_config"), "openspec/config.yaml"
+        )
+        exc2 = rc.PublishError("原子写入失败：.claude/rules/language.md（mock）")
+        self.assertEqual(
+            rc._extract_failure_file(exc2, "s3_rules_files"), ".claude/rules/language.md"
+        )
+
+    def test_extract_failure_file_fallbacks(self):
+        """ut-extract-failure-file-fallback / 终审 I-4（属性优先；兑底步骤标识，不为 None）"""
+        exc = OSError("disk error")
+        exc.filename = "CLAUDE.md"
+        self.assertEqual(rc._extract_failure_file(exc, None), "CLAUDE.md")
+        # 无属性、无已知路径 → 兑底为步骤标识
+        self.assertEqual(
+            rc._extract_failure_file(Exception("boom"), "s2_locate_templates"),
+            "s2_locate_templates",
+        )
+        self.assertIsNotNone(rc._extract_failure_file(Exception("boom"), None))
+
+    def test_run_apply_exception_lands_fail_with_file(self):
+        """ut-run_apply-fail-schema / 终审 I-4
+        （执行异常 → overall=fail（非 crashed）+ failure.file 非 None 且为实际文件）"""
+        rules_root = self.refs / "rules"
+        openspec_yaml = self.refs / "openspec" / "config.yaml"
+        report = rc.build_report("no-interrupt", self.root)
+
+        def _boom(root, intents, plan, report):
+            raise rc.PublishError("原子写入失败：.claude/rules/language.md（mock）")
+
+        patched_funcs = dict(rc.STEP_FUNCS)
+        patched_funcs[rc.STEP_RULES_FILES] = _boom
+        with mock.patch.object(
+            rc, "locate_templates", return_value=(rules_root, openspec_yaml)
+        ), mock.patch.dict(rc.STEP_FUNCS, patched_funcs, clear=True):
+            code = rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(code, 1)
+        self.assertIn(report["overall"], ("ok", "degraded", "fail"))
+        self.assertEqual(report["overall"], "fail")
+        self.assertEqual(report["failure"]["file"], ".claude/rules/language.md")
+        self.assertTrue(report["failure"]["reason"])
+        self.assertTrue(report["failure"]["recovery"])
 
 
 if __name__ == "__main__":

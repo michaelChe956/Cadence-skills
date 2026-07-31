@@ -425,6 +425,29 @@ class Intents(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
+# I-4：冻结 schema 仅允许 overall ∈ {ok, degraded, fail}；执行异常统一落 fail。
+# failure.file 必须含实际失败文件路径——从异常上下文尽力提取：
+# 优先异常属性（file/filename/path），其次异常消息中的已知受管文件路径，
+# 兜底为失败步骤标识（不得为 None）。
+_FAILURE_PATH_RE = re.compile(
+    r"(openspec/config\.yaml|\.claude/rules/[\w.-]+\.md|CLAUDE\.md|AGENTS\.md|"
+    r"\.mcp\.json|\.codex/config\.toml|\.gitignore)"
+)
+
+
+def _extract_failure_file(exc: BaseException, step_name: Optional[str]) -> str:
+    """从异常上下文提取实际失败文件路径（I-4：failure.file 不得为 None）。"""
+    for attr in ("file", "filename", "path"):
+        val = getattr(exc, attr, None)
+        if isinstance(val, (str, Path)) and str(val):
+            return str(val)
+    match = _FAILURE_PATH_RE.search(str(exc))
+    if match:
+        return match.group(1)
+    # 兜底：至少给出失败步骤标识（如 s2_locate_templates），不为 None。
+    return step_name or "<unknown>"
+
+
 def build_report(mode: str, project_root: Path) -> dict:
     """构造初始报告骨架（overall/fields 占位，steps 待填充）。"""
     return {
@@ -690,12 +713,30 @@ def _dedup_lines_preserve_order(lines: list) -> list:
     return result
 
 
+def _has_substantial_preamble(text: str) -> bool:
+    """首个 ATX 标题之前是否存在实质（非空白）内容行（I-1）。
+
+    parse_sections 会舍弃首个标题之前的所有行；若这些行含实质内容，
+    章节合并将静默丢失项目原文，调用方应走 NC-08 fallback。
+    """
+    for line in text.splitlines():
+        if _HEADING_RE.match(line):
+            return False
+        if line.strip():
+            return True
+    return False
+
+
 def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
     """合并 Markdown（NC-01~08）。
 
     语义：
       * existing is None → 返回 template（NC-01）；
       * existing 不可解析（含不可打印控制字符） → 返回 None（NC-08，函数级终止信号）；
+      * existing 有实质内容但无任何 ATX 标题，或首个标题前有实质前言
+        （parse_sections 会舍弃这些行，章节合并将静默丢失项目原文）
+        → 返回 None（I-1 修复：走 NC-08 fallback，标准结构 + 原内容附加到
+        「原项目补充」，避免数据丢失）；
       * 章节合并：模板章节序为主；项目独有章节按原序追加；同名章节
         = 模板正文 + `\n\n**项目补充**\n` + 项目去重行（按完整行去重、保序）。
         强制规则章节（## 强制规则）走相同同名合并逻辑：模板正文覆盖（NC-04），
@@ -717,6 +758,14 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
     # 模板无章节 → 直接返回模板（无法做章节合并，模板为准）。
     if not tpl_sections:
         return template
+
+    # I-1 修复：existing 无标题但有实质内容，或首个标题前有实质前言 → None，
+    # 由调用方走 NC-08 fallback（原内容附加到「原项目补充」），不得静默丢弃。
+    if not old_sections:
+        if existing.strip():
+            return None
+    elif _has_substantial_preamble(existing):
+        return None
 
     # 以 key 收集项目章节；同名章节（同一 key）的内容全部保留，后续去重。
     # 重要（评审 Important 4）：项目侧多个同名章节不能只保留第一个，
@@ -1295,14 +1344,16 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "conflict_id": conflict_id, "asset": rel, "state": state,
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"L1 规则文件 {rel} 状态为 {state}",
-                    "recommendation": DECISION_REPLACE,
+                    # C-1 修复：推荐保守默认 keep（不覆盖），与 spec「普通模式
+                    # 无响应 MUST NOT 覆盖」、§11.6 default_keep 语义一致。
+                    "recommendation": DECISION_KEEP,
                 })
                 plan["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "kind": "l1",
                     "state": state,
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"L1 规则文件 {rel} 状态为 {state}",
-                    "recommendation": DECISION_REPLACE,
+                    "recommendation": DECISION_KEEP,
                 })
                 _append_backup_need(plan, target)
         else:
@@ -1322,14 +1373,14 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "conflict_id": conflict_id, "asset": rel, "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
-                    "recommendation": DECISION_REPLACE,
+                    "recommendation": DECISION_KEEP,
                 })
                 plan["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "kind": "rules",
                     "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
-                    "recommendation": DECISION_REPLACE,
+                    "recommendation": DECISION_KEEP,
                 })
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
@@ -1362,11 +1413,24 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict": None,
                 "backup_needed": False,
             })
-        else:
-            # insert/drift/upgrade/broken 均视为需要决策的冲突（普通模式）
+        # I-2 修复：insert/upgrade 为「两模式同动作」确定性动作
+        # （merge-semantics L0-05：无标记→直接插入；L0-04：旧版标记成对→备份后
+        # 自动升级），不产 decision 冲突；allowed_decisions 仅用于 drift/broken。
+        elif state in ("insert", "upgrade"):
             s4["assets"].append({
                 "path": entry_name,
-                "action": "replace" if state in ("drift", "upgrade") else "create",
+                "action": state,  # "insert" 直接插入 / "upgrade" 屏障后备份升级
+                "conflict": state,
+                # L0-05 insert 不改原内容无需备份；L0-04 upgrade 纳入备份屏障。
+                "backup_needed": state == "upgrade",
+            })
+            if state == "upgrade":
+                _append_backup_need(plan, entry_path)
+        else:
+            # drift/broken → 需要决策的冲突（普通模式；C-1 修复：推荐保守 keep）。
+            s4["assets"].append({
+                "path": entry_name,
+                "action": "replace",
                 "conflict": state,
                 "backup_needed": True,
             })
@@ -1374,9 +1438,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict_id": conflict_id,
                 "asset": entry_name,
                 "state": state,
-                "allowed_decisions": ["replace", "keep"],
+                "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                 "question": f"入口文件 {entry_name} 的 L0 受管区块状态为 {state}",
-                "recommendation": "replace",
+                "recommendation": DECISION_KEEP,
             })
             _append_backup_need(plan, entry_path)
     s4["status"] = "ok"
@@ -1477,7 +1541,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "openspec/config.yaml 含 rules.apply，是否移除？"
                     "（remove_apply=备份后移除，keep=保留并报告）"
                 )
-                recommendation = DECISION_REMOVE_APPLY
+                # C-1 修复：推荐保守默认 keep（不移除），与 OS-04「无响应则保留
+                # 并报告」一致。
+                recommendation = DECISION_KEEP
             else:
                 # 结构/解析冲突：无决策可修正，普通模式保留+报告，no-interrupt 终止
                 allowed = [DECISION_KEEP]
@@ -2057,10 +2123,21 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
             continue
 
-        # 入口存在且状态为 insert/drift/upgrade/broken。
+        # 入口存在且状态为 insert/upgrade/drift/broken。
         conflict_id = f"s4:{entry_name}"
-        decision = decisions_map.get(conflict_id)
         existing = _safe_read(entry_path) or ""
+        # I-2 修复：insert/upgrade 为确定性动作（merge-semantics L0-05/L0-04
+        # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
+        # upgrade 在全局备份屏障通过后升级为当前 v1。
+        if action in ("insert", "upgrade"):
+            composed = _compose_entry(existing, kernel_source, state=state or action,
+                                      project_type=project_type, tech_stack=tech_stack,
+                                      entry_name=entry_name)
+            atomic_write(entry_path, composed)
+            actions_log.append({"path": entry_name, "action": "updated", "branch": action})
+            continue
+        # drift/broken → 按模式/决策处理。
+        decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
             composed = _compose_entry(existing, kernel_source, state=state or "insert",
                                       project_type=project_type, tech_stack=tech_stack,
@@ -2514,7 +2591,7 @@ def _s7_publish_or_abort(
     """S7 发布：候选 precheck → atomic_write；任一失败则终止、原文件不变。
 
     ensure_parent 已由 atomic_write 内部处理（此处不重复）。precheck 发现结构
-    问题或 atomic_write 失败均 raise PublishError，由 run_apply 捕获标记 crashed，
+    问题或 atomic_write 失败均 raise PublishError，由 run_apply 捕获标记 fail，
     原文件保持不变（atomic_write 失败时临时文件已清理，原文件未替换）。
     """
     fields = _s7_precheck_candidate(candidate)
@@ -2654,7 +2731,8 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
                     "conflict_id": "s7:openspec/config.yaml",
                     "asset": rel, "kind": "rules.apply",
                     "question": "openspec/config.yaml 含 rules.apply",
-                    "recommendation": DECISION_REMOVE_APPLY,
+                    # C-1 修复：推荐保守默认 keep（不移除）。
+                    "recommendation": DECISION_KEEP,
                 }])
             continue
 
@@ -2782,6 +2860,8 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
     失败降级（简报 Step 2；S8 唯一例外：仅 install/init/status 子命令失败可 degraded）：
       * install 失败 → 仍补齐双配置 + status=degraded + note（不再 init/status）；
       * init/status 失败 → degraded + note；
+      * codegraph 二进制缺失/不可执行（FileNotFoundError/OSError）→ 按 install
+        失败降级路径处理（CS-07）：补齐双配置 + degraded + note，不 crashed（C-2）；
       * 配置补写/备份/原子写失败 → 抛错终止（PublishError）。
     预算口径：S8 全程 elapsed_ms 单独计时；budget_seconds_excluding_codegraph
     在 S7 完成点计算（S8 不计入 budget）。
@@ -2866,6 +2946,18 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
         _record_step_actions(report, STEP_CODEGRAPH, actions_log)
         _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
         raise
+    except (FileNotFoundError, OSError) as exc:
+        # C-2 修复：codegraph 二进制缺失/不可执行（FileNotFoundError/OSError）→
+        # 按 install 失败降级路径处理（CS-07）：仍补齐双配置 + degraded + note，
+        # 不得整体 crashed。配置补写失败仍为 PublishError（上方分支）向外传播。
+        degraded = True
+        notes.append(f"codegraph 二进制不可用（{type(exc).__name__}: {exc}）")
+        actions_log.append({
+            "action": "degraded", "branch": "binary-missing",
+            "detail": f"codegraph 不可用：{exc}",
+        })
+        # 与 install 失败降级路径一致：仍补齐双 MCP 配置。
+        _s8_ensure_mcp_configs(root, report, actions_log)
 
     # 记录动作与独立计时
     _record_step_actions(report, STEP_CODEGRAPH, actions_log)
@@ -2908,6 +3000,15 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
     """dry-run：compute_plan + 写报告，零写入。"""
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
+    # S2 模板定位失败（§11.5：所有候选不完整 → 终止并报告，非零退出）
+    if plan.get("failure"):
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": plan["failure"].get("step") or STEP_TEMPLATES,
+            "reason": plan["failure"].get("reason", ""),
+            "recovery": plan["failure"].get("recovery", ""),
+        }
+        return 1
     report["overall"] = "ok"
     return 0
 
@@ -2923,11 +3024,22 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
          任一失败 → 终止零发布（已建备份列入 report.backups）；
       4. 屏障通过后按 S1-S8 执行发布；
       5. S7 完成时计算 budget_seconds_excluding_codegraph = time.monotonic() - T0；
-      6. 异常兜底 → overall=crashed + 写报告 + 退出 1。
+      6. 异常兜底 → overall=fail + 写报告 + 退出 1。
     """
     # 1. compute_plan
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
+
+    # 1b. S2 模板定位失败 → fail closed（§11.5：非零退出、目标项目零写入；
+    # decisions/备份屏障/发布均不得继续）。
+    if plan.get("failure"):
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": plan["failure"].get("step") or STEP_TEMPLATES,
+            "reason": plan["failure"].get("reason", ""),
+            "recovery": plan["failure"].get("recovery", ""),
+        }
+        return 1
 
     # 2. decisions 校验（仅普通模式且 plan 有冲突）
     plan_conflicts = plan.get("conflicts", []) or []
@@ -3005,9 +3117,11 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
         report["overall"] = "degraded"
         return 0
     except Exception as exc:  # noqa: BLE001 — 异常兜底（简报 Step 2.6）
-        report["overall"] = "crashed"
+        # I-4 修复：overall 收敛到 ok/degraded/fail 三值（crashed→fail）；
+        # failure.file 填实际失败文件路径（从异常上下文提取）。
+        report["overall"] = "fail"
         report["failure"] = {
-            "file": None,
+            "file": _extract_failure_file(exc, locals().get("step_name")),
             "reason": f"执行异常：{exc}",
             "recovery": "检查日志后重试",
         }
@@ -3162,9 +3276,10 @@ def main(argv: Optional[list] = None) -> int:
         else:
             exit_code = run_apply(root, intents, report)
     except Exception as exc:  # noqa: BLE001 — 顶层异常兜底
-        report["overall"] = "crashed"
+        # I-4 修复：overall 收敛三值（crashed→fail）；failure.file 必填。
+        report["overall"] = "fail"
         report["failure"] = {
-            "file": None,
+            "file": _extract_failure_file(exc, None),
             "reason": f"未捕获异常：{exc}",
             "recovery": "检查日志后重试",
         }
