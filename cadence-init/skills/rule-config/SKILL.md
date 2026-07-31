@@ -8,7 +8,9 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 目录下的规则文件，在 CLAUDE.md 中添加摘要引用，并参考 CLAUDE.md 同步生成 AGENTS.md。默认采用无人工交互策略，按自动检测结果和保守默认值继续执行。
+配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 规则文件、升级 CLAUDE.md 与 AGENTS.md 的 L0 受管区块、创建 `cadence/` 产物目录、迁移历史产物、检测并写入项目技术栈、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright。
+
+全部探测、合并与写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。Agent 只负责定位脚本、按本文件编排调用、解读报告，并在普通模式就冲突逐条提问、回收决策；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
 
 ## 参数模式
 
@@ -20,103 +22,56 @@ disable-model-invocation: true
 /rule-config --no-interrupt
 ```
 
-- 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
-- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的不覆盖、冲突跳过、人工交互和历史产物迁移逻辑。
-- 两种模式互斥；不得把 `no-interrupt` 合并或禁止迁移规则应用到普通模式。
+- **等价规范化（强制）**：命令参数中的裸 token `no-interrupt` 与 `--no-interrupt` 完全等价，均进入 no-interrupt 模式；Agent 必须把裸 token `no-interrupt` 规范化为脚本的 `--no-interrupt` 标志后再调用脚本，不得把裸 token 原样透传给脚本。
+- 未携带上述 token：进入普通模式。
+- 两种模式互斥；no-interrupt 的权威合并与禁迁移规则不得应用于普通模式。
 
-### no-interrupt 通用规则
+### 意图参数（两模式均可携带）
 
-- 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
-- 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
-- 冲突必须按本节的确定性规则合并，不得跳过冲突文件后继续。
-- 无法完成安全合并时必须先保留备份；备份或后续写入失败时立即报错终止。
-- 失败报告必须包含失败文件、失败原因、已完成项目和恢复建议。
+用户明确表达以下意图时，Agent 将其透传为脚本标志：
 
-### no-interrupt 权威合并规则
+| 用户意图 | 脚本标志 | 语义 |
+|----------|----------|------|
+| 指定项目类型 | `--project-type coding\|non-coding` | 普通模式下仅能把检测为 non-coding 的项目提升为 coding；no-interrupt 模式完全忽略（以检测结果为准） |
+| 忽略产物目录 | `--ignore-cadence` | 将 `cadence/` 追加到 `.gitignore`（默认不追加） |
+| 启用 Playwright | `--enable-playwright` | 创建 `.claude/rules/playwright.md` 并补摘要（默认跳过） |
+| 强制启用 CodeGraph | `--enable-codegraph` | 非 Coding 项目也执行 CodeGraph 安装与初始化（默认仅 Coding 项目） |
 
-`rule-config` 的模板结构、必需章节、强制约束、框架规则路径和摘要引用是权威内容；当前项目内容作为补充保留。
+## 调用方式
 
-| 场景 | 合并动作 |
-|------|----------|
-| 目标文件不存在 | 创建标准文件 |
-| 模板与项目存在不同章节 | 保留模板章节，并按原顺序保留项目独有章节 |
-| 模板与项目存在同名章节 | 模板规范在前，项目独有内容去重后追加到该章节的“项目补充” |
-| CLAUDE.md / AGENTS.md 强制规则冲突 | 强制规则摘要和引用路径以 `rule-config` 为准，项目技术栈、命令、业务规则和其他章节保留 |
-| `openspec/config.yaml` 已存在 | 保留已有 `schema`、项目 context 和 proposal、design、specs、tasks 的额外规则，仅追加模板缺失内容；发现 `rules.apply` 时先备份再移除 |
-| OpenSpec YAML 无法可靠解析或目标字段结构/类型不兼容 | 先备份；无法证明可无损规范化时终止，保持原文件不变并报告冲突；备份成功不代表允许破坏性重写 |
-| 内容完全重复 | 只保留一份 |
-| Markdown 无法可靠解析 | 先备份，再写标准结构，并把原内容附加到“原项目补充” |
+**第一步——定位脚本（与 pre-check 同款约定）**：脚本是本 rule-config skill 的关联脚本，位于 `<skill 安装根>/cadence-init/skills/rule-config/scripts/rule-config.py`。Agent 根据自身安装环境定位 skill 目录并拼出完整绝对路径，记为 `<RULE_CONFIG_PY>`。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
 
-合并时以“标题级别 + 去除开头编号后的标题文本”识别同名章节。备份文件命名为 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`，禁止删除原始内容。
+**第二步——确定报告与决策路径**：报告 `<REPORT>` 与决策文件 `<DECISIONS_JSON>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
 
-### no-interrupt 历史目录规则
+**第三步——调用脚本**：
 
-- 只检测 `.claude/prds`、`.claude/analysis`、`.claude/analysis-docs`、`.claude/docs`、`.claude/designs`、`.claude/designs-reviews`、`.claude/plans`、`.claude/readmes`、`.claude/modaos`、`.claude/models`、`.claude/architecture`、`.claude/notes`、`.claude/logs`、`.claude/reports`、`.claude/project-rules`、`.claude/cache`。
-- 检测到历史目录时仅写入执行报告，不执行 `mv`、目录内容合并、目录删除或空目录清理。
-- 本规则只覆盖 `no-interrupt` 模式；普通模式继续执行本 Skill 原有的历史产物迁移步骤。
+```bash
+# 阶段一：dry-run（零写入，只产出计划、冲突清单与备份需求）
+python3 "<RULE_CONFIG_PY>" dry-run --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--no-interrupt] [意图参数]
 
-## 无交互默认策略
+# 阶段二：apply（执行发布；普通模式有计划内冲突时必须携带 --decisions）
+python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--decisions "<DECISIONS_JSON>"] [--no-interrupt] [意图参数]
+```
 
-> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
+**PyYAML 缺失（退出码 77）**：脚本依赖 PyYAML，缺失时以退出码 77 退出并照常写出报告。此时改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 以相同参数重跑（报告路径可复用或重新 `mktemp`）。
 
-在没有用户额外输入时，按以下默认值执行：
+## 两阶段流程
 
-| 项 | 默认行为 |
-|----|----------|
-| 项目类型 | 检测到常见源码或主配置文件时判定为 Coding 项目；否则判定为非 Coding 项目 |
-| 技术栈 | 自动检测并写入；未检测到的命令写为“未检测到” |
-| 历史产物迁移 | 无冲突时自动迁移；目标目录非空时跳过并报告 |
-| `cadence/` gitignore | 默认不加入 `.gitignore` |
-| 代码阅读规则 | 所有项目创建；非 Coding 项目只跳过 CodeGraph 初始化 |
-| CodeGraph 初始化 | Coding 项目默认启用，非 Coding 项目默认跳过 |
-| Playwright 规则 | 默认跳过，仅用户明确要求时启用 |
-| 已存在文件 | 默认不覆盖，只补齐缺失文件、缺失摘要和缺失配置块 |
+### 普通模式
 
-## 人工交互策略
+1. **dry-run**：脚本只读探测目标项目，报告给出计划动作、冲突清单（`conflicts`，含 `conflict_id`、`question`、`recommendation`、`allowed_decisions`）与备份需求，对项目零写入。
+2. **读 plan**：Agent 读取报告中的计划与冲突清单。
+3. **逐条提问**：对每个冲突用 `AskUserQuestion` 逐条提问；每次只问一个冲突，问题必须附带脚本给出的推荐默认项（`recommendation`）。
+4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b）、report-only 的规则文件缺 CodeGraph 段落提示，详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
+5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）。计划无冲突时不要求决策文件。
 
-> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
+### no-interrupt 模式
 
-默认不向用户提问。只有出现以下情况才进入人工交互：
+单次 apply：直接执行 `apply --no-interrupt` 一次完成（可选先跑 dry-run 摸底）。脚本不读取也不要求决策文件，全部冲突按 `references/merge-semantics.md` 的权威规则内部决策并记入报告。此模式禁止 Agent 调用 `AskUserQuestion`、`request_user_input` 或等价提问工具，禁止等待用户输入。
 
-| 触发条件 | 处理方式 |
-|----------|----------|
-| 即将覆盖已有非空文件 | 先询问；无响应则不覆盖，跳过并报告 |
-| 检测结果互相矛盾且会影响规则选择 | 先询问；无响应则按非 Coding 项目处理 |
-| 用户明确要求启用默认跳过项（如 Playwright）但缺少必要信息 | 先询问最少必要信息；无响应则跳过该可选项 |
-| 迁移旧目录时目标目录非空 | 不询问、不合并，直接跳过并报告冲突 |
-| 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只写占位符并提示用户自行替换 |
+## 有界扫描说明
 
-提问规则：
-- 每次只问一个问题。
-- 问题必须给出推荐默认选项。
-- 如果运行环境支持自动超时，超时后采用推荐默认值。
-- 如果无法等待用户输入，采用保守默认：不覆盖、不删除、不提交密钥、不启用高成本可选项。
-
-## 检查清单
-
-你必须为以下每个项目创建任务并按顺序完成：
-
-1. **创建 rules 目录和规则文件** — 检测项目类型，定位模板目录，创建常规规则和 `openspec-superpowers-workflow.md`
-2. **添加 CLAUDE.md 与 AGENTS.md 规则引用** — 从 `agent-routing-kernel.md` 向 CLAUDE.md、AGENTS.md 创建或升级版本化 L0 受管区块，并保留入口文件的其他内容（规则 2 根据步骤 1a 检测结果选择对应文本；Coding 项目默认角色为执行者；Playwright 摘要默认不添加）
-3. **包管理器规则** — 前端使用 pnpm，Python 使用 uv
-4. **技术栈检测** — 自动检测语言、测试/检查/格式化命令，按检测结果继续
-5. **目录结构创建** — 创建 `.claude/rules` 与 `cadence/` 产物目录
-6. **历史产物迁移** — 检测旧 `.claude/` 产物目录，无冲突时自动迁移到 `cadence/`
-7. **cadence gitignore 决策** — 默认不将 `cadence/` 加入 `.gitignore`
-8. **代码阅读规则配置** — 所有项目创建 `code-reading.md`，Coding 项目默认配置并初始化 CodeGraph，非 Coding 项目保留规则但跳过 CodeGraph 初始化
-9. **CodeGraph 项目初始化** — Coding 项目默认项目级安装 CodeGraph 到 Claude Code/Codex，核验 `.mcp.json` 与 `.codex/config.toml` 均包含 CodeGraph MCP，并初始化 `.codegraph/`
-10. **Playwright Skills 规则配置** — 默认跳过，仅用户明确要求时配置 Playwright CLI 使用规则
-11. **配置 OpenSpec 契约冗余** — 定位 `references/openspec/config.yaml`，创建或保守合并 `openspec/config.yaml` 的 context 与 proposal、design、specs、tasks 规则，不改变已有 schema 和项目自定义规则
-
-**下一步**：将配置结果传递给 @mcp-configuration skill 进行 MCP 配置
-
-## 处理流程
-
-### 1. 创建 rules 目录和规则文件
-
-**步骤 1a：项目类型检测**
-
-使用一次有界的首命中扫描判定项目类型。该命令**仅用于项目类型判定**：
+项目类型检测使用一次有界首命中扫描。以下命令**仅用于项目类型判定**，其剪枝目录清单与脚本 `PRUNE_DIRS` 常量逐项一致，不得增删：
 
 ```bash
 find . \
@@ -128,631 +83,38 @@ find . \
     -o -name '*.cpp' -o -name '*.cs' \) -print -quit \)
 ```
 
-命令有输出即判定检测到业务源码；无输出时才继续检查已有的 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置。
+扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**；两者全无 → **非 Coding 项目**。项目类型按两模式唯⼀规则确定最终 `project_type`：no-interrupt 模式以检测结果为准（`--project-type` 完全忽略）；普通模式下 `--project-type coding` 仅能把检测为 non-coding 的项目提升为 coding（检测为 coding 时无论 CLI 取何值均为 coding）。
 
-检测结果需记录到执行报告中。无人工交互模式下不等待用户确认：
-- 如果有界扫描有输出，或存在 `package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod`、`pom.xml`、`build.gradle` 等主工程配置 → **Coding 项目**
-- 如果没有检测到常见源代码文件和主工程配置 → **非 Coding 项目**
-- 用户在命令中明确指定项目类型时，以用户指定为准
+## 报告解读
 
-**步骤 1b：定位模板目录**
-
-按以下优先级顺序查找模板目录：
-
-1. **在线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
-   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
-
-2. **离线安装路径**：
-   - 检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md` 和 `openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`
-   - 如果同时存在，取 `references/rules/` 作为**模板根路径**，取 `references/openspec/config.yaml` 作为 **OpenSpec 配置模板路径**
-
-3. **回退搜索**（开发环境）：
-   - 使用 Glob 工具搜索标识文件：
-   ```
-   **/cadence-init/skills/rule-config/references/rules/language.md
-   ```
-   从返回结果中提取目录路径（去掉末尾 `language.md`），作为**模板根路径**。
-   验证每个路径下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md` 和 `document-storage.md`，并验证同一 `references/` 下的 `openspec/config.yaml` 存在。如果匹配多个，
-   从通过验证的结果中取修改时间最新的。
-
-> **重要**：模板根路径与 OpenSpec 配置模板路径必须成对定位并在后续步骤中复用（包括步骤 8 的 code-reading.md、步骤 10 的 playwright.md 和步骤 11 的 OpenSpec 配置）；任一候选缺少 `references/openspec/config.yaml` 时不得选用该候选，所有候选均不完整时终止并报告缺失模板。
-
-**步骤 1c：创建目标目录**
+报告为 JSON。`overall` 取值：`ok`（全部成功）/ `degraded`（可降级项失败但已兜底，如 CodeGraph install/init/status 失败）/ `fail`（失败关闭）。提取示例：
 
 ```bash
-mkdir -p .claude/rules
+# 总体结果与项目类型
+python3 -c "import json;d=json.load(open('<REPORT>'));print(d['overall'], d['project_type'])"
+# 冲突清单（普通模式提问与决策文件依据）
+python3 -c "import json;d=json.load(open('<REPORT>'));print(json.dumps(d.get('conflicts',[]),ensure_ascii=False,indent=2))"
+# 各步骤状态
+python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],s['status']) for s in d['steps']])"
+# 失败详情与恢复建议
+python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 ```
 
-**步骤 1d：从模板根路径复制规则文件**
+## 失败关闭
 
-将以下文件从 [步骤 1b 定位的模板根路径] 读取内容，写入项目的 `.claude/rules/` 目录：
+| 退出码 | 含义 | 恢复建议 |
+|--------|------|----------|
+| 0 | 成功（含 `degraded`，降级详情见报告） | 查看报告确认降级项，必要时按报告提示人工补齐 |
+| 1 | 执行失败（决策缺失或不符、备份屏障失败、候选验证失败、发布失败等） | 读报告 `failure.file` / `failure.reason` / `failure.recovery`，修复后以相同参数重跑 |
+| 2 | 用法错误（参数非法，或 `--report` / `--decisions` 路径位于项目根内） | 按本文件"调用方式"修正参数与路径后重跑 |
+| 77 | 缺少 PyYAML 依赖 | 改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 重跑，或先安装 PyYAML |
 
-| 源文件名 | 目标文件 | 条件 |
-|----------|---------|------|
-| `README.md` | `.claude/rules/README.md` | 必选 |
-| `language.md` | `.claude/rules/language.md` | 必选 |
-| `openspec-superpowers-workflow.md` | `.claude/rules/openspec-superpowers-workflow.md` | 必选、版本化框架规则 |
-| `document-storage.md` | `.claude/rules/document-storage.md` | 必选 |
-| `markdown-format.md` | `.claude/rules/markdown-format.md` | 必选 |
-| `mcp-servers.md` | `.claude/rules/mcp-servers.md` | 必选 |
-| `code-reading.md` | `.claude/rules/code-reading.md` | 必选；所有项目创建 |
-| `code-usage-coding.md` | `.claude/rules/code-usage.md` | Coding 项目 |
-| `code-usage-noncoding.md` | `.claude/rules/code-usage.md` | 非 Coding 项目 |
+任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复备份形如 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。
 
-除 `openspec-superpowers-workflow.md` 外，普通规则继续遵循已有文件不覆盖策略。只有带 `cadence-framework-rule:openspec-superpowers-workflow` 标记的 L1 按“OpenSpec 与 Superpowers 协作规则增量处理”执行版本升级。
+## 下一步
 
-### 2. 添加 CLAUDE.md 与 AGENTS.md 规则引用
+成功报告的 `hints.next` 固定为 `mcp-configuration`：rule-config 完成后，将配置结果交接给 `mcp-configuration` skill 进行 MCP 配置。
 
-#### L0 受管区块处理
+## 合并语义
 
-1. 读取规则模板根下 `agent-routing-kernel.md` 的完整内容。
-2. 对 CLAUDE.md 与 AGENTS.md 执行统一预检：在写入任一入口前识别两个入口各自的标记、版本、完整内容、普通模式交互结果、目标动作和全部备份需求。
-3. 在写入任一入口前创建本次所需的全部 L0 备份；仅当统一预检和全部必要备份成功后，才允许按各入口分支写入。
-4. 任一必要备份失败时立即终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入，两个入口的受管区块和区块外内容保持原样。
-5. 目标入口不存在时，创建基础入口并把 L0 放在文件说明之后、`## 强制规则` 之前。
-6. 当前 v1 开始和结束标记成对存在，且完整受管区块与规范源当前 v1 完全一致时跳过。
-7. 当前 v1 标记成对存在但完整受管区块与规范源当前 v1 不一致时，视为无法识别的本地修改；普通模式询问，无响应则保留并报告；确认替换时将该入口纳入本次备份屏障；`no-interrupt` 模式将该入口纳入本次备份屏障，屏障通过后替换为规范源当前 v1 并报告。
-8. 两个标记都不存在时，在首个 `## 强制规则` 前插入 L0；没有该标题时，在文件说明后插入。
-9. 存在成对的受支持旧版本标记时，将该入口纳入本次备份屏障，屏障通过后升级为规范源当前 v1 并报告。
-10. 只存在单侧标记或标记顺序错误时，普通模式询问后处理，无响应则保留并报告；确认处理时将该入口纳入本次备份屏障；`no-interrupt` 模式将该入口纳入本次备份屏障，屏障通过后写入单一 L0 区块并报告。
-11. 区块外项目技术栈、命令、业务规则和用户内容必须原样保留。
-12. CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义。
-
-**在 CLAUDE.md 中添加以下结构**：
-
-````markdown
-# CLAUDE.md
-
-本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **Coding 项目**：`- **遵循 TDD 和代码规范** → 详见 .claude/rules/code-usage.md`
-- **非 Coding 项目**：`- **非必要不编写代码** → 详见 .claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 使用规则
-- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则（强制规则）
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
-
-## 项目信息
-# currentDate
-Today's date is {当前日期}。
-````
-
-**注意**：
-- 规则 5（MCP Server）由 `mcp-configuration` command 添加，此处先写入引用行
-- 规则 6（项目个性化规则）由 `project-rules-examples` command 添加详细内容
-- 规则 7（代码阅读）由步骤 8 添加（所有项目启用；非 Coding 项目仅跳过 CodeGraph 初始化）
-- CodeGraph 项目初始化由步骤 9 执行（Coding 项目默认启用）
-- Playwright 规则由步骤 10 添加（默认跳过，用户明确要求时启用）
-- 规则 2（代码使用规则）根据步骤 1a 的项目类型检测结果选择对应摘要行
-
-**参考 CLAUDE.md 同步添加 AGENTS.md**：
-
-````markdown
-# AGENTS.md
-
-本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
-
-## 默认角色
-
-- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按指令完成实现、验证与结果汇报。
-- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **Coding 项目**：`- **遵循 TDD 和代码规范** → 详见 .claude/rules/code-usage.md`
-- **非 Coding 项目**：`- **非必要不编写代码** → 详见 .claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 与工具使用规则
-- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `.claude/rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
-
-## 与 CLAUDE.md 的关系
-
-- 用户在当前任务中的明确指令优先级最高。
-- `CLAUDE.md` 面向 Claude Code。
-- `AGENTS.md` 面向 Codex 及其他通用 AI Agents。
-- 两者如有表述差异，应优先遵循本仓库中的实际规则文件，即 `.claude/rules/` 与 `cadence/project-rules/`。
-
-## Agent 执行要求
-
-- 开始任务前，应先读取 `CLAUDE.md`，并按需查看 `.claude/rules/` 与 `cadence/project-rules/` 中的相关规则文件。
-- 执行 issue 时，应先读取 issue 与相关上下文，再修改文件。
-- 完成任务后，必须汇报测试或验证结果。
-````
-
-### 3. 包管理器规则
-
-**检测并添加到 CLAUDE.md**：
-
-```markdown
-## 项目配置
-
-> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。
-
-### 包管理器规则
-- **前端项目**：必须使用 `pnpm` 作为包管理器
-- **Python 项目**：必须使用 `uv` 作为包管理器
-- **禁止使用**：npm（前端）、pip（Python）、yarn（前端）
-```
-
-**检测命令**：
-
-```bash
-# 检测前端项目
-ls -la | grep "package.json"
-
-# 检测 Python 项目
-ls -la | grep -E "requirements.txt|pyproject.toml"
-```
-
-### 4. 技术栈检测
-
-**检测内容**：
-
-| 类型 | 检测方法 |
-|------|----------|
-| 语言 | 读取 package.json、requirements.txt 等获取主要语言 |
-| 测试命令 | 从配置文件提取 test 脚本 |
-| 检查命令 | 从配置文件提取 lint 脚本 |
-| 格式化命令 | 从配置文件提取 format 脚本 |
-| 覆盖率阈值 | 默认为 80% |
-
-**检测命令**：
-
-```bash
-# 提取 package.json 中的脚本
-cat package.json | grep -A 10 '"scripts"'
-
-# 提取 requirements.txt
-cat requirements.txt
-
-# 检测 Python 测试框架
-grep -E "pytest|unittest" requirements.txt
-```
-
-**无交互行为**：
-- 检测到技术栈后，直接写入 CLAUDE.md / AGENTS.md 的项目配置章节。
-- 未检测到的命令写为“未检测到”，不阻塞初始化。
-- 如果用户后续发现检测不准确，可手动修改 CLAUDE.md / AGENTS.md 中的项目配置章节。
-
-**添加到 CLAUDE.md**：
-
-```markdown
-### 项目技术栈
-- **语言**：[语言列表]
-- **包管理器**：[pnpm/uv]
-- **测试命令**：[命令]
-- **检查命令**：[命令]
-- **格式化命令**：[命令]
-- **覆盖率阈值**：80%
-```
-
-### 5. 目录结构创建
-
-**创建以下目录结构**：
-
-```bash
-mkdir -p .claude/rules
-mkdir -p cadence/{prds,analysis,analysis-docs,docs,designs,designs-reviews,plans,readmes,modaos,models,architecture,notes,logs,reports,project-rules/examples,cache}
-```
-
-**目录用途说明**：
-
-| 目录 | 用途 | 说明 |
-|------|------|------|
-| `.claude/rules/` | 框架规则 | 内置规则文件（维护者管理） |
-| `cadence/prds/` | 概要需求 | @brainstorming skill 生成的早期需求方案 |
-| `cadence/analysis/` | 旧版分析报告 | 兼容旧版 Cadence analysis 输出目录 |
-| `cadence/analysis-docs/` | 分析报告 | @analyze skill 生成的代码分析、调研报告 |
-| `cadence/docs/` | 详细需求 | @requirement skill 生成的详细需求文档 |
-| `cadence/designs/` | 设计文档 | @design skill 生成的技术方案、架构设计 |
-| `cadence/designs-reviews/` | 设计评审 | @design-review skill 的评审文档 |
-| `cadence/plans/` | 计划文档 | @plan skill 生成的实施计划 |
-| `cadence/readmes/` | README 文档 | 开发相关的技术文档（API 文档、开发指南等） |
-| `cadence/modaos/` | 界面原型 | 墨刀/Figma 原型截图、设计稿 |
-| `cadence/models/` | 数据模型 | 数据库表模型、ER 图、schema 定义 |
-| `cadence/architecture/` | 架构文档 | 系统架构分析、技术选型 |
-| `cadence/notes/` | 开发笔记 | 临时记录、开发心得、待办事项列表 |
-| `cadence/logs/` | 开发日志 | 问题追踪、Bug 记录、开发进度 |
-| `cadence/reports/` | 进度报告 | @report skill 生成的开发进度报告 |
-| `cadence/project-rules/` | 个性化规则 | 用户定制的模板和规范 |
-| `cadence/cache/` | 分析缓存 | @git-review 等流程生成的 Cadence 缓存 |
-
-### 6. 历史产物迁移（仅普通模式）
-
-> 携带 `no-interrupt` 或 `--no-interrupt` 时不得执行本节，只执行“no-interrupt 历史目录规则”。
-
-**检测旧目录**：
-
-检查以下旧目录是否存在：
-
-```bash
-for dir in prds analysis analysis-docs docs designs designs-reviews plans readmes modaos models architecture notes logs reports project-rules cache; do
-  test -e ".claude/$dir" && echo ".claude/$dir -> cadence/$dir"
-done
-```
-
-**无交互行为**：
-- 如果没有检测到旧目录，报告无需迁移并继续。
-- 如果检测到旧目录，无冲突时自动迁移到 `cadence/`。
-- 如果目标 `cadence/<dir>` 已存在且非空，跳过该目录并报告冲突，不覆盖、不合并。
-
-**迁移规则**：
-
-| 场景 | 处理方式 |
-|------|----------|
-| `cadence/<dir>` 不存在 | 将 `.claude/<dir>` 移动到 `cadence/<dir>` |
-| `cadence/<dir>` 已存在且为空 | 将 `.claude/<dir>` 的内容移动到 `cadence/<dir>` |
-| `cadence/<dir>` 已存在且非空 | 跳过该目录并报告冲突，要求用户手动处理 |
-
-**禁止迁移**：
-- `.claude/rules`
-- `.claude/commands`
-- `.claude/skills`
-
-**迁移命令示例**：
-
-```bash
-mkdir -p cadence
-for dir in prds analysis analysis-docs docs designs designs-reviews plans readmes modaos models architecture notes logs reports project-rules cache; do
-  if [ -e ".claude/$dir" ]; then
-    if [ ! -e "cadence/$dir" ]; then
-      mv ".claude/$dir" "cadence/$dir"
-    elif [ -d "cadence/$dir" ] && [ -z "$(find "cadence/$dir" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
-      find ".claude/$dir" -mindepth 1 -maxdepth 1 -exec mv {} "cadence/$dir/" \;
-      rmdir ".claude/$dir" 2>/dev/null || true
-    else
-      echo "跳过冲突目录: .claude/$dir -> cadence/$dir"
-    fi
-  fi
-done
-```
-
-**完成报告**：
-
-迁移完成后，向用户报告已迁移目录、跳过目录和需要手动处理的冲突目录。
-
-### 7. cadence gitignore 决策
-
-**目的**：确定是否将 `cadence/` 作为本地工作目录忽略。
-
-**无交互默认**：
-- 默认不将 `cadence/` 加入 `.gitignore`。
-- 默认不忽略的原因：PRD、设计、计划、用户项目规则等产物通常需要团队协作和版本管理。
-- 仅用户明确要求忽略 `cadence/` 时才追加 `.gitignore`。
-
-**如果用户明确要求忽略**：
-
-检查 `.gitignore` 是否已包含 `cadence/`：
-
-```bash
-grep -qxF 'cadence/' .gitignore 2>/dev/null || printf '\n# Cadence 产物目录\ncadence/\n' >> .gitignore
-```
-
-**默认不忽略时**：
-
-不修改 `.gitignore`。
-
-### 8. 代码阅读规则配置
-
-**创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `code-reading.md` 读取内容，写入 `.claude/rules/code-reading.md`
-
-**在 CLAUDE.md 和 AGENTS.md 中添加**：
-
-```markdown
-### 8. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 `ast-grep outline`** → 详见 `.claude/rules/code-reading.md`
-```
-
-**无交互行为**：
-- 对所有项目：创建 `.claude/rules/code-reading.md` 并补齐 CLAUDE.md / AGENTS.md 摘要，避免 L0 产生悬空引用。
-- 对非 Coding 项目：规则仍存在；仅步骤 9 的 CodeGraph 安装与初始化默认跳过。
-- 已存在规则文件时不覆盖；缺少摘要时只追加摘要。
-
-### 9. CodeGraph 项目初始化
-
-**检测条件**：
-- 项目为 **Coding 项目**（基于步骤 1a 检测结果）
-- Coding 项目默认需要大范围代码检索、调用链分析、架构理解或影响面分析
-- 对 Coding 项目默认启用，非 Coding 项目默认跳过
-
-**前置条件**：
-- `/pre-check` 已完成 `codegraph` 安装检查
-- `codegraph version` 可输出版本号
-
-**无交互行为**：
-- 对 Coding 项目：默认启用 CodeGraph 项目初始化。
-- 对非 Coding 项目：默认跳过，仅在报告中记录“非 Coding 项目跳过 CodeGraph 初始化”。
-- 如果用户明确要求启用，即使未检测到源代码，也允许继续执行。
-
-**项目级安装命令**：
-
-```bash
-codegraph install --target=claude,codex --location=local --yes
-```
-
-**安装后强制核验**：
-
-执行 `codegraph install --target=claude,codex --location=local --yes` 后，不能只根据命令成功判断完成，必须分别检查：
-
-1. `.mcp.json` 的 `mcpServers` 中是否包含 `codegraph`
-2. `.codex/config.toml` 中是否包含 `[mcp_servers.codegraph]`
-
-如果 `.mcp.json` 已包含 CodeGraph MCP，但 `.codex/config.toml` 缺少 CodeGraph MCP，说明 CodeGraph 未通过自身安装流程完成 Codex 本地配置。此时必须参考 `.mcp.json` 中的 `codegraph` 配置，手动补齐 `.codex/config.toml`：
-
-````toml
-[mcp_servers.codegraph]
-command = "codegraph"
-args = ["serve", "--mcp"]
-````
-
-如果 `.mcp.json` 也缺少 CodeGraph MCP，则按 `mcp-configuration.md` 的 CodeGraph MCP 兜底配置先补齐 `.mcp.json`，再同步补齐 `.codex/config.toml`。
-
-**初始化命令**：
-
-```bash
-codegraph init
-```
-
-**验证命令**：
-
-```bash
-test -d .codegraph && codegraph status
-```
-
-**配置范围**：
-- `--target=claude,codex`：只支持 Claude Code 和 Codex，不支持 pi；pi 无原生 MCP，只要 `.mcp.json` 包含 codegraph server，pi 即可经 pi-mcp-adapter 直接使用，无需额外动作。
-- `--location=local`：只写入当前项目配置，不写入全局 Agent 配置。
-- `.codegraph/`：本地代码图索引目录，应加入 `.gitignore`。
-- `codegraph.json`：团队共享配置文件，不应加入 `.gitignore`。
-
-**已存在状态处理**：
-
-| 场景 | 行为 |
-|------|------|
-| `.codegraph/` 不存在 | Coding 项目默认执行 `codegraph install` 与 `codegraph init` |
-| `.codegraph/` 已存在 | 运行 `codegraph status`，报告已初始化，不重复 `codegraph init` |
-| `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
-| `.mcp.json` 有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 `.codex/config.toml` |
-| `.mcp.json` 缺少 CodeGraph MCP | 按 `mcp-configuration.md` 的兜底配置补齐 `.mcp.json`，再同步补齐 `.codex/config.toml` |
-| Claude/Codex 缺少 CodeGraph MCP server | 执行 `codegraph install --target=claude,codex --location=local --yes` 后必须再次核验两个配置文件 |
-| `codegraph install` 失败 | 提供 `mcp-configuration.md` 中的手动兜底配置，并分别补齐 `.mcp.json` 与 `.codex/config.toml` |
-| `codegraph init` 失败 | 报告项目语言、目录规模或 `codegraph.json` 可能需要人工配置，不阻塞其他初始化项 |
-
-**.gitignore 增量处理**：
-
-检查 `.gitignore` 是否已包含 `.codegraph/`：
-
-```bash
-grep -qxF '.codegraph/' .gitignore 2>/dev/null || printf '\n# CodeGraph 本地索引\n.codegraph/\n' >> .gitignore
-```
-
-**增量要求**：
-- `/rule-config` 重复运行时，只补齐缺失的 CodeGraph 规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` 项。
-- 不直接覆盖用户已经存在的规则文件或 Agent 配置。
-- 写入前内部计算本次将新增或更新的内容清单，执行后在报告中展示。
-
-### 10. Playwright Skills 规则配置
-
-**检测条件**：
-- 用户明确要求浏览器自动化功能
-- 项目涉及 Web 测试、表单填写、截图、数据提取
-
-**创建规则文件**：将 [步骤 1b 定位的模板根路径] 中的 `playwright.md` 读取内容，写入 `.claude/rules/playwright.md`
-
-**在 CLAUDE.md 和 AGENTS.md 中添加**：
-
-```markdown
-### 9. Playwright CLI 使用规则
-- **浏览器自动化工具规范** → 详见 `.claude/rules/playwright.md`
-```
-
-**无交互行为**：
-- 默认跳过 Playwright 规则，不创建 `.claude/rules/playwright.md`，不添加摘要。
-- 仅用户明确要求 Playwright 自动化能力时启用。
-- 启用时已存在规则文件不覆盖，缺少摘要时只追加摘要。
-
-## 增量运行
-
-`/cadence:init:rule-config` 支持在已初始化项目中重复执行。重复运行时应遵循“只新增缺失项，不覆盖已确认内容”的原则。
-
-### 规则文件增量处理
-
-复制规则文件到 `.claude/rules/` 前，先检查目标文件是否存在：
-
-| 场景 | 行为 |
-|------|------|
-| 文件不存在 | 从模板根路径读取并创建 |
-| 文件已存在 | **不自动覆盖**，报告已存在 |
-| 新增 `code-reading.md` | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
-| 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 |
-
-上表适用于普通规则，不改变已有的“不自动覆盖”语义；`openspec-superpowers-workflow.md` 仅按下述版本化框架规则特例处理。
-
-**检测命令示例**：
-
-```bash
-for rule in README.md language.md openspec-superpowers-workflow.md document-storage.md markdown-format.md mcp-servers.md code-usage.md code-reading.md playwright.md; do
-  if [ -e ".claude/rules/$rule" ]; then
-    echo "已存在: .claude/rules/$rule"
-  else
-    echo "缺失: .claude/rules/$rule"
-  fi
-done
-```
-
-### OpenSpec 配置处理
-
-1. 无论 `openspec/config.yaml` 不存在还是已有配置需要合并，都必须先在目标文件所在的同一文件系统创建候选配置和临时验证工作区，使 OpenSpec 在工作区中把候选作为 `openspec/config.yaml` 读取；此阶段不得直接创建、覆盖或修改目标文件。目标不存在时以 `references/openspec/config.yaml` 为候选基础，目标存在时以原配置为候选基础，禁止用模板整体覆盖已有配置。
-2. 候选必须完成 YAML 语法解析和结构预检：YAML 根必须为映射；`schema` 必须缺失或为可保留的标量；`context` 必须缺失或为字符串块/字符串标量；`rules` 必须缺失或为映射；`rules.proposal`、`rules.design`、`rules.specs`、`rules.tasks` 必须分别缺失或为字符串数组。除后续单独处理的无效 `rules.apply` 外，其他项目自定义键和 artifact 规则必须原样保留。
-3. 任一目标字段结构/类型不兼容时，普通模式保留原文件并报告具体字段路径、实际类型和冲突，不发布候选；`no-interrupt` 模式先创建可恢复备份，若无法证明可无损规范化则终止并保持原文件不变。不得把备份成功当成可以破坏性重写的授权；任何必要备份失败时立即终止且不得修改原文件。
-4. 候选处理不得取消既有备份要求。发现需要备份的分支时，必须先成功创建备份，再对候选执行规范化、合并或无效键移除；必要备份失败时终止，候选不得发布，原文件保持不变。
-5. 结构预检通过后在候选中保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
-6. 在候选中将模板四行 Cadence 协作 context 追加到现有 context，按完整行去重，保留原有顺序以及项目技术栈、领域知识和其他上下文。
-7. 在候选的 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
-8. 禁止创建 `rules.apply`，也不得虚构 apply artifact。发现已有 `rules.apply` 时，普通模式必须先确认；无响应则保留原文件并报告，确认移除时先创建备份。`no-interrupt` 模式必须先创建备份；备份成功后只在候选中移除。任何必要备份失败时立即终止，且不得修改原文件。
-9. YAML 无法可靠解析时不得静默重写：普通模式保留原文件并报告；`no-interrupt` 模式先创建备份，仍无法无损构建候选时终止并保持原文件不变。必要备份失败时同样终止且不写入。
-10. 必须在临时验证工作区创建固定名称为 `cadence-rule-config-validation` 的临时 Change，例如执行：
-
-    ```bash
-    openspec new change cadence-rule-config-validation --description "Temporary candidate validation"
-    ```
-
-    该 Change 只用于验证，不得写入目标项目或复用目标项目的 Change。随后依次运行：
-
-    ```bash
-    openspec instructions proposal --change cadence-rule-config-validation --json
-    openspec instructions design --change cadence-rule-config-validation --json
-    openspec instructions specs --change cadence-rule-config-validation --json
-    openspec instructions tasks --change cadence-rule-config-validation --json
-    ```
-
-    四类命令必须全部成功，且输出必须能读取公共 context 与对应 artifact rules。不得以 `openspec instructions apply` 作为 artifact 验证。
-11. 只有候选通过全部语法、结构、合并和四类 instructions 验证后，才允许使用同一文件系统内的原子替换发布到 `openspec/config.yaml`；目标原本不存在时也必须以原子创建方式发布，不得先落入半成品。
-12. 任一候选验证失败时立即终止，报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；无论删除候选还是保留候选供排查，都必须报告候选处理结果，且原 `openspec/config.yaml` 保持不变。目标原本不存在时不得创建目标文件或留下半成品。
-13. 原子替换或原子创建失败时立即终止，并保持或恢复原文件；目标原本不存在时保持不存在。不得声称配置已创建、已合并或发布成功。
-
-OpenSpec 配置的备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`。所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
-
-| 场景 | 普通模式 | no-interrupt 模式 |
-|---|---|---|
-| 配置不存在 | 从模板构建候选，验证通过后原子创建 | 从模板构建候选，验证通过后原子创建 |
-| 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/字符串去重 | 在候选中保守合并，完整行/字符串去重 |
-| 目标字段结构/类型不兼容 | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 |
-| 存在 `rules.apply` | 询问；无响应则保留并报告，确认并备份后在候选中移除 | 备份成功后在候选中移除并继续合并 |
-| YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 |
-| 任一候选 instructions 验证失败 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 |
-| 原子发布失败 | 终止并保持或恢复原文件，不得声称成功 | 终止并保持或恢复原文件，不得声称成功 |
-| 任一必要备份失败 | 终止且不改原文件 | 终止且不改原文件 |
-
-完成报告必须逐项列出：新增的 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其带有 `--change cadence-rule-config-validation --json` 的实际命令和错误、候选清理或保留结果、原子发布结果，以及四个带有 `--change cadence-rule-config-validation --json` 的 `openspec instructions` 命令的验证结果。没有新增内容时也要明确报告为幂等跳过。
-
-### OpenSpec 与 Superpowers 协作规则增量处理
-
-| 场景 | 普通模式 | no-interrupt 模式 |
-|---|---|---|
-| 文件不存在 | 创建 v1 | 创建 v1 |
-| 文件完整内容与当前框架 v1 一致 | 跳过 | 跳过 |
-| 版本标记受支持且完整文件内容与对应旧版规范逐字一致 | 备份后升级 | 备份后升级 |
-| 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
-| 当前 v1 标记存在但完整内容不同 | 归入“与任何已知框架版本不匹配”；询问，无响应则保留并报告 | 归入“与任何已知框架版本不匹配”；备份后以框架 v1 替换并报告 |
-| 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 |
-| 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 终止且不得替换原文件 |
-
-备份名固定为 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`。`cadence-framework-rule:openspec-superpowers-workflow` 标记只用于候选版本定位；最终识别必须比较完整文件内容，不得仅凭标记把文件识别为当前或受支持旧版，也不得把无标记文件当作已知框架版本覆盖。
-
-### CLAUDE.md / AGENTS.md 入口增量处理
-
-写入入口文件前，必须先按“L0 受管区块处理”对 CLAUDE.md 与 AGENTS.md 完成统一预检，确定两个入口的状态、交互结果、目标动作和全部备份需求。在写入任一入口前先创建本次所需的全部 L0 备份；仅当全部必要备份成功后，才按下表执行各入口动作。任一必要备份失败时，CLAUDE.md 与 AGENTS.md 均不得写入。
-
-统一预检和全备份屏障通过后，再根据 `cadence-managed:openspec-superpowers-routing` 的版本、成对边界和完整受管区块内容处理每个入口：
-
-| 场景 | 普通模式 | no-interrupt 模式 |
-|------|----------|-------------------|
-| 入口不存在 | 创建基础入口并插入当前 v1 | 创建基础入口并插入当前 v1 |
-| 当前 v1 区块与规范源完整一致 | 跳过，不重复写入 | 跳过，不重复写入 |
-| 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，无响应则保留并报告 | 先备份，成功后替换为规范源当前 v1 并报告 |
-| 受支持旧版本标记成对 | 备份成功后升级到当前 v1 并报告 | 备份成功后升级到当前 v1 并报告 |
-| 无 L0 标记 | 插入当前 v1，入口原内容保留 | 插入当前 v1，入口原内容保留 |
-| 单侧标记或顺序错误 | 询问；无响应则保留并报告 | 先备份，成功后写入单一当前 v1 区块并报告 |
-| 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 |
-
-所有场景都必须保持 L0 受管区块外的项目技术栈、命令、业务规则和用户内容原样。
-
-其他规则摘要仍按以下策略增量处理：
-
-写入摘要引用前，先读取现有文件并检查每条规则摘要是否已存在：
-
-| 场景 | 行为 |
-|------|------|
-| 摘要行已存在 | 跳过，不重复写入 |
-| 摘要行缺失 | 追加到 `## 强制规则` 章节末尾 |
-| 规则编号与现有内容冲突 | 不覆盖原内容，追加缺失摘要并在报告中说明可能需要人工整理编号 |
-
-### 可选规则增量处理
-
-对于代码阅读规则、Playwright 规则等可选步骤：
-
-| 场景 | 行为 |
-|------|------|
-| 规则文件和摘要均已存在 | 视为已启用，仅检查完整性 |
-| 代码阅读规则缺失 | 所有项目默认新增；非 Coding 项目仅跳过 CodeGraph 初始化 |
-| Playwright 规则缺失 | 默认跳过，用户明确要求时新增 |
-| 无法判断历史选择 | 按本节默认值处理，不询问 |
-
-### CodeGraph 增量处理
-
-对于 CodeGraph 项目初始化：
-
-| 场景 | 行为 |
-|------|------|
-| 老项目已执行过 `/rule-config`，但缺少 CodeGraph | 只补 CodeGraph 相关规则、摘要、MCP 配置、`.codegraph/` 初始化和 `.gitignore` |
-| `.codegraph/` 已存在 | 运行 `codegraph status` 并跳过初始化 |
-| `.codegraph/` 不存在 | Coding 项目默认执行 `codegraph init` |
-| `.mcp.json` 与 `.codex/config.toml` 均已有 CodeGraph MCP server | 跳过，不重复写入 |
-| `.mcp.json` 已有 CodeGraph MCP，但 `.codex/config.toml` 缺少 `[mcp_servers.codegraph]` | 参考 `.mcp.json` 手动补齐 Codex 本地 MCP 配置 |
-| 任一配置文件缺少 CodeGraph MCP server | 先执行 `codegraph install --target=claude,codex --location=local --yes`，再核验并补齐缺失文件 |
-| `.gitignore` 已有 `.codegraph/` | 跳过 |
-| `codegraph.json` 存在 | 保留，不加入 `.gitignore` |
-
-### 建议
-
-- 新版 Cadence 发布或框架规则更新后，可重新运行 `/cadence:init:rule-config` 补齐新增规则。
-- 重复运行前，内部计算本次将要新增/更新的内容清单；执行后输出已新增、已跳过、需人工处理的项目。
-
-## 核心原则
-
-- **规则分离** — 框架规则放 `.claude/rules/`，用户规则放 `cadence/project-rules/`
-- **摘要引用** — CLAUDE.md 和 AGENTS.md 只保留摘要和引用，详细内容在规则文件中
-- **契约与行为分层** — OpenSpec 是契约层，Superpowers 是行为层，二者职责不可互相替代
-- **常驻路由、按需正文** — CLAUDE.md 与 AGENTS.md 常驻 L0 路由；L1/L2 正文仅在命中任务或阶段信号时读取
-- **失败关闭** — 必调 Skill、OpenSpec 契约、实施 Plan 或新鲜验证证据缺失时停止，不得降级绕过
-- **目录明确** — Claude Code 配置保留在 `.claude/`，Cadence 产物放在 `cadence/`
-- **无交互默认** — 初始化默认不等待用户确认；冲突项跳过并报告
+合并与冲突处理的权威定义（NC/OS/L1/L0/RF/SM/OP/CS/CG/HM 十张表共 61 行）见 `references/merge-semantics.md`；条款到测试的逐条对账见 `tests/skill-clause-map.md`。需要了解具体分支语义时按需加载上述文件，不要在本文件中重复维护。
