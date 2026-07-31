@@ -10,7 +10,7 @@
 - 最小列（逐字）：`SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言`
 - 测试 ID 命名（逐字）：单测 `ut-<函数>-<场景>`，集成 `it-<步骤>-<场景>`，静态 `sc-<条款>`
 - fixture 命名（逐字）：`fx-<场景>`
-- 条款编号：十张表沿用 design D2 行 ID 基线（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~04、SM-01~03、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 60 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
+- 条款编号：十张表沿用 design D2 行 ID 基线（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~02b、RF-03~04、SM-01~03、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 61 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
 - 适用模式取值：`普通` / `no-interrupt` / `两模式`。
 - 脚本函数名为 Task 4+ 将实现的目标名（`merge_markdown` / `merge_yaml` / `l0_block` / `classify_l1` / `precheck_openspec_structure` / `backup_file` / `atomic_write` / `sha256_file` / `detect_project` / `locate_templates` / `step_rules_files` / `step_entry_files` / `step_scaffold` / `step_gitignore` / `step_openspec_config` / `step_codegraph`）；静态与 Agent 行为条款记为 `references/merge-semantics.md` 对应节或 `—（静态）`。
 - 故障注入约定（design D6）：原子发布失败以目标目录 `chmod 555` 复现，备份失败以只读父目录复现，对应 fixture 记 `fx-readonly-target` / `fx-readonly-parent`。
@@ -38,7 +38,7 @@
 | 处理流程 S8 代码阅读 | 483-497 | S8-01~03 | 3 |
 | 处理流程 S9 CodeGraph（表 CS + gitignore + 增量要求） | 499-580 | S9-01~04、CS-01~08 | 12 |
 | 处理流程 S10 Playwright | 582-600 | S10-01~03 | 3 |
-| 增量运行-规则文件（表 RF） | 606-629 | RF-01~04 | 4 |
+| 增量运行-规则文件（表 RF） | 606-629 | RF-01~02b、RF-03~04 | 5 |
 | 增量运行-OpenSpec 配置（13 条 + 表 OS + 备份/报告段） | 631-675 | OS-N1~N13、OS-01~08、OS-B1~B2 | 23 |
 | 增量运行-L1 协作规则（表 L1 + 备份/识别段） | 677-689 | L1-01~07、L1-B1~B2 | 9 |
 | 增量运行-L0 入口（表 L0 + 屏障段） | 691-711 | L0-01~07、L0-B1~B2 | 9 |
@@ -105,13 +105,13 @@
 | 70 | DF-05 代码阅读规则所有项目创建；非 Coding 只跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-all-projects | 非 Coding 项目仍存在 `.claude/rules/code-reading.md` |
 | 71 | DF-06 CodeGraph 初始化 Coding 默认启用、非 Coding 默认跳过 | 两模式 | step_codegraph | fx-noncoding-project | it-s8-codegraph-skip-noncoding | 非 Coding 项目不生成 `.codegraph/`，报告记录跳过原因 |
 | 72 | DF-07 Playwright 规则默认跳过，仅用户明确要求时启用 | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip | 默认不产生 `.claude/rules/playwright.md` 与摘要 |
-| 73 | DF-08 已存在文件默认不覆盖，只补齐缺失文件/摘要/配置块 | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | it-s3-normal-keep-decision | 已存在规则文件 sha256 不变；缺失项补齐；报告区分新增/跳过 |
+| 73 | DF-08 已存在且内容一致的文件幂等跳过，只补齐缺失文件/摘要/配置块；内容不一致（drift）按 RF-02b/IA-01 处理（普通询问/缺决策 fail closed，no-interrupt 合并） | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | it-s3-normal-keep-decision / it-s3-rules-idempotent | 内容一致文件 sha256 不变报告跳过；缺失项补齐；drift 不在此条默认覆盖范围内 |
 
 ### 2.6 人工交互策略表（IA-01~05）与提问规则（IA-R1~R4）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 83 | IA-01 即将覆盖已有非空文件→先询问；无响应则不覆盖、跳过并报告 | 普通 | step_rules_files（决策枚举 `replace\|keep`） | fx-existing-rules | it-s3-normal-keep-decision | decisions 为 `keep` 时文件不变且报告跳过 |
+| 83 | IA-01 即将覆盖已有非空文件（规则文件 drift）→先询问；**无响应/决策缺失时 fail closed**（B 类，无安全默认），不得隐式 keep 继续；决策 `keep`→不覆盖跳过，决策 `replace`→备份后覆盖 | 普通 | step_rules_files（决策枚举 `replace\|keep`；drift 不标 `default_keep`，缺失即 fail closed） | fx-existing-rules | it-s3-normal-keep-decision（keep 分支）/ it-s3-rules-drift-replace（replace 分支，待补） | drift 冲突标识 `s3:<rel>`；无 decisions 时 apply 非零退出零写入；decisions 为 `keep` 时文件不变且报告跳过 |
 | 84 | IA-02 检测结果互相矛盾且影响规则选择→先询问；无响应按非 Coding 处理（固定冲突标识 `s1:project-type-conflict`） | 普通 | detect_project | fx-contradict-detection | it-s1-project-type-conflict | dry-run 报告含 `s1:project-type-conflict`；无决策时 apply 拒绝；decision=`non-coding` 时按非 Coding 执行 |
 | 85 | IA-03 用户明确要求启用默认跳过项但缺少必要信息→问最少必要信息；无响应跳过该可选项 | 普通 | —（Agent 提问，design D3） | fx-empty-project | sc-ia-optional-ask | SKILL.md 保留"最少必要信息/无响应跳过"文本 |
 | 86 | IA-04 迁移旧目录目标非空→不询问、不合并，直接跳过并报告冲突 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-no-ask | dry-run/apply 计划不生成该目录的提问冲突项，报告直接记冲突跳过 |
@@ -141,7 +141,7 @@
 | 161-165 | S1c-01 创建 `.claude/rules`（幂等） | 两模式 | step_rules_files | fx-empty-project | it-s3-mkdir-idempotent | 重复运行不报错、目录权限不变 |
 | 171-181 | S1d-01 九行复制表：7 个必选 + `code-reading.md` 全项目 + `code-usage` 按项目类型二选一 | 两模式 | step_rules_files | fx-empty-project | it-s3-rules-files | 9 个目标文件按条件集齐，内容与模板一致 |
 | 179-180 | S1d-02 `code-usage-coding.md`/`code-usage-noncoding.md` 按步骤 1a 结果写入同一目标 `code-usage.md` | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | it-s3-code-usage-variant | Coding 项目 `code-usage.md` 内容= coding 模板；非 Coding = noncoding 模板 |
-| 183 | S1d-03（L1 独立分支）除 `openspec-superpowers-workflow.md` 外普通规则遵循不覆盖；带 `cadence-framework-rule` 标记的 L1 按版本升级特例处理 | 两模式 | step_rules_files / classify_l1 | fx-existing-rules | it-s3-l1-independent | 普通规则已存在时不覆盖；L1 文件走 L1 表版本化分支而非 RF-02 |
+| 183 | S1d-03（L1 独立分支）除 `openspec-superpowers-workflow.md` 外普通规则遵循不覆盖；带 `cadence-framework-rule` 标记的 L1 按版本升级特例处理 | 两模式 | step_rules_files / classify_l1 | fx-existing-rules | it-s3-l1-independent | 普通规则已存在时不覆盖；L1 文件走 L1 表版本化分支而非 RF-02b drift |
 
 ### 2.9 处理流程 S2：入口文件与 L0 受管区块（L0-P1~P12）
 
@@ -229,14 +229,15 @@
 | 596-600 | S10-02 默认跳过：不创建规则、不加摘要（分支一） | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip | 无 `playwright.md`、无摘要；报告记默认跳过 |
 | 600 | S10-03 启用时已存在规则文件不覆盖、缺摘要只追加 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-playwright-no-overwrite | 已有 `playwright.md` sha256 不变 |
 
-### 2.16 增量运行：规则文件增量（RF-01~04，SKILL 610-615 行表）
+### 2.16 增量运行：规则文件增量（RF-01~02b、RF-03~04，SKILL 610-615 行表）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 612 | RF-01 文件不存在→从模板根路径读取并创建 | 两模式 | step_rules_files | fx-empty-project | it-s3-rules-create | 缺失文件按模板创建 |
-| 613 | RF-02 文件已存在→不自动覆盖，报告已存在 | 两模式 | step_rules_files | fx-existing-rules | it-s3-normal-keep-decision | 已有文件 sha256 不变；报告记"已存在" |
+| 613 | RF-02 文件已存在且完整内容与模板一致→幂等跳过 | 两模式 | step_rules_files | fx-existing-rules | it-s3-rules-idempotent | 已有文件 sha256 不变；报告记幂等跳过 |
+| 613 | RF-02b 文件已存在但内容与模板不一致（drift）→普通模式询问，无响应/决策缺失 fail closed（B 类，无安全默认）；keep→不覆盖，replace→备份后覆盖；no-interrupt 备份后章节级合并 | 普通/no-interrupt | step_rules_files（决策枚举 `replace\|keep`；drift 不标 `default_keep`） | fx-existing-rules | it-s3-normal-keep-decision（普通 keep）/ it-s3-rules-drift-replace（普通 replace，待补） | drift 冲突标识 `s3:<rel>`；普通模式无 decisions 时 apply 非零退出零写入；keep 时文件不变 |
 | 614 | RF-03 新增 `code-reading.md`→所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-existing-rules | it-s3-code-reading-backfill | 老项目重跑补齐 `code-reading.md` |
-| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→不自动覆盖，报告需用户手动合并 | 两模式 | step_rules_files | fx-rules-missing-codegraph-section | it-s3-codegraph-section-missing（待补：脚本暂未实现该检测分支） | 文件不变；报告含手动合并提示 |
+| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→不自动覆盖，报告需用户手动合并（report-only，A 类） | 两模式 | step_rules_files | fx-rules-missing-codegraph-section | it-s3-codegraph-section-missing | 文件不变；报告含手动合并提示；冲突标 `report_only: true` 不进 decisions 集 |
 
 ### 2.17 增量运行：OpenSpec 配置（OS-N1~N13 编号条款 + OS-01~08，SKILL 664-673 行表）
 
@@ -353,21 +354,21 @@
 | OpenSpec 配置处理 | 664-673（数据行 666-673） | 8 | OS-01~08 → 2.17 | ✅ 一一对应 |
 | L1 协作规则增量 | 679-687（数据行 681-687） | 7 | L1-01~07 → 2.18 | ✅ 一一对应 |
 | L0 入口增量 | 697-705（数据行 699-705） | 7 | L0-01~07 → 2.19 | ✅ 一一对应 |
-| 规则文件增量 | 610-615（数据行 612-615） | 4 | RF-01~04 → 2.16 | ✅ 一一对应 |
+| 规则文件增量 | 610-615（数据行 612-615） | 5 | RF-01~02b、RF-03~04 → 2.16 | ✅ 一一对应对齐脚本 drift 语义 |
 | 摘要引用增量 | 713-717（数据行 715-717） | 3 | SM-01~03 → 2.20 | ✅ 一一对应 |
 | 可选规则增量 | 723-728（数据行 725-728） | 4 | OP-01~04 → 2.21 | ✅ 一一对应 |
 | CodeGraph 已存在状态 | 558-567（数据行 560-567） | 8 | CS-01~08 → 2.14 | ✅ 一一对应 |
 | CodeGraph 增量 | 734-743（数据行 736-743） | 8 | CG-01~08 → 2.22 | ✅ 一一对应 |
 | 历史目录迁移 | 429-433（数据行 431-433） | 3 | HM-01~03 → 2.11 | ✅ 一一对应 |
 
-合计 60 行，全部映射到测试 ID；Task 3.1 矩阵行数验收以此为准。
+合计 61 行，全部映射到测试 ID；Task 3.1 矩阵行数验收以此为准。
 
 ### 3.2 缺口清单逐条确认
 
 | # | 缺口项 | 测试 ID | 状态 |
 |---|--------|---------|------|
 | 1 | 历史目录两模式 | it-s5-history-no-interrupt（NH-02）/ it-s5-history-normal（NH-03） | ✅ |
-| 2 | 普通规则不覆盖 | it-s3-normal-keep-decision（RF-02、DF-08） | ✅ |
+| 2 | 普通规则 drift 不覆盖（keep 分支）/ drift 缺决策 fail closed | it-s3-normal-keep-decision（RF-02b keep、DF-08、IA-01）/ it-s3-rules-drift-replace（replace 分支，待补） | ✅ keep；replace 待补 |
 | 3 | 技术栈/包管理器/覆盖率 80% | it-s1-techstack-written（DF-02 / S3-01 / S4-05 同用例覆盖） | ✅ |
 | 4 | gitignore 两分支 | it-s6-gitignore-default / it-s6-gitignore-ignore（S7-01/02） | ✅ |
 | 5 | Playwright 两分支 | it-s3-playwright-skip / it-s3-playwright-enable（S10-01/02、OP-03） | ✅ |
