@@ -1927,8 +1927,8 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
         self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
 
 
-class TestCodegraphSectionMissing(unittest.TestCase):
-    """codex 终审 I5 / RF-04：老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并。"""
+class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
+    """RF-04 去特判：缺 CodeGraph 段落的 code-reading.md 回归普通规则文件统一 drift 处理。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1948,42 +1948,37 @@ class TestCodegraphSectionMissing(unittest.TestCase):
         ):
             return rc.compute_plan(self.root, _intents())
 
-    def test_missing_codegraph_section_is_report_only_not_decision(self):
-        """ut-s3-codegraph-section-missing / RF-04 + codex 终审 I5
-        （缺 CodeGraph 段落 → action=skip 报告型冲突，不进 decisions/备份需求）"""
+    def test_missing_codegraph_section_is_plain_drift(self):
+        """ut-s3-codegraph-section-unified-drift / RF-04（缺 CodeGraph 段落 → 普通 drift 冲突，进 decisions 与备份需求）"""
         plan = self._compute()
         s3 = plan["steps"][rc.STEP_RULES_FILES]
         asset = next(a for a in s3["assets"] if a["path"].endswith("code-reading.md"))
-        self.assertEqual(asset["action"], "skip")
-        self.assertEqual(asset["conflict"], "codegraph-section-missing")
-        self.assertFalse(asset["backup_needed"])
-        # 不进 decisions 冲突集（无需用户决策，两模式同动作）
-        self.assertFalse(
+        self.assertEqual(asset["action"], "replace")
+        self.assertEqual(asset["conflict"], "drift")
+        self.assertTrue(asset["backup_needed"])
+        self.assertTrue(
             any(str(c.get("asset", "")).endswith("code-reading.md")
                 for c in plan["conflicts"])
         )
-        # step 级冲突含「需用户手动合并 CodeGraph 段落」提示
         self.assertTrue(
-            any("CodeGraph" in (c.get("question", "") + c.get("recommendation", ""))
-                for c in s3["conflicts"])
-        )
-        # 不进备份需求（不改文件）
-        self.assertFalse(
             any(str(b).endswith("code-reading.md") for b in plan["backup_needs"])
         )
+        # codegraph-section-missing 冲突类型已移除
+        self.assertFalse(
+            any(c.get("kind") == "codegraph-section-missing"
+                or c.get("conflict") == "codegraph-section-missing"
+                for c in s3["conflicts"])
+        )
 
-    def test_execute_does_not_overwrite(self):
-        """ut-s3-codegraph-section-missing-execute / RF-04 + codex 终审 I5
-        （执行阶段不重写文件，报告含手动合并提示）"""
+    def test_no_interrupt_execute_merges_codegraph_section(self):
+        """ut-s3-codegraph-section-unified-merge / RF-04（no-interrupt 自动合并：模板 CodeGraph 段落并入、项目原文保留）"""
         plan = self._compute()
         report = {"steps": [], "overall": "ok"}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
-        target = self.root / ".claude" / "rules" / "code-reading.md"
-        before = target.read_text(encoding="utf-8")
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
-        self.assertEqual(target.read_text(encoding="utf-8"), before)
-        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
-        self.assertTrue(any("CodeGraph" in str(c) for c in s3.get("conflicts", [])))
+        result = (self.root / ".claude" / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        self.assertIn("CodeGraph", result)          # 模板段落并入
+        self.assertIn("仅 ast-grep", result)        # 项目原文保留（项目补充/独有章节）
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):

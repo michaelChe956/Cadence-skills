@@ -136,7 +136,7 @@ ORDINARY_RULE_FILES = (
 # Playwright 规则文件（仅 intents.enable_playwright 时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
-# RF-04：含 CodeGraph 段落的规则文件（老项目缺段落 → 报告手动合并，不自动覆盖）。
+# OP-01：可选规则完整性检查使用的 CodeGraph 规则文件。
 CODEGRAPH_RULE_FILE = "code-reading.md"
 
 # NC-03 项目补充标记：合并协议保留字。注入与项目独有行过滤共用此常量；
@@ -1420,26 +1420,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "path": rel, "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": False,
                 })
-            elif (fname == CODEGRAPH_RULE_FILE
-                  and "CodeGraph" in template_text
-                  and "CodeGraph" not in existing_text):
-                # codex 终审 I5 / RF-04：老项目规则文件缺少 CodeGraph 段落 →
-                # 不自动覆盖（两模式同动作），报告型冲突提示用户手动合并；
-                # 不进 decisions 冲突集，不进备份需求（不改文件）。
-                s3["assets"].append({
-                    "path": rel, "action": "skip",
-                    "conflict": "codegraph-section-missing",
-                    "backup_needed": False, "is_l1": False,
-                })
-                s3["conflicts"].append({
-                    "conflict_id": f"s3:{rel}:codegraph-section",
-                    "asset": rel, "kind": "codegraph-section-missing",
-                    "question": (
-                        f"规则文件 {rel} 缺少 CodeGraph 段落（模板含 CodeGraph 内容）"
-                    ),
-                    "recommendation": "需用户手动合并 CodeGraph 段落",
-                    "report_only": True,
-                })
             else:
                 s3["assets"].append({
                     "path": rel, "action": "replace", "conflict": "drift",
@@ -2083,15 +2063,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": asset["path"], "action": "created"})
             continue
         if action == "skip" or conflict is None:
-            if conflict == "codegraph-section-missing":
-                # codex 终审 I5 / RF-04：报告手动合并提示，不重写文件
-                actions_log.append({
-                    "path": asset["path"], "action": "skipped",
-                    "branch": "codegraph-section-missing",
-                    "reason": "需用户手动合并 CodeGraph 段落",
-                })
-            else:
-                actions_log.append({"path": asset["path"], "action": "skipped"})
+            actions_log.append({"path": asset["path"], "action": "skipped"})
             continue
 
         # 冲突资产（conflict 非空）。
