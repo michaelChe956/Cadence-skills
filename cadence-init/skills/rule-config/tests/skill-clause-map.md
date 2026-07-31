@@ -77,7 +77,7 @@
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 41 | NC-01 目标文件不存在→创建标准文件 | no-interrupt | merge_markdown / merge_yaml | fx-empty-project | ut-merge_markdown-target-missing | 返回标准模板全文；集成侧 it-s3-create 断言文件创建且与模板一致 |
 | 42 | NC-02 模板与项目存在不同章节→保留模板章节，按原顺序保留项目独有章节 | no-interrupt | merge_markdown | fx-md-extra-sections | ut-merge_markdown-keep-project-sections | 输出含全部模板章节且项目独有章节按原顺序保留 |
-| 43 | NC-03 同名章节→模板规范在前，项目独有内容去重后追加到该章节"项目补充" | no-interrupt | merge_markdown | fx-md-same-section | ut-merge_markdown-same-section-append | 模板内容在前；项目独有行进入"项目补充"且按完整行去重 |
+| 43 | NC-03 同名章节→模板规范在前，项目独有内容去重后追加到该章节"项目补充"；`**项目补充**` 为合并协议保留字，重复合并幂等，历史重复标记污染可自愈；合并结果逐字一致时跳过写盘并报告 `unchanged` | no-interrupt | merge_markdown / step_rules_files | fx-md-same-section | ut-merge_markdown-same-section-append / ut-merge_markdown-rerun-idempotent / ut-merge_markdown-polluted-self-heal / ut-step_s3-ordinary-unchanged | 模板内容在前；项目独有行进入"项目补充"且按完整行去重；`merge(t, merge(t, x)) == merge(t, x)`；重跑不重复标记且内容一致时不刷新文件 |
 | 44 | NC-04 CLAUDE.md/AGENTS.md 强制规则冲突→摘要与引用路径以 rule-config 为准，技术栈/命令/业务规则等保留 | no-interrupt | merge_markdown / l0_block | fx-entry-mandatory-conflict | ut-merge_markdown-mandatory-override | 强制规则摘要以模板为准；项目技术栈等章节原文保留 |
 | 45 | NC-05 `openspec/config.yaml` 已存在→保留 schema、context 与四个 artifact 额外规则，仅追加缺失内容；发现 `rules.apply` 先备份再移除 | no-interrupt | merge_yaml | fx-openspec-existing | ut-merge_yaml-preserve-existing | schema/项目 context/额外规则原样保留；模板缺失内容追加；`rules.apply` 仅在备份成功后移除 |
 | 46 | NC-06 OpenSpec YAML 无法可靠解析或结构/类型不兼容→先备份；无法证明无损规范化则终止，原文件不变；备份成功≠授权破坏性重写 | no-interrupt | precheck_openspec_structure / merge_yaml / backup_file | fx-openspec-unparseable | ut-merge_yaml-unparseable-abort | 无法解析时返回终止信号；目标文件 sha256 不变；已创建备份存在 |
@@ -237,7 +237,7 @@
 | 613 | RF-02 文件已存在且完整内容与模板一致→幂等跳过 | 两模式 | step_rules_files | fx-existing-rules | it-s3-rules-idempotent | 已有文件 sha256 不变；报告记幂等跳过 |
 | 613 | RF-02b 文件已存在但内容与模板不一致（drift）→普通模式询问，无响应则默认 keep 保留并报告 status=0（A 类，有安全默认，§11.6）；keep→不覆盖，replace→备份后覆盖；no-interrupt 备份后章节级合并 | 普通/no-interrupt | step_rules_files（决策枚举 `replace\|keep`；drift 标 `default_keep: true`） | fx-existing-rules | it-s3-normal-keep-decision（普通 keep）/ it-s3-rules-drift-replace（普通 replace，待补） | drift 冲突标识 `s3:<rel>`；普通模式无 decisions 时 apply status=0 且文件不变（default_keep）；keep 时文件不变 |
 | 614 | RF-03 新增 `code-reading.md`→所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-existing-rules | it-s3-code-reading-backfill | 老项目重跑补齐 `code-reading.md` |
-| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→不自动覆盖，报告需用户手动合并（report-only，A 类） | 两模式 | step_rules_files | fx-rules-missing-codegraph-section | it-s3-codegraph-section-missing | 文件不变；报告含手动合并提示；冲突标 `report_only: true` 不进 decisions 集 |
+| 615 | RF-04 规则文件已存在但缺 CodeGraph 段落→回归普通规则统一 drift：普通模式同 RF-02b 询问（无响应默认 keep 保留并报告）；no-interrupt 先备份再按章节级权威规则合并，模板 CodeGraph 段落并入且项目内容保留 | 两模式 | step_rules_files / merge_markdown / backup_file | fx-rules-missing-codegraph-section | ut-s3-codegraph-section-unified-drift / ut-s3-codegraph-section-unified-merge | 普通模式产出 `drift` 冲突并进入 decisions 与备份需求；no-interrupt 自动章节合并、模板 CodeGraph 段落并入、项目原文保留 |
 
 ### 2.17 增量运行：OpenSpec 配置（OS-N1~N13 编号条款 + OS-01~08，SKILL 664-673 行表）
 
@@ -340,6 +340,7 @@
 | —（D3） | XC-02 用户意图四参数透传：`--project-type` / `--ignore-cadence` / `--enable-playwright` / `--enable-codegraph` | 两模式 | —（CLI 入口） | fx-empty-project | it-intent-params | 四参数各自独立生效且组合不互相污染；报告记录参数来源 |
 | —（D3） | XC-03 decisions 异常：文件缺失或无法解析 / 含未知或重复 `conflict_id` / 冲突缺少决策 / 决策与新鲜计划不符，任一即非零退出且零写入；计划无冲突时不要求决策文件 | 普通 | —（apply 入口决策校验） | fx-decisions-no-conflict / fx-decisions-unknown / fx-decisions-stale | it-decisions-no-conflict-not-required / it-decisions-unknown / it-decisions-stale / ut-compute_plan-recommendation-keep（recommendation 一律保守 keep，终审 C-1） | 异常各自非零退出、报告含原因、项目目录零写入；计划无冲突时不要求决策文件。codex 五轮：s1:project-type-conflict 已删除（项目类型判定重构），当前系统无 B 类冲突；原 it-decisions-missing/lacking 依赖唯一 B 类验证「决策缺失/空缺」fail-closed，现改为 it-decisions-no-conflict-not-required 验证「无冲突时不要求决策」 |
 | —（D3） | XC-04 no-interrupt 不读取也不要求决策文件，全部冲突内部按权威规则决策并记录 | no-interrupt | merge_markdown / merge_yaml | fx-existing-rules | it-entry-base-created（任一 no-interrupt 无 `--decisions` 成功用例） | 提供决策文件被忽略；冲突按 NC/OS/L1/L0 表内部决策并入报告 |
+| —（P1-1） | P1-1 no-interrupt dry-run 的普通规则 drift 冲突在 s3 级与 plan 级新增 `no_interrupt_action: "markdown-merge"`，如实表达 apply 的章节合并动作；普通模式不含此字段 | 两模式 | compute_plan | fx-existing-rules | ut-compute-plan-no-interrupt-action / ut-compute-plan-normal-no-action-field | no-interrupt 两级冲突条目字段值均为 `markdown-merge` 且 `recommendation=keep` 不变；普通模式两级条目均无 `no_interrupt_action` |
 | —（D6） | XC-05 预算计时：空项目 `apply --no-interrupt` 报告 `budget_seconds_excluding_codegraph < 60` | no-interrupt | —（报告计时字段） | fx-empty-project | it-budget | 报告计时字段存在且 < 60；S8 耗时单独列出 |
 | —（D1） | XC-06 PyYAML 缺失以退出码 77 退出且报告照常写出 | 两模式 | merge_yaml | fx-no-pyyaml | ut-merge_yaml-missing-dependency | 退出码恰为 77；stderr 说明；报告含 hints |
 | —（D3） | XC-07 横切原子写 `os.replace()` 与 sha256 工具 | 两模式 | atomic_write / sha256_file | fx-empty-project | ut-atomic_write-replace / ut-sha256_file-basic | 写入经原子替换；sha256 结果与系统工具一致（含 sha256sum/shasum 回退环境） |

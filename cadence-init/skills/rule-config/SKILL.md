@@ -39,7 +39,12 @@ disable-model-invocation: true
 
 ## 调用方式
 
-**第一步——定位脚本（与 pre-check 同款约定）**：脚本是本 rule-config skill 的关联脚本，位于 `<skill 安装根>/cadence-init/skills/rule-config/scripts/rule-config.py`。Agent 根据自身安装环境定位 skill 目录并拼出完整绝对路径，记为 `<RULE_CONFIG_PY>`。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
+**第一步——定位脚本（与 pre-check 同款约定）**：脚本是本 rule-config skill 的关联脚本。Agent 按以下候选根顺序定位并拼出完整绝对路径，记为 `<RULE_CONFIG_PY>`：
+
+1. plugin 缓存：`<plugin 缓存根>/cadence-init/skills/rule-config/scripts/rule-config.py`。
+2. 仓库安装根：`<skill 安装根>/cadence-init/skills/rule-config/scripts/rule-config.py`。
+
+若候选根下 `scripts/` 缺失，说明命中了不含关联脚本的旧版本缓存；重新安装或刷新 plugin 后重试，不得从其他项目目录复制脚本。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
 
 **第二步——确定报告与决策路径**：报告 `<REPORT>` 与决策文件 `<DECISIONS_JSON>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
 
@@ -62,7 +67,7 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 1. **dry-run**：脚本只读探测目标项目，报告给出计划动作、冲突清单（`conflicts`，含 `conflict_id`、`question`、`recommendation`、`allowed_decisions`）与备份需求，对项目零写入。
 2. **读 plan**：Agent 读取报告中的计划与冲突清单。
 3. **逐条提问**：对每个冲突用 `AskUserQuestion` 逐条提问；每次只问一个冲突，问题必须附带脚本给出的推荐默认项（`recommendation`）。
-4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b）、report-only 的规则文件缺 CodeGraph 段落提示，详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
+4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b，含缺 CodeGraph 段落的 RF-04 统一 drift），详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
 5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）。计划无冲突时不要求决策文件。
 
 ### no-interrupt 模式
