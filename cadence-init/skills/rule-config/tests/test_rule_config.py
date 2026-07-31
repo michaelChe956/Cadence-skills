@@ -1926,6 +1926,28 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
         self.assertFalse(any("no_interrupt_action" in c for c in s3["conflicts"]))
         self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
 
+    def test_report_no_interrupt_action(self):
+        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 的真实合并动作）"""
+        plan = self._compute(no_interrupt=True)
+        report: dict = {}
+        rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
+        conflict = next(
+            c for c in report["conflicts"]
+            if str(c.get("asset", "")).endswith("language.md")
+        )
+        self.assertEqual(conflict["no_interrupt_action"], "markdown-merge")
+
+    def test_report_normal_no_action_field(self):
+        """ut-report-normal-no-action-field / P1-1（普通模式对外报告无 no-interrupt 动作）"""
+        plan = self._compute()
+        report: dict = {}
+        rc._sync_plan_to_report(plan, report, _intents())
+        conflict = next(
+            c for c in report["conflicts"]
+            if str(c.get("asset", "")).endswith("language.md")
+        )
+        self.assertIsNone(conflict.get("no_interrupt_action"))
+
 
 class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
     """RF-04 去特判：缺 CodeGraph 段落的 code-reading.md 回归普通规则文件统一 drift 处理。"""

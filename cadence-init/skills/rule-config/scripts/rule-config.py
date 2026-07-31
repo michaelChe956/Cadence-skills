@@ -3421,6 +3421,8 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "state": c.get("state"),
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
+            # P1-1：no-interrupt 对外报告须如实暴露实际执行动作，避免 recommendation=keep 误导。
+            "no_interrupt_action": c.get("no_interrupt_action"),
             # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
             "allowed_decisions": c.get("allowed_decisions"),
             # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
