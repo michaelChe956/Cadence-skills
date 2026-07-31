@@ -1891,21 +1891,23 @@ else
   record_result it-apply-steps-real-elapsed "$RUN_STATUS" present missing fail
 fi
 
-# C17h. 老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并
-# （it-s3-codegraph-section-missing / codex 终审 I5 + RF-04）。
+# C17h. 老项目 code-reading.md 缺 CodeGraph 段落 → no-interrupt 走统一章节合并：
+# 模板 CodeGraph 内容并入、项目原文保留，并在写入前备份。
+# （it-s3-codegraph-section-unified-merge / RF-04）。
 case_root="$TEST_ROOT/fx-codegraph-section-missing"
 mkdir -p "$case_root/.claude/rules"
 printf '# 旧版代码阅读规则\n\n仅 ast-grep，无其他内容。\n' > "$case_root/.claude/rules/code-reading.md"
 before=$(sha256_file "$case_root/.claude/rules/code-reading.md")
 run_script apply "$case_root" --no-interrupt
+after=$(sha256_file "$case_root/.claude/rules/code-reading.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$before" = "$(sha256_file "$case_root/.claude/rules/code-reading.md")" ] \
-  && ! compgen -G "$case_root/.claude/rules/code-reading.md.cadence-backup-*" >/dev/null \
-  && jqr "['steps']" 2>/dev/null | grep -q 'codegraph-section-missing' \
-  && jqr "['steps']" 2>/dev/null | grep -q '需用户手动合并 CodeGraph 段落'; then
-  record_result it-s3-codegraph-section-missing "$RUN_STATUS" present reported pass
+  && [ "$before" != "$after" ] \
+  && grep -q 'CodeGraph 与 ast-grep 分工' "$case_root/.claude/rules/code-reading.md" \
+  && grep -q '仅 ast-grep，无其他内容。' "$case_root/.claude/rules/code-reading.md" \
+  && compgen -G "$case_root/.claude/rules/code-reading.md.cadence-backup-*" >/dev/null; then
+  record_result it-s3-codegraph-section-unified-merge "$RUN_STATUS" "$before" "$after" pass
 else
-  record_result it-s3-codegraph-section-missing "$RUN_STATUS" present missing fail
+  record_result it-s3-codegraph-section-unified-merge "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # C17i. 可选规则完整性检查（it-s3-optional-complete / codex 终审 I5 + OP-01）：
