@@ -55,7 +55,9 @@ import pathlib
 import re
 import sys
 
-script_path, skill_path = map(pathlib.Path, sys.argv[1:2], sys.argv[2:3])
+# codex 终审 I6 修复：map(func, iterable) 单可迭代用法（原 sys.argv[1:2]/[2:3]
+# 双可迭代会 TypeError，检查永远失败但只打印不计 fail → 假绿）。
+script_path, skill_path = map(pathlib.Path, sys.argv[1:3])
 script_text = script_path.read_text(encoding="utf-8")
 skill_text = skill_path.read_text(encoding="utf-8")
 
@@ -65,18 +67,22 @@ if not m:
     print("脚本缺少 PRUNE_DIRS 常量定义", file=sys.stderr)
     raise SystemExit(1)
 raw = m.group(1) or m.group(2)
-prune = [tok.strip().strip('"').strip("'") for tok in raw.split(",") if tok.strip().strip('"').strip("'")]
+prune = sorted(
+    tok.strip().strip('"').strip("'")
+    for tok in raw.split(",")
+    if tok.strip().strip('"').strip("'")
+)
 
-# 从 SKILL.md 的 find 命令提取 -name <dir> 剪枝项（仅 -type d -prune 段）
-find_block = re.search(r"find \\.\\s*\(?-type d.*?\)?-prune", skill_text, re.S)
+# 从 SKILL.md 的 find 命令提取 -name <dir> 剪枝项（find 到 -prune 之间为 -type d 段）
+find_block = re.search(r"find\s+\.\s.*?-prune", skill_text, re.S)
 if not find_block:
     print("无法从 SKILL.md 提取 find 剪枝清单", file=sys.stderr)
     raise SystemExit(1)
-skill_prune = re.findall(r"-name\s+([\w.-]+)", find_block.group(0))
+skill_prune = sorted(set(re.findall(r"-name\s+([\w.-]+)", find_block.group(0))))
 
-missing = [d for d in skill_prune if d not in prune]
-if missing:
-    print(f"脚本 PRUNE_DIRS 缺少 SKILL.md 剪枝项: {missing}", file=sys.stderr)
+# SKILL.md 约定「剪枝目录清单与脚本 PRUNE_DIRS 常量逐项一致，不得增删」→ 双向一致
+if prune != skill_prune:
+    print(f"脚本 PRUNE_DIRS 与 SKILL.md 剪枝清单不一致: script={prune} skill={skill_prune}", file=sys.stderr)
     raise SystemExit(1)
 raise SystemExit(0)
 PY
@@ -89,10 +95,8 @@ for required in "$KERNEL" "$L1_SOURCE" "$CONFIG_TEMPLATE" "$SKILL_MD"; do
   fi
 done
 
-# 静态契约前置：脚本存在时 PRUNE_DIRS 必须与 SKILL.md 一致（RED 阶段 fail 属预期）。
-if ! assert_bounded_source_scan_contract; then
-  printf '静态契约 PRUNE_DIRS 检查未通过（脚本不存在时属 RED 预期）\n' >&2
-fi
+# codex 终审 I6：PRUNE_DIRS 静态契约移入 D 区 record_result 计数（见 D10），
+# 不再提前只打印不计 fail（原实现假绿）。
 
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
@@ -130,17 +134,30 @@ sha256_pair() {
 }
 
 # 对 fixture 全树取 sha256（用于 dry-run 零写入、失败关闭零写入断言）。
+# codex 终审 I6：不再硬编码 sha256sum——逐文件哈希复用 harness 已有的
+# sha256_file 工具选择函数（sha256sum 优先、shasum -a 256 回退），
+# 最终聚合哈希同样按 PATH 选择工具，无 macOS 缺失风险。
 tree_hash() {
   local root=$1
-  (
+  local listing
+  # 排除 .git 与 cadence 备份文件（<file>.cadence-backup-<ts>）；
+  # 备份是脚本恢复产物，非对项目源文件的修改，「零写入」断言应聚焦源文件。
+  listing=$(
     cd "$root" || exit 1
-    # 排除 .git 与 cadence 备份文件（<file>.cadence-backup-<ts>）；
-    # 备份是脚本恢复产物，非对项目源文件的修改，「零写入」断言应聚焦源文件。
     find . -type f -not -path './.git/*' \
       -not -name '*.cadence-backup-*' | sort | while IFS= read -r f; do
-      printf '%s\0' "$f"
-    done | xargs -0 sha256sum 2>/dev/null | sha256sum | awk '{print $1}'
+      h=$(sha256_file "$f") || exit $?
+      printf '%s  %s\n' "$h" "$f"
+    done
   ) || return $?
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s\n' "$listing" | sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s\n' "$listing" | shasum -a 256 | awk '{print $1}'
+  else
+    printf '缺少 SHA-256 工具：需要 sha256sum 或 shasum -a 256\n' >&2
+    return 127
+  fi
 }
 
 managed_block_hash() {
@@ -284,6 +301,28 @@ mk_entry_fixture() {  # mk_entry_fixture <name> [drift-claude] [drift-agents]
   printf '%s\n' "$root"
 }
 
+# codex 终审 I2 适配：仓库真实入口复制件缺规范摘要行/技术栈块（L0 skip 但未收敛）。
+# I2 后 S4 对 skip 状态也会补齐摘要/技术栈（SM-02/DF-02），未收敛入口复制件在
+# apply 后必然变化。需要先证明「其余内容不变」的用例，改用本 helper 预收敛：
+# 对入口复制件先跑一次 apply --no-interrupt（收敛摘要/技术栈），再供用例使用。
+mk_converged_entries() {  # mk_converged_entries <target_root> [coding]：向目标根写入收敛态 CLAUDE.md/AGENTS.md
+  # 第二参数 coding 时 scratch 预置 application/app.py，使收敛态匹配 coding 项目入口
+  # 描述（RULE2_TEXT_CODING），避免 coding fixture 第二次 apply 触发 S4 upgrade。
+  local target="$1"
+  local kind="${2-}"
+  local scratch
+  scratch="$(mk_entry_fixture ".converge-scratch-$(basename "$target")")"
+  if [ "$kind" = "coding" ]; then
+    mkdir -p "$scratch/application"
+    printf 'def main():\n    pass\n' > "$scratch/application/app.py"
+  fi
+  local saved_report="${REPORT-}"
+  run_script apply "$scratch" --no-interrupt
+  REPORT="$saved_report"
+  cp "$scratch/CLAUDE.md" "$target/CLAUDE.md"
+  cp "$scratch/AGENTS.md" "$target/AGENTS.md"
+}
+
 # OpenSpec config 合并结果逐字段比对：以模板与旧值合并，断言字段集合。
 assert_openspec_merged_fields() {  # assert_openspec_merged_fields <config-path> <expected-substring...>
   local config="$1"
@@ -314,6 +353,24 @@ for needle in expected:
 raise SystemExit(0)
 PY
   return $?
+}
+
+# codex 终审 I4：报告完整性——conflicts 条目含 allowed_decisions（非空）、
+# 各 step 含数值型 elapsed_ms（>=0 真实计时值）。
+assert_report_completeness() {  # assert_report_completeness <report-json>
+  python3 - "$1" <<'PY'
+import json
+import sys
+
+d = json.load(open(sys.argv[1]))
+for c in d.get("conflicts", []):
+    if not c.get("allowed_decisions"):
+        raise SystemExit(f"conflict 缺 allowed_decisions: {c}")
+for s in d.get("steps", []):
+    if not (isinstance(s.get("elapsed_ms"), (int, float)) and s["elapsed_ms"] >= 0):
+        raise SystemExit(f"step 缺真实 elapsed_ms: {s}")
+raise SystemExit(0)
+PY
 }
 
 # ============================================================================
@@ -402,12 +459,66 @@ set -e
 
 assert_sha256_tool_contract
 
+# A2. tree_hash 工具路径契约（codex 终审 I6）：sha256sum 优先、shasum -a 256 回退
+# 两条路径结果一致；无工具时非零失败并给提示（受控 PATH 用例）。
+th_fixture="$TEST_ROOT/tree-hash-fixture"
+mkdir -p "$th_fixture/sub"
+printf 'alpha\n' > "$th_fixture/a.txt"
+printf 'beta\n' > "$th_fixture/sub/b.txt"
+
+th_tools_sum="$TEST_ROOT/tree-hash-tools-sha256sum"
+mkdir -p "$th_tools_sum"
+for t in find sort awk sha256sum; do ln -s "$(command -v "$t")" "$th_tools_sum/$t"; done
+
+th_tools_shasum="$TEST_ROOT/tree-hash-tools-shasum"
+mkdir -p "$th_tools_shasum"
+for t in find sort awk; do ln -s "$(command -v "$t")" "$th_tools_shasum/$t"; done
+# fake shasum：仅支持 `-a 256` 形式，转发到真实 sha256sum（绝对路径）
+printf '%s\n' '#!/bin/sh' 'if [ "$1" = "-a" ]; then shift 2; fi' \
+  "exec $(command -v sha256sum) \"\$@\"" > "$th_tools_shasum/shasum"
+chmod +x "$th_tools_shasum/shasum"
+
+if th_hash_sum=$(PATH="$th_tools_sum" tree_hash "$th_fixture"); then
+  th_sum_status=0
+else
+  th_sum_status=$?
+fi
+if th_hash_shasum=$(PATH="$th_tools_shasum" tree_hash "$th_fixture"); then
+  th_shasum_status=0
+else
+  th_shasum_status=$?
+fi
+if [ "$th_sum_status" -eq 0 ] && [ "$th_shasum_status" -eq 0 ] \
+  && [ -n "$th_hash_sum" ] && [ "$th_hash_sum" = "$th_hash_shasum" ]; then
+  record_result tree-hash-tool-paths-equal 0 "$th_hash_sum" "$th_hash_shasum" pass
+else
+  record_result tree-hash-tool-paths-equal 1 "$th_hash_sum" "$th_hash_shasum" fail
+fi
+
+th_tools_none="$TEST_ROOT/tree-hash-tools-none"
+mkdir -p "$th_tools_none"
+for t in find sort awk; do ln -s "$(command -v "$t")" "$th_tools_none/$t"; done
+th_err="$TEST_ROOT/tree-hash-missing.stderr"
+if th_output=$(PATH="$th_tools_none" tree_hash "$th_fixture" 2> "$th_err"); then
+  th_status=0
+else
+  th_status=$?
+fi
+if [ "$th_status" -ne 0 ] && grep -Fq '缺少 SHA-256 工具' "$th_err"; then
+  record_result tree-hash-missing-tools-fails "$th_status" "$th_output" nonzero pass
+else
+  record_result tree-hash-missing-tools-fails "$th_status" "$th_output" nonzero fail
+fi
+
 # ============================================================================
 # B. 迁移既有 22 用例 → CLI 驱动（it-* 命名）
 # ============================================================================
 
-# B1. 真实入口复制件在当前版本下必须幂等（it-s4-idempotent / L0-P6）。
+# B1. 真实入口复制件收敛后必须幂等（it-s4-idempotent / L0-P6+L0-02+SM-01）。
+# codex 终审 I2：skip 状态也补齐缺失摘要/技术栈——首次 apply 为收敛写入（属
+# I2 预期行为），第二次 apply 起双入口 sha256 不变才是幂等断言点。
 case_root="$(mk_entry_fixture fx-entry-idempotent)"
+run_script apply "$case_root" --no-interrupt
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -427,7 +538,13 @@ else
 fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
-case_root="$(mk_entry_fixture fx-l0-drift-replace '本地漂移段落' '另一个漂移段落')"
+# codex 终审 I2 适配：入口先收敛（摘要/技术栈补齐），再注入 L0 区块内漂移，
+# 使「区块外逐字保留」断言不被 I2 的缺失摘要补齐扰动。
+case_root="$TEST_ROOT/fx-l0-drift-replace"
+mkdir -p "$case_root"
+mk_converged_entries "$case_root"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
 outside_claude_before=$(outside_l0_hash "$case_root/CLAUDE.md")
 outside_agents_before=$(outside_l0_hash "$case_root/AGENTS.md")
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
@@ -796,8 +913,8 @@ fi
 # 用 HISTORY_DIRS 清单内目录（prds）+ 预置 rules 幂等 + cadence/prds 非空。
 case_root="$TEST_ROOT/fx-history-target-nonempty"
 mkdir -p "$case_root/.claude/rules"
-cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
-cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
+# codex 终审 I2 适配：入口预收敛（全树零写入断言不被摘要/技术栈补齐扰动）
+mk_converged_entries "$case_root"
 cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
 cp "$TEST_DIR/../references/rules/README.md" "$case_root/.claude/rules/" 2>/dev/null || true
 mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
@@ -1419,8 +1536,8 @@ fi
 case_root="$TEST_ROOT/fx-codegraph-backfill"
 mkdir -p "$case_root/.claude/rules" "$case_root/openspec" "$case_root/application"
 printf 'x=1\n' > "$case_root/application/app.py"
-cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
-cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
+# codex 终审 I2 适配：入口预收敛（coding 收敛态，避免 S4 upgrade 扰动「其余文件 sha256 不变」断言）
+mk_converged_entries "$case_root" coding
 cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
 python3 -c "
 import importlib.util
@@ -1544,6 +1661,148 @@ else
 fi
 
 # ============================================================================
+# C17. codex 终审修复回归（C2/I1/I2/I3/I4/I5 集成证据）
+# ============================================================================
+
+# C17a. 无效 .mcp.json 重写前备份（it-s8-mcpjson-invalid-backed-up / codex 终审 C2）。
+case_root="$(mk_coding_fixture fx-mcpjson-invalid)"
+printf '{invalid json\n' > "$case_root/.mcp.json"
+fake_bin="$TEST_ROOT/fake-bin-mcpjson-invalid"
+mkdir -p "$fake_bin"
+# install 失败 → degraded 路径仍补齐双配置；既有无效 .mcp.json 重写前必须备份
+fake_codegraph "$fake_bin" 1 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['overall']" 2>/dev/null | grep -qi 'degraded' \
+  && compgen -G "$case_root/.mcp.json.cadence-backup-*" >/dev/null \
+  && grep -q 'invalid json' "$case_root"/.mcp.json.cadence-backup-* \
+  && python3 -c "import json;d=json.load(open('$case_root/.mcp.json'));assert 'codegraph' in d['mcpServers']"; then
+  record_result it-s8-mcpjson-invalid-backed-up "$RUN_STATUS" invalid backed-up pass
+else
+  record_result it-s8-mcpjson-invalid-backed-up "$RUN_STATUS" invalid missing fail
+fi
+
+# C17b. .codegraph/ 已存在 + 缺 .codex/config.toml → 补齐（it-s8-codegraph-existing-mcp-backfill / codex 终审 I1 + CS-04/CG-05）。
+case_root="$TEST_ROOT/fx-codegraph-existing-mcp-backfill"
+mkdir -p "$case_root/.codegraph" "$case_root/application"
+printf 'x=1\n' > "$case_root/application/app.py"
+printf '{ "mcpServers": { "codegraph": { "command": "codegraph", "args": ["mcp"] } } }\n' > "$case_root/.mcp.json"
+before=$(sha256_file "$case_root/.mcp.json")
+fake_bin="$TEST_ROOT/fake-bin-existing-backfill"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 0
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ -f "$case_root/.codex/config.toml" ] \
+  && grep -q '\[mcp_servers.codegraph\]' "$case_root/.codex/config.toml" \
+  && [ "$before" = "$(sha256_file "$case_root/.mcp.json")" ] \
+  && ! compgen -G "$case_root/.mcp.json.cadence-backup-*" >/dev/null; then
+  record_result it-s8-codegraph-existing-mcp-backfill "$RUN_STATUS" missing present pass
+else
+  record_result it-s8-codegraph-existing-mcp-backfill "$RUN_STATUS" missing missing fail
+fi
+
+# C17c. L0 skip + 缺摘要/技术栈 → 补齐且 L0 区块不变（it-s4-skip-summary-backfill / codex 终审 I2 + SM-02）。
+case_root="$(mk_entry_fixture fx-skip-summary-backfill)"
+before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" != "$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")" ] \
+  && grep -q '### 项目技术栈' "$case_root/CLAUDE.md" \
+  && grep -q '### 项目技术栈' "$case_root/AGENTS.md" \
+  && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
+  && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ]; then
+  record_result it-s4-skip-summary-backfill "$RUN_STATUS" missing backfilled pass
+else
+  record_result it-s4-skip-summary-backfill "$RUN_STATUS" missing missing fail
+fi
+
+# C17d. keep 决策 → 不生成备份（it-s3-keep-decision-no-backup / codex 终审 I3）。
+case_root="$TEST_ROOT/fx-keep-no-backup"
+mkdir -p "$case_root/.claude/rules"
+cp "$TEST_DIR/../references/rules/language.md" "$case_root/.claude/rules/language.md"
+printf '\n# 用户自定义补充\n不覆盖我\n' >> "$case_root/.claude/rules/language.md"
+dec_file="$TEST_ROOT/decisions-keep-nobackup.json"
+write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/language.md","decision":"keep"}]'
+run_script apply "$case_root" --decisions "$dec_file"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && ! compgen -G "$case_root/.claude/rules/language.md.cadence-backup-*" >/dev/null \
+  && grep -q '不覆盖我' "$case_root/.claude/rules/language.md"; then
+  record_result it-s3-keep-decision-no-backup "$RUN_STATUS" keep no-backup pass
+else
+  record_result it-s3-keep-decision-no-backup "$RUN_STATUS" keep backup fail
+fi
+
+# C17e. 幂等重跑 → 零备份零变更（it-idempotent-rerun-zero-backup / codex 终审 I3）。
+case_root="$TEST_ROOT/fx-idempotent-rerun"
+mkdir -p "$case_root"
+run_script apply "$case_root" --no-interrupt
+before=$(tree_hash "$case_root")
+run_script apply "$case_root" --no-interrupt
+after=$(tree_hash "$case_root")
+backup_count=$(find "$case_root" -name '*.cadence-backup-*' | wc -l)
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] && [ "$backup_count" -eq 0 ]; then
+  record_result it-idempotent-rerun-zero-backup "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-idempotent-rerun-zero-backup "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# C17f. dry-run 报告完整性：conflicts 含 allowed_decisions、steps 含真实 elapsed_ms
+# （it-dryrun-report-completeness / codex 终审 I4）。
+case_root="$(mk_drift_fixture fx-dryrun-completeness)"
+run_script dry-run "$case_root"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['conflicts']" 2>/dev/null | grep -q 'allowed_decisions' \
+  && assert_report_completeness "$REPORT"; then
+  record_result it-dryrun-report-completeness "$RUN_STATUS" present present pass
+else
+  record_result it-dryrun-report-completeness "$RUN_STATUS" present missing fail
+fi
+
+# C17g. apply 报告各步真实计时（it-apply-steps-real-elapsed / codex 终审 I4）。
+dec_file="$TEST_ROOT/decisions-elapsed.json"
+write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep"}]'
+run_script apply "$case_root" --decisions "$dec_file"
+if [ "$RUN_STATUS" -eq 0 ] && assert_report_completeness "$REPORT"; then
+  record_result it-apply-steps-real-elapsed "$RUN_STATUS" present present pass
+else
+  record_result it-apply-steps-real-elapsed "$RUN_STATUS" present missing fail
+fi
+
+# C17h. 老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并
+# （it-s3-codegraph-section-missing / codex 终审 I5 + RF-04）。
+case_root="$TEST_ROOT/fx-codegraph-section-missing"
+mkdir -p "$case_root/.claude/rules"
+printf '# 旧版代码阅读规则\n\n仅 ast-grep，无其他内容。\n' > "$case_root/.claude/rules/code-reading.md"
+before=$(sha256_file "$case_root/.claude/rules/code-reading.md")
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" = "$(sha256_file "$case_root/.claude/rules/code-reading.md")" ] \
+  && ! compgen -G "$case_root/.claude/rules/code-reading.md.cadence-backup-*" >/dev/null \
+  && jqr "['steps']" 2>/dev/null | grep -q 'codegraph-section-missing' \
+  && jqr "['steps']" 2>/dev/null | grep -q '需用户手动合并 CodeGraph 段落'; then
+  record_result it-s3-codegraph-section-missing "$RUN_STATUS" present reported pass
+else
+  record_result it-s3-codegraph-section-missing "$RUN_STATUS" present missing fail
+fi
+
+# C17i. 可选规则完整性检查（it-s3-optional-complete / codex 终审 I5 + OP-01）：
+# 规则文件+摘要均存在 → 报告完整性检查 ok，二次运行零重写。
+case_root="$TEST_ROOT/fx-optional-complete"
+mkdir -p "$case_root"
+run_script apply "$case_root" --no-interrupt
+before=$(tree_hash "$case_root")
+run_script apply "$case_root" --no-interrupt
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" = "$(tree_hash "$case_root")" ] \
+  && jqr "['steps']" 2>/dev/null | grep -q 'optional-integrity' \
+  && jqr "['steps']" 2>/dev/null | grep -q "'result': 'ok'"; then
+  record_result it-s3-optional-complete "$RUN_STATUS" present ok pass
+else
+  record_result it-s3-optional-complete "$RUN_STATUS" present missing fail
+fi
+
+# ============================================================================
 # D. 静态契约检查 sc-*（全部可执行，record_result 五参逐字调用）
 # ============================================================================
 
@@ -1618,6 +1877,14 @@ if ! grep -qE '读取内容，写入项目的|将以下文件从.*写入' "$SKIL
   record_result sc-no-direct-target-writes 0 absent absent pass
 else
   record_result sc-no-direct-target-writes 1 absent present fail
+fi
+
+# D10. 脚本 PRUNE_DIRS 与 SKILL.md find 剪枝清单一致（sc-prune-dirs-contract）。
+# codex 终审 I6：修复 map() 误用导致的检查恒失败，且失败计入 fail（不再假绿）。
+if assert_bounded_source_scan_contract; then
+  record_result sc-prune-dirs-contract 0 consistent consistent pass
+else
+  record_result sc-prune-dirs-contract 1 consistent inconsistent fail
 fi
 
 printf 'SUMMARY pass=%s fail=%s\n' "$PASS_COUNT" "$FAIL_COUNT"

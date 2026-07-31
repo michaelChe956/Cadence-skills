@@ -136,6 +136,9 @@ ORDINARY_RULE_FILES = (
 # Playwright 规则文件（仅 intents.enable_playwright 时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
+# RF-04：含 CodeGraph 段落的规则文件（老项目缺段落 → 报告手动合并，不自动覆盖）。
+CODEGRAPH_RULE_FILE = "code-reading.md"
+
 # S5 目录结构创建（SKILL.md 第 5 步）：cadence/ 下 17 个子目录（含
 # project-rules/examples 与 cache）。逐字对齐 SKILL.md mkdir 块展开后的目录名。
 # project-rules 下含 examples 子目录，用 "project-rules/examples" 表示。
@@ -518,9 +521,17 @@ def backup_file(path: Path) -> Path:
 
     返回备份文件 Path；失败抛 BackupError。
     命名约定：config.yaml.cadence-backup-20260731120000（NB-02/OS-B1/L1-B1）。
+    codex 终审 C1：同秒同文件重复备份时追加 -2/-3 唯一后缀，
+    保证不 copy2 覆盖既有备份（不丢首次恢复点）。
     """
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     backup_path = Path(str(path) + f".cadence-backup-{stamp}")
+    if backup_path.exists():
+        # 同秒冲突：追加递增序号直至唯一（-2、-3 …）
+        seq = 2
+        while Path(str(path) + f".cadence-backup-{stamp}-{seq}").exists():
+            seq += 1
+        backup_path = Path(str(path) + f".cadence-backup-{stamp}-{seq}")
     try:
         shutil.copy2(path, backup_path)
     except OSError as exc:
@@ -1230,6 +1241,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
 
     # --- S1 detect：项目类型 + 技术栈 ---
     s1 = _step_skeleton(STEP_DETECT)
+    t_s1 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     detect_result = detect_project(root, intents)
     plan["project_type"] = detect_result["project_type"]
     plan["tech_stack"] = detect_result["tech_stack"]
@@ -1252,10 +1264,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     if conflict:
         s1["conflicts"] = [conflict]
         plan["conflicts"].append(conflict)
+    s1["elapsed_ms"] = int((time.monotonic() - t_s1) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_DETECT] = s1
 
     # --- S2 locate templates：三级定位 ---
     s2 = _step_skeleton(STEP_TEMPLATES)
+    t_s2 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     try:
         rules_root, openspec_yaml = locate_templates()
         s2["status"] = "ok"
@@ -1279,10 +1293,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             "reason": str(exc),
             "recovery": "检查模板安装路径或提供完整模板候选",
         }
+    s2["elapsed_ms"] = int((time.monotonic() - t_s2) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_TEMPLATES] = s2
 
     # --- S3 rules files：探测普通规则文件（8 个）+ L1 独立分支 + Playwright ---
     s3 = _step_skeleton(STEP_RULES_FILES)
+    t_s3 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     templates_info = plan.get("templates", {}) or {}
     rules_root_str = templates_info.get("rules_root")
     rules_root = Path(rules_root_str) if rules_root_str else None
@@ -1363,6 +1379,26 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "path": rel, "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": False,
                 })
+            elif (fname == CODEGRAPH_RULE_FILE
+                  and "CodeGraph" in template_text
+                  and "CodeGraph" not in existing_text):
+                # codex 终审 I5 / RF-04：老项目规则文件缺少 CodeGraph 段落 →
+                # 不自动覆盖（两模式同动作），报告型冲突提示用户手动合并；
+                # 不进 decisions 冲突集，不进备份需求（不改文件）。
+                s3["assets"].append({
+                    "path": rel, "action": "skip",
+                    "conflict": "codegraph-section-missing",
+                    "backup_needed": False, "is_l1": False,
+                })
+                s3["conflicts"].append({
+                    "conflict_id": f"s3:{rel}:codegraph-section",
+                    "asset": rel, "kind": "codegraph-section-missing",
+                    "question": (
+                        f"规则文件 {rel} 缺少 CodeGraph 段落（模板含 CodeGraph 内容）"
+                    ),
+                    "recommendation": "需用户手动合并 CodeGraph 段落",
+                    "report_only": True,
+                })
             else:
                 s3["assets"].append({
                     "path": rel, "action": "replace", "conflict": "drift",
@@ -1384,10 +1420,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 })
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
+    s3["elapsed_ms"] = int((time.monotonic() - t_s3) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_RULES_FILES] = s3
 
     # --- S4 entry files：探测 CLAUDE.md / AGENTS.md 漂移 ---
     s4 = _step_skeleton(STEP_ENTRY_FILES)
+    t_s4 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     kernel_source = _load_kernel_source()
     for entry_name in ("CLAUDE.md", "AGENTS.md"):
         entry_path = root / entry_name
@@ -1444,10 +1482,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             })
             _append_backup_need(plan, entry_path)
     s4["status"] = "ok"
+    s4["elapsed_ms"] = int((time.monotonic() - t_s4) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_ENTRY_FILES] = s4
 
     # --- S5 scaffold：探测 cadence/ 目录与历史目录（Task 7） ---
     s5 = _step_skeleton(STEP_SCAFFOLD)
+    t_s5 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     s5["status"] = "ok"
     # 历史目录检测：扫描 .claude/ 下 HISTORY_DIRS（16 个精确目录）。
     claude_dir = root / ".claude"
@@ -1467,10 +1507,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             "conflict": None, "backup_needed": False,
             "history_detected": detected,
         })
+    s5["elapsed_ms"] = int((time.monotonic() - t_s5) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_SCAFFOLD] = s5
 
     # --- S6 gitignore：探测 .gitignore（Task 7） ---
     s6 = _step_skeleton(STEP_GITIGNORE)
+    t_s6 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     s6["status"] = "ok"
     gi = root / ".gitignore"
     s6["assets"].append({
@@ -1478,6 +1520,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "conflict": None, "backup_needed": False,
         "exists": gi.exists(),
     })
+    s6["elapsed_ms"] = int((time.monotonic() - t_s6) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_GITIGNORE] = s6
 
     # --- S7 openspec config：探测 openspec/config.yaml（Task 8） ---
@@ -1488,6 +1531,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     templates_info = plan.get("templates", {}) or {}
     openspec_yaml_str = templates_info.get("openspec_yaml")
     s7 = _step_skeleton(STEP_OPENSPEC_CONFIG)
+    t_s7 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     config_path = root / "openspec" / "config.yaml"
     if not config_path.exists():
         # 目标不存在 → create（从模板原子创建，无需备份）。
@@ -1578,6 +1622,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "backup_needed": True,
             })
     s7["status"] = "ok"
+    s7["elapsed_ms"] = int((time.monotonic() - t_s7) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_OPENSPEC_CONFIG] = s7
 
     # --- S8 codegraph：探测是否需要执行（骨架） ---
@@ -1993,7 +2038,15 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": asset["path"], "action": "created"})
             continue
         if action == "skip" or conflict is None:
-            actions_log.append({"path": asset["path"], "action": "skipped"})
+            if conflict == "codegraph-section-missing":
+                # codex 终审 I5 / RF-04：报告手动合并提示，不重写文件
+                actions_log.append({
+                    "path": asset["path"], "action": "skipped",
+                    "branch": "codegraph-section-missing",
+                    "reason": "需用户手动合并 CodeGraph 段落",
+                })
+            else:
+                actions_log.append({"path": asset["path"], "action": "skipped"})
             continue
 
         # 冲突资产（conflict 非空）。
@@ -2033,6 +2086,33 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 else:
                     actions_log.append({"path": asset["path"], "action": "kept", "branch": "rules-keep"})
 
+    # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
+    # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
+    # 文件与摘要不重写。摘要缺失时由 S4 摘要补全（SM-02）处理。
+    optional_rules = [CODEGRAPH_RULE_FILE]
+    if intents.enable_playwright:
+        optional_rules.append(PLAYWRIGHT_RULE_FILE)
+    for opt in optional_rules:
+        if not (rules_dir / opt).exists():
+            continue
+        summary_ref = f".claude/rules/{opt}"
+        summary_present = False
+        for entry_name in ("CLAUDE.md", "AGENTS.md"):
+            entry_text = _safe_read(root / entry_name)
+            if entry_text and summary_ref in entry_text:
+                summary_present = True
+                break
+        actions_log.append({
+            "path": f".claude/rules/{opt}",
+            "action": "optional-integrity",
+            "branch": "op-01",
+            "result": "ok" if summary_present else "summary-missing",
+            "detail": (
+                "规则文件与摘要均已存在（视为已启用）"
+                if summary_present else "摘要缺失（S4 摘要补全将处理）"
+            ),
+        })
+
     # 回写 actions 到报告 step。
     _record_step_actions(report, STEP_RULES_FILES, actions_log)
 
@@ -2058,6 +2138,19 @@ def _record_step_actions(report: dict, step_name: str, actions: list) -> None:
         "name": step_name, "status": "ok", "action": None,
         "reason": "", "elapsed_ms": 0, "assets": [], "conflicts": [],
         "actions": list(actions),
+    })
+
+
+def _record_step_elapsed(report: dict, step_name: str, elapsed_ms: int) -> None:
+    """将执行阶段真实耗时回写到报告对应 step 的 elapsed_ms 字段（codex 终审 I4）。"""
+    for step in report.get("steps", []):
+        if step.get("name") == step_name:
+            step["elapsed_ms"] = elapsed_ms
+            return
+    report.setdefault("steps", []).append({
+        "name": step_name, "status": "ok", "action": None,
+        "reason": "", "elapsed_ms": elapsed_ms, "assets": [],
+        "conflicts": [], "actions": [],
     })
 
 
@@ -2109,8 +2202,21 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         base_text = BASE_CLAUDE_MD if entry_name == "CLAUDE.md" else BASE_AGENTS_MD
 
         if action == "skip" or (state is None and action != "create"):
-            # 已是 skip 状态（L0 与规范源一致）→ 幂等：不修改入口文件。
-            actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip"})
+            # codex 终审 I2：L0 skip 状态也执行摘要补全与技术栈写入（SM-02/03、
+            # S4「单次完成 L0、摘要、技术栈」；L0 区块处理与摘要/技术栈是独立动作）。
+            # 内容无变化时不写盘（保持幂等，L0-02/SM-01）。
+            existing = _safe_read(entry_path)
+            if existing is None:
+                actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
+                continue
+            composed = _compose_entry(existing, kernel_source, state="skip",
+                                      project_type=project_type, tech_stack=tech_stack,
+                                      entry_name=entry_name)
+            if composed != existing:
+                atomic_write(entry_path, composed)
+                actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
+            else:
+                actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip"})
             continue
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
@@ -2161,17 +2267,19 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
                    project_type: str, tech_stack: dict, entry_name: str) -> str:
     """合成入口文件最终文本。
 
-    按状态区分行为（保证幂等与区块外保留）：
-      * skip：完全不动（幂等）；
-      * create（入口不存在，基线=BASE 文本）：插入 L0 + 补摘要行 + 规则 2 选文本
-        + 追加技术栈块（若有检测数据）；
-      * insert（入口存在但无 L0 标记）：插入 L0 + 补摘要行 + 规则 2 选文本
-        （不追加技术栈块——入口已存在，尊重用户内容）；
-      * drift/upgrade/broken：仅修复 L0 区块，不动区块外内容。
+    按状态区分 L0 区块处理（保证幂等与区块外保留）：
+      * skip：L0 区块不动；
+      * create（入口不存在，基线=BASE 文本）：插入 L0；
+      * insert（入口存在但无 L0 标记）：插入 L0；
+      * drift/upgrade：移除旧区块对后重新插入规范 L0；
+      * broken：只移除孤立标记行后插入规范 L0。
+
+    codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
+    均执行规则 2 选文本、缺失摘要行追加（SM-02/03）与技术栈块写入（DF-02/S4
+    「单次完成 L0、摘要、技术栈」）——L0 区块处理与摘要/技术栈是独立动作。
+    摘要与技术栈补全均为幂等追加（已存在则不动），区块外用户内容保留（L0-B2）。
     """
     text = existing
-    # 状态决定是否做“完整初始化”（摘要行 + 技术栈块）。
-    full_init = state in ("create", "insert")
 
     # --- 步骤 1：规范化 L0 ---
     if state == "skip":
@@ -2190,11 +2298,7 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
         text = _strip_l0_marker_lines_only(text)
         text = _insert_l0_block(text, l0_source)
 
-    if not full_init:
-        # drift/upgrade/broken：仅修 L0，不动区块外。规范化末尾换行。
-        return text.rstrip("\n") + "\n"
-
-    # --- 步骤 2：规则 2 摘要行按项目类型选择 ---
+    # --- 步骤 2：规则 2 摘要行按项目类型选择（I2：全状态执行）---
     rule2_text = (
         RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
     )
@@ -2202,12 +2306,11 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
         if variant in text and variant != rule2_text:
             text = text.replace(variant, rule2_text, 1)
 
-    # --- 步骤 3：缺失摘要行追加（仅 create/insert）---
+    # --- 步骤 3：缺失摘要行追加（I2：全状态执行，SM-02）---
     text = _ensure_summary_lines(text, entry_name, project_type)
 
-    # --- 步骤 4：技术栈块追加（仅 create；insert 不追加以尊重用户内容）---
-    if state == "create":
-        text = _ensure_techstack_block(text, tech_stack)
+    # --- 步骤 4：技术栈块追加（I2：全状态执行；幂等，已含则不动）---
+    text = _ensure_techstack_block(text, tech_stack)
 
     return text
 
@@ -2697,6 +2800,14 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
                 raise PublishError(
                     f"openspec/config.yaml 不可解析，无法合并（候选未发布，原文件不变）"
                 )
+            # codex 终审 I3：候选与现状逐字节一致 → 幂等跳过（零写入零备份），
+            # 报告明确标记幂等（spec「报告区分幂等跳过与实际变更」）。
+            if candidate == existing:
+                actions_log.append({
+                    "path": rel, "action": "skipped", "branch": "merge-idempotent",
+                    "detail": "候选与现状一致，幂等跳过",
+                })
+                continue
             _s7_publish_or_abort(
                 config_path, candidate, report, actions_log, rel,
                 branch="merge",
@@ -2824,6 +2935,20 @@ def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
     # .mcp.json 补写（兜底 JSON 合并）
     if not has_codegraph_mcp_mcpjson(root):
         mcp_path = root / ".mcp.json"
+        # codex 终审 C2：重写既有 .mcp.json 前必须先备份（无效/非对象 JSON
+        # 同样备份——原配置可能是用户仅存的恢复点）；备份失败即终止（PublishError）。
+        if mcp_path.exists():
+            try:
+                mcp_backup = backup_file(mcp_path)
+            except BackupError as exc:
+                raise PublishError(f".mcp.json 重写前备份失败：{exc}") from exc
+            report.setdefault("backups", []).append({
+                "file": str(mcp_path), "backup": str(mcp_backup),
+            })
+            actions_log.append({
+                "path": ".mcp.json", "action": "backed-up",
+                "branch": "mcpjson-pre-rewrite", "backup": str(mcp_backup),
+            })
         raw = _safe_read(mcp_path)
         doc: dict = {}
         if raw:
@@ -2903,6 +3028,10 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
                     "action": "degraded", "branch": "status-failed",
                     "detail": f"codegraph status rc={status_rc}",
                 })
+            # codex 终审 I1：.codegraph/ 已存在时也核验双 MCP 配置，缺失则补齐
+            # （CS-04~06/CG-05~06：status 核验与配置补齐是独立动作，status
+            # 失败降级不影响补齐；配置补写/备份/原子写失败仍抛 PublishError 终止）。
+            _s8_ensure_mcp_configs(root, report, actions_log)
         else:
             # .codegraph/ 不存在 → install → 核验补配置 → init
             install_rc = subprocess.run(
@@ -2992,6 +3121,103 @@ STEP_FUNCS = {
 
 
 # ---------------------------------------------------------------------------
+# I3（codex 终审）：备份屏障过滤——只收集真实写入需求
+# ---------------------------------------------------------------------------
+
+
+def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents) -> bool:
+    """判定 target 是否真实需要备份（有实际写入/备份后终止动作）。
+
+    规则（codex 终审 I3）：
+      * S3 冲突资产：no-interrupt 或 decision==replace 才写入；keep 不备份；
+      * S4 upgrade：确定性升级，始终写入 → 备份；drift/broken 同 S3 决策语义；
+      * S7 merge：候选与现状逐字节不同才写入（幂等 → 不备份）；
+      * S7 rules.apply：no-interrupt 或 decision==remove_apply → 备份；
+        无决策默认 keep → 不备份；
+      * S7 结构/解析/不可读冲突：no-interrupt 备份后终止 → 备份；普通保留 → 不备份；
+      * 无法归属任何资产 → 保守保留（不放宽屏障）。
+    """
+    decisions_map = plan.get("decisions_map", {}) or {}
+    steps = plan.get("steps", {}) or {}
+    key = str(target)
+
+    def _matches(asset: dict) -> bool:
+        return str(root / asset.get("path", "")) == key
+
+    # S3 规则文件
+    for asset in (steps.get(STEP_RULES_FILES, {}) or {}).get("assets", []) or []:
+        if not _matches(asset):
+            continue
+        if not asset.get("conflict"):
+            return False
+        if intents.no_interrupt:
+            return True
+        return decisions_map.get(f"s3:{asset['path']}") == DECISION_REPLACE
+
+    # S4 入口文件
+    for asset in (steps.get(STEP_ENTRY_FILES, {}) or {}).get("assets", []) or []:
+        if not _matches(asset):
+            continue
+        action = asset.get("action")
+        if action == "upgrade":
+            # 确定性升级（两模式同动作）→ 始终写入
+            return True
+        if action == "replace":  # drift/broken
+            if intents.no_interrupt:
+                return True
+            return decisions_map.get(f"s4:{asset['path']}") == DECISION_REPLACE
+        return False
+
+    # S7 OpenSpec 配置
+    for asset in (steps.get(STEP_OPENSPEC_CONFIG, {}) or {}).get("assets", []) or []:
+        if not _matches(asset):
+            continue
+        action = asset.get("action")
+        conflict = asset.get("conflict")
+        if action == "merge":
+            # 幂等判定：候选与现状逐字节比较（I3：幂等不进备份需求）
+            existing = _safe_read(target)
+            if existing is None:
+                return True  # 读不出 → 保守备份
+            template_text = ""
+            openspec_yaml = (plan.get("templates", {}) or {}).get("openspec_yaml")
+            if openspec_yaml:
+                try:
+                    template_text = Path(openspec_yaml).read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    template_text = ""
+            candidate, _ = merge_yaml(template_text, existing)
+            if candidate is None:
+                return True  # 无法判定 → 保守备份
+            return candidate != existing
+        if action == "keep" and isinstance(conflict, dict):
+            kind = conflict.get("kind")
+            if kind == "rules.apply":
+                if intents.no_interrupt:
+                    return True
+                return decisions_map.get("s7:openspec/config.yaml") == DECISION_REMOVE_APPLY
+            # structure/unparseable/unreadable：no-interrupt 备份后终止（OS-03/05）→
+            # 备份；普通模式保留原文件不改 → 不备份
+            return bool(intents.no_interrupt)
+        return False
+
+    # 未匹配到任何资产（异常路径）→ 保守保留备份需求
+    return True
+
+
+def _filter_backup_needs(plan: dict, intents: Intents, root: Path) -> list:
+    """过滤 plan.backup_needs，只保留真实写入需求（codex 终审 I3）。
+
+    keep 决策与幂等（候选==现状）不进备份屏障，避免无效备份破坏幂等，
+    也避免无必要备份失败导致的中止。
+    """
+    return [
+        target for target in (plan.get("backup_needs", []) or [])
+        if _backup_required_for(target, root, plan, intents)
+    ]
+
+
+# ---------------------------------------------------------------------------
 # 主流程：dry-run / apply
 # ---------------------------------------------------------------------------
 
@@ -3066,6 +3292,8 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
                     "state": c.get("state"),
                     "question": c.get("question"),
                     "recommendation": c.get("recommendation"),
+                    # codex 终审 I4：失败报告同样携带 allowed_decisions
+                    "allowed_decisions": c.get("allowed_decisions"),
                 }
                 for c in plan_conflicts
             ]
@@ -3083,7 +3311,8 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
         plan["decisions_map"] = {}
 
     # 3. 全局备份屏障：汇总 plan 全部 backup_needs 逐一 backup_file
-    backup_needs = plan.get("backup_needs", []) or []
+    # codex 终审 I3：屏障只收集真实写入需求（keep 决策与幂等候选剔除）。
+    backup_needs = _filter_backup_needs(plan, intents, root)
     backups_done: list = []
     for target in backup_needs:
         try:
@@ -3105,7 +3334,16 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
     try:
         for step_name in STEP_ORDER:
             step_func = STEP_FUNCS[step_name]
-            step_func(root, intents, plan, report)
+            if step_name == STEP_CODEGRAPH:
+                # S8 独立计时（_s8_record_elapsed 自记录，不计入 budget）
+                step_func(root, intents, plan, report)
+            else:
+                # codex 终审 I4：S1-S7 执行阶段真实 time.monotonic() 计时
+                t_step = time.monotonic()
+                step_func(root, intents, plan, report)
+                _record_step_elapsed(
+                    report, step_name, int((time.monotonic() - t_step) * 1000),
+                )
             # S7 完成时计算 budget_seconds_excluding_codegraph
             if step_name == STEP_OPENSPEC_CONFIG:
                 report["budget_seconds_excluding_codegraph"] = time.monotonic() - T0
@@ -3160,6 +3398,8 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "state": c.get("state"),
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
+            # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
+            "allowed_decisions": c.get("allowed_decisions"),
         }
         for c in (plan.get("conflicts", []) or [])
     ]

@@ -9,6 +9,7 @@
 
 import hashlib
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -351,6 +352,33 @@ class TestBackupFile(unittest.TestCase):
         backup = rc.backup_file(p)
         self.assertRegex(Path(backup).name, r"^openspec-superpowers-workflow\.md\.cadence-backup-\d{14}$")
         self.assertEqual(Path(backup).parent, d)
+
+    def test_backup_same_second_unique_suffix(self):
+        """ut-backup_file-unique-suffix / codex 终审 C1
+        （同秒同文件重复备份 → 追加 -2/-3 唯一后缀，两个备份都存在且不覆盖首次恢复点）"""
+        p = Path(self.tmp.name) / "config.yaml"
+        p.write_text("v1\n")
+        fixed = rc.datetime(2026, 7, 31, 12, 0, 0)
+        with mock.patch.object(rc, "datetime") as mdt:
+            mdt.now.return_value = fixed
+            b1 = rc.backup_file(p)
+            p.write_text("v2\n")
+            b2 = rc.backup_file(p)
+            p.write_text("v3\n")
+            b3 = rc.backup_file(p)
+        # 三个备份名两两不同且全部存在（首次恢复点未被覆盖）
+        names = [str(b) for b in (b1, b2, b3)]
+        self.assertEqual(len(set(names)), 3)
+        for b in (b1, b2, b3):
+            self.assertTrue(Path(b).exists())
+        # 首个备份保持无后缀基名（既有命名约定不变），后续追加 -2/-3
+        self.assertRegex(Path(b1).name, r"\.cadence-backup-\d{14}$")
+        self.assertRegex(Path(b2).name, r"\.cadence-backup-\d{14}-\d+$")
+        self.assertRegex(Path(b3).name, r"\.cadence-backup-\d{14}-\d+$")
+        # 内容未被覆盖：每个备份保留各自时点内容
+        self.assertEqual(Path(b1).read_text(), "v1\n")
+        self.assertEqual(Path(b2).read_text(), "v2\n")
+        self.assertEqual(Path(b3).read_text(), "v3\n")
 
 
 class TestAtomicWrite(unittest.TestCase):
@@ -898,10 +926,37 @@ class TestStepS4EntryFiles(unittest.TestCase):
         self.assertIn("## 强制规则", text)
 
     def test_skip_state_idempotent_no_change(self):
-        """ut-step_s4-skip-idempotent / L0-P6（skip 状态 → 不修改入口）"""
+        """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要/技术栈已收敛 → 幂等零写入）"""
         entry = self.root / "CLAUDE.md"
-        # 构造一个 skip 状态的入口（L0 区块 = 规范源）
-        base = "# CLAUDE.md\n\n说明\n\n" + self.kernel + "\n## 强制规则\n- x\n"
+        # 构造收敛态入口（L0=规范源 + 全部摘要行 + 技术栈块）：skip 状态零写入
+        tech = {
+            "language": "Python", "pkg_manager": "uv", "test": "pytest",
+            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
+        }
+        converged = rc._compose_entry(
+            rc.BASE_CLAUDE_MD, self.kernel, state="create",
+            project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
+        )
+        entry.write_text(converged, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_ENTRY_FILES: {
+                "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                "assets": [{
+                    "path": "CLAUDE.md", "action": "skip",
+                    "conflict": None, "backup_needed": False,
+                }],
+            }
+        })
+        rc.step_s4_entry_files(
+            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
+        )
+        self.assertEqual(entry.read_text(encoding="utf-8"), converged)
+
+    def test_skip_state_backfills_missing_summary_and_techstack(self):
+        """ut-step_s4-skip-backfill / codex 终审 I2 + SM-02
+        （L0 skip 但缺摘要/技术栈 → 补齐；L0 区块与用户内容不动）"""
+        entry = self.root / "CLAUDE.md"
+        base = "# CLAUDE.md\n\n说明\n\n" + self.kernel + "\n## 强制规则\n\n- 用户自定义规则\n"
         entry.write_text(base, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -912,11 +967,27 @@ class TestStepS4EntryFiles(unittest.TestCase):
                 }],
             }
         })
-        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
-        self.assertEqual(entry.read_text(encoding="utf-8"), base)
+        tech = {
+            "language": "Python", "pkg_manager": "uv", "test": "pytest",
+            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
+        }
+        rc.step_s4_entry_files(
+            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
+        )
+        result = entry.read_text(encoding="utf-8")
+        # 缺失摘要补齐（SM-02）与技术栈块写入（S4 单次完成）
+        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
+        self.assertIn("### 项目技术栈", result)
+        self.assertIn("**覆盖率阈值**：80%", result)
+        # 用户内容保留；L0 区块逐字不变
+        self.assertIn("- 用户自定义规则", result)
+        begin = result.index(rc.L0_BEGIN)
+        end = result.index(rc.L0_END, begin) + len(rc.L0_END)
+        self.assertEqual(result[begin:end].strip(), self.kernel.strip())
 
     def test_drift_replaced_block_matches_source_outside_preserved(self):
-        """ut-step_s4-drift-replace / L0-P7+L0-B2（no-interrupt 修复 drift：区块=规范源，区块外逐字保留）"""
+        """ut-step_s4-drift-replace / L0-P7+L0-B2+codex 终审 I2
+        （no-interrupt 修复 drift：区块=规范源，区块外用户内容保留；缺失摘要按 SM-02 补齐）"""
         entry = self.root / "CLAUDE.md"
         # 构造 drift：L0 区块内含漂移内容
         drift_block = rc.L0_BEGIN + "\n漂移内容\n" + rc.L0_END
@@ -940,6 +1011,8 @@ class TestStepS4EntryFiles(unittest.TestCase):
         # 区块外保留用户内容（漂移内容被移除）
         self.assertNotIn("漂移内容", result)
         self.assertIn("- 用户规则", result)
+        # I2：缺失摘要按 SM-02 补齐（L0 处理与摘要补全是独立动作）
+        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
 
 
 class TestStepS7OpenspecConfig(unittest.TestCase):
@@ -1428,6 +1501,355 @@ class TestFailureSchemaFinalReview(unittest.TestCase):
         self.assertEqual(report["failure"]["file"], ".claude/rules/language.md")
         self.assertTrue(report["failure"]["reason"])
         self.assertTrue(report["failure"]["recovery"])
+
+
+class TestS8EnsureMcpConfigs(unittest.TestCase):
+    """codex 终审 C2：.mcp.json 重写前必须备份（含无效 JSON），备份失败即终止。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_invalid_mcpjson_backed_up_before_rewrite(self):
+        """ut-s8-mcpjson-invalid-backup / codex 终审 C2
+        （无效 .mcp.json → 重写前备份存在 + 原子重写 + 原内容保留在备份中）"""
+        mcp = self.root / ".mcp.json"
+        mcp.write_text("{invalid json\n", encoding="utf-8")
+        report = {"backups": []}
+        actions: list = []
+        rc._s8_ensure_mcp_configs(self.root, report, actions)
+        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(encoding="utf-8"), "{invalid json\n")
+        doc = json.loads(mcp.read_text(encoding="utf-8"))
+        self.assertIn("codegraph", doc["mcpServers"])
+        self.assertEqual(report["backups"][0]["file"], str(mcp))
+        self.assertEqual(report["backups"][0]["backup"], str(backups[0]))
+
+    def test_valid_mcpjson_without_codegraph_backed_up_before_merge(self):
+        """ut-s8-mcpjson-valid-backup / codex 终审 C2
+        （有效但缺 codegraph 的 .mcp.json → 合并重写前同样备份，其他 server 保留）"""
+        mcp = self.root / ".mcp.json"
+        mcp.write_text(
+            '{ "mcpServers": { "other": { "command": "other" } } }\n',
+            encoding="utf-8",
+        )
+        report = {"backups": []}
+        rc._s8_ensure_mcp_configs(self.root, report, [])
+        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        self.assertEqual(len(backups), 1)
+        doc = json.loads(mcp.read_text(encoding="utf-8"))
+        self.assertIn("codegraph", doc["mcpServers"])
+        self.assertIn("other", doc["mcpServers"])
+
+    def test_missing_mcpjson_created_without_backup(self):
+        """ut-s8-mcpjson-create-no-backup / codex 终审 C2（.mcp.json 不存在 → 原子创建，无原文件不备份）"""
+        report = {"backups": []}
+        rc._s8_ensure_mcp_configs(self.root, report, [])
+        self.assertTrue((self.root / ".mcp.json").is_file())
+        self.assertEqual(list(self.root.glob(".mcp.json.cadence-backup-*")), [])
+        self.assertEqual(report["backups"], [])
+
+
+class TestFilterBackupNeeds(unittest.TestCase):
+    """codex 终审 I3：备份屏障只收集真实写入需求（keep 决策与幂等不备份）。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+
+    def _plan(self, s3_assets=None, s4_assets=None, s7_assets=None, decisions=None):
+        return {
+            "templates": {
+                "rules_root": str(self.refs / "rules"),
+                "openspec_yaml": str(self.refs / "openspec" / "config.yaml"),
+            },
+            "decisions_map": decisions or {},
+            "backup_needs": [],
+            "steps": {
+                rc.STEP_RULES_FILES: {"assets": s3_assets or []},
+                rc.STEP_ENTRY_FILES: {"assets": s4_assets or []},
+                rc.STEP_OPENSPEC_CONFIG: {"assets": s7_assets or []},
+            },
+        }
+
+    def test_s3_keep_decision_not_backed_up(self):
+        """ut-filter-backup-s3-keep / codex 终审 I3（keep 决策 → 不生成备份；replace/no-interrupt → 备份）"""
+        target = self.root / ".claude" / "rules" / "language.md"
+        plan = self._plan(
+            s3_assets=[{
+                "path": ".claude/rules/language.md", "action": "replace",
+                "conflict": "drift", "backup_needed": True,
+            }],
+            decisions={"s3:.claude/rules/language.md": "keep"},
+        )
+        plan["backup_needs"] = [target]
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
+        plan["decisions_map"] = {"s3:.claude/rules/language.md": "replace"}
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [target])
+        self.assertEqual(
+            rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
+            [target],
+        )
+
+    def test_s7_idempotent_merge_not_backed_up(self):
+        """ut-filter-backup-s7-idempotent / codex 终审 I3（候选==现状 → 零备份；候选有差异 → 备份）"""
+        config = self.root / "openspec" / "config.yaml"
+        config.parent.mkdir(parents=True)
+        tpl = (self.refs / "openspec" / "config.yaml").read_text(encoding="utf-8")
+        merged, _ = rc.merge_yaml(tpl, "")
+        config.write_text(merged, encoding="utf-8")
+        plan = self._plan(s7_assets=[{
+            "path": "openspec/config.yaml", "action": "merge",
+            "conflict": None, "backup_needed": True,
+        }])
+        plan["backup_needs"] = [config]
+        self.assertEqual(
+            rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root), [],
+        )
+        # 候选确有差异 → 保留备份需求
+        config.write_text("schema: spec-driven\ncontext: |\n  custom\n", encoding="utf-8")
+        self.assertEqual(
+            rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
+            [config],
+        )
+
+    def test_s7_rules_apply_default_keep_not_backed_up(self):
+        """ut-filter-backup-s7-rules-apply / codex 终审 I3
+        （rules.apply 无决策默认 keep → 不备份；remove_apply/no-interrupt → 备份）"""
+        config = self.root / "openspec" / "config.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            "schema: spec-driven\nrules:\n  apply:\n    - x\n", encoding="utf-8",
+        )
+        plan = self._plan(s7_assets=[{
+            "path": "openspec/config.yaml", "action": "keep",
+            "conflict": {"kind": "rules.apply"}, "backup_needed": True,
+        }])
+        plan["backup_needs"] = [config]
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
+        plan["decisions_map"] = {"s7:openspec/config.yaml": "remove_apply"}
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [config])
+        plan["decisions_map"] = {}
+        self.assertEqual(
+            rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
+            [config],
+        )
+
+    def test_s7_structure_conflict_normal_not_backed_up_no_interrupt_backed_up(self):
+        """ut-filter-backup-s7-structure / codex 终审 I3
+        （结构冲突：普通保留不备份；no-interrupt 备份后终止仍需备份）"""
+        config = self.root / "openspec" / "config.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_text("schema: [1]\n", encoding="utf-8")
+        plan = self._plan(s7_assets=[{
+            "path": "openspec/config.yaml", "action": "keep",
+            "conflict": {"kind": "structure", "fields": ["schema"]},
+            "backup_needed": True,
+        }])
+        plan["backup_needs"] = [config]
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
+        self.assertEqual(
+            rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
+            [config],
+        )
+
+    def test_s4_upgrade_always_backed_up_drift_keep_not(self):
+        """ut-filter-backup-s4-states / codex 终审 I3（upgrade 确定性升级必备份；drift keep 决策不备份）"""
+        entry = self.root / "CLAUDE.md"
+        plan = self._plan(s4_assets=[{
+            "path": "CLAUDE.md", "action": "upgrade",
+            "conflict": "upgrade", "backup_needed": True,
+        }])
+        plan["backup_needs"] = [entry]
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [entry])
+        plan2 = self._plan(
+            s4_assets=[{
+                "path": "CLAUDE.md", "action": "replace",
+                "conflict": "drift", "backup_needed": True,
+            }],
+            decisions={"s4:CLAUDE.md": "keep"},
+        )
+        plan2["backup_needs"] = [entry]
+        self.assertEqual(rc._filter_backup_needs(plan2, _intents(), self.root), [])
+
+    def test_unmatched_target_conservatively_kept(self):
+        """ut-filter-backup-unmatched / codex 终审 I3（无法归属的备份需求保守保留，不放宽屏障）"""
+        stray = self.root / "stray.txt"
+        plan = self._plan()
+        plan["backup_needs"] = [stray]
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [stray])
+
+
+class TestReportCompleteness(unittest.TestCase):
+    """codex 终审 I4：报告 conflicts 含 allowed_decisions；S1-S7 真实计时。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+
+    def test_sync_plan_conflicts_include_allowed_decisions(self):
+        """ut-report-conflicts-allowed-decisions / codex 终审 I4
+        （报告顶层 conflicts 含 allowed_decisions，供 Agent 生成 decisions）"""
+        plan = {
+            "project_type": "non-coding",
+            "steps": {},
+            "conflicts": [{
+                "conflict_id": "s3:.claude/rules/language.md",
+                "asset": ".claude/rules/language.md",
+                "state": "drift",
+                "allowed_decisions": ["replace", "keep"],
+                "question": "q", "recommendation": "keep",
+            }],
+        }
+        report: dict = {}
+        rc._sync_plan_to_report(plan, report, _intents())
+        self.assertEqual(
+            report["conflicts"][0]["allowed_decisions"], ["replace", "keep"],
+        )
+
+    def test_compute_plan_steps_have_real_elapsed(self):
+        """ut-compute-plan-real-elapsed / codex 终审 I4
+        （S1-S7 以 time.monotonic() 真实计时；单调时钟递进时各步 elapsed_ms>0）"""
+        ticks = iter(range(0, 1000000, 5))
+        with mock.patch.object(
+            rc.time, "monotonic", side_effect=lambda: next(ticks) / 1000.0
+        ), mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
+        ):
+            plan = rc.compute_plan(self.root, _intents())
+        for name in (
+            rc.STEP_DETECT, rc.STEP_TEMPLATES, rc.STEP_RULES_FILES,
+            rc.STEP_ENTRY_FILES, rc.STEP_SCAFFOLD, rc.STEP_GITIGNORE,
+            rc.STEP_OPENSPEC_CONFIG,
+        ):
+            step = plan["steps"][name]
+            self.assertIsInstance(step["elapsed_ms"], int)
+            self.assertGreater(step["elapsed_ms"], 0, f"{name} 未真实计时")
+
+
+class TestCodegraphSectionMissing(unittest.TestCase):
+    """codex 终审 I5 / RF-04：老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "code-reading.md").write_text(
+            "# 旧版代码阅读规则\n\n仅 ast-grep，无其他内容。\n", encoding="utf-8",
+        )
+
+    def _compute(self):
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
+        ):
+            return rc.compute_plan(self.root, _intents())
+
+    def test_missing_codegraph_section_is_report_only_not_decision(self):
+        """ut-s3-codegraph-section-missing / RF-04 + codex 终审 I5
+        （缺 CodeGraph 段落 → action=skip 报告型冲突，不进 decisions/备份需求）"""
+        plan = self._compute()
+        s3 = plan["steps"][rc.STEP_RULES_FILES]
+        asset = next(a for a in s3["assets"] if a["path"].endswith("code-reading.md"))
+        self.assertEqual(asset["action"], "skip")
+        self.assertEqual(asset["conflict"], "codegraph-section-missing")
+        self.assertFalse(asset["backup_needed"])
+        # 不进 decisions 冲突集（无需用户决策，两模式同动作）
+        self.assertFalse(
+            any(str(c.get("asset", "")).endswith("code-reading.md")
+                for c in plan["conflicts"])
+        )
+        # step 级冲突含「需用户手动合并 CodeGraph 段落」提示
+        self.assertTrue(
+            any("CodeGraph" in (c.get("question", "") + c.get("recommendation", ""))
+                for c in s3["conflicts"])
+        )
+        # 不进备份需求（不改文件）
+        self.assertFalse(
+            any(str(b).endswith("code-reading.md") for b in plan["backup_needs"])
+        )
+
+    def test_execute_does_not_overwrite(self):
+        """ut-s3-codegraph-section-missing-execute / RF-04 + codex 终审 I5
+        （执行阶段不重写文件，报告含手动合并提示）"""
+        plan = self._compute()
+        report = {"steps": [], "overall": "ok"}
+        rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
+        target = self.root / ".claude" / "rules" / "code-reading.md"
+        before = target.read_text(encoding="utf-8")
+        rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
+        self.assertEqual(target.read_text(encoding="utf-8"), before)
+        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
+        self.assertTrue(any("CodeGraph" in str(c) for c in s3.get("conflicts", [])))
+
+
+class TestOptionalRuleIntegrity(unittest.TestCase):
+    """codex 终审 I5 / OP-01：可选规则文件+摘要均存在 → 仅检查完整性并报告，不重写。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        self.template = (self.refs / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        (rules / "code-reading.md").write_text(self.template, encoding="utf-8")
+
+    def _plan(self):
+        return {
+            "templates": {"rules_root": str(self.refs / "rules")},
+            "decisions_map": {},
+            "steps": {
+                rc.STEP_RULES_FILES: {
+                    "name": rc.STEP_RULES_FILES, "status": "ok",
+                    "assets": [{
+                        "path": ".claude/rules/code-reading.md", "action": "skip",
+                        "conflict": None, "backup_needed": False, "is_l1": False,
+                    }],
+                },
+            },
+        }
+
+    def _run(self):
+        report = {"steps": []}
+        rc.step_s3_rules_files(self.root, _intents(), self._plan(), report)
+        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
+        return [a for a in s3["actions"] if a.get("action") == "optional-integrity"]
+
+    def test_integrity_ok_when_rule_and_summary_present(self):
+        """ut-s3-optional-integrity-ok / OP-01 + codex 终审 I5
+        （规则文件+摘要均存在 → 报告完整性检查 ok，文件与摘要不重写）"""
+        (self.root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n- **大范围检索使用 CodeGraph** → 详见 `.claude/rules/code-reading.md`\n",
+            encoding="utf-8",
+        )
+        rule_path = self.root / ".claude" / "rules" / "code-reading.md"
+        entry_path = self.root / "CLAUDE.md"
+        before_rule = rc.sha256_file(rule_path)
+        before_entry = rc.sha256_file(entry_path)
+        integrity = self._run()
+        self.assertTrue(integrity)
+        self.assertEqual(integrity[0]["result"], "ok")
+        self.assertEqual(rc.sha256_file(rule_path), before_rule)
+        self.assertEqual(rc.sha256_file(entry_path), before_entry)
+
+    def test_integrity_summary_missing_reported(self):
+        """ut-s3-optional-integrity-summary-missing / OP-01 + codex 终审 I5
+        （规则文件存在但摘要缺失 → 报告 summary-missing，不重写规则文件）"""
+        integrity = self._run()
+        self.assertTrue(integrity)
+        self.assertEqual(integrity[0]["result"], "summary-missing")
 
 
 if __name__ == "__main__":

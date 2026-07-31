@@ -54,7 +54,7 @@
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| OS-01 | `openspec/config.yaml` | 配置不存在 | 从模板构建候选，结构预检 + 四类 instructions 验证通过后原子创建 | 同普通模式（两模式同动作） | 无（无原文件）；原子创建仍须经同文件系统 `os.replace()` | 报告原子创建成功、内容来源（模板基础） | `it-s7-openspec-create` / `ut-atomic_write-publish` |
+| OS-01 | `openspec/config.yaml` | 配置不存在 | 从模板构建候选，经 YAML parser 解析与结构预检（根映射/schema 标量/context 字符串/rules 映射/artifact 字符串数组）通过后原子创建 | 同普通模式（两模式同动作） | 无（无原文件）；原子创建仍须经同文件系统 `os.replace()` | 报告原子创建成功、内容来源（模板基础）、结构预检结果 | `it-s7-openspec-create` / `ut-atomic_write-publish` |
 | OS-02 | `openspec/config.yaml` | 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/完整字符串去重 | 同普通模式（两模式同动作） | 按 OS-B1 备份命名（§11.1） | 报告新增 context 行、按 proposal/design/specs/tasks 分组的合并规则 | `it-s7-openspec-merge-idempotent` |
 | OS-03 | `openspec/config.yaml` 目标字段 | 目标字段结构/类型不兼容（根非映射、schema 非标量、context 非字符串、rules 非映射、artifact 非字符串数组等） | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止且不改原文件。普通：无需备份（不改原文件） | 报告字段路径、实际类型、冲突说明；no-interrupt 另报备份路径与终止原因 | `it-s7-openspec-yaml-type-conflict-backed-up-preserved`（no-interrupt 分支；普通分支仅单测覆盖 `test_structure_conflict_normal_preserved`） |
 | OS-04 | `openspec/config.yaml` 的 `rules.apply` | 存在 `rules.apply`（禁止创建的键） | 询问；无响应则保留并报告；确认移除时先创建备份，备份成功后在候选中移除并继续合并 | 先创建备份；备份成功后在候选中移除并继续合并 | 移除分支：先成功备份原文件（OS-B1，§11.1）；任何必要备份失败立即终止且不修改原文件 | 报告 `rules.apply` 处理结果（保留/移除）、备份路径；保留分支说明无虚构 apply artifact | `it-s7-openspec-apply-backed-up-removed`（移除分支）/ `it-s7-openspec-normal-preserved`（保留分支） |
@@ -74,13 +74,12 @@
 - **OS-N7 artifact 数组追加**：在 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
 - **OS-N8 `rules.apply` 处理**：同 OS-04；禁止创建 `rules.apply`，也不得虚构 apply artifact。
 - **OS-N9 YAML 无法可靠解析**：同 OS-05；不得静默重写。
-- **OS-N10 临时 Change 验证**：创建固定名称为 `cadence-rule-config-validation` 的临时 Change，依次运行 `openspec instructions proposal/design/specs/tasks --change cadence-rule-config-validation --json` 四类命令，必须全部成功且输出能读取公共 context 与对应 artifact rules；不得以 `openspec instructions apply` 作为 artifact 验证。
-  - **演进状态**：design D4 计划在 Task 实施中删除该 instructions 验证步骤；删除前现行语义以此为准，删除后 OS-N10/OS-06 标记为"已废止"而非从本表删除，保持对账可追溯。
-- **OS-N11 原子发布**：同 OS-07；候选通过全部语法、结构、合并和四类 instructions 验证后，才允许使用同文件系统内 `os.replace()` 原子替换发布；目标原本不存在时也以原子创建方式发布，不得先落入半成品。
-- **OS-N12 候选验证失败**：同 OS-06；报告失败 artifact、实际命令与错误、候选清理/保留结果，原文件不变，目标原本不存在时不得创建。
+- **OS-N10 临时 Change 验证**：**已废止，由结构预检取代**（design D4 删除了临时 Change 与四类 `openspec instructions` 验证；现行语义以 OS-01 的 YAML parser 解析与结构预检为准：根映射、`schema` 缺失或标量、`context` 缺失或字符串、`rules` 缺失或映射、四个 artifact 规则分别缺失或字符串数组）。保留行 ID 用于对账，但脚本 MUST NOT 创建临时 Change 或调用 `openspec instructions`。
+- **OS-N11 原子发布**：同 OS-07；候选通过全部语法解析、结构预检、合并去重后（instructions 验证已废止，见 OS-N10），才允许使用同文件系统内 `os.replace()` 原子替换发布；目标原本不存在时也以原子创建方式发布，不得先落入半成品。
+- **OS-N12 候选验证失败**：同 OS-06（已废止）；结构预检失败时报告失败字段路径、实际类型与错误，原文件不变，目标原本不存在时不得创建。
 - **OS-N13 原子失败**：同 OS-07。
 - **OS-B1 备份命名**：备份名固定为 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`；所有需备份分支必须在写入前完成备份；备份失败时不得部分合并 context、artifact 规则或删除无效键。
-- **OS-B2 完成报告清单**：逐项列出新增 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及其 `--change cadence-rule-config-validation --json` 实际命令与错误、候选清理/保留结果、原子发布结果、四个 `openspec instructions ... --json` 命令的验证结果；无新增内容时明确报告为幂等跳过。
+- **OS-B2 完成报告清单**：逐项列出新增 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选结构预检结果、原子发布结果；无新增内容时明确报告为幂等跳过。（instructions 验证已废止，见 OS-N10；不再报告 `openspec instructions ... --json` 命令结果或失败 artifact。）
 
 ## 3. L1 协作规则增量（L1-01~07）
 
@@ -244,7 +243,7 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 **失败报告字段**（NR-05，SKILL 33 行）：必须含失败文件、失败原因、已完成项目（逐项列出）、恢复建议。对应测试 `it-apply-failure-report-fields`。
 
-**成功完成报告**（OS-B2，SKILL 675 行）：逐项列出新增 context 完整行、按 artifact 分组的合并规则、无效键处理、所有备份路径、结构冲突字段路径与实际类型、解析或内容冲突、候选验证结果、失败 artifact 及实际命令、候选清理/保留结果、原子发布结果、四类 instructions 命令结果；无新增内容时明确报告"幂等跳过"。
+**成功完成报告**（OS-B2，SKILL 675 行）：逐项列出新增 context 完整行、按 artifact 分组的合并规则、无效键处理、所有备份路径、结构冲突字段路径与实际类型、解析或内容冲突、候选结构预检结果、原子发布结果；无新增内容时明确报告"幂等跳过"。（instructions 验证已废止，见 OS-N10；不再报告失败 artifact 或四类 instructions 命令结果。）
 
 **决策文件 schema**（design D3 横切契约 XC-03，普通模式 apply 入口）：
 
@@ -296,11 +295,11 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 - `rules.apply`（OS-04）：普通模式询问，**无响应则保留原文件并报告**，不阻塞流程，步骤状态 `status=0`。
 - OpenSpec 结构/类型不兼容（OS-03）、OpenSpec YAML 无法解析（OS-05）：普通模式**保留原文件并报告**，不发布候选；这不阻塞其他步骤，相关步骤状态 `status=0`。
 - 普通规则文件覆盖冲突（RF-02、IA-01）：普通模式询问，**无响应则不覆盖、保留并报告**，`status=0`。
+- 规则文件缺 CodeGraph 段落（RF-04，冲突标识 `s3:<rel>:codegraph-section`）：普通模式**不自动覆盖、报告手动合并提示并保留原文件**，`status=0`（保留原状安全可恢复，属 A 类）。
 - L1 协作规则不匹配（L1-04/L1-05/L1-06）、L0 受管区块漂移（L0-03/L0-06）：普通模式询问，**无响应则保留并报告**，`status=0`。
 
 **B. 无安全默认的冲突 → fail closed（非零退出）**：
 
-- 规则文件 drift（RF-04：已存在但缺 CodeGraph 段落）在普通模式下不自动覆盖，但若决策缺失导致无法推进关键路径时按 fail closed 处理。
 - L0 入口 drift（L0-03/L0-06）：若普通模式无响应**且**该入口是后续步骤的硬依赖（如 L0 受管区块必须存在才能写入摘要），缺失决策时 fail closed，不得继续。
 - L1 drift（L1-04/L1-05/L1-06）：若普通模式无响应**且**该 L1 文件是必调 Skill 路由的硬依赖，缺失决策时 fail closed。
 - s1 类型矛盾（IA-02，固定冲突标识 `s1:project-type-conflict`）：检测结果互相矛盾且影响规则选择时，**无决策时 apply 拒绝**（fail closed），dry-run 报告含 `s1:project-type-conflict`；decision=`non-coding`/`coding` 时按对应类型执行。

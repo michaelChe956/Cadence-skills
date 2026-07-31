@@ -17,6 +17,7 @@
 - **THEN** Agent SHALL 逐条询问用户（每次一问、给推荐默认项）
 - **AND** 用户决策 MUST 以决策文件传入 `apply`，脚本按决策执行
 - **AND** 决策缺失、包含未知或重复冲突标识、或与 `apply` 时新鲜计划不符时，脚本 MUST 失败关闭、非零退出、写出报告且零写入，不得按默认猜测执行
+- **AND** 上述「决策缺失即失败关闭」仅适用于无安全默认的冲突（如规则文件 drift、L0 drift 等必须显式决策方可继续的类型）；对具备安全默认的冲突（`rules.apply` / `structure` / `unparseable` 这类「无响应则保留并报告」的合并矩阵条目），决策缺失时脚本 SHALL 按安全默认（keep / 保留原文件并报告）继续，不视为失败关闭；该例外 MUST 在计划冲突条目以 `default_keep: true` 显式标注，未标注的冲突缺失仍 MUST 失败关闭
 
 #### Scenario: dry-run 零写入
 - **WHEN** 脚本以 `dry-run` 运行
