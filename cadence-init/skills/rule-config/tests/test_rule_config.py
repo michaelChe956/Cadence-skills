@@ -912,6 +912,30 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertIn("项目补充", result)  # 普通规则走 merge，含项目补充
         self.assertIn("项目独有行", result)
 
+    def test_ordinary_no_interrupt_unchanged_skips_write(self):
+        """ut-step_s3-ordinary-unchanged / NC-03（no-interrupt 合并结果与现有文件逐字一致 → 跳过写盘，报告 unchanged）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "language.md"
+        merged_once = rc.merge_markdown(self.language_tpl, self.language_tpl + "\n项目独有行\n")
+        target.write_text(merged_once, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/language.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True, "is_l1": False,
+                }],
+            }
+        })
+        report = {"steps": [], "overall": "ok"}
+        with mock.patch.object(rc, "atomic_write") as m_write:
+            rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
+        m_write.assert_not_called()
+        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
+        self.assertTrue(any(a.get("action") == "unchanged" for a in s3.get("actions", [])))
+        self.assertEqual(target.read_text(encoding="utf-8"), merged_once)
+
 
 class TestStepS4EntryFiles(unittest.TestCase):
     """step_s4_entry_files 集成断言：双入口合成、幂等、漂移修复。"""

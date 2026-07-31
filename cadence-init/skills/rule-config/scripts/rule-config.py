@@ -2107,13 +2107,17 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
         else:
             # --- 普通规则文件分支 ---
             if intents.no_interrupt:
-                merged = merge_markdown(template_text, _safe_read(target))
+                existing_text = _safe_read(target)
+                merged = merge_markdown(template_text, existing_text)
                 if merged is None:
                     # NC-08 回退：标准结构 + `\n\n## 原项目补充\n\n` + 原文（备份已由屏障完成）。
-                    original = _safe_read(target) or ""
+                    original = existing_text or ""
                     fallback = template_text.rstrip("\n") + "\n\n## 原项目补充\n\n" + original
                     atomic_write(target, fallback)
                     actions_log.append({"path": asset["path"], "action": "merged-fallback", "branch": "markdown-unparseable"})
+                elif merged == existing_text:
+                    # 幂等短路：合并产物与现有文件逐字一致 → 跳过写盘（避免重跑刷新 mtime）。
+                    actions_log.append({"path": asset["path"], "action": "unchanged", "branch": "markdown-merge-idempotent"})
                 else:
                     atomic_write(target, merged)
                     actions_log.append({"path": asset["path"], "action": "merged", "branch": "markdown-merge"})
