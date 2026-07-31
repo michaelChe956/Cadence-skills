@@ -867,7 +867,7 @@ fi
 # 源目录消失、目标含原内容（评审 I-1 修复验证：迁移前只 mkdir cadence 根使三分支可达）。
 # 复用 C3b 的 fixture/REPORT：三个历史目录（prds/plans/docs）迁移前 cadence 下均不存在，
 # 修复后必须落入 HM-01（整目录 mv），而修复前全部落入 HM-02（merged）。
-hm01_status=$(python3 - "$case_root" "$REPORT" <<'PY' || printf '%s' 'fail')
+hm01_status=$(python3 - "$case_root" "$REPORT" <<'PY'
 import json
 import pathlib
 import sys
@@ -897,6 +897,8 @@ for d in expected:
         sys.exit(1)
 print("pass")
 PY
+)
+hm01_status=${hm01_status:-fail}
 record_result it-s5-history-hm01-reachable "$RUN_STATUS" hm-01 reachable "$([ "$hm01_status" = pass ] && printf pass || printf fail)"
 
 

@@ -89,7 +89,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 50 | NB-01 同名章节以"标题级别 + 去除开头编号后的标题文本"识别 | 两模式 | merge_markdown | fx-md-numbered-headings | ut-merge_markdown-section-identity | `## 1. 语言规则` 与 `## 语言规则` 识别为同名章节；级别不同不判同名 |
-| 50 | NB-02 备份命名 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`，禁止删除原始内容 | 两模式 | backup_file | fx-existing-rules | ut-backup_file-naming | 备份文件名匹配正则 `.*\.cadence-backup-[0-9]{14}$`；原文件仍在 |
+| 50 | NB-02 备份命名 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`，禁止删除原始内容；同秒冲突追加 `-2`/`-3` 唯一后缀（codex 终审 C1） | 两模式 | backup_file | fx-existing-rules | ut-backup_file-naming / ut-backup_file-unique-suffix | 备份文件名匹配正则 `.*\.cadence-backup-[0-9]{14}(-[0-9]+)?$`（接受可选 `-N` 后缀）；同秒两次备份不覆盖首个；原文件仍在 |
 | 54 | NH-01 no-interrupt 只检测 16 个精确历史目录清单 | no-interrupt | step_scaffold | fx-history-dirs | it-s5-history-report-only | 报告检出目录恰为清单内存在的目录；清单外同名目录不检出 |
 | 55 | NH-02 检测到历史目录仅写报告，不 mv、不合并、不删除、不清理空目录 | no-interrupt | step_scaffold | fx-history-dirs | it-s5-history-no-interrupt | apply 后 `.claude/<dir>` 与 `cadence/<dir>` sha256/清单均不变，报告含检出清单 |
 | 56 | NH-03 本规则只覆盖 no-interrupt；普通模式继续原有历史产物迁移步骤 | 普通 | step_scaffold | fx-history-dirs | it-s5-history-normal | 普通模式按 HM-01~03 执行迁移/跳过并报告 |
@@ -153,10 +153,10 @@
 | 192 | L0-P4 任一必要备份失败→立即终止，双入口均不得写入，区块内外保持原样 | 两模式 | backup_file | fx-readonly-parent | it-s4-backup-barrier | CLAUDE.md/AGENTS.md sha256 均不变；非零退出；已建备份不扩大损害 |
 | 193 | L0-P5 目标入口不存在→创建基础入口，L0 放在文件说明之后、`## 强制规则` 之前 | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 新建入口含基础模板全文；L0 位置在文件说明与 `## 强制规则` 之间（基础入口文本断言） |
 | 194 | L0-P6 当前 v1 标记成对且区块与规范源完全一致→跳过 | 两模式 | l0_block | fx-entry-idempotent | it-s4-idempotent | 两入口 sha256 不变；报告幂等跳过 |
-| 195 | L0-P7 当前 v1 标记成对但区块不一致→视为本地修改：普通询问（无响应保留并报告；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 普通无决策保留原文；no-interrupt 备份后区块=规范源 |
+| 195 | L0-P7 当前 v1 标记成对但区块不一致→视为本地修改：普通询问（无响应/决策缺失 fail closed，B 类 §11.6；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file（不标 `default_keep`） | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 普通无决策 fail closed（非保留）；no-interrupt 备份后区块=规范源 |
 | 196 | L0-P8 两个标记都不存在→在首个 `## 强制规则` 前插入；无该标题则在文件说明后插入 | 两模式 | l0_block | fx-entry-no-markers | ut-l0_block-insert-position | 插入位置符合两分支；原文内容不动 |
 | 197 | L0-P9 成对受支持旧版本标记→纳入备份屏障，屏障通过后升级为当前 v1 并报告 | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade | 备份存在；区块替换为当前 v1；报告记升级 |
-| 198 | L0-P10 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 屏障通过后写入单一 L0 区块并报告 | 两模式 | l0_block | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后 start/end 标记各出现一次；区块外前置/后置/本地内容原样保留 |
+| 198 | L0-P10 单侧标记或顺序错误→普通询问（无响应/决策缺失 fail closed，B 类 §11.6）；no-interrupt 屏障通过后写入单一 L0 区块并报告 | 两模式 | l0_block（不标 `default_keep`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后 start/end 标记各出现一次；区块外前置/后置/本地内容原样保留 |
 | 199 | L0-P11 区块外项目技术栈、命令、业务规则和用户内容必须原样保留 | 两模式 | l0_block | fx-l0-drift | it-s4-outside-preserved | 区块外内容 sha256 处理前后一致 |
 | 200 | L0-P12 CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义 | 两模式 | step_entry_files | fx-l0-drift | it-s4-dual-entry-consistency | 两入口受管区块 sha256 相同 |
 | 203-241 | S2-T1 CLAUDE.md 基础模板结构（含规则 1~7 摘要、`## 项目信息`、currentDate） | 两模式 | step_entry_files | fx-empty-project | it-s4-entry-template-claude | 新建 CLAUDE.md 含全部必备章节与摘要行 |
@@ -252,18 +252,18 @@
 | 639 | OS-N7 四个 artifact 数组按完整字符串去重追加模板规则，保留项目额外规则与原顺序 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-rules-append | 数组合并去重且顺序稳定；额外规则保留 |
 | 640 | OS-N8 禁止创建 `rules.apply`；已有 `rules.apply`：普通须确认（无响应保留并报告；确认移除先备份）；no-interrupt 先备份成功后才在候选中移除 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-backed-up-removed / it-s7-openspec-normal-preserved | no-interrupt 备份后候选无 `rules.apply`；普通 `keep` 决策保留并报告；任何分支不虚构 apply artifact |
 | 641 | OS-N9 YAML 无法可靠解析不得静默重写：普通保留并报告；no-interrupt 先备份，仍无法无损构建候选则终止 | 两模式 | merge_yaml / backup_file | fx-openspec-unparseable | it-s7-openspec-invalid-yaml-backed-up-preserved | 原文件不变；备份存在；报告解析冲突 |
-| 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 全部成功且能读取 context 与对应 rules；不得以 instructions apply 验证（design D4 拟删除，删除前现行语义以此为准） | 两模式 | step_openspec_config | fx-openspec-existing | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） | 四类命令成功且输出含公共 context 与对应 artifact rules（Task 实施时按 D4 删除后将本行标记为已废止条款） |
+| 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 验证——**已废止，由结构预检取代**（design D4 已删除临时 Change 与四类 instructions 验证；现行语义以 OS-N2 结构预检为准：根映射/schema/context/rules/四 artifact 数组）。保留行 ID 仅用于对账，脚本 MUST NOT 创建临时 Change 或调用 `openspec instructions` | 两模式 | step_openspec_config / precheck_openspec_structure | —（已废止，无对应测试） | 已废止：脚本不创建临时 Change、不调 `openspec instructions`；以结构预检取代（根映射/schema 标量/context 字符串/rules 映射/四 artifact 字符串数组） |
 | 658 | OS-N11 全部验证通过后才允许同文件系统原子替换发布；目标原本不存在也以原子创建发布，不得半成品 | 两模式 | atomic_write | fx-empty-project | ut-atomic_write-publish / it-s7-openspec-create | 发布经 `os.replace()`；中途失败无半成品目标 |
-| 659 | OS-N12 任一候选验证失败立即终止；报告失败 artifact、实际命令与错误；报告候选清理/保留结果；原文件不变；目标原本不存在时不得创建 | 两模式 | step_openspec_config | fx-openspec-incompatible | it-s7-openspec-validate-fail | 报告含失败 artifact 与实际命令；无目标文件残留 |
+| 659 | OS-N12 任一候选验证失败立即终止；报告失败字段路径、实际类型与错误（已废止 instructions 语义，由结构预检取代）；报告候选清理/保留结果；原文件不变；目标原本不存在时不得创建 | 两模式 | step_openspec_config / precheck_openspec_structure | fx-openspec-incompatible | it-s7-openspec-validate-fail | 报告含结构预检失败字段路径与实际类型；无目标文件残留 |
 | 660 | OS-N13 原子替换/创建失败立即终止并保持或恢复原文件；不得声称成功 | 两模式 | atomic_write | fx-readonly-target | ut-atomic_write-fail / it-s7-openspec-publish-failure-preserved | 非零退出；原文件保持/恢复；报告不声称成功 |
 | 662 | OS-B1 备份名固定 `openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`；所有需备份分支写入前完成备份；备份失败不得部分合并/删除键 | 两模式 | backup_file | fx-openspec-existing | ut-backup_file-openspec-naming | 备份路径精确匹配固定名；备份失败时零合并动作 |
-| 675 | OS-B2 完成报告逐项清单（新增 context 行、分组规则、无效键、备份路径、冲突字段、验证结果、候选处理、发布结果、四命令结果）；无新增也明确报告幂等跳过 | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-report-fields | 报告字段逐项齐全；幂等运行报告"幂等跳过" |
+| 675 | OS-B2 完成报告逐项清单（新增 context 行、分组规则、无效键、备份路径、冲突字段、候选结构预检结果、发布结果）；无新增也明确报告幂等跳过（instructions 验证已废止，见 OS-N10；不再报告四类 instructions 命令结果或失败 artifact） | 两模式 | step_openspec_config | fx-openspec-existing | it-s7-openspec-report-fields | 报告字段逐项齐全且不含 instructions 命令结果；幂等运行报告"幂等跳过" |
 | 666 | OS-01 配置不存在→从模板构建候选，验证通过后原子创建（两模式同动作） | 两模式 | step_openspec_config / atomic_write | fx-empty-project | it-s7-openspec-create | 原子创建成功；内容与模板基础一致 |
 | 667 | OS-02 配置可解析且无 `rules.apply`→候选中保守合并，完整行/字符串去重（两模式同动作） | 两模式 | merge_yaml | fx-openspec-existing | it-s7-openspec-merge-idempotent | 合并去重结果与单测基准一致 |
 | 668 | OS-03 目标字段结构/类型不兼容→普通保留并报告不发布；no-interrupt 先备份，无法无损规范化则终止且原文件不变 | 两模式 | precheck_openspec_structure | fx-openspec-incompatible | it-s7-openspec-yaml-type-conflict-backed-up-preserved（no-interrupt 分支；普通分支仅单测覆盖 `test_structure_conflict_normal_preserved`） | 两模式分支动作与报告字段符合表义 |
 | 669 | OS-04 存在 `rules.apply`→普通询问（无响应保留并报告；确认并备份后候选中移除）；no-interrupt 备份成功后移除并继续合并 | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-backed-up-removed / it-s7-openspec-normal-preserved | 普通 `remove_apply`/`keep` 决策生效；no-interrupt 备份后移除且合并继续 |
 | 670 | OS-05 YAML 无法可靠解析→普通保留并报告；no-interrupt 先备份，仍无法无损合并则终止不改原文件 | 两模式 | merge_yaml | fx-openspec-unparseable | it-s7-openspec-invalid-yaml-backed-up-preserved（no-interrupt 分支；普通分支与 OS-03 同代码路径，仅单测覆盖） | 两模式原文件均不变；no-interrupt 有备份 |
-| 671 | OS-06 任一候选 instructions 验证失败→两模式均终止并报告失败 artifact、实际命令与错误；原文件不变 | 两模式 | step_openspec_config | fx-openspec-instructions-fail | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） | 非零退出；报告含 `--change cadence-rule-config-validation --json` 实际命令；原文件不变（随 D4 删除后转为结构预检失败分支） |
+| 671 | OS-06 任一候选 instructions 验证失败——**已废止，由结构预检取代**（design D4 已删除临时 Change 与四类 instructions 验证）。现行语义：结构预检失败→两模式均终止并报告失败字段路径、实际类型与错误；原文件不变 | 两模式 | step_openspec_config / precheck_openspec_structure | fx-openspec-incompatible | 已废止（design D4 已删除 instructions 验证；结构预检失败分支与 OS-N12 同路径，见 `it-s7-openspec-validate-fail`） | 结构预检失败→非零退出；报告含失败字段路径与实际类型（不含 `--change cadence-rule-config-validation --json` 实际命令，该语义已废止）；原文件不变 |
 | 672 | OS-07 原子发布失败→两模式均终止并保持或恢复原文件，不得声称成功 | 两模式 | atomic_write | fx-readonly-target | it-s7-openspec-publish-failure-preserved | 原文件 sha256 不变或恢复；报告非成功 |
 | 673 | OS-08 任一必要备份失败→两模式均终止且不改原文件 | 两模式 | backup_file | fx-readonly-parent | it-s7-openspec-backup-fail-modes | 原文件不变；非零退出 |
 
@@ -274,9 +274,9 @@
 | 681 | L1-01 文件不存在→创建 v1（两模式同动作） | 两模式 | step_rules_files | fx-empty-project | it-s3-l1-create | 创建内容与框架 v1 规范源逐字一致 |
 | 682 | L1-02 完整内容与当前框架 v1 一致→跳过（两模式同动作） | 两模式 | classify_l1 / sha256_file | fx-l1-current | ut-classify_l1-current / it-s3-l1-idempotent | 判定 current；文件不变；报告跳过 |
 | 683 | L1-03 版本标记受支持且完整内容与对应旧版规范逐字一致→备份后升级（两模式同动作） | 两模式 | classify_l1 / backup_file | fx-l1-old-version | ut-classify_l1-old-version / it-s3-l1-upgrade（仅单测覆盖：仓库仅 v1 规范源，upgrade 分支无法集成复现，待补） | 判定 old-version；备份存在；内容升级为 v1 |
-| 684 | L1-04 仅旧版标记匹配但内容与旧版规范不同→归入"与任何已知框架版本不匹配"：普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-old-marker-drift | ut-classify_l1-old-marker-drift / it-s3-l1-old-marker-drift（仅单测覆盖：同 L1-03，待补） | 判定 mismatch 而非 old-version；两模式分支动作符合表义 |
-| 685 | L1-05 当前 v1 标记存在但完整内容不同→同归入"不匹配"，分支同 L1-04 | 两模式 | classify_l1 | fx-l1-v1-marker-drift | ut-classify_l1-v1-marker-drift / it-l1-drift-replace | 判定 mismatch；不得仅凭标记当作 current 跳过 |
-| 686 | L1-06 文件无标记或与已知版本不匹配→普通询问（无响应保留并报告）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file | fx-l1-unmarked | ut-classify_l1-unmarked / it-l1-unknown-replace | 判定 unmarked；两模式分支动作符合表义 |
+| 684 | L1-04 仅旧版标记匹配但内容与旧版规范不同→归入"与任何已知框架版本不匹配"：普通询问（无响应/决策缺失 fail closed，B 类 §11.6）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file（不标 `default_keep`） | fx-l1-old-marker-drift | ut-classify_l1-old-marker-drift / it-s3-l1-old-marker-drift（仅单测覆盖：同 L1-03，待补） | 判定 mismatch 而非 old-version；普通无决策 fail closed；两模式分支动作符合表义 |
+| 685 | L1-05 当前 v1 标记存在但完整内容不同→同归入"不匹配"，分支同 L1-04（无响应/决策缺失 fail closed，B 类 §11.6） | 两模式 | classify_l1 | fx-l1-v1-marker-drift | ut-classify_l1-v1-marker-drift / it-l1-drift-replace | 判定 mismatch；不得仅凭标记当作 current 跳过 |
+| 686 | L1-06 文件无标记或与已知版本不匹配→普通询问（无响应/决策缺失 fail closed，B 类 §11.6）；no-interrupt 备份后以 v1 替换并报告 | 两模式 | classify_l1 / backup_file（不标 `default_keep`） | fx-l1-unmarked | ut-classify_l1-unmarked / it-l1-unknown-replace | 判定 unmarked；普通无决策 fail closed；两模式分支动作符合表义 |
 | 687 | L1-07 任何需要 L1 备份的分支备份失败→终止且不得替换原文件（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s3-l1-backup-failure-preserved | 原文件 sha256 不变；非零退出 |
 | 689 | L1-B1 备份名固定 `.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS` | 两模式 | backup_file | fx-l1-old-version | ut-backup_file-l1-naming | 备份路径精确匹配固定名 |
 | 689 | L1-B2 标记只用于候选版本定位；最终识别必须比较完整文件内容；不得仅凭标记识别版本；不得把无标记文件当已知框架版本覆盖 | 两模式 | classify_l1 / sha256_file | fx-l1-v1-marker-drift | ut-classify_l1-full-compare | 分类依据为完整内容比较而非标记 |
@@ -288,10 +288,10 @@
 | 691-694 | L0-B1 写入前统一预检 + 全部必要备份屏障；任一备份失败双入口均不得写入 | 两模式 | step_entry_files / backup_file | fx-readonly-parent | it-s4-backup-barrier | 屏障失败时双入口零写入（与 L0-P2~P4 互证） |
 | 699 | L0-01 入口不存在→创建基础入口并插入当前 v1（两模式同动作） | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 基础入口文本与 L0 v1 均存在，位置正确 |
 | 700 | L0-02 当前 v1 区块与规范源完整一致→跳过不重复写入（两模式同动作） | 两模式 | l0_block / sha256_file | fx-entry-idempotent | it-s4-idempotent | 双入口 sha256 不变 |
-| 701 | L0-03 当前 v1 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应保留并报告）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 两模式分支动作符合表义；区块外内容保留 |
+| 701 | L0-03 当前 v1 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应/决策缺失 fail closed，B 类 §11.6）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file（不标 `default_keep`） | fx-l0-drift | it-s4-drift-normal / it-s4-drift-replaced-outside-preserved | 普通无决策 fail closed；no-interrupt 备份后替换；区块外内容保留 |
 | 702 | L0-04 受支持旧版本标记成对→备份成功后升级到当前 v1 并报告（两模式同动作） | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade / ut-compute_plan-l0-upgrade-deterministic | 备份存在；区块=当前 v1 |
 | 703 | L0-05 无 L0 标记→插入当前 v1，入口原内容保留（两模式同动作） | 两模式 | l0_block | fx-entry-no-markers | it-s4-insert / ut-compute_plan-l0-insert-deterministic / ut-step_s4-insert-normal-executes | 插入位置正确；原内容 sha256 不变 |
-| 704 | L0-06 单侧标记或顺序错误→普通询问（无响应保留并报告）；no-interrupt 先备份成功后写入单一当前 v1 区块并报告 | 两模式 | l0_block / backup_file | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后标记成对且唯一；区块外内容保留 |
+| 704 | L0-06 单侧标记或顺序错误→普通询问（无响应/决策缺失 fail closed，B 类 §11.6）；no-interrupt 先备份成功后写入单一当前 v1 区块并报告 | 两模式 | l0_block（不标 `default_keep`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后标记成对且唯一；区块外内容保留 |
 | 705 | L0-07 任何 L0 备份失败→终止本次 L0 更新，双入口均不得写入（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | it-s4-backup-barrier | 双入口零写入；非零退出 |
 | 707 | L0-B2 所有场景必须保持 L0 受管区块外内容原样 | 两模式 | l0_block / sha256_file | fx-l0-drift | it-s4-outside-preserved | 区块外 sha256 处理前后一致 |
 

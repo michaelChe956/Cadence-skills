@@ -59,7 +59,7 @@
 | OS-03 | `openspec/config.yaml` 目标字段 | 目标字段结构/类型不兼容（根非映射、schema 非标量、context 非字符串、rules 非映射、artifact 非字符串数组等） | 保留原文件；报告字段路径、实际类型和冲突，不发布候选 | 先备份；无法证明可无损规范化则终止且保持原文件不变 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止且不改原文件。普通：无需备份（不改原文件） | 报告字段路径、实际类型、冲突说明；no-interrupt 另报备份路径与终止原因 | `it-s7-openspec-yaml-type-conflict-backed-up-preserved`（no-interrupt 分支；普通分支仅单测覆盖 `test_structure_conflict_normal_preserved`） |
 | OS-04 | `openspec/config.yaml` 的 `rules.apply` | 存在 `rules.apply`（禁止创建的键） | 询问；无响应则保留并报告；确认移除时先创建备份，备份成功后在候选中移除并继续合并 | 先创建备份；备份成功后在候选中移除并继续合并 | 移除分支：先成功备份原文件（OS-B1，§11.1）；任何必要备份失败立即终止且不修改原文件 | 报告 `rules.apply` 处理结果（保留/移除）、备份路径；保留分支说明无虚构 apply artifact | `it-s7-openspec-apply-backed-up-removed`（移除分支）/ `it-s7-openspec-normal-preserved`（保留分支） |
 | OS-05 | `openspec/config.yaml` | YAML 无法可靠解析 | 保留原文件并报告 | 先备份；仍无法无损合并则终止且不改原文件 | no-interrupt：先成功备份原文件（§11.1）；备份失败终止。普通：无需备份 | 报告解析冲突、原文件状态；no-interrupt 另报备份路径 | `it-s7-openspec-invalid-yaml-backed-up-preserved`（no-interrupt 分支；普通分支与 OS-03 同代码路径，仅单测覆盖） |
-| OS-06 | 临时 Change `cadence-rule-config-validation` 的四类 instructions 验证 | 任一候选 `openspec instructions <artifact> --change cadence-rule-config-validation --json` 验证失败 | 终止并报告失败 artifact、带有 `--change cadence-rule-config-validation --json` 的实际命令和错误；原文件不变 | 同普通模式（两模式同动作） | 无（不改原文件；候选在临时工作区） | 报告失败 artifact、实际命令（含 `--change cadence-rule-config-validation --json`）、错误信息、候选清理/保留结果 | 已废止（design D4 已删除 instructions 验证；无对应测试，保留行 ID 对账） |
+| OS-06 | 临时 Change `cadence-rule-config-validation` 的四类 instructions 验证 | **已废止，由结构预检取代**（design D4 删除了临时 Change 与四类 `openspec instructions` 验证）。现行语义以 OS-01/OS-N2 的结构预检为准。保留行 ID 用于对账，但各列正文仅记录废止前语义与现行取代 | 废止前：终止并报告失败 artifact、实际命令与错误。现行：结构预检失败→终止并报告失败字段路径、实际类型与错误；原文件不变 | 同普通模式（两模式同动作；现行同 OS-N12 结构预检失败分支） | 无（不改原文件；候选在临时工作区） | 现行报告：失败字段路径、实际类型、错误信息、候选清理/保留结果（不再报告 `openspec instructions ... --json` 实际命令或失败 artifact） | 已废止（design D4 已删除 instructions 验证；结构预检失败分支与 OS-N12 同路径） |
 | OS-07 | `openspec/config.yaml` 发布 | 原子替换/原子创建失败 | 终止并保持或恢复原文件；目标原本不存在时保持不存在；不得声称成功 | 同普通模式（两模式同动作） | 发布失败不扩大损害；已建备份保留 | 报告发布失败原因、原文件状态（保持/恢复/不存在）、明确"未声称成功" | `it-s7-openspec-publish-failure-preserved` / `ut-atomic_write-fail` |
 | OS-08 | `openspec/config.yaml` 任一必要备份分支 | 任一必要备份失败 | 终止且不改原文件；候选不发布 | 同普通模式（两模式同动作） | 备份失败本身即终止条件；不得部分合并 context、artifact 规则或删除无效键 | 报告失败备份路径、失败原因、候选不发布结果 | `it-s7-openspec-backup-fail-modes` |
 
@@ -93,9 +93,9 @@
 | L1-01 | `.claude/rules/openspec-superpowers-workflow.md` | 文件不存在 | 创建 v1（内容与框架 v1 规范源逐字一致） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与版本 v1 | `it-s3-l1-create` |
 | L1-02 | 同上 | 文件完整内容与当前框架 v1 一致 | 跳过 | 同普通模式（两模式同动作） | 无（不改文件） | 报告幂等跳过、判定 `current` | `ut-classify_l1-current` / `it-s3-l1-idempotent` |
 | L1-03 | 同上 | 版本标记受支持且完整内容与对应旧版规范逐字一致 | 备份后升级为当前 v1 | 同普通模式（两模式同动作） | 按 L1-B1 备份命名（§11.1）；备份失败终止且不得替换原文件 | 报告判定 `old-version`、备份路径、升级到 v1 | `ut-classify_l1-old-version` / `it-s3-l1-upgrade`（仅单测覆盖：仓库仅存在 v1 规范源，upgrade 分支无法集成复现，待补） |
-| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；询问，无响应则保留并报告 | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）；no-interrupt 另报备份路径与替换 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift`（仅单测覆盖：同 L1-03 无法集成复现，待补） |
-| L1-05 | 同上 | 当前 v1 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，询问，无响应保留并报告 | 同 L1-04：归入"不匹配"，备份后以框架 v1 替换并报告 | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-l1-drift-replace` |
-| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 询问；无响应则保留并报告 | 备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-l1-unknown-replace` |
+| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；询问，**无响应或决策缺失时 fail closed**（B 类，§11.6） | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）；no-interrupt 另报备份路径与替换 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift`（仅单测覆盖：同 L1-03 无法集成复现，待补） |
+| L1-05 | 同上 | 当前 v1 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，询问，**无响应或决策缺失时 fail closed**（B 类，§11.6） | 同 L1-04：归入"不匹配"，备份后以框架 v1 替换并报告 | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-l1-drift-replace` |
+| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 询问；**无响应或决策缺失时 fail closed**（B 类，§11.6） | 备份后以框架 v1 替换并报告 | no-interrupt：先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-l1-unknown-replace` |
 | L1-07 | 同上任意需 L1 备份的分支 | 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 同普通模式（两模式同动作） | 备份失败本身即终止条件 | 报告失败备份路径、失败原因、原文件不变 | `it-s3-l1-backup-failure-preserved` |
 
 **辅助条款（L1-B1/L1-B2，SKILL 689 行）**：
@@ -114,10 +114,10 @@
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v1（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v1、插入位置 | `it-entry-base-created` |
 | L0-02 | 入口的 L0 受管区块 | 当前 v1 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` |
-| L0-03 | 同上 | 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，无响应则保留并报告 | 先备份，成功后替换为规范源当前 v1 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replaced-outside-preserved` |
+| L0-03 | 同上 | 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，**无响应或决策缺失时 fail closed**（B 类，§11.6；双入口零写入） | 先备份，成功后替换为规范源当前 v1 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replaced-outside-preserved` |
 | L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v1 并报告 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、升级到 v1 | `it-s4-upgrade` |
 | L0-05 | 同上 | 无 L0 标记 | 插入当前 v1，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
-| L0-06 | 同上 | 单侧标记或标记顺序错误 | 询问；无响应则保留并报告 | 先备份，成功后写入单一当前 v1 区块并报告 | no-interrupt：先成功备份（§11.1）。任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` |
+| L0-06 | 同上 | 单侧标记或标记顺序错误 | 询问；**无响应或决策缺失时 fail closed**（B 类，§11.6） | 先备份，成功后写入单一当前 v1 区块并报告 | no-interrupt：先成功备份（§11.1）。任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` |
 | L0-07 | 同上任意需 L0 备份的分支 | 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 同普通模式（两模式同动作） | 备份失败本身即终止条件（全局屏障，见 §11.2） | 报告失败备份路径、失败原因、双入口零写入 | `it-s4-backup-barrier` |
 
 **辅助条款（L0-B1/L0-B2；L0-P1~P12 互证）**：
@@ -219,12 +219,13 @@
 ### 11.1 备份命名
 
 - 通用命名：`<原文件名>.cadence-backup-YYYYMMDDHHMMSS`（时间戳为 14 位 `YYYYMMDDHHMMSS`，本地时区），禁止删除原始内容。
-- 固定命名（按资产）：
+- **同秒冲突唯一后缀**（codex 终审 C1）：同一文件在同一秒内被多次备份（如同秒同文件重复 apply）时，脚本不得 `copy2` 覆盖既有备份、丢首次恢复点；而是在基名后追加递增序号后缀 `-2`、`-3`……直至唯一。即第二个备份为 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS-2`，第三个为 `-3`，以此类推。首个备份不带序号后缀，保持基名。
+- 固定命名（按资产，同秒冲突同样适用上述 `-N` 后缀）：
   - OpenSpec 配置：`openspec/config.yaml.cadence-backup-YYYYMMDDHHMMSS`（OS-B1）。
   - L1 协作规则：`.claude/rules/openspec-superpowers-workflow.md.cadence-backup-YYYYMMDDHHMMSS`（L1-B1）。
   - L0 入口：`CLAUDE.md.cadence-backup-YYYYMMDDHHMMSS` / `AGENTS.md.cadence-backup-YYYYMMDDHHMMSS`（按通用命名）。
 - 备份与写入关系：所有需要备份的分支都必须在写入前完成备份；备份失败时不得部分合并、不得删除无效键、不得修改原文件。备份成功不等于允许破坏性重写（NC-06/OS-03 反复强调）。
-- 测试基线：备份文件名匹配正则 `.*\.cadence-backup-[0-9]{14}$`；原文件仍在（`ut-backup_file-naming`、`ut-backup_file-openspec-naming`、`ut-backup_file-l1-naming`）。
+- 测试基线：备份文件名匹配正则 `.*\.cadence-backup-[0-9]{14}(-[0-9]+)?$`（接受可选 `-N` 后缀以覆盖同秒冲突分支）；原文件仍在（`ut-backup_file-naming`、`ut-backup_file-openspec-naming`、`ut-backup_file-l1-naming`、`ut-backup_file-unique-suffix`）。
 
 ### 11.2 全局备份屏障
 
@@ -250,12 +251,12 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 - **conflict_id 格式**：`<step>:<资产>[:<分支>]`。`<step>` 为步骤标识（如 `s1`、`s3`、`s4`、`s7`）；`<资产>` 为受冲突的文件或配置块标识；可选 `<分支>` 用于同步骤同资产的多分支冲突。
 - **decision 枚举**：按资产类型取值：
-  - 普通规则文件 drift（RF-02b、IA-01，状态 `drift`）：`replace` / `keep`（无安全默认，缺失决策 fail closed，对应测试 `it-s3-normal-keep-decision`）。
-  - OpenSpec `rules.apply`：`remove_apply` / `keep`（OS-04）。
-  - L1 协作规则不匹配：`replace_v1` / `keep`（L1-04/L1-05/L1-06）。
-  - L0 受管区块漂移：`replace_v1` / `keep`（L0-03/L0-06）。
+  - 普通规则文件 drift（RF-02b、IA-01，状态 `drift`，冲突标识 `s3:<rel>`）：`replace` / `keep`（无安全默认，缺失决策 fail closed，对应测试 `it-s3-normal-keep-decision`）。
+  - L1 协作规则 drift/unmarked（L1-04/L1-05/L1-06，冲突标识 `s3:<rel>`、kind=`l1`）：`replace` / `keep`（无安全默认，缺失决策 fail closed；脚本不标 `default_keep`）。
+  - L0 受管区块 drift/broken（L0-03/L0-06，冲突标识 `s4:<entry>`）：`replace` / `keep`（无安全默认，缺失决策 fail closed；脚本不标 `default_keep`）。
+  - OpenSpec `rules.apply`（OS-04，冲突标识 `s7:openspec/config.yaml`）：`remove_apply` / `keep`（A 类，脚本标 `default_keep: true`，缺失默认 keep）。
   - 项目类型检测矛盾：`non-coding` / `coding`（IA-02，固定冲突标识 `s1:project-type-conflict`）。
-- **allowed_decisions**：每个 conflict_id 的 decision 必须在其资产类型对应的枚举内；超出枚举的决策视为非法。
+- **allowed_decisions**：每个 conflict_id 的 decision 必须在其资产类型对应的枚举内；超出枚举的决策视为非法。report-only 冲突（RF-04）不进 decisions 集、无 `allowed_decisions`。
 - **default_keep 语义**（见 §11.6 详细说明）：普通模式下，缺失决策的默认动作因资产类型而异。
 
 **decisions 四类异常**（XC-03）：任一即非零退出且零写入——
@@ -293,21 +294,24 @@ L0 入口更新采用**全局备份屏障**：写入任一入口前，先对 CLA
 
 **A. 有安全默认的冲突 → 保留并报告（status=0）**：
 
-- `rules.apply`（OS-04）：普通模式询问，**无响应则保留原文件并报告**，不阻塞流程，步骤状态 `status=0`。
-- OpenSpec 结构/类型不兼容（OS-03）、OpenSpec YAML 无法解析（OS-05）：普通模式**保留原文件并报告**，不发布候选；这不阻塞其他步骤，相关步骤状态 `status=0`。
-- 规则文件缺 CodeGraph 段落（RF-04，冲突标识 `s3:<rel>:codegraph-section`）：普通模式**不自动覆盖、报告手动合并提示并保留原文件**，`status=0`（report-only，保留原状安全可恢复，属 A 类）。
-- L1 协作规则不匹配（L1-04/L1-05/L1-06）、L0 受管区块漂移（L0-03/L0-06）：普通模式询问，**无响应则保留并报告**，`status=0`。
+仅限 OpenSpec 配置类与 report-only 两类，其余冲突一律 B 类：
 
-> 说明：普通规则文件 drift（RF-02b/IA-01）**不属于 A 类**——其「保留原状」并非脚本认可的安全默认，见 B 类。
+- `rules.apply`（OS-04）：普通模式询问，**无响应则保留原文件并报告**，不阻塞流程，步骤状态 `status=0`。脚本在计划条目标 `default_keep: true`。
+- OpenSpec 结构/类型不兼容（OS-03）、OpenSpec YAML 无法解析（OS-05）、文件不可读：普通模式**保留原文件并报告**，不发布候选；这不阻塞其他步骤，相关步骤状态 `status=0`。脚本在计划条目标 `default_keep: true`。
+- 规则文件缺 CodeGraph 段落（RF-04，冲突标识 `s3:<rel>:codegraph-section`）：report-only 冲突，普通模式**不自动覆盖、报告手动合并提示并保留原文件**，`status=0`（report-only，保留原状安全可恢复）。该冲突不进 decisions 集（无 `allowed_decisions`），不要求显式决策。
+
+> 说明（与 SKILL.md 第 65 行「无响应处理」一致）：**L0/L1 drift 不属于 A 类**——其「保留原状」并非脚本认可的安全默认，脚本在 `compute_plan` 不标 `default_keep`，普通模式无响应或决策缺失即 fail closed，见 B 类。此前本节曾把 L1-04/05/06、L0-03/06 归 A 类、`status=0`，与 SKILL.md、OpenSpec spec、脚本实现（冲突不标 `default_keep`、`validate_decisions` 对其缺失即判违规）冲突；已下纠正为 B 类。
 
 **B. 无安全默认的冲突 → fail closed（非零退出）**：
 
 - 普通规则文件 drift（RF-02b、IA-01，冲突标识 `s3:<rel>`、状态 `drift`）：既有规则文件内容与模板不一致时，普通模式询问用户；**无响应或决策缺失时 fail closed**（非零退出、零写入），不得默认 `keep` 继续。`rules.apply`/`structure`/`unparseable` 这类「无响应则保留并报告」的安全默认**不适用于规则文件 drift**。
-- L0 入口 drift（L0-03/L0-06）：若普通模式无响应**且**该入口是后续步骤的硬依赖（如 L0 受管区块必须存在才能写入摘要），缺失决策时 fail closed，不得继续。
-- L1 drift（L1-04/L1-05/L1-06）：若普通模式无响应**且**该 L1 文件是必调 Skill 路由的硬依赖，缺失决策时 fail closed。
+- **L0 受管区块 drift/broken（L0-03/L0-06，冲突标识 `s4:<entry>`）**：当前 v1 标记成对但受管区块与规范源不同、或单侧标记/标记顺序错误时，普通模式询问用户；**无响应或决策缺失时 fail closed**（非零退出、双入口零写入），不得默认保留。L0 是双入口统一预检备份屏障与摘要/技术栈写入的硬依赖，「保留原状」不是脚本认可的安全默认，脚本不替用户做隐式 `keep` 决策。no-interrupt 下按权威规则备份后替换为规范源 v1。
+- **L1 协作规则 drift/unmarked（L1-04/L1-05/L1-06，冲突标识 `s3:<rel>`、kind=`l1`）**：当前 v1 标记存在但完整内容不同、仅旧版标记匹配但内容不同、或无标记与已知版本不匹配时，普通模式询问用户；**无响应或决策缺失时 fail closed**（非零退出、零写入）。L1 是必调 Skill 路由的硬依赖，「保留原状」不是脚本认可的安全默认。no-interrupt 下按权威规则备份后以框架 v1 替换。
 - s1 类型矛盾（IA-02，固定冲突标识 `s1:project-type-conflict`）：检测结果互相矛盾且影响规则选择时，**无决策时 apply 拒绝**（fail closed），dry-run 报告含 `s1:project-type-conflict`；decision=`non-coding`/`coding` 时按对应类型执行。
 
-**区分原则**：当冲突的「保留原状」是脚本认可的安全可恢复动作（如不移除 `rules.apply`、保留无法解析的配置、report-only 的 CodeGraph 段落提示）时，缺失决策默认保留并报告，`status=0`；当冲突的「保留原状」并非脚本认可的安全默认（如规则文件 drift 的「保留」实际上是隐式 `keep` 决策，脚本不替用户做此选择），或会导致后续步骤无法安全进行（如类型矛盾使规则选择无法确定、入口 drift 使必调路由依赖断裂），缺失决策 fail closed。脚本实现必须在 `compute_plan` 阶段对每个冲突标注其 default_keep 归属（A 类标 `default_keep: true`，B 类不标），并在报告中明示；`validate_decisions` 对未标 `default_keep` 的冲突缺失决策即判违规并 fail closed。
+> 说明：本节此前曾把 L0/L1 drift 描述为「若该入口是后续步骤的硬依赖…则 fail closed」的条件分支，与 A 类「无响应则保留并报告」同时存在，造成权威文档自相矛盾。现按 OpenSpec spec「决策缺失即失败关闭」与脚本实现统一为：L0/L1 drift **无条件** fail closed（脚本不标 `default_keep`），不再有「若…是硬依赖」条件。
+
+**区分原则**：当冲突的「保留原状」是脚本认可的安全可恢复动作（仅限 `rules.apply`、保留无法解析/结构不兼容的 OpenSpec 配置、report-only 的 CodeGraph 段落提示）时，缺失决策默认保留并报告，`status=0`，脚本在计划条目标 `default_keep: true`（RF-04 为 report-only，不进 decisions 集）；其余所有冲突（普通规则文件 drift、**L0/L1 drift**、类型矛盾等）的「保留原状」并非脚本认可的安全默认，缺失决策 fail closed。脚本实现必须在 `compute_plan` 阶段对每个冲突标注其 default_keep 归属（A 类标 `default_keep: true`，B 类不标），并在报告中明示；`validate_decisions` 对未标 `default_keep` 的冲突缺失决策即判违规并 fail closed。
 
 ### 11.7 context 追加修正（5 行而非"四行"）
 
