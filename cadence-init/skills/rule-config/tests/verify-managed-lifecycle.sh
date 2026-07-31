@@ -1894,7 +1894,7 @@ fi
 # C17h. 老项目 code-reading.md 缺 CodeGraph 段落 → no-interrupt 走统一章节合并：
 # 模板 CodeGraph 内容并入、项目原文保留，并在写入前备份。
 # （it-s3-codegraph-section-unified-merge / RF-04）。
-case_root="$TEST_ROOT/fx-codegraph-section-missing"
+case_root="$TEST_ROOT/fx-codegraph-section-unified-merge"
 mkdir -p "$case_root/.claude/rules"
 printf '# 旧版代码阅读规则\n\n仅 ast-grep，无其他内容。\n' > "$case_root/.claude/rules/code-reading.md"
 before=$(sha256_file "$case_root/.claude/rules/code-reading.md")
