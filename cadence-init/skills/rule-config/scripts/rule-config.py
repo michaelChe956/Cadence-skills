@@ -136,8 +136,12 @@ ORDINARY_RULE_FILES = (
 # Playwright 规则文件（仅 intents.enable_playwright 时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
-# RF-04：含 CodeGraph 段落的规则文件（老项目缺段落 → 报告手动合并，不自动覆盖）。
+# OP-01：可选规则完整性检查使用的 CodeGraph 规则文件。
 CODEGRAPH_RULE_FILE = "code-reading.md"
+
+# NC-03 项目补充标记：合并协议保留字。注入与项目独有行过滤共用此常量；
+# 重跑时过滤必须排除标记行自身，保证 merge(t, merge(t, x)) == merge(t, x)（重跑幂等）。
+PROJECT_SUPPLEMENT_MARKER = "**项目补充**"
 
 # S5 目录结构创建（SKILL.md 第 5 步）：cadence/ 下 17 个子目录（含
 # project-rules/examples 与 cache）。逐字对齐 SKILL.md mkdir 块展开后的目录名。
@@ -797,6 +801,7 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
             project_only_raw = [
                 line for line in project_body
                 if line not in template_lines and line.strip()
+                and line.strip() != PROJECT_SUPPLEMENT_MARKER
             ]
             # 重要（评审 Important 3）：项目补充部分对项目侧独有行也按完整行去重、保序
             # （NC-07），避免项目侧自身重复行在合并结果中出现两次。
@@ -805,7 +810,7 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
                 # NC-03：同名章节正文 = 模板正文 + \n\n**项目补充**\n + 项目去重行。
                 body.append("")
                 body.append("")
-                body.append("**项目补充**")
+                body.append(PROJECT_SUPPLEMENT_MARKER)
                 body.extend(project_only)
         merged.append(Section(
             level=tsec.level, key=tsec.key, title=tsec.title, body_lines=body,
@@ -1415,26 +1420,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "path": rel, "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": False,
                 })
-            elif (fname == CODEGRAPH_RULE_FILE
-                  and "CodeGraph" in template_text
-                  and "CodeGraph" not in existing_text):
-                # codex 终审 I5 / RF-04：老项目规则文件缺少 CodeGraph 段落 →
-                # 不自动覆盖（两模式同动作），报告型冲突提示用户手动合并；
-                # 不进 decisions 冲突集，不进备份需求（不改文件）。
-                s3["assets"].append({
-                    "path": rel, "action": "skip",
-                    "conflict": "codegraph-section-missing",
-                    "backup_needed": False, "is_l1": False,
-                })
-                s3["conflicts"].append({
-                    "conflict_id": f"s3:{rel}:codegraph-section",
-                    "asset": rel, "kind": "codegraph-section-missing",
-                    "question": (
-                        f"规则文件 {rel} 缺少 CodeGraph 段落（模板含 CodeGraph 内容）"
-                    ),
-                    "recommendation": "需用户手动合并 CodeGraph 段落",
-                    "report_only": True,
-                })
             else:
                 s3["assets"].append({
                     "path": rel, "action": "replace", "conflict": "drift",
@@ -1444,21 +1429,28 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 # codex 三轮 C3（方案 X）：普通规则文件 drift 同 L1/L0 回归 A 类——
                 # recommendation=keep 为安全默认（保留用户内容可恢复），普通模式
                 # 无响应时默认保留并报告 status=0，不 fail closed。
-                s3["conflicts"].append({
+                s3_conflict = {
                     "conflict_id": conflict_id, "asset": rel, "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
                     "default_keep": True,
-                })
-                plan["conflicts"].append({
+                }
+                top_conflict = {
                     "conflict_id": conflict_id, "asset": rel, "kind": "rules",
                     "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
                     "default_keep": True,
-                })
+                }
+                if intents.no_interrupt:
+                    # P1-1：no-interrupt 实际执行为章节合并写盘；显式标注真实动作，
+                    # 避免安全默认 recommendation=keep 误导为"保留原文件不动"。
+                    s3_conflict["no_interrupt_action"] = "markdown-merge"
+                    top_conflict["no_interrupt_action"] = "markdown-merge"
+                s3["conflicts"].append(s3_conflict)
+                plan["conflicts"].append(top_conflict)
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
     s3["elapsed_ms"] = int((time.monotonic() - t_s3) * 1000)  # codex 终审 I4：真实计时
@@ -2071,15 +2063,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": asset["path"], "action": "created"})
             continue
         if action == "skip" or conflict is None:
-            if conflict == "codegraph-section-missing":
-                # codex 终审 I5 / RF-04：报告手动合并提示，不重写文件
-                actions_log.append({
-                    "path": asset["path"], "action": "skipped",
-                    "branch": "codegraph-section-missing",
-                    "reason": "需用户手动合并 CodeGraph 段落",
-                })
-            else:
-                actions_log.append({"path": asset["path"], "action": "skipped"})
+            actions_log.append({"path": asset["path"], "action": "skipped"})
             continue
 
         # 冲突资产（conflict 非空）。
@@ -2102,13 +2086,17 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
         else:
             # --- 普通规则文件分支 ---
             if intents.no_interrupt:
-                merged = merge_markdown(template_text, _safe_read(target))
+                existing_text = _safe_read(target)
+                merged = merge_markdown(template_text, existing_text)
                 if merged is None:
                     # NC-08 回退：标准结构 + `\n\n## 原项目补充\n\n` + 原文（备份已由屏障完成）。
-                    original = _safe_read(target) or ""
+                    original = existing_text or ""
                     fallback = template_text.rstrip("\n") + "\n\n## 原项目补充\n\n" + original
                     atomic_write(target, fallback)
                     actions_log.append({"path": asset["path"], "action": "merged-fallback", "branch": "markdown-unparseable"})
+                elif merged == existing_text:
+                    # 幂等短路：合并产物与现有文件逐字一致 → 跳过写盘（避免重跑刷新 mtime）。
+                    actions_log.append({"path": asset["path"], "action": "unchanged", "branch": "markdown-merge-idempotent"})
                 else:
                     atomic_write(target, merged)
                     actions_log.append({"path": asset["path"], "action": "merged", "branch": "markdown-merge"})
@@ -3433,6 +3421,8 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "state": c.get("state"),
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
+            # P1-1：no-interrupt 对外报告须如实暴露实际执行动作，避免 recommendation=keep 误导。
+            "no_interrupt_action": c.get("no_interrupt_action"),
             # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
             "allowed_decisions": c.get("allowed_decisions"),
             # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认

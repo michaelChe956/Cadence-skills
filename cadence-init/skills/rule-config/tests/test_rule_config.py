@@ -152,6 +152,27 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertEqual(rc.merge_markdown(tpl, ""), tpl.rstrip("\n"))
         self.assertEqual(rc.merge_markdown(tpl, "\n\n"), tpl.rstrip("\n"))
 
+    def test_rerun_is_idempotent(self):
+        """ut-merge_markdown-rerun-idempotent / NC-03（重跑幂等：merge(t, merge(t, x)) == merge(t, x)）"""
+        tpl = "## 规则A\n\n模板行1\n模板行2\n\n## 规则B\n\n模板行3\n"
+        old = "## 规则A\n\n模板行1\n模板行2\n\n项目独有行X\n\n## 规则B\n\n模板行3\n\n项目独有行Y\n"
+        run1 = rc.merge_markdown(tpl, old)
+        run2 = rc.merge_markdown(tpl, run1)
+        run3 = rc.merge_markdown(tpl, run2)
+        self.assertEqual(run1, run2)
+        self.assertEqual(run2, run3)
+        # 每个含项目补充的同名章节恰好一个标记行
+        self.assertEqual(run2.count("**项目补充**"), 2)
+
+    def test_polluted_file_self_heals(self):
+        """ut-merge_markdown-polluted-self-heal / NC-03（历史重复标记污染 → 合并自愈为单标记且内容不丢）"""
+        tpl = "## 规则A\n\n模板行1\n"
+        polluted = "## 规则A\n\n模板行1\n\n\n**项目补充**\n**项目补充**\n项目独有行X\n"
+        out = rc.merge_markdown(tpl, polluted)
+        self.assertEqual(out.count("**项目补充**"), 1)
+        self.assertIn("项目独有行X", out)
+        self.assertEqual(out, rc.merge_markdown(tpl, out))
+
 
 class TestL0Block(unittest.TestCase):
     def test_skip_when_v1_block_matches_source(self):
@@ -890,6 +911,30 @@ class TestStepS3RulesFiles(unittest.TestCase):
         result = target.read_text(encoding="utf-8")
         self.assertIn("项目补充", result)  # 普通规则走 merge，含项目补充
         self.assertIn("项目独有行", result)
+
+    def test_ordinary_no_interrupt_unchanged_skips_write(self):
+        """ut-step_s3-ordinary-unchanged / NC-03（no-interrupt 合并结果与现有文件逐字一致 → 跳过写盘，报告 unchanged）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "language.md"
+        merged_once = rc.merge_markdown(self.language_tpl, self.language_tpl + "\n项目独有行\n")
+        target.write_text(merged_once, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/language.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True, "is_l1": False,
+                }],
+            }
+        })
+        report = {"steps": [], "overall": "ok"}
+        with mock.patch.object(rc, "atomic_write") as m_write:
+            rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
+        m_write.assert_not_called()
+        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
+        self.assertTrue(any(a.get("action") == "unchanged" for a in s3.get("actions", [])))
+        self.assertEqual(target.read_text(encoding="utf-8"), merged_once)
 
 
 class TestStepS4EntryFiles(unittest.TestCase):
@@ -1845,8 +1890,67 @@ class TestReportCompleteness(unittest.TestCase):
             self.assertGreater(step["elapsed_ms"], 0, f"{name} 未真实计时")
 
 
-class TestCodegraphSectionMissing(unittest.TestCase):
-    """codex 终审 I5 / RF-04：老项目 code-reading.md 缺 CodeGraph 段落 → 不覆盖，报告手动合并。"""
+class TestDriftConflictNoInterruptAction(unittest.TestCase):
+    """P1-1：no-interrupt 下 drift 冲突条目携带真实执行动作字段，避免 recommendation=keep 误导。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.refs = Path(__file__).resolve().parents[1] / "references"
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "language.md").write_text("# 项目自定义语言规则\n\n与模板不同。\n", encoding="utf-8")
+
+    def _compute(self, **overrides):
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
+        ):
+            return rc.compute_plan(self.root, _intents(**overrides))
+
+    def test_no_interrupt_marks_real_action(self):
+        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 冲突含 no_interrupt_action=markdown-merge，recommendation 不变）"""
+        plan = self._compute(no_interrupt=True)
+        s3 = plan["steps"][rc.STEP_RULES_FILES]
+        entry = next(c for c in s3["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
+        self.assertEqual(entry["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(entry["recommendation"], "keep")
+        top = next(c for c in plan["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
+        self.assertEqual(top["no_interrupt_action"], "markdown-merge")
+
+    def test_normal_mode_omits_field(self):
+        """ut-compute-plan-normal-no-action-field / P1-1（普通模式冲突条目不新增字段）"""
+        plan = self._compute()
+        s3 = plan["steps"][rc.STEP_RULES_FILES]
+        self.assertFalse(any("no_interrupt_action" in c for c in s3["conflicts"]))
+        self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
+
+    def test_report_no_interrupt_action(self):
+        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 的真实合并动作）"""
+        plan = self._compute(no_interrupt=True)
+        report: dict = {}
+        rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
+        conflict = next(
+            c for c in report["conflicts"]
+            if str(c.get("asset", "")).endswith("language.md")
+        )
+        self.assertEqual(conflict["no_interrupt_action"], "markdown-merge")
+
+    def test_report_normal_no_action_field(self):
+        """ut-report-normal-no-action-field / P1-1（普通模式对外报告无 no-interrupt 动作）"""
+        plan = self._compute()
+        report: dict = {}
+        rc._sync_plan_to_report(plan, report, _intents())
+        conflict = next(
+            c for c in report["conflicts"]
+            if str(c.get("asset", "")).endswith("language.md")
+        )
+        self.assertIsNone(conflict.get("no_interrupt_action"))
+
+
+class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
+    """RF-04 去特判：缺 CodeGraph 段落的 code-reading.md 回归普通规则文件统一 drift 处理。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1866,42 +1970,37 @@ class TestCodegraphSectionMissing(unittest.TestCase):
         ):
             return rc.compute_plan(self.root, _intents())
 
-    def test_missing_codegraph_section_is_report_only_not_decision(self):
-        """ut-s3-codegraph-section-missing / RF-04 + codex 终审 I5
-        （缺 CodeGraph 段落 → action=skip 报告型冲突，不进 decisions/备份需求）"""
+    def test_missing_codegraph_section_is_plain_drift(self):
+        """ut-s3-codegraph-section-unified-drift / RF-04（缺 CodeGraph 段落 → 普通 drift 冲突，进 decisions 与备份需求）"""
         plan = self._compute()
         s3 = plan["steps"][rc.STEP_RULES_FILES]
         asset = next(a for a in s3["assets"] if a["path"].endswith("code-reading.md"))
-        self.assertEqual(asset["action"], "skip")
-        self.assertEqual(asset["conflict"], "codegraph-section-missing")
-        self.assertFalse(asset["backup_needed"])
-        # 不进 decisions 冲突集（无需用户决策，两模式同动作）
-        self.assertFalse(
+        self.assertEqual(asset["action"], "replace")
+        self.assertEqual(asset["conflict"], "drift")
+        self.assertTrue(asset["backup_needed"])
+        self.assertTrue(
             any(str(c.get("asset", "")).endswith("code-reading.md")
                 for c in plan["conflicts"])
         )
-        # step 级冲突含「需用户手动合并 CodeGraph 段落」提示
         self.assertTrue(
-            any("CodeGraph" in (c.get("question", "") + c.get("recommendation", ""))
-                for c in s3["conflicts"])
-        )
-        # 不进备份需求（不改文件）
-        self.assertFalse(
             any(str(b).endswith("code-reading.md") for b in plan["backup_needs"])
         )
+        # codegraph-section-missing 冲突类型已移除
+        self.assertFalse(
+            any(c.get("kind") == "codegraph-section-missing"
+                or c.get("conflict") == "codegraph-section-missing"
+                for c in s3["conflicts"])
+        )
 
-    def test_execute_does_not_overwrite(self):
-        """ut-s3-codegraph-section-missing-execute / RF-04 + codex 终审 I5
-        （执行阶段不重写文件，报告含手动合并提示）"""
+    def test_no_interrupt_execute_merges_codegraph_section(self):
+        """ut-s3-codegraph-section-unified-merge / RF-04（no-interrupt 自动合并：模板 CodeGraph 段落并入、项目原文保留）"""
         plan = self._compute()
         report = {"steps": [], "overall": "ok"}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
-        target = self.root / ".claude" / "rules" / "code-reading.md"
-        before = target.read_text(encoding="utf-8")
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
-        self.assertEqual(target.read_text(encoding="utf-8"), before)
-        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
-        self.assertTrue(any("CodeGraph" in str(c) for c in s3.get("conflicts", [])))
+        result = (self.root / ".claude" / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        self.assertIn("CodeGraph", result)          # 模板段落并入
+        self.assertIn("仅 ast-grep", result)        # 项目原文保留（项目补充/独有章节）
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
