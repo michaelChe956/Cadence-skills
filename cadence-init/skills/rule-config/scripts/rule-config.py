@@ -139,6 +139,10 @@ PLAYWRIGHT_RULE_FILE = "playwright.md"
 # RF-04：含 CodeGraph 段落的规则文件（老项目缺段落 → 报告手动合并，不自动覆盖）。
 CODEGRAPH_RULE_FILE = "code-reading.md"
 
+# NC-03 项目补充标记：合并协议保留字。注入与项目独有行过滤共用此常量；
+# 重跑时过滤必须排除标记行自身，保证 merge(t, merge(t, x)) == merge(t, x)（重跑幂等）。
+PROJECT_SUPPLEMENT_MARKER = "**项目补充**"
+
 # S5 目录结构创建（SKILL.md 第 5 步）：cadence/ 下 17 个子目录（含
 # project-rules/examples 与 cache）。逐字对齐 SKILL.md mkdir 块展开后的目录名。
 # project-rules 下含 examples 子目录，用 "project-rules/examples" 表示。
@@ -797,6 +801,7 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
             project_only_raw = [
                 line for line in project_body
                 if line not in template_lines and line.strip()
+                and line.strip() != PROJECT_SUPPLEMENT_MARKER
             ]
             # 重要（评审 Important 3）：项目补充部分对项目侧独有行也按完整行去重、保序
             # （NC-07），避免项目侧自身重复行在合并结果中出现两次。
@@ -805,7 +810,7 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
                 # NC-03：同名章节正文 = 模板正文 + \n\n**项目补充**\n + 项目去重行。
                 body.append("")
                 body.append("")
-                body.append("**项目补充**")
+                body.append(PROJECT_SUPPLEMENT_MARKER)
                 body.extend(project_only)
         merged.append(Section(
             level=tsec.level, key=tsec.key, title=tsec.title, body_lines=body,

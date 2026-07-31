@@ -152,6 +152,27 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertEqual(rc.merge_markdown(tpl, ""), tpl.rstrip("\n"))
         self.assertEqual(rc.merge_markdown(tpl, "\n\n"), tpl.rstrip("\n"))
 
+    def test_rerun_is_idempotent(self):
+        """ut-merge_markdown-rerun-idempotent / NC-03（重跑幂等：merge(t, merge(t, x)) == merge(t, x)）"""
+        tpl = "## 规则A\n\n模板行1\n模板行2\n\n## 规则B\n\n模板行3\n"
+        old = "## 规则A\n\n模板行1\n模板行2\n\n项目独有行X\n\n## 规则B\n\n模板行3\n\n项目独有行Y\n"
+        run1 = rc.merge_markdown(tpl, old)
+        run2 = rc.merge_markdown(tpl, run1)
+        run3 = rc.merge_markdown(tpl, run2)
+        self.assertEqual(run1, run2)
+        self.assertEqual(run2, run3)
+        # 每个含项目补充的同名章节恰好一个标记行
+        self.assertEqual(run2.count("**项目补充**"), 2)
+
+    def test_polluted_file_self_heals(self):
+        """ut-merge_markdown-polluted-self-heal / NC-03（历史重复标记污染 → 合并自愈为单标记且内容不丢）"""
+        tpl = "## 规则A\n\n模板行1\n"
+        polluted = "## 规则A\n\n模板行1\n\n\n**项目补充**\n**项目补充**\n项目独有行X\n"
+        out = rc.merge_markdown(tpl, polluted)
+        self.assertEqual(out.count("**项目补充**"), 1)
+        self.assertIn("项目独有行X", out)
+        self.assertEqual(out, rc.merge_markdown(tpl, out))
+
 
 class TestL0Block(unittest.TestCase):
     def test_skip_when_v1_block_matches_source(self):
