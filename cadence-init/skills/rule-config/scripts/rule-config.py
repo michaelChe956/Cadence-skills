@@ -1198,9 +1198,10 @@ def validate_decisions(plan: dict, decisions: list) -> list:
             )
 
     # 缺失：plan 有冲突但 decisions 未覆盖
-    #   default_keep 冲突（如 openspec rules.apply）缺失时默认 keep 保留，不记违规
-    #   （与 SKILL.md 合并矩阵「无响应则保留并报告」一致；区别于规则文件 drift
-    #   这类无默认安全动作的冲突，后者缺失仍 fail closed）。
+    #   default_keep 冲突（如 openspec rules.apply、规则文件 drift）缺失时默认
+    #   keep 保留，不记违规（与 SKILL.md 合并矩阵「无响应则保留并报告」一致）。
+    #   codex 五轮：当前系统所有冲突均为 A 类（default_keep=True），普通模式
+    #   无响应→保留并报告 status=0；缺失决策不 fail closed。
     missing = plan_ids - set(seen.keys())
     for cid in sorted(missing):
         if cid in default_keep_ids:
@@ -3468,7 +3469,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--project-type",
         choices=("coding", "non-coding"),
         default=None,
-        help="显式覆盖检测的项目类型",
+        help=(
+            "项目类型两模式规则：普通模式仅在检测为 non-coding 时可提升为 "
+            "coding（检测 coding 则忽略）；no-interrupt 模式忽略，以检测结果为准"
+        ),
     )
     parser.add_argument(
         "--ignore-cadence",

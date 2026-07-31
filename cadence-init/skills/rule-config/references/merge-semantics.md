@@ -137,7 +137,7 @@
 | RF-02 | 同上 | 文件已存在且完整内容与模板一致 | 幂等跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改文件） | 报告幂等跳过；原文件 sha256 不变 | `it-s3-rules-idempotent` |
 | RF-02b | 同上 | 文件已存在但完整内容与模板不一致（drift） | 询问用户；**无响应则保留并报告 status=0**（A 类，§11.6；recommendation=keep 安全默认）；决策 `keep`→不覆盖保留并报告，决策 `replace`→备份成功后以模板覆盖 | 备份成功后按章节级权威规则合并（保留项目独有章节与同名章节项目补充；无法可靠解析时按 NC-08 回退） | `keep`/skip：无。`replace`/合并：写入前按 §11.1 备份原文件，备份失败终止且不改原文件 | 报告冲突标识 `s3:<rel>`、状态 `drift`、所采用决策（普通模式）或合并结果（no-interrupt）、备份路径 | `it-s3-normal-keep-decision`（普通 `keep` 分支）/ `it-s3-rules-drift-replace`（普通 `replace` 分支，待补集成用例） |
 | RF-03 | `.claude/rules/code-reading.md` | 新增 `code-reading.md`（老项目补齐） | 所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 同普通模式（两模式同动作） | 无（新增，无原文件） | 报告补齐 `code-reading.md`；非 Coding 记录跳过 CodeGraph 初始化 | `it-s3-code-reading-backfill` |
-| RF-04 | 已存在的普通规则文件 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 | 同普通模式（两模式同动作） | 无（不改文件） | 报告文件路径与"需用户手动合并 CodeGraph 段落"提示 | `it-s3-codegraph-section-missing`（待补：脚本暂未实现"缺 CodeGraph 段落→报告手动合并"检测分支） |
+| RF-04 | 已存在的普通规则文件 | 规则文件已存在但缺少 CodeGraph 段落 | 不自动覆盖，报告需要用户手动合并 | 同普通模式（两模式同动作） | 无（不改文件） | 报告文件路径与"需用户手动合并 CodeGraph 段落"提示 | `it-s3-codegraph-section-missing`（已实现：report-only，覆盖"缺 CodeGraph 段落→报告手动合并"检测分支） |
 
 ## 6. 摘要引用增量（SM-01~03）
 

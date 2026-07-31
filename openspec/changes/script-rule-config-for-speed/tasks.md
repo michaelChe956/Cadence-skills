@@ -2,7 +2,7 @@
 
 ## 1. 测试改造（RED）
 
-- [x] 1.1 编制"现行 SKILL 条款→fixture/test 映射表"并提交为 `tests/skill-clause-map.md`，最小列：SKILL 行号区间 / 条款摘要 / 适用模式 / 脚本函数或 references 条目 / fixture / 测试 ID / 关键断言；逐条覆盖现行 SKILL.md 全部行为分支（含 design D2 锁定的十张表行 ID 基线），识别既有 22 用例未覆盖的缺口——历史目录两模式、普通规则不覆盖、技术栈/包管理器写入与覆盖率 80%、`cadence/` gitignore 两分支、Playwright 两分支、CodeGraph 显式启用与增量状态矩阵、Markdown 不可解析回退、摘要编号冲突、检测矛盾保守默认、用户意图参数透传（对应 specs 全部 requirement）
+- [x] 1.1 编制"现行 SKILL 条款→fixture/test 映射表"并提交为 `tests/skill-clause-map.md`，最小列：SKILL 行号区间 / 条款摘要 / 适用模式 / 脚本函数或 references 条目 / fixture / 测试 ID / 关键断言；逐条覆盖现行 SKILL.md 全部行为分支（含 design D2 锁定的十张表行 ID 基线），识别既有 22 用例未覆盖的缺口——历史目录两模式、普通规则不覆盖、技术栈/包管理器写入与覆盖率 80%、`cadence/` gitignore 两分支、Playwright 两分支、CodeGraph 显式启用与增量状态矩阵、Markdown 不可解析回退、摘要编号冲突、项目类型两模式规则（no-interrupt 以检测为准；普通模式 CLI 仅提升 non-coding→coding）、用户意图参数透传（对应 specs 全部 requirement）
 - [x] 1.2 新建 `tests/test_rule_config.py`（stdlib unittest）：为 `merge_markdown()`（含不可解析回退）、`merge_yaml()`（全类型矩阵）、`l0_block()`、备份命名与屏障编写失败测试（对应"合并与保护语义脚本内确定性实现"）
 - [x] 1.3 改造 `tests/verify-managed-lifecycle.sh`：既有 22 用例迁移为驱动脚本 CLI，并按 1.1 映射表补齐缺口用例；原子发布失败以目标目录 `chmod 555` 复现，备份失败以只读父目录复现；删除"4 次 instructions 验证"断言，改为结构预检与合并结果断言（对应 routing-conformance 修改的 requirement）
 - [x] 1.4 新增静态契约检查：断言 SKILL.md 不含直接读写目标项目文件的操作指令、包含有界扫描与两阶段调用文本、包含裸 token `no-interrupt` 与 `--no-interrupt` 等价规范化条款、保留 `disable-model-invocation: true`（沿用"从 SKILL.md 提取 find 命令"先例）
@@ -12,7 +12,7 @@
 ## 2. 脚本实现（GREEN）
 
 - [x] 2.1 新建 `scripts/rule-config.py` 骨架：CLI（dry-run/apply、--no-interrupt、--decisions、--report、--project-type、--ignore-cadence、--enable-playwright、--enable-codegraph）、JSON 报告 schema（含规范字段 `hints.next`）、decisions.json 校验（未知/重复/缺失/过期失败关闭）、统一备份与 `os.replace()` 原子写、PyYAML 缺失退出码 77 且照常写报告（对应"脚本两阶段执行与模式衔接""JSON 报告与失败关闭"）
-- [x] 2.2 实现 S1-S2：有界项目类型检测（--project-type 优先）、技术栈/包管理器检测、模板三级定位成对校验
+- [x] 2.2 实现 S1-S2：有界项目类型检测（detect_project 只返回检测结果；_compute_final_project_type 按两模式规则裁决）、技术栈/包管理器检测、模板三级定位成对校验
 - [x] 2.3 实现 S3-S4：`merge_markdown()` 章节合并与不可解析回退、普通模式不覆盖分支、Playwright 两分支、`l0_block()` 与双入口统一预检备份屏障、入口文件单次写入、摘要编号冲突保留原文（对应"合并与保护语义脚本内确定性实现"）
 - [x] 2.4 实现 S5-S6：目录创建、历史目录两模式处理（no-interrupt 只报告精确目录集合）、gitignore 两分支行级幂等（对应"项目配置产物与现行语义一致"）
 - [x] 2.5 实现 S7：`merge_yaml()` 保守合并、PyYAML 解析+结构预检、备份屏障与原子发布（对应"OpenSpec 配置验证以结构预检取代 instructions 验证"）
