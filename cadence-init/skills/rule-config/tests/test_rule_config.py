@@ -1715,6 +1715,51 @@ class TestFilterBackupNeeds(unittest.TestCase):
         self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [stray])
 
 
+class TestApplyS1DecisionToProjectType(unittest.TestCase):
+    """ut-apply-s1-decision / codex 四轮 Critical 真bug
+
+    s1:project-type-conflict 决策消费覆盖 plan.project_type（merge-semantics §11.6
+    「decision=coding/non-coding 时按对应类型执行」）。修复前决策只校验不消费。
+    """
+
+    def _plan_with_s1_conflict(self, project_type, decision):
+        return {
+            "project_type": project_type,
+            "decisions_map": (
+                {rc.S1_PROJECT_TYPE_CONFLICT_ID: decision}
+                if decision is not None else {}
+            ),
+            "conflicts": [{
+                "conflict_id": rc.S1_PROJECT_TYPE_CONFLICT_ID,
+                "allowed_decisions": ["coding", "non-coding"],
+            }],
+        }
+
+    def test_decision_coding_overrides_cli_noncoding(self):
+        """决策 coding 覆盖 CLI non-coding 初值（正例：决策优先于命令行初值）"""
+        plan = self._plan_with_s1_conflict("non-coding", "coding")
+        rc._apply_s1_decision_to_project_type(plan)
+        self.assertEqual(plan["project_type"], "coding")
+
+    def test_decision_noncoding_overrides_cli_coding(self):
+        """决策 non-coding 覆盖 CLI coding 初值（反例：与正例决策均与 CLI 不同值）"""
+        plan = self._plan_with_s1_conflict("coding", "non-coding")
+        rc._apply_s1_decision_to_project_type(plan)
+        self.assertEqual(plan["project_type"], "non-coding")
+
+    def test_no_s1_decision_keeps_plan_value(self):
+        """无 s1 决策（decisions_map 缺该 id）→ project_type 不变（dry-run / no-interrupt）"""
+        plan = self._plan_with_s1_conflict("non-coding", None)
+        rc._apply_s1_decision_to_project_type(plan)
+        self.assertEqual(plan["project_type"], "non-coding")
+
+    def test_illegal_s1_decision_ignored(self):
+        """非法决策值（validate_decisions 已拦截；本函数防御性忽略，不破坏 plan）"""
+        plan = self._plan_with_s1_conflict("non-coding", "maybe")
+        rc._apply_s1_decision_to_project_type(plan)
+        self.assertEqual(plan["project_type"], "non-coding")
+
+
 class TestReportCompleteness(unittest.TestCase):
     """codex 终审 I4：报告 conflicts 含 allowed_decisions；S1-S7 真实计时。"""
 

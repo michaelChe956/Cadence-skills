@@ -1280,6 +1280,53 @@ else
   record_result it-s1-conflict-noncoding-default "$RUN_STATUS" present missing fail
 fi
 
+# C11a. s1 决策 coding 覆盖 CLI non-coding 并启用 S8 codegraph
+# （it-s1-decision-coding-enables-codegraph / codex 四轮 Critical 真bug）
+# 场景：检测 coding + CLI --project-type non-coding 产生 s1:project-type-conflict；
+#       用户提供决策 coding → apply 阶段 project_type 按决策=coding，S8 codegraph 启用。
+# 修复前 bug：决策只校验不消费，project_type 仍按 CLI=non-coding，S8 跳过（违反
+#            merge-semantics §11.6「decision=coding 时按对应类型执行」）。
+case_root="$(mk_coding_fixture fx-s1-decision-coding)"
+dec_file="$TEST_ROOT/decisions-s1-coding.json"
+write_decisions "$dec_file" '[{"conflict_id":"s1:project-type-conflict","decision":"coding"}]'
+fake_bin="$TEST_ROOT/fake-bin-s1-decision-coding"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type non-coding --decisions "$dec_file"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'coding' \
+  && [ -d "$case_root/.codegraph" ] \
+  && [ -f "$case_root/.mcp.json" ] \
+  && [ -f "$case_root/.codex/config.toml" ]; then
+  record_result it-s1-decision-coding-enables-codegraph "$RUN_STATUS" present present pass
+else
+  record_result it-s1-decision-coding-enables-codegraph "$RUN_STATUS" present missing fail
+fi
+
+# C11b. s1 决策 non-coding 覆盖 CLI coding 并跳过 S8 codegraph
+# （it-s1-decision-noncoding-skips-codegraph / codex 四轮 Critical 正反对照）
+# 场景：检测 non-coding + CLI --project-type coding 产生 s1:project-type-conflict；
+#       决策=non-coding → apply 阶段 project_type 按决策=non-coding，S8 codegraph 跳过。
+# 设计意图（merge-semantics §11.6）：决策值覆盖 CLI 初值（用户在看到冲突后的明确回答
+#       优先于命令行初值）；与 C11a 形成正反对照，两组决策均与 CLI 不同值，
+#       真正验证决策消费而非 CLI 同值巧合。
+case_root="$TEST_ROOT/fx-s1-decision-noncoding"
+mkdir -p "$case_root"
+printf 'docs only\n' > "$case_root/README.md"
+dec_file="$TEST_ROOT/decisions-s1-noncoding.json"
+write_decisions "$dec_file" '[{"conflict_id":"s1:project-type-conflict","decision":"non-coding"}]'
+fake_bin="$TEST_ROOT/fake-bin-s1-decision-noncoding"
+mkdir -p "$fake_bin"
+fake_codegraph "$fake_bin" 0 0 0 1
+RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --project-type coding --decisions "$dec_file"
+if [ "$RUN_STATUS" -eq 0 ] \
+  && jqr "['project_type']" 2>/dev/null | grep -qix 'non-coding' \
+  && [ ! -d "$case_root/.codegraph" ]; then
+  record_result it-s1-decision-noncoding-skips-codegraph "$RUN_STATUS" present absent pass
+else
+  record_result it-s1-decision-noncoding-skips-codegraph "$RUN_STATUS" present present fail
+fi
+
 # C12. 用户意图四参数透传（it-intent-params / XC-02）
 case_root="$TEST_ROOT/fx-intent-params"
 mkdir -p "$case_root"

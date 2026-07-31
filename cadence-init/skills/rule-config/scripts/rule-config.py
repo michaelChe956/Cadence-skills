@@ -1210,6 +1210,36 @@ def validate_decisions(plan: dict, decisions: list) -> list:
     return violations
 
 
+# s1:project-type-conflict 冲突标识（唯一 B 类 fail-closed 冲突）。
+S1_PROJECT_TYPE_CONFLICT_ID = "s1:project-type-conflict"
+
+
+def _apply_s1_decision_to_project_type(plan: dict) -> None:
+    """将 s1:project-type-conflict 的用户决策应用到 plan.project_type（codex 四轮 Critical）。
+
+    背景（codex 四轮 Critical 真bug）：compute_plan 与 step_s1_detect 此前只用
+    intents.project_type（CLI 初值）判定 project_type，把 s1 决策放进 decisions_map
+    却不消费；导致「检测 coding + CLI non-coding + 决策 coding」场景下 project_type
+    仍按 CLI=non-coding，S8 codegraph 跳过，违反 merge-semantics §11.6
+    「decision=coding/non-coding 时按对应类型执行」。
+
+    本函数在 apply 执行阶段（decisions 校验通过、decisions_map 已入 plan 后）调用：
+    若 plan.conflicts 含 s1:project-type-conflict 且 decisions_map 含合法决策
+    （'coding'/'non-coding'，已由 validate_decisions 保证），用决策值覆盖
+    plan.project_type。CLI --project-type 是用户在命令行的初值，s1 冲突是「检测
+    矛盾」触发的；当 s1 冲突存在且有决策时，决策优先于 CLI 初值（用户在看到
+    冲突后的明确回答）。
+
+    dry-run 计划阶段不调用本函数（project_type 仍用 CLI/detect，冲突照样产生
+    供 Agent 提问）；仅 apply 阶段在 S1 detect 之后、S8 codegraph 启用判定之前
+    应用，使 S8 等依赖 project_type 的步骤按最终决策执行。
+    """
+    decisions_map = plan.get("decisions_map", {}) or {}
+    decision = decisions_map.get(S1_PROJECT_TYPE_CONFLICT_ID)
+    if decision in ("coding", "non-coding"):
+        plan["project_type"] = decision
+
+
 # ---------------------------------------------------------------------------
 # compute_plan：只读探测，填充 steps/conflicts/backup_needs（S1-S8 骨架）
 # ---------------------------------------------------------------------------
@@ -1987,9 +2017,19 @@ def _load_kernel_source() -> str:
 
 
 def step_s1_detect(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。"""
+    """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。
+
+    codex 四轮 Critical：apply 执行阶段 run_apply 已在 decisions 校验后调用
+    _apply_s1_decision_to_project_type 把 s1 决策覆盖到 plan.project_type。本步骤
+    detect_project(root, intents) 仍按 CLI 初值 detect（用于 tech_stack/evidence）；
+    当 plan.project_type 已被决策覆盖（与 detect 值不同）时，以 plan 的最终值为准
+    同步到 report，保证报告与后续 S8 等步骤看到的 project_type 一致。
+    """
     detect_result = detect_project(root, intents)
-    report["project_type"] = detect_result["project_type"]
+    # plan.project_type 优先（apply 阶段已消费 s1 决策覆盖；dry-run/无决策时与
+    # detect_result 一致）。
+    final_project_type = plan.get("project_type") or detect_result["project_type"]
+    report["project_type"] = final_project_type
     # tech_stack 写入报告（供后续 S4 入口文件技术栈章节使用）。
     report["tech_stack"] = detect_result["tech_stack"]
     report["evidence"] = detect_result["evidence"]
@@ -3326,8 +3366,14 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
                 if cid is not None:
                     decisions_map[cid] = decision
         plan["decisions_map"] = decisions_map
+        # codex 四轮 Critical：消费 s1:project-type-conflict 决策覆盖 plan.project_type
+        # （在 decisions 校验通过后、S1/S8 执行前应用；见 _apply_s1_decision_to_project_type）。
+        _apply_s1_decision_to_project_type(plan)
     else:
         plan["decisions_map"] = {}
+        # no-interrupt 模式不读 decisions；decisions_map 为空，本调用为空操作
+        # （保留以防未来扩展；当前 no-interrupt 按 intents/detect 决定 project_type）。
+        _apply_s1_decision_to_project_type(plan)
 
     # 3. 全局备份屏障：汇总 plan 全部 backup_needs 逐一 backup_file
     # codex 终审 I3：屏障只收集真实写入需求（keep 决策与幂等候选剔除）。
