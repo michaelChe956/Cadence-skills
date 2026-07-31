@@ -524,17 +524,46 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 assert_same it-s4-idempotent "$RUN_STATUS" "$before" "$after" 0
 
-# B2. 当前 L0 漂移在普通模式无响应时必须 fail closed + 零写入（it-s4-drift-normal / L0-P7）。
-# 评审裁决修正：与 it-decisions-missing 语义对齐——普通模式 apply 遇 conflict 无 --decisions
-# 必须 status≠0 且零写入（fail closed）。原期望 status=0 与权威用例矛盾。
-case_root="$(mk_entry_fixture fx-l0-drift '本地漂移段落' '')"
+# B2. L0 漂移普通模式无响应（Agent 写 keep / 决策缺失）→ 保留并报告 status=0（A 类 default_keep）。
+# codex 三轮 C3（方案 X）：L0 drift 回归 A 类——recommendation=keep 为安全默认，
+# 普通模式无响应时默认保留并报告 status=0，不 fail closed；与实现「keep→不写盘」一致。
+# 详细路径覆盖见 it-l0-drift-normal-keep-default（Agent 写 keep 决策）。
+# fixture 预收敛（I2 适配）：先跑 no-interrupt 收敛摘要/技术栈，再注入 L0 区块内漂移，
+# 使「无响应→文件不变」断言不被 I2 摘要补齐扰动（同 it-s4-drift-replaced-outside-preserved）。
+case_root="$TEST_ROOT/fx-l0-drift-normal"
+mkdir -p "$case_root"
+mk_converged_entries "$case_root"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root"
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
   record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# B2b. L0 漂移普通模式 Agent 写 keep 决策 → 保留并报告 status=0（it-l0-drift-normal-keep-default / L0-03）。
+# codex 三轮 C3：补「无响应编排路径」缺口——现有 it-s4-drift-normal 覆盖决策缺失（default_keep），
+# 本用例显式走 Agent 无响应→写 keep 决策→apply 的编排路径，断言 status=0 + 文件保留 +
+# 报告 default_keep=true。fixture 预收敛后注入双入口 L0 区块内漂移。
+case_root="$TEST_ROOT/fx-l0-drift-keep-default"
+mkdir -p "$case_root"
+mk_converged_entries "$case_root"
+replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
+replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
+before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
+dec_file="$TEST_ROOT/decisions-l0-drift-keep.json"
+write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep"},{"conflict_id":"s4:AGENTS.md","decision":"keep"}]'
+run_script apply "$case_root" --decisions "$dec_file"
+after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" = "$after" ] \
+  && jqr "['conflicts']" 2>/dev/null | grep -qi "default_keep.: True"; then
+  record_result it-l0-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-l0-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
@@ -609,12 +638,37 @@ l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
 before=$(sha256_file "$l1_target")
 run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
-# 评审裁决修正：与 it-decisions-missing 语义对齐——普通模式 apply 遇 L1 conflict
-# 无 --decisions 必须 status≠0 且零写入（fail closed）。原期望 status=0 与权威用例矛盾。
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
+# codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep 为安全默认，
+# 普通模式无响应时默认保留并报告 status=0，不 fail closed。与 it-s4-drift-normal、
+# it-decisions-missing（改用 s1 B 类冲突）语义一致。Agent 写 keep 决策路径见
+# it-l1-drift-normal-keep-default。
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
   record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" fail
+fi
+
+# B6b. L1 漂移普通模式 Agent 写 keep 决策 → 保留并报告 status=0（it-l1-drift-normal-keep-default / L1-04~06）。
+# codex 三轮 C3：补「无响应编排路径」缺口——现有 it-s3-l1-drift-normal 覆盖决策缺失（default_keep），
+# 本用例显式走 Agent 无响应→写 keep 决策→apply 的编排路径，断言 status=0 + L1 文件保留 +
+# 报告 default_keep=true。fixture 用预收敛入口 + L1 漂移文件。
+case_root="$TEST_ROOT/fx-l1-drift-keep-default"
+mkdir -p "$case_root/.claude/rules"
+mk_converged_entries "$case_root"
+cp "$L1_SOURCE" "$case_root/.claude/rules/openspec-superpowers-workflow.md"
+printf '\n本地漂移\n' >> "$case_root/.claude/rules/openspec-superpowers-workflow.md"
+l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
+before=$(sha256_file "$l1_target")
+dec_file="$TEST_ROOT/decisions-l1-drift-keep.json"
+write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/openspec-superpowers-workflow.md","decision":"keep"}]'
+run_script apply "$case_root" --decisions "$dec_file"
+after=$(sha256_file "$l1_target")
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" = "$after" ] \
+  && jqr "['conflicts']" 2>/dev/null | grep -qi "default_keep.: True"; then
+  record_result it-l1-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-l1-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" fail
 fi
 # 备份失败：父目录只读
 # 注意（评审 M3）：原实现用上一段的 $after（普通模式运行后状态）作为备份失败比对基准，
@@ -739,6 +793,10 @@ else
 fi
 
 # C2. decisions 四类异常（it-decisions-* / XC-03）：普通模式各自非零退出、零写入。
+# codex 三轮 C3（方案 X）：drift 类冲突已回归 A 类（default_keep），缺失决策不 fail；
+# 「决策缺失」与「决策空缺」两类异常必须用唯一 B 类冲突 s1:project-type-conflict
+# （检测出 coding 与 --project-type non-coding 矛盾）来验证。「未知 conflict_id」
+# 与「决策过期」两类异常针对决策内容错误，对任意冲突均生效，沿用 drift fixture。
 mk_drift_fixture() {
   local root="$TEST_ROOT/$1"
   mkdir -p "$root"
@@ -748,10 +806,18 @@ mk_drift_fixture() {
   printf '%s\n' "$root"
 }
 
-# C2a. 决策文件缺失（有冲突却未提供 --decisions）
-case_root="$(mk_drift_fixture fx-decisions-missing)"
+# B 类冲突 fixture：源码检出 coding + --project-type non-coding → s1:project-type-conflict。
+mk_project_conflict_fixture() {
+  local root="$TEST_ROOT/$1"
+  mkdir -p "$root/application"
+  printf 'x=1\n' > "$root/application/app.py"
+  printf '%s\n' "$root"
+}
+
+# C2a. 决策文件缺失（唯一 B 类冲突 s1:project-type-conflict 无 --decisions）
+case_root="$(mk_project_conflict_fixture fx-decisions-missing)"
 before=$(tree_hash "$case_root")
-run_script apply "$case_root"
+run_script apply "$case_root" --project-type non-coding
 after=$(tree_hash "$case_root")
 if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
   record_result it-decisions-missing "$RUN_STATUS" "$before" "$after" pass
@@ -772,12 +838,12 @@ else
   record_result it-decisions-unknown "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C2c. 冲突缺少决策（决策文件存在但漏掉该冲突）
-case_root="$(mk_drift_fixture fx-decisions-lacking)"
+# C2c. 冲突缺少决策（唯一 B 类冲突 s1:project-type-conflict 决策文件空）
+case_root="$(mk_project_conflict_fixture fx-decisions-lacking)"
 dec_file="$TEST_ROOT/decisions-lacking.json"
 write_decisions "$dec_file" '[]'
 before=$(tree_hash "$case_root")
-run_script apply "$case_root" --decisions "$dec_file"
+run_script apply "$case_root" --project-type non-coding --decisions "$dec_file"
 after=$(tree_hash "$case_root")
 if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
   record_result it-decisions-lacking "$RUN_STATUS" "$before" "$after" pass

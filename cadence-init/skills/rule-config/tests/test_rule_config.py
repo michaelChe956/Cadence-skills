@@ -1165,6 +1165,37 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
         s7_conflicts = report["steps"][0].get("conflicts", [])
         self.assertTrue(any(c.get("kind") == "structure" for c in s7_conflicts))
 
+    def test_publish_candidate_precheck_fail_raises(self):
+        """ut-s7-publish-or-abort-precheck-fail / OS-N12（候选结构预检失败→终止、原文件不变）
+
+        codex 三轮 Important：_s7_publish_or_abort 的候选 precheck fail-closed 分支
+        （scripts/rule-config.py:2700-2710）无直接测试。该分支为「保险层」——
+        候选来自封闭来源（模板 + 预检通过的 existing 经 merge_yaml 去重追加），
+        正常应总能通过；极端情况（如 merge_yaml 渲染异常）下候选结构非法时
+        MUST raise PublishError 且原文件不变。本单测直接注入非法候选验证该分支。
+        """
+        cfg = self.root / "openspec" / "config.yaml"
+        cfg.parent.mkdir(parents=True)
+        original = "schema: spec-driven\ncontext: original\n"
+        cfg.write_text(original, encoding="utf-8")
+        # 构造非法候选：rules 为非映射（字符串），结构预检必失败
+        invalid_candidate = "schema: spec-driven\nrules: not-a-mapping\n"
+        report = {"steps": [rc._step_skeleton(rc.STEP_OPENSPEC_CONFIG)]}
+        actions_log: list = []
+        with self.assertRaises(rc.PublishError):
+            rc._s7_publish_or_abort(
+                cfg, invalid_candidate, report, actions_log,
+                "openspec/config.yaml", branch="merge",
+            )
+        # 原文件不变（候选未发布）
+        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+        # 动作日志记录了 precheck 失败与字段路径
+        self.assertTrue(any(
+            a.get("action") == "aborted" and "fields" in a
+            and "rules" in a.get("fields", [])
+            for a in actions_log
+        ))
+
 
 class TestEnsureSummaryLines(unittest.TestCase):
     """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
@@ -1854,4 +1885,3 @@ class TestOptionalRuleIntegrity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

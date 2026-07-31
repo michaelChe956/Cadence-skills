@@ -1356,6 +1356,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "backup_needed": True, "is_l1": True,
                 })
                 conflict_id = f"s3:{rel}"
+                # codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep
+                # 是脚本认可的安全默认（保留原状可恢复），普通模式无响应（Agent 写
+                # keep 或决策缺失）时默认保留并报告 status=0，与实现「keep→不写盘」
+                # 一致，不 fail closed。default_keep=True 使 validate_decisions 对该
+                # 冲突缺失决策不记违规。仅 s1:project-type-conflict 仍为 B 类。
                 s3["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "state": state,
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
@@ -1363,6 +1368,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     # C-1 修复：推荐保守默认 keep（不覆盖），与 spec「普通模式
                     # 无响应 MUST NOT 覆盖」、§11.6 default_keep 语义一致。
                     "recommendation": DECISION_KEEP,
+                    "default_keep": True,
                 })
                 plan["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "kind": "l1",
@@ -1370,6 +1376,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"L1 规则文件 {rel} 状态为 {state}",
                     "recommendation": DECISION_KEEP,
+                    "default_keep": True,
                 })
                 _append_backup_need(plan, target)
         else:
@@ -1405,11 +1412,15 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "backup_needed": True, "is_l1": False,
                 })
                 conflict_id = f"s3:{rel}"
+                # codex 三轮 C3（方案 X）：普通规则文件 drift 同 L1/L0 回归 A 类——
+                # recommendation=keep 为安全默认（保留用户内容可恢复），普通模式
+                # 无响应时默认保留并报告 status=0，不 fail closed。
                 s3["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "state": "drift",
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
+                    "default_keep": True,
                 })
                 plan["conflicts"].append({
                     "conflict_id": conflict_id, "asset": rel, "kind": "rules",
@@ -1417,6 +1428,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                     "question": f"规则文件 {rel} 与模板不一致",
                     "recommendation": DECISION_KEEP,
+                    "default_keep": True,
                 })
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
@@ -1479,6 +1491,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
                 "question": f"入口文件 {entry_name} 的 L0 受管区块状态为 {state}",
                 "recommendation": DECISION_KEEP,
+                # codex 三轮 C3（方案 X）：L0 drift/broken 回归 A 类——recommendation=keep
+                # 为安全默认（保留区块原状可恢复），普通模式无响应时默认保留并报告
+                # status=0，不 fail closed。default_keep=True 使 validate_decisions 对该
+                # 冲突缺失决策不记违规。
+                "default_keep": True,
             })
             _append_backup_need(plan, entry_path)
     s4["status"] = "ok"
@@ -3294,6 +3311,8 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
                     "recommendation": c.get("recommendation"),
                     # codex 终审 I4：失败报告同样携带 allowed_decisions
                     "allowed_decisions": c.get("allowed_decisions"),
+                    # codex 三轮 C3：失败报告同样携带 default_keep（A/B 类判别）。
+                    "default_keep": c.get("default_keep", False),
                 }
                 for c in plan_conflicts
             ]
@@ -3400,6 +3419,9 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "recommendation": c.get("recommendation"),
             # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
             "allowed_decisions": c.get("allowed_decisions"),
+            # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
+            # （无响应→保留并报告 status=0），供 Agent 与测试判别 A/B 类。
+            "default_keep": c.get("default_keep", False),
         }
         for c in (plan.get("conflicts", []) or [])
     ]

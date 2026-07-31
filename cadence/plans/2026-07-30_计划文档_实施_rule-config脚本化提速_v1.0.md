@@ -17,7 +17,7 @@
 - **接口名冻结（与 OpenSpec tasks 逐字一致）**：`merge_markdown(template: str, existing: str) -> str | None`、`merge_yaml(template_text: str, existing_text: str | None) -> tuple[str, list[dict]]`、`l0_block(text: str, source_v1: str) -> str`（返回 `skip|drift|insert|upgrade|broken`）、`precheck_openspec_structure(doc) -> list[str]`、`backup_file(path: Path) -> Path`、`atomic_write(path: Path, content: str) -> None`、`sha256_file(path: Path) -> str`。**禁止**使用 `merge_yaml_candidate`/`classify_l0`/`build_candidate` 等别名。
 - 脚本文件名为 `rule-config.py`（连字符，不可直接 import）；单测 MUST 用 `importlib.util.spec_from_file_location("rule_config", SCRIPT_PATH)` 加载。
 - PyYAML 为固定运行时依赖；`import yaml` 失败 MUST 以退出码 77 退出并仍写出报告；文本行级 YAML 处理方案已被契约否决，不得回退。
-- 备份命名 `<文件>.cadence-backup-YYYYMMDDHHMMSS`；备份成功绝不等于授权破坏性重写。
+- 备份命名 `<文件>.cadence-backup-YYYYMMDDHHMMSS`；同秒冲突追加 `-2`/`-3` 唯一后缀（不覆盖首个）；备份成功绝不等于授权破坏性重写。
 - **全局备份屏障（执行顺序冻结）**：apply = `compute_plan` → 汇总本次全部必要备份（S3 普通规则/L1/S4 双入口/S7）并**一次性全部创建** → 任一备份失败→立即终止、**零发布**（备份文件本身保留并列入报告）→ 屏障通过后才按 S1-S8 顺序执行发布。
 - `--report` 与 `--decisions` 路径 MUST 在项目根外（脚本拒绝根内路径）；dry-run 对项目根零写入。
 - 决策文件机制仅普通模式：计划无冲突→不要求学决策文件；有冲突→缺失/未知/重复/过期均失败关闭零写入；**用户无响应时由 Agent 把推荐默认（如 `keep`）显式写入决策文件**，脚本不得把"无决策"当"跳过"。no-interrupt 单次 apply 内部自动决策；`s1:project-type-conflict` 仅普通模式进决策文件。
@@ -124,7 +124,7 @@ def test_type_conflict_listed(self):
 
 - [ ] **Step 4: 写 backup/atomic/classify_l1 失败测试**
 
-备份名正则 `.*\.cadence-backup-\d{14}$`；备份后原文件 `sha256_file` 不变；`atomic_write` 后内容一致。`classify_l1(path, template_text, known_versions)`：注入 `known_versions={"v0": 旧版文本}` 覆盖 upgrade（文件与 v0 逐字一致→`upgrade`）；v1 一致→`skip`；v1 漂移/无标记→`replace`。
+备份名正则 `.*\.cadence-backup-\d{14}(-\d+)?$`（接受可选 `-N` 同秒冲突后缀）；备份后原文件 `sha256_file` 不变；`atomic_write` 后内容一致。`classify_l1(path, template_text, known_versions)`：注入 `known_versions={"v0": 旧版文本}` 覆盖 upgrade（文件与 v0 逐字一致→`upgrade`）；v1 一致→`skip`；v1 漂移/无标记→`replace`。
 
 - [ ] **Step 5: 运行确认 RED**
 
