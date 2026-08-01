@@ -2438,7 +2438,168 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             c for c in report["conflicts"]
             if str(c.get("asset", "")).endswith("language.md")
         )
-        self.assertIsNone(conflict.get("no_interrupt_action"))
+        self.assertNotIn("no_interrupt_action", conflict)
+
+
+class TestTask6RegressionMatrix(unittest.TestCase):
+    """Task 6：dry-run 字段、幂等与跨资产失败关闭回归矩阵。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir(parents=True)
+        self.rules_root = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references"
+            / "openspec"
+            / "config.yaml"
+        )
+
+    def _apply(self, *, coding=False):
+        report = rc.build_report("no-interrupt", self.root)
+        patches = [
+            mock.patch.object(
+                rc,
+                "locate_templates",
+                return_value=(self.rules_root, self.openspec_yaml),
+            )
+        ]
+        if coding:
+            patches.append(
+                mock.patch.object(
+                    rc.subprocess, "run", return_value=mock.Mock(returncode=0)
+                )
+            )
+        with patches[0]:
+            if coding:
+                with patches[1]:
+                    code = rc.run_apply(
+                        self.root, _intents(no_interrupt=True), report
+                    )
+            else:
+                code = rc.run_apply(
+                    self.root, _intents(no_interrupt=True), report
+                )
+        return code, report
+
+    def test_dry_run_no_interrupt_action_field(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
+        report = {}
+        with mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            code = rc.run_dry_run(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(code, 0)
+        mcp = [c for c in report.get("conflicts",[]) if "mcp-servers" in c.get("conflict_id","")]
+        self.assertTrue(mcp)
+        self.assertEqual(mcp[0]["no_interrupt_action"], "authoritative-overwrite")
+
+    def test_dry_run_normal_mode_no_field(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
+        report = {}
+        with mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            rc.run_dry_run(self.root, _intents(no_interrupt=False), report)
+        mcp = [c for c in report.get("conflicts",[]) if "mcp-servers" in c.get("conflict_id","")]
+        if mcp:
+            self.assertNotIn("no_interrupt_action", mcp[0])
+
+    def test_double_apply_idempotent(self):
+        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}', encoding="utf-8")
+        code, report = self._apply(coding=True)
+        self.assertEqual(code, 0, report.get("failure"))
+        snapshot = {str(p): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        legacy_before = list((self.root / "cadence" / "legacy").rglob("*")) if (self.root / "cadence" / "legacy").exists() else []
+        code, report = self._apply(coding=True)
+        self.assertEqual(code, 0, report.get("failure"))
+        for p in self.root.rglob("*"):
+            if p.is_file():
+                self.assertEqual(p.read_bytes(), snapshot[str(p)], f"changed: {p}")
+        legacy_after = list((self.root / "cadence" / "legacy").rglob("*"))
+        self.assertEqual(len(legacy_after), len(legacy_before))
+
+    def test_drift_overwrite_then_rerun_no_archive(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text("### Serena\nold\n", encoding="utf-8")
+        code, report = self._apply()
+        self.assertEqual(code, 0, report.get("failure"))
+        n1 = len(list((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))
+        code, report = self._apply()
+        self.assertEqual(code, 0, report.get("failure"))
+        n2 = len(list((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))
+        self.assertEqual(n2, n1)  # 重跑无新归档
+
+    def test_type_switch_then_rerun_stable(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        (rules / "code-usage.md").write_text("非必要不编写代码", encoding="utf-8")  # non-coding 内容
+        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}', encoding="utf-8")  # coding 项目
+        code, report = self._apply(coding=True)  # 切换为 coding
+        self.assertEqual(code, 0, report.get("failure"))
+        c1 = (rules / "code-usage.md").read_text(encoding="utf-8")
+        code, report = self._apply(coding=True)  # 重跑
+        self.assertEqual(code, 0, report.get("failure"))
+        c2 = (rules / "code-usage.md").read_text(encoding="utf-8")
+        self.assertEqual(c1, c2)  # 稳定
+
+    def test_l0_second_archive_failure_keeps_both(self):
+        """L0 双入口：第二个归档失败时两入口都不写入（构造 drift 触发备份）"""
+        for entry in ("CLAUDE.md", "AGENTS.md"):
+            (self.root / entry).write_text(
+                f"# {entry}\n\n{rc.L0_BEGIN}\nDRIFTED\n{rc.L0_END}\n\n## 强制规则\n", encoding="utf-8")
+        orig = rc.backup_file; calls = []
+        def fail_second(path, r):
+            calls.append(path)
+            if len(calls) == 2:
+                raise rc.BackupError("simulated")
+            return orig(path, r)
+        with mock.patch.object(rc, "backup_file", side_effect=fail_second), \
+             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            code = rc.run_apply(self.root, _intents(no_interrupt=True), {})
+        self.assertEqual(code, 1)
+        # 两入口 L0 仍是 drift 状态（未写入）
+        self.assertIn("DRIFTED", (self.root / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertIn("DRIFTED", (self.root / "AGENTS.md").read_text(encoding="utf-8"))
+
+    def test_atomic_write_failure_keeps_original(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        target = rules / "mcp-servers.md"
+        target.write_text("old", encoding="utf-8")
+        original_atomic_write = rc.atomic_write
+
+        def fail_target(path, content):
+            if Path(path) == target:
+                raise OSError("simulated")
+            return original_atomic_write(path, content)
+
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(rc, "atomic_write", side_effect=fail_target), \
+             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(target.read_text(encoding="utf-8"), "old")  # 原文件不变
+        self.assertTrue(any((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))  # 归档保留
+
+    def test_legacy_unlink_failure_keeps_file(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        (rules / "code-usage-coding.md").write_text("legacy", encoding="utf-8")
+        with mock.patch.object(rc.Path, "unlink", side_effect=OSError("simulated")), \
+             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            rc.run_apply(self.root, _intents(no_interrupt=True), {})
+        # unlink 失败，原文件仍在
+        self.assertTrue((rules / "code-usage-coding.md").exists())
+
+    def test_same_second_conflict_suffix(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        target = rules / "language.md"; target.write_text("old", encoding="utf-8")
+        # 固定时钟，确保两次归档确实发生在同一秒。
+        fixed = rc.datetime(2026, 8, 1, 12, 0, 0)
+        with mock.patch.object(rc, "datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed
+            rc.backup_file(target, self.root)
+            rc.backup_file(target, self.root)
+        legacy = self.root / "cadence" / "legacy"
+        dirs = sorted(d.name for d in legacy.iterdir() if d.is_dir())
+        self.assertEqual(dirs, ["20260801120000", "20260801120000-2"])
 
 
 class TestCodegraphSectionUnifiedMerge(unittest.TestCase):

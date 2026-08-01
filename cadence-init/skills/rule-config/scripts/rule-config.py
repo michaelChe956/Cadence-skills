@@ -3540,23 +3540,25 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "conflicts": step_data.get("conflicts", []),
         })
     report["steps"] = report_steps
-    report["conflicts"] = [
-        {
+    report_conflicts: list = []
+    for c in (plan.get("conflicts", []) or []):
+        conflict_entry = {
             "conflict_id": c.get("conflict_id"),
             "asset": c.get("asset"),
             "state": c.get("state"),
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
-            # P1-1：no-interrupt 对外报告须如实暴露实际执行动作，避免 recommendation=keep 误导。
-            "no_interrupt_action": c.get("no_interrupt_action"),
-            # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
-            "allowed_decisions": c.get("allowed_decisions"),
-            # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
-            # （无响应→保留并报告 status=0），供 Agent 与测试判别 A/B 类。
-            "default_keep": c.get("default_keep", False),
         }
-        for c in (plan.get("conflicts", []) or [])
-    ]
+        if intents.no_interrupt:
+            # P1-1：仅 no-interrupt 对外报告暴露实际执行动作；普通模式不写该键。
+            conflict_entry["no_interrupt_action"] = c.get("no_interrupt_action")
+        # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
+        conflict_entry["allowed_decisions"] = c.get("allowed_decisions")
+        # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
+        # （无响应→保留并报告 status=0），供 Agent 与测试判别 A/B 类。
+        conflict_entry["default_keep"] = c.get("default_keep", False)
+        report_conflicts.append(conflict_entry)
+    report["conflicts"] = report_conflicts
 
 
 # ---------------------------------------------------------------------------
