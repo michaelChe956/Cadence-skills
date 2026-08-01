@@ -647,12 +647,23 @@ class TestAuthoritativeOverwrite(unittest.TestCase):
         self._apply()
         self.assertFalse((rules / "code-usage-coding.md").exists())
         self.assertFalse((rules / "code-usage-noncoding.md").exists())
-        self.assertTrue(
-            any(
-                (self.root / "cadence" / "legacy").rglob(
-                    "code-usage-coding.md"
-                )
+        coding_archives = list(
+            (self.root / "cadence" / "legacy").rglob(
+                "code-usage-coding.md"
             )
+        )
+        noncoding_archives = list(
+            (self.root / "cadence" / "legacy").rglob(
+                "code-usage-noncoding.md"
+            )
+        )
+        self.assertTrue(coding_archives)
+        self.assertTrue(noncoding_archives)
+        self.assertEqual(
+            coding_archives[0].read_text(encoding="utf-8"), "legacy"
+        )
+        self.assertEqual(
+            noncoding_archives[0].read_text(encoding="utf-8"), "legacy"
         )
         self.assertEqual(
             (rules / "code-usage-extra.md").read_text(encoding="utf-8"),
@@ -1132,8 +1143,8 @@ class TestStepS3RulesFiles(unittest.TestCase):
         )
         self.assertEqual(target.read_text(encoding="utf-8"), custom)
 
-    def test_ordinary_no_interrupt_merge_uses_project_supplement(self):
-        """ut-step_s3-ordinary-merge / RF-05（普通规则 no-interrupt → 模板权威全覆盖）"""
+    def test_ordinary_no_interrupt_overwrites_with_template(self):
+        """ut-step_s3-authoritative-overwrite / RF-05（普通规则 no-interrupt → 模板权威全覆盖）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         target = rules_dir / "language.md"
