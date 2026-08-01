@@ -42,6 +42,8 @@ V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
 
 
 class TestMergeMarkdown(unittest.TestCase):
+    """merge_markdown 纯函数兼容测试；适用范围已收窄，不再用于框架受管规则文件。"""
+
     def test_appends_project_only_sections_in_order(self):
         """ut-merge_markdown-keep-project-sections / NC-02"""
         tpl = "# T\n\n## A\ntpl-a\n\n## B\ntpl-b\n"
@@ -571,6 +573,93 @@ def _intents(**overrides):
     return rc.Intents(**defaults)
 
 
+class TestAuthoritativeOverwrite(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+        self.mcp_tpl = (self.rules_root / "mcp-servers.md").read_text(
+            encoding="utf-8"
+        )
+
+    def _apply(self):
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            result = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def test_drift_overwrite_no_supplement(self):
+        """ut-s3-authoritative-overwrite / RF-05：drift 全覆盖，无项目补充"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            "### Serena MCP\nold\n", encoding="utf-8"
+        )
+        self._apply()
+        content = (rules / "mcp-servers.md").read_text(encoding="utf-8")
+        self.assertEqual(content, self.mcp_tpl)
+        self.assertNotIn("Serena", content)
+        self.assertNotIn("**项目补充**", content)
+        self.assertTrue(
+            any((self.root / "cadence" / "legacy").rglob("mcp-servers.md"))
+        )
+
+    def test_idempotent_skip_when_equal_template(self):
+        """ut-s3-authoritative-idempotent / 内容==模板则跳过不归档"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            self.mcp_tpl, encoding="utf-8"
+        )
+        self._apply()
+        self.assertFalse((self.root / "cadence" / "legacy").exists())
+
+    def test_legacy_code_usage_migrated_custom_kept(self):
+        """历史 code-usage 双文件归档后移除；相似自定义文件保持不动。"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "code-usage-coding.md").write_text(
+            "legacy", encoding="utf-8"
+        )
+        (rules / "code-usage-noncoding.md").write_text(
+            "legacy", encoding="utf-8"
+        )
+        (rules / "code-usage-extra.md").write_text(
+            "user custom", encoding="utf-8"
+        )
+        self._apply()
+        self.assertFalse((rules / "code-usage-coding.md").exists())
+        self.assertFalse((rules / "code-usage-noncoding.md").exists())
+        self.assertTrue(
+            any(
+                (self.root / "cadence" / "legacy").rglob(
+                    "code-usage-coding.md"
+                )
+            )
+        )
+        self.assertEqual(
+            (rules / "code-usage-extra.md").read_text(encoding="utf-8"),
+            "user custom",
+        )
+
+
 class TestCodeUsageSingleSource(unittest.TestCase):
     """Task 2：code-usage 单选来源、固定落地名与 S3 资产来源字段。"""
 
@@ -1044,7 +1133,7 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), custom)
 
     def test_ordinary_no_interrupt_merge_uses_project_supplement(self):
-        """ut-step_s3-ordinary-merge / NC-03（普通规则 no-interrupt → merge_markdown 章节合并，含项目补充）"""
+        """ut-step_s3-ordinary-merge / RF-05（普通规则 no-interrupt → 模板权威全覆盖）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         target = rules_dir / "language.md"
@@ -1060,16 +1149,16 @@ class TestStepS3RulesFiles(unittest.TestCase):
         })
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, {})
         result = target.read_text(encoding="utf-8")
-        self.assertIn("项目补充", result)  # 普通规则走 merge，含项目补充
-        self.assertIn("项目独有行", result)
+        self.assertEqual(result, self.language_tpl)
+        self.assertNotIn("项目补充", result)
+        self.assertNotIn("项目独有行", result)
 
     def test_ordinary_no_interrupt_unchanged_skips_write(self):
-        """ut-step_s3-ordinary-unchanged / NC-03（no-interrupt 合并结果与现有文件逐字一致 → 跳过写盘，报告 unchanged）"""
+        """ut-step_s3-ordinary-unchanged / RF-05（内容==模板 → 跳过写盘，报告 unchanged）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         target = rules_dir / "language.md"
-        merged_once = rc.merge_markdown(self.language_tpl, self.language_tpl + "\n项目独有行\n")
-        target.write_text(merged_once, encoding="utf-8")
+        target.write_text(self.language_tpl, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_RULES_FILES: {
                 "name": rc.STEP_RULES_FILES, "status": "ok",
@@ -1084,8 +1173,14 @@ class TestStepS3RulesFiles(unittest.TestCase):
             rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
         m_write.assert_not_called()
         s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
-        self.assertTrue(any(a.get("action") == "unchanged" for a in s3.get("actions", [])))
-        self.assertEqual(target.read_text(encoding="utf-8"), merged_once)
+        self.assertTrue(
+            any(
+                a.get("action") == "unchanged"
+                and a.get("branch") == "authoritative-idempotent"
+                for a in s3.get("actions", [])
+            )
+        )
+        self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
 
 
 class TestStepS4EntryFiles(unittest.TestCase):
@@ -2067,14 +2162,14 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             return rc.compute_plan(self.root, _intents(**overrides))
 
     def test_no_interrupt_marks_real_action(self):
-        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 冲突含 no_interrupt_action=markdown-merge，recommendation 不变）"""
+        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 标注 authoritative-overwrite，recommendation 不变）"""
         plan = self._compute(no_interrupt=True)
         s3 = plan["steps"][rc.STEP_RULES_FILES]
         entry = next(c for c in s3["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(entry["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(entry["no_interrupt_action"], "authoritative-overwrite")
         self.assertEqual(entry["recommendation"], "keep")
         top = next(c for c in plan["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(top["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(top["no_interrupt_action"], "authoritative-overwrite")
 
     def test_normal_mode_omits_field(self):
         """ut-compute-plan-normal-no-action-field / P1-1（普通模式冲突条目不新增字段）"""
@@ -2084,7 +2179,7 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
         self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
 
     def test_report_no_interrupt_action(self):
-        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 的真实合并动作）"""
+        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 权威覆盖动作）"""
         plan = self._compute(no_interrupt=True)
         report: dict = {}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
@@ -2092,7 +2187,9 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             c for c in report["conflicts"]
             if str(c.get("asset", "")).endswith("language.md")
         )
-        self.assertEqual(conflict["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(
+            conflict["no_interrupt_action"], "authoritative-overwrite"
+        )
 
     def test_report_normal_no_action_field(self):
         """ut-report-normal-no-action-field / P1-1（普通模式对外报告无 no-interrupt 动作）"""
@@ -2150,14 +2247,16 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
         )
 
     def test_no_interrupt_execute_merges_codegraph_section(self):
-        """ut-s3-codegraph-section-unified-merge / RF-04（no-interrupt 自动合并：模板 CodeGraph 段落并入、项目原文保留）"""
+        """ut-s3-codegraph-section-unified-merge / RF-05（no-interrupt 权威覆盖为完整模板）"""
         plan = self._compute()
         report = {"steps": [], "overall": "ok"}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
         result = (self.root / ".claude" / "rules" / "code-reading.md").read_text(encoding="utf-8")
-        self.assertIn("CodeGraph", result)          # 模板段落并入
-        self.assertIn("仅 ast-grep", result)        # 项目原文保留（项目补充/独有章节）
+        template = (self.refs / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        self.assertEqual(result, template)
+        self.assertIn("CodeGraph", result)
+        self.assertNotIn("仅 ast-grep", result)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):

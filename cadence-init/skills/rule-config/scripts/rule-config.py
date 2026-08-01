@@ -1475,10 +1475,10 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "default_keep": True,
                 }
                 if intents.no_interrupt:
-                    # P1-1：no-interrupt 实际执行为章节合并写盘；显式标注真实动作，
-                    # 避免安全默认 recommendation=keep 误导为"保留原文件不动"。
-                    s3_conflict["no_interrupt_action"] = "markdown-merge"
-                    top_conflict["no_interrupt_action"] = "markdown-merge"
+                    # P1-1：no-interrupt 实际执行为框架模板权威全覆盖；显式标注
+                    # 真实动作，避免安全默认 recommendation=keep 误导为“保留原文件不动”。
+                    s3_conflict["no_interrupt_action"] = "authoritative-overwrite"
+                    top_conflict["no_interrupt_action"] = "authoritative-overwrite"
                 s3["conflicts"].append(s3_conflict)
                 plan["conflicts"].append(top_conflict)
                 _append_backup_need(plan, target)
@@ -2052,14 +2052,15 @@ def step_s2_locate_templates(root: Path, intents: Intents, plan: dict, report: d
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S3 执行（Task 6 实现）。
 
-    处理普通规则、按项目类型单选来源并落地为 code-usage.md、L1 独立分支，
+    处理框架受管规则、按项目类型单选来源并落地为 code-usage.md、L1 独立分支，
     以及显式启用或已存在的 Playwright。每个资产按 compute_plan 探测的状态执行：
       * create：读模板 atomic_write；
       * skip：不处理；
-      * drift/replay（普通规则）：普通模式按 decision（keep→不覆盖，replace→已备份后写模板）；
-        no-interrupt → merge_markdown，返回 None → 备份后标准结构 + `\n\n## 原项目补充\n\n` + 原文；
-      * upgrade/replace（L1）：**独立分支，不调 merge_markdown**；普通模式按 decision；
-        no-interrupt → 备份后写当前 v1 模板。
+      * drift（框架受管规则）：内容==模板则幂等跳过；普通模式按 decision；
+        no-interrupt 权威全覆盖为模板内容，不调用 merge_markdown；
+      * upgrade/replace（L1）：独立版本化分支，不调 merge_markdown；普通模式按 decision；
+        no-interrupt 写当前 v1 模板；
+      * 历史 code-usage-coding.md/code-usage-noncoding.md：独立复制归档后移除原位。
     """
     templates_info = plan.get("templates", {}) or {}
     rules_root_str = templates_info.get("rules_root")
@@ -2071,6 +2072,17 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     s3_step = (plan.get("steps", {}) or {}).get(STEP_RULES_FILES, {})
     assets = s3_step.get("assets", []) or []
     actions_log: list = []
+
+    # 迁移历史框架产物（屏障外独立归档，因为这些文件不在 backup_needs 清单）。
+    for legacy_name in CODE_USAGE_LEGACY_FILES:
+        legacy_path = rules_dir / legacy_name
+        if legacy_path.exists():
+            backup_file(legacy_path, root)
+            legacy_path.unlink()
+            actions_log.append({
+                "path": f".claude/rules/{legacy_name}",
+                "action": "migrated-legacy",
+            })
 
     for asset in assets:
         target_name = Path(asset["path"]).name
@@ -2116,28 +2128,36 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 else:
                     actions_log.append({"path": asset["path"], "action": "kept", "branch": "l1-keep"})
         else:
-            # --- 普通规则文件分支 ---
+            # --- 框架受管规则文件：权威全覆盖（不调 merge_markdown；屏障已归档）---
+            existing_text = _safe_read(target)
+            if existing_text == template_text:
+                actions_log.append({
+                    "path": asset["path"],
+                    "action": "unchanged",
+                    "branch": "authoritative-idempotent",
+                })
+                continue
             if intents.no_interrupt:
-                existing_text = _safe_read(target)
-                merged = merge_markdown(template_text, existing_text)
-                if merged is None:
-                    # NC-08 回退：标准结构 + `\n\n## 原项目补充\n\n` + 原文（备份已由屏障完成）。
-                    original = existing_text or ""
-                    fallback = template_text.rstrip("\n") + "\n\n## 原项目补充\n\n" + original
-                    atomic_write(target, fallback)
-                    actions_log.append({"path": asset["path"], "action": "merged-fallback", "branch": "markdown-unparseable"})
-                elif merged == existing_text:
-                    # 幂等短路：合并产物与现有文件逐字一致 → 跳过写盘（避免重跑刷新 mtime）。
-                    actions_log.append({"path": asset["path"], "action": "unchanged", "branch": "markdown-merge-idempotent"})
-                else:
-                    atomic_write(target, merged)
-                    actions_log.append({"path": asset["path"], "action": "merged", "branch": "markdown-merge"})
+                atomic_write(target, template_text)
+                actions_log.append({
+                    "path": asset["path"],
+                    "action": "overwritten",
+                    "branch": "authoritative-overwrite",
+                })
             else:
                 if decision == DECISION_REPLACE:
                     atomic_write(target, template_text)
-                    actions_log.append({"path": asset["path"], "action": "replaced", "branch": "rules-replace"})
+                    actions_log.append({
+                        "path": asset["path"],
+                        "action": "overwritten",
+                        "branch": "rules-replace",
+                    })
                 else:
-                    actions_log.append({"path": asset["path"], "action": "kept", "branch": "rules-keep"})
+                    actions_log.append({
+                        "path": asset["path"],
+                        "action": "kept",
+                        "branch": "rules-keep",
+                    })
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
