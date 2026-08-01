@@ -140,12 +140,12 @@ sha256_pair() {
 tree_hash() {
   local root=$1
   local listing
-  # 排除 .git 与 cadence 备份文件（<file>.cadence-backup-<ts>）；
-  # 备份是脚本恢复产物，非对项目源文件的修改，「零写入」断言应聚焦源文件。
+  # 排除 .git 与 cadence/legacy 屏障归档；归档是脚本恢复产物，
+  # 非对项目源文件的修改，「零写入」断言应聚焦源文件。
   listing=$(
     cd "$root" || exit 1
     find . -type f -not -path './.git/*' \
-      -not -name '*.cadence-backup-*' | sort | while IFS= read -r f; do
+      -not -path '*/cadence/legacy/*' | sort | while IFS= read -r f; do
       h=$(sha256_file "$f") || exit $?
       printf '%s  %s\n' "$h" "$f"
     done
@@ -286,6 +286,36 @@ is_single_application_source() {
 # 决策文件 helper：把 decisions 数组写成 JSON 文件（项目根之外）。
 write_decisions() {  # write_decisions <path> <json-array-string>
   printf '%s\n' "$2" > "$1"
+}
+
+# 判断屏障归档是否包含指定的项目相对路径。
+legacy_archive_exists() {  # legacy_archive_exists <root> <relative-path>
+  local root=$1
+  local relative_path=$2
+  [ -d "$root/cadence/legacy" ] || return 1
+  [ -n "$(find "$root/cadence/legacy" -type f -path "*/$relative_path" -print -quit 2>/dev/null)" ]
+}
+
+legacy_archive_path() {  # legacy_archive_path <root> <relative-path>
+  local root=$1
+  local relative_path=$2
+  find "$root/cadence/legacy" -type f -path "*/$relative_path" -print -quit 2>/dev/null
+}
+
+# 预置当前权威规则收敛态：5 个普通规则 + L1 + 单一 code-usage.md。
+# agent-routing-kernel.md 仅作为 L0 规范源，不落地到 .claude/rules/。
+mk_converged_rules() {  # mk_converged_rules <target-root> [coding]
+  local target=$1
+  local kind=${2-}
+  local rules="$target/.claude/rules"
+  local source_name=code-usage-noncoding.md
+  mkdir -p "$rules"
+  for f in language.md document-storage.md markdown-format.md mcp-servers.md \
+           code-reading.md openspec-superpowers-workflow.md; do
+    cp "$TEST_DIR/../references/rules/$f" "$rules/$f"
+  done
+  [ "$kind" = coding ] && source_name=code-usage-coding.md
+  cp "$TEST_DIR/../references/rules/$source_name" "$rules/code-usage.md"
 }
 
 # fixture：从仓库真实入口复制（带漂移注入）。
@@ -689,7 +719,8 @@ fi
 # no-interrupt 替换成功
 run_script apply "$case_root" --no-interrupt
 after_replace=$(sha256_file "$l1_target")
-if [ "$RUN_STATUS" -eq 0 ] && cmp -s "$l1_target" "$L1_SOURCE" && compgen -G "$l1_target.cadence-backup-*" >/dev/null; then
+if [ "$RUN_STATUS" -eq 0 ] && cmp -s "$l1_target" "$L1_SOURCE" \
+  && legacy_archive_exists "$case_root" '.claude/rules/openspec-superpowers-workflow.md'; then
   assert_changed it-s3-l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace"
 else
   record_result it-s3-l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace" fail
@@ -704,14 +735,15 @@ run_script apply "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
 assert_same it-s7-openspec-normal-preserved "$RUN_STATUS" "$before" "$after" 0
 
-# B8. 不可解析 YAML 必须先备份后终止、原文件不变（it-s7-openspec-unparseable / OS-N9）。
+# B8. 不可解析 YAML 必须先归档后终止、原文件不变（it-s7-openspec-unparseable / OS-N9）。
 case_root="$TEST_ROOT/fx-openspec-unparseable"
 mkdir -p "$case_root/openspec"
 printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] && compgen -G "$case_root/openspec/config.yaml.cadence-backup-*" >/dev/null; then
+if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
   record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
@@ -721,7 +753,8 @@ printf 'schema: spec-driven\nrules:\n  proposal: invalid-string\n' > "$case_root
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] && compgen -G "$case_root/openspec/config.yaml.cadence-backup-*" >/dev/null; then
+if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
   record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
@@ -744,14 +777,16 @@ else
   record_result it-s7-openspec-merge-idempotent "$RUN_STATUS" "$before" "$after_second" fail
 fi
 
-# B10. no-interrupt rules.apply 必须备份后移除（it-s7-openspec-apply-remove / OS-N8）。
+# B10. no-interrupt rules.apply 必须归档后移除（it-s7-openspec-apply-remove / OS-N8）。
 case_root="$TEST_ROOT/fx-openspec-apply-key"
 mkdir -p "$case_root/openspec"
 printf 'schema: spec-driven\nrules:\n  proposal:\n    - custom-proposal\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -eq 0 ] && ! grep -q '^  apply:' "$case_root/openspec/config.yaml" && grep -q 'custom-proposal' "$case_root/openspec/config.yaml" && compgen -G "$case_root/openspec/config.yaml.cadence-backup-*" >/dev/null; then
+if [ "$RUN_STATUS" -eq 0 ] && ! grep -q '^  apply:' "$case_root/openspec/config.yaml" \
+  && grep -q 'custom-proposal' "$case_root/openspec/config.yaml" \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
   assert_changed it-s7-openspec-apply-backed-up-removed "$RUN_STATUS" "$before" "$after"
 else
   record_result it-s7-openspec-apply-backed-up-removed "$RUN_STATUS" "$before" "$after" fail
@@ -882,9 +917,8 @@ mk_history_fixture() {
   mkdir -p "$root/.claude/rules"
   cp "$REPO_ROOT/CLAUDE.md" "$root/CLAUDE.md"
   cp "$REPO_ROOT/AGENTS.md" "$root/AGENTS.md"
-  # 预置与模板一致的规则文件，保证 S3 幂等（不创建新文件）
-  cp "$TEST_DIR/../references/rules"/*.md "$root/.claude/rules/" 2>/dev/null || true
-  cp "$TEST_DIR/../references/rules/README.md" "$root/.claude/rules/" 2>/dev/null || true
+  # 预置与当前契约一致的规则文件，保证 S3 幂等（不创建/迁移文件）
+  mk_converged_rules "$root"
   # HISTORY_DIRS 清单内历史目录（3 个）：prds / plans / docs
   for d in prds plans docs; do
     mkdir -p "$root/.claude/$d"
@@ -969,8 +1003,7 @@ case_root="$TEST_ROOT/fx-history-target-nonempty"
 mkdir -p "$case_root/.claude/rules"
 # codex 终审 I2 适配：入口预收敛（全树零写入断言不被摘要/技术栈补齐扰动）
 mk_converged_entries "$case_root"
-cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
-cp "$TEST_DIR/../references/rules/README.md" "$case_root/.claude/rules/" 2>/dev/null || true
+mk_converged_rules "$case_root"
 mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
 printf 'legacy\n' > "$case_root/.claude/prds/old.md"
 printf 'existing\n' > "$case_root/cadence/prds/keep.md"
@@ -1008,7 +1041,7 @@ run_script apply "$case_root" --decisions "$dec_file"
 after=$(sha256_file "$case_root/.claude/rules/language.md")
 assert_same it-s3-normal-keep-decision "$RUN_STATUS" "$before" "$after" 0
 
-# C5. Markdown 不可解析回退（it-s3-markdown-unparseable-fallback / NC-08）
+# C5. Markdown 不可解析时框架规则权威覆盖（it-s3-markdown-unparseable-fallback / RF-05）
 case_root="$TEST_ROOT/fx-markdown-unparseable"
 mkdir -p "$case_root/.claude/rules"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
@@ -1019,8 +1052,9 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/.claude/rules/language.md")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$after" ] \
-  && compgen -G "$case_root/.claude/rules/language.md.cadence-backup-*" >/dev/null \
-  && grep -q '原项目补充' "$case_root/.claude/rules/language.md"; then
+  && legacy_archive_exists "$case_root" '.claude/rules/language.md' \
+  && cmp -s "$case_root/.claude/rules/language.md" "$TEST_DIR/../references/rules/language.md" \
+  && ! grep -qE '原项目补充|项目补充' "$case_root/.claude/rules/language.md"; then
   record_result it-s3-markdown-unparseable-fallback "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s3-markdown-unparseable-fallback "$RUN_STATUS" "$before" "$after" fail
@@ -1041,13 +1075,13 @@ after=$(sha256_file "$l1_target")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$after" ] \
   && cmp -s "$l1_target" "$L1_SOURCE" \
-  && compgen -G "$l1_target.cadence-backup-*" >/dev/null; then
+  && legacy_archive_exists "$case_root" '.claude/rules/openspec-superpowers-workflow.md'; then
   record_result it-l1-drift-replace "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-l1-drift-replace "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# 无标记文件（L1-06 unmarked → no-interrupt 备份后替换）
+# 无标记文件（L1-06 unmarked → no-interrupt 归档后替换）
 case_root="$TEST_ROOT/fx-l1-unmarked"
 mkdir -p "$case_root/.claude/rules"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
@@ -1060,7 +1094,7 @@ after=$(sha256_file "$l1_target")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$after" ] \
   && cmp -s "$l1_target" "$L1_SOURCE" \
-  && compgen -G "$l1_target.cadence-backup-*" >/dev/null; then
+  && legacy_archive_exists "$case_root" '.claude/rules/openspec-superpowers-workflow.md'; then
   record_result it-l1-unknown-replace "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-l1-unknown-replace "$RUN_STATUS" "$before" "$after" fail
@@ -1143,14 +1177,21 @@ else
   record_result it-s3-playwright-enable "$RUN_STATUS" absent absent fail
 fi
 
-# C9c. 已存在不覆盖（it-s3-playwright-no-overwrite）
+# C9c. 已存在规则纳入 drift；no-interrupt 权威覆盖并归档（it-s3-playwright-no-overwrite）
 case_root="$TEST_ROOT/fx-playwright-existing"
 mkdir -p "$case_root/.claude/rules"
 printf '# 自定义 playwright 规则\n保留\n' > "$case_root/.claude/rules/playwright.md"
 before=$(sha256_file "$case_root/.claude/rules/playwright.md")
 run_script apply "$case_root" --no-interrupt --enable-playwright
 after=$(sha256_file "$case_root/.claude/rules/playwright.md")
-assert_same it-s3-playwright-no-overwrite "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$before" != "$after" ] \
+  && cmp -s "$case_root/.claude/rules/playwright.md" "$TEST_DIR/../references/rules/playwright.md" \
+  && legacy_archive_exists "$case_root" '.claude/rules/playwright.md'; then
+  record_result it-s3-playwright-no-overwrite "$RUN_STATUS" "$before" "$after" pass
+else
+  record_result it-s3-playwright-no-overwrite "$RUN_STATUS" "$before" "$after" fail
+fi
 
 # C10. CodeGraph 矩阵（it-s8-* / CS-01~08、CG-01~08），用 fake_codegraph 覆盖 PATH。
 # 简报明文要求（line 43）：it-s8-* 用 fake_codegraph 覆盖 install_rc/init_rc/status_rc=1，
@@ -1428,15 +1469,15 @@ else
   record_result it-s4-insert "$RUN_STATUS" absent absent fail
 fi
 
-# C16b. L0 upgrade 两模式确定性：普通模式无 decisions 备份后升级（it-s4-upgrade / L0-04 + 终审 I-2）。
+# C16b. L0 upgrade 两模式确定性：普通模式无 decisions 归档后升级（it-s4-upgrade / L0-04 + 终审 I-2）。
 case_root="$TEST_ROOT/fx-entry-v0-markers"
 mkdir -p "$case_root"
 printf '# CLAUDE.md\n\n前置\n\n<!-- cadence-managed:openspec-superpowers-routing:v0:start -->\n旧版\n<!-- cadence-managed:openspec-superpowers-routing:v0:end -->\n\n后置\n' > "$case_root/CLAUDE.md"
 printf '# AGENTS.md\n\n<!-- cadence-managed:openspec-superpowers-routing:v0:start -->\n旧\n<!-- cadence-managed:openspec-superpowers-routing:v0:end -->\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && compgen -G "$case_root/CLAUDE.md.cadence-backup-*" >/dev/null \
-  && compgen -G "$case_root/AGENTS.md.cadence-backup-*" >/dev/null \
+  && legacy_archive_exists "$case_root" 'CLAUDE.md' \
+  && legacy_archive_exists "$case_root" 'AGENTS.md' \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && ! grep -q 'routing:v0' "$case_root/CLAUDE.md" \
   && grep -q '后置' "$case_root/CLAUDE.md"; then
@@ -1522,11 +1563,15 @@ else
   record_result it-s3-create "$RUN_STATUS" absent missing fail
 fi
 rules_all_present=1
-for f in agent-routing-kernel.md language.md document-storage.md markdown-format.md \
-         mcp-servers.md code-reading.md code-usage-coding.md code-usage-noncoding.md; do
+for f in language.md document-storage.md markdown-format.md mcp-servers.md \
+         code-reading.md openspec-superpowers-workflow.md code-usage.md; do
   [ -f "$case_root/.claude/rules/$f" ] || rules_all_present=0
 done
-if [ "$RUN_STATUS" -eq 0 ] && [ "$rules_all_present" -eq 1 ]; then
+[ ! -f "$case_root/.claude/rules/agent-routing-kernel.md" ] || rules_all_present=0
+[ ! -f "$case_root/.claude/rules/code-usage-coding.md" ] || rules_all_present=0
+[ ! -f "$case_root/.claude/rules/code-usage-noncoding.md" ] || rules_all_present=0
+if [ "$RUN_STATUS" -eq 0 ] && [ "$rules_all_present" -eq 1 ] \
+  && cmp -s "$case_root/.claude/rules/code-usage.md" "$TEST_DIR/../references/rules/code-usage-noncoding.md"; then
   record_result it-s3-rules-create "$RUN_STATUS" absent present pass
 else
   record_result it-s3-rules-create "$RUN_STATUS" absent missing fail
@@ -1660,7 +1705,7 @@ mkdir -p "$case_root/.claude/rules" "$case_root/openspec" "$case_root/applicatio
 printf 'x=1\n' > "$case_root/application/app.py"
 # codex 终审 I2 适配：入口预收敛（coding 收敛态，避免 S4 upgrade 扰动「其余文件 sha256 不变」断言）
 mk_converged_entries "$case_root" coding
-cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+mk_converged_rules "$case_root" coding
 python3 -c "
 import importlib.util
 spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
@@ -1693,7 +1738,7 @@ case_root="$TEST_ROOT/fx-history-merge-empty"
 mkdir -p "$case_root/.claude/rules" "$case_root/.claude/plans" "$case_root/cadence/plans" "$case_root/openspec"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+mk_converged_rules "$case_root"
 printf 'legacy-plan\n' > "$case_root/.claude/plans/old.md"
 python3 -c "
 import importlib.util
@@ -1718,7 +1763,7 @@ case_root="$TEST_ROOT/fx-history-forbidden"
 mkdir -p "$case_root/.claude/rules" "$case_root/.claude/commands" "$case_root/.claude/skills" "$case_root/openspec"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
-cp "$TEST_DIR/../references/rules"/*.md "$case_root/.claude/rules/" 2>/dev/null || true
+mk_converged_rules "$case_root"
 printf 'user-command\n' > "$case_root/.claude/commands/custom.md"
 printf 'user-skill\n' > "$case_root/.claude/skills/custom.md"
 python3 -c "
@@ -1763,16 +1808,17 @@ else
   record_result it-s6-codegraph-json-keep "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C16r. openspec 必要备份失败 → 终止零写入（it-s7-openspec-backup-fail-modes / OS-08 + OS-N4）。
+# C16r. openspec 必要归档失败 → 终止零写入（it-s7-openspec-backup-fail-modes / OS-08 + OS-N4）。
 case_root="$TEST_ROOT/fx-openspec-backup-fail"
 mkdir -p "$case_root/openspec"
 printf 'schema: spec-driven\nrules:\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
-saved_mode=$(stat -c %a "$case_root/openspec" 2>/dev/null || stat -f %Lp "$case_root/openspec")
-chmod 555 "$case_root/openspec"
+# 归档现在写入 cadence/legacy，故应封锁项目根，使 cadence/ 无法创建。
+saved_mode=$(stat -c %a "$case_root" 2>/dev/null || stat -f %Lp "$case_root")
+chmod 555 "$case_root"
 run_script apply "$case_root" --no-interrupt
 inject_status=$RUN_STATUS
-chmod "$saved_mode" "$case_root/openspec"
+chmod "$saved_mode" "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
 if [ "$inject_status" -ne 0 ] && [ "$before" = "$after" ] \
   && [ ! -f "$case_root/CLAUDE.md" ] \
@@ -1786,18 +1832,19 @@ fi
 # C17. codex 终审修复回归（C2/I1/I2/I3/I4/I5 集成证据）
 # ============================================================================
 
-# C17a. 无效 .mcp.json 重写前备份（it-s8-mcpjson-invalid-backed-up / codex 终审 C2）。
+# C17a. 无效 .mcp.json 重写前归档（it-s8-mcpjson-invalid-backed-up / codex 终审 C2）。
 case_root="$(mk_coding_fixture fx-mcpjson-invalid)"
 printf '{invalid json\n' > "$case_root/.mcp.json"
 fake_bin="$TEST_ROOT/fake-bin-mcpjson-invalid"
 mkdir -p "$fake_bin"
-# install 失败 → degraded 路径仍补齐双配置；既有无效 .mcp.json 重写前必须备份
+# install 失败 → degraded 路径仍补齐双配置；既有无效 .mcp.json 重写前必须归档
 fake_codegraph "$fake_bin" 1 0 0 0
 RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
+mcp_archive=$(legacy_archive_path "$case_root" '.mcp.json')
 if [ "$RUN_STATUS" -eq 0 ] \
   && jqr "['overall']" 2>/dev/null | grep -qi 'degraded' \
-  && compgen -G "$case_root/.mcp.json.cadence-backup-*" >/dev/null \
-  && grep -q 'invalid json' "$case_root"/.mcp.json.cadence-backup-* \
+  && [ -n "$mcp_archive" ] \
+  && grep -q 'invalid json' "$mcp_archive" \
   && python3 -c "import json;d=json.load(open('$case_root/.mcp.json'));assert 'codegraph' in d['mcpServers']"; then
   record_result it-s8-mcpjson-invalid-backed-up "$RUN_STATUS" invalid backed-up pass
 else
@@ -1818,7 +1865,7 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/.codex/config.toml" ] \
   && grep -q '\[mcp_servers.codegraph\]' "$case_root/.codex/config.toml" \
   && [ "$before" = "$(sha256_file "$case_root/.mcp.json")" ] \
-  && ! compgen -G "$case_root/.mcp.json.cadence-backup-*" >/dev/null; then
+  && ! legacy_archive_exists "$case_root" '.mcp.json'; then
   record_result it-s8-codegraph-existing-mcp-backfill "$RUN_STATUS" missing present pass
 else
   record_result it-s8-codegraph-existing-mcp-backfill "$RUN_STATUS" missing missing fail
@@ -1848,7 +1895,7 @@ dec_file="$TEST_ROOT/decisions-keep-nobackup.json"
 write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/language.md","decision":"keep"}]'
 run_script apply "$case_root" --decisions "$dec_file"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && ! compgen -G "$case_root/.claude/rules/language.md.cadence-backup-*" >/dev/null \
+  && ! legacy_archive_exists "$case_root" '.claude/rules/language.md' \
   && grep -q '不覆盖我' "$case_root/.claude/rules/language.md"; then
   record_result it-s3-keep-decision-no-backup "$RUN_STATUS" keep no-backup pass
 else
@@ -1860,10 +1907,12 @@ case_root="$TEST_ROOT/fx-idempotent-rerun"
 mkdir -p "$case_root"
 run_script apply "$case_root" --no-interrupt
 before=$(tree_hash "$case_root")
+legacy_file_count_before=$(find "$case_root/cadence/legacy" -type f ! -name '.gitignore' 2>/dev/null | wc -l)
 run_script apply "$case_root" --no-interrupt
 after=$(tree_hash "$case_root")
-backup_count=$(find "$case_root" -name '*.cadence-backup-*' | wc -l)
-if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] && [ "$backup_count" -eq 0 ]; then
+legacy_file_count_after=$(find "$case_root/cadence/legacy" -type f ! -name '.gitignore' 2>/dev/null | wc -l)
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ] \
+  && [ "$legacy_file_count_before" -eq "$legacy_file_count_after" ]; then
   record_result it-idempotent-rerun-zero-backup "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-idempotent-rerun-zero-backup "$RUN_STATUS" "$before" "$after" fail
@@ -1891,9 +1940,8 @@ else
   record_result it-apply-steps-real-elapsed "$RUN_STATUS" present missing fail
 fi
 
-# C17h. 老项目 code-reading.md 缺 CodeGraph 段落 → no-interrupt 走统一章节合并：
-# 模板 CodeGraph 内容并入、项目原文保留，并在写入前备份。
-# （it-s3-codegraph-section-unified-merge / RF-04）。
+# C17h. 老项目 code-reading.md drift → no-interrupt 权威覆盖为模板，写入前归档。
+# （it-s3-codegraph-section-unified-merge / RF-05）。
 case_root="$TEST_ROOT/fx-codegraph-section-unified-merge"
 mkdir -p "$case_root/.claude/rules"
 printf '# 旧版代码阅读规则\n\n仅 ast-grep，无其他内容。\n' > "$case_root/.claude/rules/code-reading.md"
@@ -1902,9 +1950,9 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/.claude/rules/code-reading.md")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$after" ] \
-  && grep -q 'CodeGraph 与 ast-grep 分工' "$case_root/.claude/rules/code-reading.md" \
-  && grep -q '仅 ast-grep，无其他内容。' "$case_root/.claude/rules/code-reading.md" \
-  && compgen -G "$case_root/.claude/rules/code-reading.md.cadence-backup-*" >/dev/null; then
+  && cmp -s "$case_root/.claude/rules/code-reading.md" "$TEST_DIR/../references/rules/code-reading.md" \
+  && ! grep -q '仅 ast-grep，无其他内容。' "$case_root/.claude/rules/code-reading.md" \
+  && legacy_archive_exists "$case_root" '.claude/rules/code-reading.md'; then
   record_result it-s3-codegraph-section-unified-merge "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-s3-codegraph-section-unified-merge "$RUN_STATUS" "$before" "$after" fail

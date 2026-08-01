@@ -2077,11 +2077,16 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     for legacy_name in CODE_USAGE_LEGACY_FILES:
         legacy_path = rules_dir / legacy_name
         if legacy_path.exists():
-            backup_file(legacy_path, root)
+            backup_path = backup_file(legacy_path, root)
+            report.setdefault("backups", []).append({
+                "file": str(legacy_path),
+                "backup": str(backup_path),
+            })
             legacy_path.unlink()
             actions_log.append({
                 "path": f".claude/rules/{legacy_name}",
                 "action": "migrated-legacy",
+                "backup": str(backup_path),
             })
 
     for asset in assets:

@@ -632,21 +632,23 @@ class TestAuthoritativeOverwrite(unittest.TestCase):
         self.assertFalse((self.root / "cadence" / "legacy").exists())
 
     def test_legacy_code_usage_migrated_custom_kept(self):
-        """历史 code-usage 双文件归档后移除；相似自定义文件保持不动。"""
+        """历史 code-usage 双文件归档后移除；归档路径入报告；相似自定义文件保持不动。"""
         rules = self.root / ".claude" / "rules"
         rules.mkdir(parents=True)
-        (rules / "code-usage-coding.md").write_text(
+        coding_legacy = rules / "code-usage-coding.md"
+        noncoding_legacy = rules / "code-usage-noncoding.md"
+        coding_legacy.write_text(
             "legacy", encoding="utf-8"
         )
-        (rules / "code-usage-noncoding.md").write_text(
+        noncoding_legacy.write_text(
             "legacy", encoding="utf-8"
         )
         (rules / "code-usage-extra.md").write_text(
             "user custom", encoding="utf-8"
         )
-        self._apply()
-        self.assertFalse((rules / "code-usage-coding.md").exists())
-        self.assertFalse((rules / "code-usage-noncoding.md").exists())
+        report = self._apply()
+        self.assertFalse(coding_legacy.exists())
+        self.assertFalse(noncoding_legacy.exists())
         coding_archives = list(
             (self.root / "cadence" / "legacy").rglob(
                 "code-usage-coding.md"
@@ -659,6 +661,32 @@ class TestAuthoritativeOverwrite(unittest.TestCase):
         )
         self.assertTrue(coding_archives)
         self.assertTrue(noncoding_archives)
+        expected_backups = {
+            (str(coding_legacy), str(coding_archives[0])),
+            (str(noncoding_legacy), str(noncoding_archives[0])),
+        }
+        reported_backups = {
+            (item.get("file"), item.get("backup"))
+            for item in report["backups"]
+        }
+        self.assertTrue(expected_backups.issubset(reported_backups))
+        s3 = next(
+            step for step in report["steps"]
+            if step["name"] == rc.STEP_RULES_FILES
+        )
+        migrated = {
+            action["path"]: action.get("backup")
+            for action in s3.get("actions", [])
+            if action.get("action") == "migrated-legacy"
+        }
+        self.assertEqual(
+            migrated[".claude/rules/code-usage-coding.md"],
+            str(coding_archives[0]),
+        )
+        self.assertEqual(
+            migrated[".claude/rules/code-usage-noncoding.md"],
+            str(noncoding_archives[0]),
+        )
         self.assertEqual(
             coding_archives[0].read_text(encoding="utf-8"), "legacy"
         )
@@ -904,6 +932,55 @@ class TestTechstackPlaceholder(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "references" / "openspec" / "config.yaml"
         )
+
+    def test_missing_block_appends_all_detected_fields_and_fixed_coverage(self):
+        """技术栈区块完全缺失时追加五个检测字段和固定 80% 阈值。"""
+        tech_stack = {
+            "language": "Python",
+            "pkg_manager": "uv",
+            "test": "pytest",
+            "lint": "ruff check .",
+            "format": "ruff format .",
+            "coverage": "99%",
+        }
+        result, diffs = rc._ensure_techstack_block(
+            "# CLAUDE.md\n\n项目说明\n", tech_stack
+        )
+        self.assertEqual(diffs, [])
+        self.assertIn("## 项目配置", result)
+        self.assertIn("### 项目技术栈", result)
+        self.assertIn("- **语言**：Python", result)
+        self.assertIn("- **包管理器**：uv", result)
+        self.assertIn("- **测试命令**：pytest", result)
+        self.assertIn("- **检查命令**：ruff check .", result)
+        self.assertIn("- **格式化命令**：ruff format .", result)
+        self.assertIn("- **覆盖率阈值**：80%", result)
+        self.assertNotIn("99%", result)
+
+    def test_empty_field_value_is_replaced_by_detected_value(self):
+        """字段冒号后为空字符串时按占位值处理并替换为检测值。"""
+        text = (
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：\n"
+            "- **包管理器**：待确认\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：待确认\n"
+            "- **覆盖率阈值**：80%\n"
+        )
+        result, diffs = rc._ensure_techstack_block(
+            text,
+            {
+                "language": "Go",
+                "pkg_manager": "go modules",
+                "test": "go test ./...",
+                "lint": "golangci-lint run",
+                "format": "gofmt -w .",
+            },
+        )
+        self.assertEqual(diffs, [])
+        self.assertIn("- **语言**：Go", result)
+        self.assertNotIn("- **语言**：\n", result)
 
     def test_placeholder_replaced_user_value_kept_diff_reported(self):
         """占位值收敛到检测值；用户真实值保留，冲突差异写入 S4 actions。"""
