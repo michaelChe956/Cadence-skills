@@ -886,6 +886,140 @@ class TestDetectProject(unittest.TestCase):
         self.assertEqual(ts["coverage"], "80%")
 
 
+class TestTechstackPlaceholder(unittest.TestCase):
+    """技术栈已有区块逐项收敛：占位替换、用户值保留、差异入报告。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for template in real_tpl.iterdir():
+            if template.is_file():
+                (self.rules_root / template.name).write_bytes(template.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+
+    def test_placeholder_replaced_user_value_kept_diff_reported(self):
+        """占位值收敛到检测值；用户真实值保留，冲突差异写入 S4 actions。"""
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest","lint":"eslint ."}}',
+            encoding="utf-8",
+        )
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：待确认\n"
+            "- **包管理器**：yarn\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：未检测到\n"
+            "- **覆盖率阈值**：80%\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(result, 0, report.get("failure"))
+
+        section = claude.read_text(encoding="utf-8")
+        self.assertIn("**语言**：JavaScript/TypeScript", section)
+        self.assertIn("**测试命令**：jest", section)
+        self.assertIn("**检查命令**：eslint .", section)
+        self.assertIn("**包管理器**：yarn", section)
+        self.assertIn("**格式化命令**：未检测到", section)
+        s4 = next(
+            step for step in report["steps"]
+            if step["name"] == rc.STEP_ENTRY_FILES
+        )
+        diff_actions = [
+            action for action in s4.get("actions", [])
+            if action.get("path") == "CLAUDE.md"
+            and action.get("action") == "techstack-diff"
+        ]
+        self.assertEqual(len(diff_actions), 1)
+        self.assertEqual(diff_actions[0]["diffs"], [{
+            "field": "包管理器",
+            "user_value": "yarn",
+            "detected_value": "pnpm",
+        }])
+        json.dumps(report, ensure_ascii=False)
+
+    def test_placeholder_replacement_is_idempotent_and_diff_not_duplicated(self):
+        """第二次运行不重复追加区块；已替换字段不再变化，差异每次仅报告一条。"""
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest","lint":"eslint ."}}',
+            encoding="utf-8",
+        )
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：待确认\n"
+            "- **包管理器**：yarn\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：未检测到\n"
+            "- **覆盖率阈值**：80%\n",
+            encoding="utf-8",
+        )
+
+        reports = []
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            for _ in range(2):
+                report = rc.build_report("no-interrupt", self.root)
+                result = rc.run_apply(
+                    self.root, _intents(no_interrupt=True), report
+                )
+                self.assertEqual(result, 0, report.get("failure"))
+                reports.append(report)
+                if len(reports) == 1:
+                    first_content = claude.read_text(encoding="utf-8")
+
+        second_content = claude.read_text(encoding="utf-8")
+        self.assertEqual(second_content, first_content)
+        self.assertEqual(second_content.count("### 项目技术栈"), 1)
+        self.assertEqual(second_content.count("**覆盖率阈值**：80%"), 1)
+        for report in reports:
+            s4 = next(
+                step for step in report["steps"]
+                if step["name"] == rc.STEP_ENTRY_FILES
+            )
+            diff_actions = [
+                action for action in s4.get("actions", [])
+                if action.get("path") == "CLAUDE.md"
+                and action.get("action") == "techstack-diff"
+            ]
+            self.assertEqual(len(diff_actions), 1)
+            self.assertEqual(diff_actions[0]["diffs"], [{
+                "field": "包管理器",
+                "user_value": "yarn",
+                "detected_value": "pnpm",
+            }])
+
+
 class TestLocateTemplates(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1239,10 +1373,11 @@ class TestStepS4EntryFiles(unittest.TestCase):
             "language": "Python", "pkg_manager": "uv", "test": "pytest",
             "lint": "未检测到", "format": "未检测到", "coverage": "80%",
         }
-        converged = rc._compose_entry(
+        converged, diffs = rc._compose_entry(
             rc.BASE_CLAUDE_MD, self.kernel, state="create",
             project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
         )
+        self.assertEqual(diffs, [])
         entry.write_text(converged, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {

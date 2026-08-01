@@ -2282,9 +2282,16 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             if existing is None:
                 actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
                 continue
-            composed = _compose_entry(existing, kernel_source, state="skip",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state="skip",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             if composed != existing:
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
@@ -2294,9 +2301,16 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
         if action == "create" and not entry_path.exists():
-            composed = _compose_entry(base_text, kernel_source, state="create",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                base_text, kernel_source, state="create",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             ensure_parent(entry_path)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
@@ -2309,25 +2323,46 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
         # upgrade 在全局备份屏障通过后升级为当前 v1。
         if action in ("insert", "upgrade"):
-            composed = _compose_entry(existing, kernel_source, state=state or action,
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state=state or action,
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
         # drift/broken → 按模式/决策处理。
         decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
-            composed = _compose_entry(existing, kernel_source, state=state or "insert",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state=state or "insert",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
         else:
             if decision == DECISION_REPLACE:
-                composed = _compose_entry(existing, kernel_source, state=state or "insert",
-                                          project_type=project_type, tech_stack=tech_stack,
-                                          entry_name=entry_name)
+                composed, diffs = _compose_entry(
+                    existing, kernel_source, state=state or "insert",
+                    project_type=project_type, tech_stack=tech_stack,
+                    entry_name=entry_name,
+                )
+                if diffs:
+                    actions_log.append({
+                        "path": entry_name, "action": "techstack-diff",
+                        "diffs": diffs,
+                    })
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": f"replace-{state}"})
             else:
@@ -2337,8 +2372,9 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
-                   project_type: str, tech_stack: dict, entry_name: str) -> str:
-    """合成入口文件最终文本。
+                   project_type: str, tech_stack: dict,
+                   entry_name: str) -> tuple:
+    """合成入口文件最终文本，返回 ``(text, techstack_diffs)``。
 
     按状态区分 L0 区块处理（保证幂等与区块外保留）：
       * skip：L0 区块不动；
@@ -2350,7 +2386,8 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
     均执行规则 2 选文本、缺失摘要行追加（SM-02/03）与技术栈块写入（DF-02/S4
     「单次完成 L0、摘要、技术栈」）——L0 区块处理与摘要/技术栈是独立动作。
-    摘要与技术栈补全均为幂等追加（已存在则不动），区块外用户内容保留（L0-B2）。
+    摘要补全为幂等追加；技术栈逐项替换占位、保留用户真实值并返回差异，
+    区块外用户内容保留（L0-B2）。
     """
     text = existing
 
@@ -2382,10 +2419,10 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     # --- 步骤 3：缺失摘要行追加（I2：全状态执行，SM-02）---
     text = _ensure_summary_lines(text, entry_name, project_type)
 
-    # --- 步骤 4：技术栈块追加（I2：全状态执行；幂等，已含则不动）---
-    text = _ensure_techstack_block(text, tech_stack)
+    # --- 步骤 4：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
+    text, diffs = _ensure_techstack_block(text, tech_stack)
 
-    return text
+    return text, diffs
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
@@ -2563,34 +2600,56 @@ def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-c
     return "\n".join(lines[:rules_idx] + deduped + insert + lines[end_idx:])
 
 
-def _ensure_techstack_block(text: str, tech_stack: dict) -> str:
-    """追加技术栈/包管理器/覆盖率块（幂等：已含则不动）。
+PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}
 
-    块格式（追加到文件末尾的 ## 项目信息 或直接末尾）。
+
+def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
+    """逐项处理技术栈，占位替换为检测值，用户真实值保留并返回差异。
+
+    返回 ``(处理后文本, [{"field", "user_value", "detected_value"}])``。
+    技术栈区块缺失时整体追加；覆盖率阈值固定为 80%，不参与逐项替换。
     """
+    diffs = []
     if not tech_stack:
-        return text
-    # 幂等检查：若已含包管理器/覆盖率标记，视为已写入。
-    if "覆盖率阈值**：80%" in text or "### 项目技术栈" in text:
-        return text
-    language = tech_stack.get("language", "未检测到")
-    pkg = tech_stack.get("pkg_manager", "未检测到")
-    test_cmd = tech_stack.get("test", "未检测到")
-    lint_cmd = tech_stack.get("lint", "未检测到")
-    fmt_cmd = tech_stack.get("format", "未检测到")
-    block = (
-        "\n## 项目配置\n"
-        "\n> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。"
-        "\n\n### 项目技术栈"
-        f"\n- **语言**：{language}"
-        f"\n- **包管理器**：{pkg}"
-        f"\n- **测试命令**：{test_cmd}"
-        f"\n- **检查命令**：{lint_cmd}"
-        f"\n- **格式化命令**：{fmt_cmd}"
-        "\n- **覆盖率阈值**：80%"
-        "\n"
-    )
-    return text.rstrip("\n") + "\n" + block
+        return text, diffs
+
+    fields = [
+        ("语言", "language"),
+        ("包管理器", "pkg_manager"),
+        ("测试命令", "test"),
+        ("检查命令", "lint"),
+        ("格式化命令", "format"),
+    ]
+    if "### 项目技术栈" not in text:
+        lines = [
+            f"- **{label}**：{tech_stack.get(key, '未检测到')}"
+            for label, key in fields
+        ]
+        block = (
+            "\n## 项目配置\n\n"
+            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。\n\n"
+            "### 项目技术栈\n"
+            + "\n".join(lines)
+            + "\n- **覆盖率阈值**：80%\n"
+        )
+        return text.rstrip("\n") + "\n" + block, diffs
+
+    for label, key in fields:
+        detected = tech_stack.get(key, "未检测到")
+        pattern = f"- **{label}**："
+        for line in text.splitlines():
+            if line.startswith(pattern):
+                current = line[len(pattern):]
+                if current in PLACEHOLDER_VALUES:
+                    text = text.replace(line, f"{pattern}{detected}", 1)
+                elif current != detected:
+                    diffs.append({
+                        "field": label,
+                        "user_value": current,
+                        "detected_value": detected,
+                    })
+                break
+    return text, diffs
 
 
 
