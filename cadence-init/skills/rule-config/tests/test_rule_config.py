@@ -2484,63 +2484,133 @@ class TestTask6RegressionMatrix(unittest.TestCase):
                 )
         return code, report
 
+    def _snapshot_files(self):
+        return {
+            str(path): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+
+    @staticmethod
+    def _snapshot_paths(root):
+        if not root.exists():
+            return set()
+        return {str(path) for path in root.rglob("*")}
+
     def test_dry_run_no_interrupt_action_field(self):
-        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
         (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
         report = {}
-        with mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
-            code = rc.run_dry_run(self.root, _intents(no_interrupt=True), report)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_dry_run(
+                self.root, _intents(no_interrupt=True), report
+            )
         self.assertEqual(code, 0)
-        mcp = [c for c in report.get("conflicts",[]) if "mcp-servers" in c.get("conflict_id","")]
+        mcp = [
+            conflict
+            for conflict in report.get("conflicts", [])
+            if "mcp-servers" in conflict.get("conflict_id", "")
+        ]
         self.assertTrue(mcp)
-        self.assertEqual(mcp[0]["no_interrupt_action"], "authoritative-overwrite")
+        self.assertEqual(
+            mcp[0]["no_interrupt_action"], "authoritative-overwrite"
+        )
 
     def test_dry_run_normal_mode_no_field(self):
-        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
         (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
         report = {}
-        with mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
-            rc.run_dry_run(self.root, _intents(no_interrupt=False), report)
-        mcp = [c for c in report.get("conflicts",[]) if "mcp-servers" in c.get("conflict_id","")]
-        if mcp:
-            self.assertNotIn("no_interrupt_action", mcp[0])
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_dry_run(
+                self.root, _intents(no_interrupt=False), report
+            )
+        self.assertEqual(code, 0)
+        mcp = [
+            conflict
+            for conflict in report.get("conflicts", [])
+            if "mcp-servers" in conflict.get("conflict_id", "")
+        ]
+        self.assertTrue(mcp)
+        self.assertNotIn("no_interrupt_action", mcp[0])
 
     def test_double_apply_idempotent(self):
-        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}', encoding="utf-8")
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
         code, report = self._apply(coding=True)
         self.assertEqual(code, 0, report.get("failure"))
-        snapshot = {str(p): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
-        legacy_before = list((self.root / "cadence" / "legacy").rglob("*")) if (self.root / "cadence" / "legacy").exists() else []
-        code, report = self._apply(coding=True)
+        snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_paths1 = self._snapshot_paths(legacy_root)
+
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply(coding=True)
+
         self.assertEqual(code, 0, report.get("failure"))
-        for p in self.root.rglob("*"):
-            if p.is_file():
-                self.assertEqual(p.read_bytes(), snapshot[str(p)], f"changed: {p}")
-        legacy_after = list((self.root / "cadence" / "legacy").rglob("*"))
-        self.assertEqual(len(legacy_after), len(legacy_before))
+        atomic_write_spy.assert_not_called()
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        self.assertEqual(
+            self._snapshot_paths(legacy_root), legacy_paths1
+        )
 
     def test_drift_overwrite_then_rerun_no_archive(self):
-        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
-        (rules / "mcp-servers.md").write_text("### Serena\nold\n", encoding="utf-8")
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            "### Serena\nold\n", encoding="utf-8"
+        )
         code, report = self._apply()
         self.assertEqual(code, 0, report.get("failure"))
-        n1 = len(list((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))
+        snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_paths1 = self._snapshot_paths(legacy_root)
+
         code, report = self._apply()
+
         self.assertEqual(code, 0, report.get("failure"))
-        n2 = len(list((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))
-        self.assertEqual(n2, n1)  # 重跑无新归档
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        self.assertEqual(
+            self._snapshot_paths(legacy_root), legacy_paths1
+        )
 
     def test_type_switch_then_rerun_stable(self):
-        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
-        (rules / "code-usage.md").write_text("非必要不编写代码", encoding="utf-8")  # non-coding 内容
-        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}', encoding="utf-8")  # coding 项目
-        code, report = self._apply(coding=True)  # 切换为 coding
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "code-usage.md").write_text(
+            "非必要不编写代码", encoding="utf-8"
+        )
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
+        code, report = self._apply(coding=True)
         self.assertEqual(code, 0, report.get("failure"))
-        c1 = (rules / "code-usage.md").read_text(encoding="utf-8")
-        code, report = self._apply(coding=True)  # 重跑
+        snapshot1 = self._snapshot_files()
+
+        code, report = self._apply(coding=True)
+
         self.assertEqual(code, 0, report.get("failure"))
-        c2 = (rules / "code-usage.md").read_text(encoding="utf-8")
-        self.assertEqual(c1, c2)  # 稳定
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
 
     def test_l0_second_archive_failure_keeps_both(self):
         """L0 双入口：第二个归档失败时两入口都不写入（构造 drift 触发备份）"""
@@ -2553,9 +2623,17 @@ class TestTask6RegressionMatrix(unittest.TestCase):
             if len(calls) == 2:
                 raise rc.BackupError("simulated")
             return orig(path, r)
-        with mock.patch.object(rc, "backup_file", side_effect=fail_second), \
-             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
-            code = rc.run_apply(self.root, _intents(no_interrupt=True), {})
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc, "backup_file", side_effect=fail_second
+        ), mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
         self.assertEqual(code, 1)
         # 两入口 L0 仍是 drift 状态（未写入）
         self.assertIn("DRIFTED", (self.root / "CLAUDE.md").read_text(encoding="utf-8"))
@@ -2580,13 +2658,43 @@ class TestTask6RegressionMatrix(unittest.TestCase):
         self.assertTrue(any((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))  # 归档保留
 
     def test_legacy_unlink_failure_keeps_file(self):
-        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
-        (rules / "code-usage-coding.md").write_text("legacy", encoding="utf-8")
-        with mock.patch.object(rc.Path, "unlink", side_effect=OSError("simulated")), \
-             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
-            rc.run_apply(self.root, _intents(no_interrupt=True), {})
-        # unlink 失败，原文件仍在
-        self.assertTrue((rules / "code-usage-coding.md").exists())
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        legacy_file = rules / "code-usage-coding.md"
+        legacy_file.write_text("legacy", encoding="utf-8")
+        original_unlink = rc.Path.unlink
+        unlink_calls = []
+
+        def fail_legacy_unlink(path, *args, **kwargs):
+            unlink_calls.append(Path(path))
+            if Path(path) == legacy_file:
+                raise OSError("simulated")
+            return original_unlink(path, *args, **kwargs)
+
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc.Path, "unlink", new=fail_legacy_unlink
+        ), mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+
+        self.assertEqual(code, 1)
+        self.assertEqual(report["overall"], "fail")
+        self.assertIn(legacy_file, unlink_calls)
+        self.assertTrue(legacy_file.exists())
+        self.assertFalse((rules / "code-usage.md").exists())
+        self.assertTrue(
+            any(
+                (self.root / "cadence" / "legacy").rglob(
+                    "code-usage-coding.md"
+                )
+            )
+        )
 
     def test_same_second_conflict_suffix(self):
         rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
