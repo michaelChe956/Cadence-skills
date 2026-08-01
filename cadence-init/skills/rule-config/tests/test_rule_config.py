@@ -1503,6 +1503,62 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
         ))
 
 
+class TestSummaryDedup(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir(parents=True)
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references"
+            / "openspec"
+            / "config.yaml"
+        )
+
+    def test_different_wording_same_ref_not_duplicated(self):
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 强制规则\n\n"
+            "- **文档存放（项目措辞）** -> 详见 `.claude/rules/document-storage.md`\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        section = claude.read_text(encoding="utf-8")
+        self.assertEqual(
+            section.count(".claude/rules/document-storage.md"), 1
+        )
+
+    def test_duplicate_ref_deduped(self):
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 强制规则\n\n"
+            "- **A** -> 详见 `.claude/rules/language.md`\n"
+            "- **B** -> 详见 `.claude/rules/language.md`\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        section = claude.read_text(encoding="utf-8")
+        self.assertEqual(section.count(".claude/rules/language.md"), 1)
+
+
 class TestEnsureSummaryLines(unittest.TestCase):
     """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
 
@@ -1558,6 +1614,14 @@ class TestEnsureSummaryLines(unittest.TestCase):
         # BASE_CLAUDE_MD 本身含 7 条摘要 → 不应改动
         out = rc._ensure_summary_lines(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding")
         self.assertEqual(out, rc.BASE_CLAUDE_MD)
+
+    def test_rule6_first_line_marker_prevents_block_reappend(self):
+        """规则 6 首行 marker 已存在时，即使块内其余措辞不完整也不重复追加。"""
+        first_line = rc.RULE6_BLOCK_CLAUDE.splitlines()[0]
+        text = rc.BASE_CLAUDE_MD.replace(rc.RULE6_BLOCK_CLAUDE, first_line)
+        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        self.assertEqual(out, text)
+        self.assertEqual(out.count(first_line), 1)
 
     def test_agents_rule6_block_variant(self):
         """ut-ensure_summary-agents-rule6 / Important 1（AGENTS.md 规则 6 块文本与 CLAUDE.md 不同）"""

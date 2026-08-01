@@ -325,7 +325,7 @@ RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
 
 # 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
-# _ensure_summary_lines 按完整块匹配（块内任一关键行缺失即视为整块缺失，整块追加）。
+# _ensure_summary_lines 按各入口块的首行 marker 判断规则 6 是否已存在。
 RULE6_BLOCK_CLAUDE = (
     "### 6. 项目个性化规则（强制规则）\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
@@ -2485,67 +2485,86 @@ def _strip_l0_marker_lines_only(text: str) -> str:
 
 
 def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-coding") -> str:
-    """确保 ## 强制规则 章节含所有标准摘要行；缺失则追加到章节末尾。
-
-    覆盖 7 类摘要：语言(1)/代码使用(2)/文档存储(3)/Markdown(4)/MCP(5)/
-    项目个性化(6)/代码阅读(7)。其中：
-      * 规则 2 摘要按项目类型选文本（Coding→遵循 TDD；非 Coding→非必要不编写）；
-      * 规则 6 摘要是多行块，按完整块匹配（块内任一关键行缺失即整块追加）。
-
-    摘要编号冲突 → 保留原文，追加缺失行（不重新编号）。
-    """
-    # 规则 2 摘要按项目类型选择当前应有的文本。
+    """确保 ## 强制规则 章节含各规则文件引用；同一规则文件的多引用行去重。"""
     rule2_text = (
         RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
     )
-    # 规则 6 多行块按入口选择。
     rule6_block = (
         RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
     )
-
+    rule6_first_line = rule6_block.splitlines()[0]
     required = [
-        "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
-        rule2_text,
-        "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
-        "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+        (
+            "language.md",
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+        ),
+        ("code-usage.md", rule2_text),
+        (
+            "document-storage.md",
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
+        ),
+        (
+            "markdown-format.md",
+            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+        ),
+        (
+            "mcp-servers.md",
+            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`"
+            if entry_name == "CLAUDE.md"
+            else "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`",
+        ),
+        (
+            "code-reading.md",
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
+        ),
     ]
-    # CLAUDE.md 与 AGENTS.md 的 MCP 摘要行文本略有不同，按入口选择。
-    if entry_name == "CLAUDE.md":
-        required.append("- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`")
-    else:
-        required.append("- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`")
-    required.append(rule6_block)
-    required.append("- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`")
 
     lines = text.splitlines()
-    # 定位 ## 强制规则 章节范围（到下一个同级或更高级标题）。
-    rules_idx = None
-    for idx, line in enumerate(lines):
-        if line.strip() == "## 强制规则":
-            rules_idx = idx
-            break
+    rules_idx = next(
+        (idx for idx, line in enumerate(lines) if line.strip() == "## 强制规则"),
+        None,
+    )
     if rules_idx is None:
-        # 无 ## 强制规则 章节 → 不追加（BASE 已含；入口缺该章节属异常，不动）。
         return text
-    # 找章节末尾（下一个 ## 或 # 标题，或文件末尾）。
+
     end_idx = len(lines)
     for idx in range(rules_idx + 1, len(lines)):
         stripped = lines[idx].strip()
         if stripped.startswith("## ") or stripped.startswith("# "):
             end_idx = idx
             break
-    # 收集章节内现有文本，判定缺失行。
-    section_text = "\n".join(lines[rules_idx:end_idx])
-    missing = [line for line in required if line not in section_text]
-    if not missing:
-        return text
-    # 在章节末尾追加缺失行（保留原文，不重新编号）。
-    # 多行块（规则 6）展开为多行；单行摘要原样追加。
-    insert_lines = []
-    for item in missing:
-        insert_lines.extend(item.split("\n"))
-    new_lines = lines[:end_idx] + insert_lines + lines[end_idx:]
-    return "\n".join(new_lines)
+
+    section = lines[rules_idx:end_idx]
+    section_text = "\n".join(section)
+
+    # 同一规则文件仅保留首个精确 `.claude/rules/<name>` 引用行。
+    rule_files = [marker for marker, _ in required]
+    seen_refs = set()
+    deduped = []
+    for line in section:
+        refs = [
+            name
+            for name in rule_files
+            if f".claude/rules/{name}" in line
+        ]
+        if refs:
+            key = refs[0]
+            if key in seen_refs:
+                continue
+            seen_refs.add(key)
+        deduped.append(line)
+
+    missing = [line for marker, line in required if marker not in section_text]
+    rule6_missing = rule6_first_line not in section_text
+    if not missing and not rule6_missing:
+        if deduped == section:
+            return text
+        return "\n".join(lines[:rules_idx] + deduped + lines[end_idx:])
+
+    insert = list(missing)
+    if rule6_missing:
+        insert.extend(rule6_block.split("\n"))
+    return "\n".join(lines[:rules_idx] + deduped + insert + lines[end_idx:])
 
 
 def _ensure_techstack_block(text: str, tech_stack: dict) -> str:
