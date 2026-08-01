@@ -2580,9 +2580,13 @@ class TestTask6RegressionMatrix(unittest.TestCase):
         legacy_root = self.root / "cadence" / "legacy"
         legacy_paths1 = self._snapshot_paths(legacy_root)
 
-        code, report = self._apply()
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply()
 
         self.assertEqual(code, 0, report.get("failure"))
+        self.assertEqual(atomic_write_spy.call_count, 0)
         snapshot2 = self._snapshot_files()
         self.assertEqual(set(snapshot1), set(snapshot2))
         for path, content in snapshot1.items():
@@ -2603,14 +2607,30 @@ class TestTask6RegressionMatrix(unittest.TestCase):
         code, report = self._apply(coding=True)
         self.assertEqual(code, 0, report.get("failure"))
         snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_dirs_before = (
+            {path.name for path in legacy_root.iterdir() if path.is_dir()}
+            if legacy_root.exists()
+            else set()
+        )
 
-        code, report = self._apply(coding=True)
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply(coding=True)
 
         self.assertEqual(code, 0, report.get("failure"))
+        self.assertEqual(atomic_write_spy.call_count, 0)
         snapshot2 = self._snapshot_files()
         self.assertEqual(set(snapshot1), set(snapshot2))
         for path, content in snapshot1.items():
             self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        legacy_dirs_after = (
+            {path.name for path in legacy_root.iterdir() if path.is_dir()}
+            if legacy_root.exists()
+            else set()
+        )
+        self.assertEqual(legacy_dirs_after, legacy_dirs_before)
 
     def test_l0_second_archive_failure_keeps_both(self):
         """L0 双入口：第二个归档失败时两入口都不写入（构造 drift 触发备份）"""
