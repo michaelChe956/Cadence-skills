@@ -8,9 +8,9 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 Claude Code 与 Codex 的规则：创建 `.claude/rules/` 规则文件、升级 CLAUDE.md 与 AGENTS.md 的 L0 受管区块、创建 `cadence/` 产物目录、迁移历史产物、检测并写入项目技术栈、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright。
+配置 Claude Code 与 Codex 的规则：创建并维护 `.claude/rules/` 下 7 个框架受管规则文件，内容 drift 时执行框架权威全覆盖；`code-usage.md` 按最终项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源并以固定名称落地。流程还会升级 CLAUDE.md 与 AGENTS.md 的 L0 受管区块、创建 `cadence/` 产物目录、迁移历史产物、检测并写入项目技术栈、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright。所有需备份分支先将原文件复制归档到 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，原位文件不动，再以 `atomic_write` 原子发布。
 
-全部探测、合并与写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。Agent 只负责定位脚本、按本文件编排调用、解读报告，并在普通模式就冲突逐条提问、回收决策；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
+全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告，并在普通模式就冲突逐条提问、回收决策；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
 
 ## 参数模式
 
@@ -67,7 +67,7 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 1. **dry-run**：脚本只读探测目标项目，报告给出计划动作、冲突清单（`conflicts`，含 `conflict_id`、`question`、`recommendation`、`allowed_decisions`）与备份需求，对项目零写入。
 2. **读 plan**：Agent 读取报告中的计划与冲突清单。
 3. **逐条提问**：对每个冲突用 `AskUserQuestion` 逐条提问；每次只问一个冲突，问题必须附带脚本给出的推荐默认项（`recommendation`）。
-4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**规则文件 drift**（RF-02b，含缺 CodeGraph 段落的 RF-04 统一 drift），详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
+4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**框架受管规则文件 drift**（RF-05，RF-04 的框架资产统一按 RF-05 处理），详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
 5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）。计划无冲突时不要求决策文件。
 
 ### no-interrupt 模式
@@ -114,7 +114,7 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 | 2 | 用法错误（参数非法，或 `--report` / `--decisions` 路径位于项目根内） | 按本文件"调用方式"修正参数与路径后重跑 |
 | 77 | 缺少 PyYAML 依赖 | 改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 重跑，或先安装 PyYAML |
 
-任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复备份形如 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。
+任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复归档位于 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，归档副本与原位文件均保留。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。
 
 ## 下一步
 
@@ -122,4 +122,4 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 
 ## 合并语义
 
-合并与冲突处理的权威定义（NC/OS/L1/L0/RF/SM/OP/CS/CG/HM 十张表共 61 行）见 `references/merge-semantics.md`；条款到测试的逐条对账见 `tests/skill-clause-map.md`。需要了解具体分支语义时按需加载上述文件，不要在本文件中重复维护。
+合并与冲突处理的权威定义（NC/OS/L1/L0/RF/SM/OP/CS/CG/HM 十张表共 62 行，含 RF-05 框架权威全覆盖）见 `references/merge-semantics.md`；条款到测试的逐条对账见 `tests/skill-clause-map.md`。需要了解具体分支语义时按需加载上述文件，不要在本文件中重复维护。

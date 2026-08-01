@@ -120,20 +120,23 @@ KNOWN_L1_VERSIONS: dict = {}
 # L1 规则文件名（走独立分支，**不**进入 merge_markdown 章节合并）。
 L1_RULE_FILENAME = "openspec-superpowers-workflow.md"
 
-# S3 普通规则文件清单（8 个，不含 L1_RULE_FILENAME；document-storage/code-reading/
-# markdown-format/mcp-servers/language/code-usage-coding/code-usage-noncoding/
-# agent-routing-kernel）。
+# S3 普通规则文件清单（5 个，不含 L1_RULE_FILENAME、L0 kernel、
+# code-usage 双来源模板与可选 Playwright）。
 ORDINARY_RULE_FILES = (
-    "agent-routing-kernel.md",
     "language.md",
     "document-storage.md",
     "markdown-format.md",
     "mcp-servers.md",
     "code-reading.md",
-    "code-usage-coding.md",
-    "code-usage-noncoding.md",
 )
-# Playwright 规则文件（仅 intents.enable_playwright 时处理）。
+# code-usage 按最终项目类型单选规范源，但项目落地名始终固定为 code-usage.md。
+CODE_USAGE_SOURCE_MAP = {
+    "coding": "code-usage-coding.md",
+    "non-coding": "code-usage-noncoding.md",
+}
+CODE_USAGE_TARGET = "code-usage.md"
+CODE_USAGE_LEGACY_FILES = ("code-usage-coding.md", "code-usage-noncoding.md")
+# Playwright 规则文件（显式启用或目标已存在时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
 # OP-01：可选规则完整性检查使用的 CodeGraph 规则文件。
@@ -322,7 +325,7 @@ RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
 
 # 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
-# _ensure_summary_lines 按完整块匹配（块内任一关键行缺失即视为整块缺失，整块追加）。
+# _ensure_summary_lines 按各入口块的首行 marker 判断规则 6 是否已存在。
 RULE6_BLOCK_CLAUDE = (
     "### 6. 项目个性化规则（强制规则）\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
@@ -520,26 +523,47 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def backup_file(path: Path) -> Path:
-    """备份文件：shutil.copy2 到同目录的 <name>.cadence-backup-<14位时间戳>。
-
-    返回备份文件 Path；失败抛 BackupError。
-    命名约定：config.yaml.cadence-backup-20260731120000（NB-02/OS-B1/L1-B1）。
-    codex 终审 C1：同秒同文件重复备份时追加 -2/-3 唯一后缀，
-    保证不 copy2 覆盖既有备份（不丢首次恢复点）。
-    """
-    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = Path(str(path) + f".cadence-backup-{stamp}")
-    if backup_path.exists():
-        # 同秒冲突：追加递增序号直至唯一（-2、-3 …）
-        seq = 2
-        while Path(str(path) + f".cadence-backup-{stamp}-{seq}").exists():
-            seq += 1
-        backup_path = Path(str(path) + f".cadence-backup-{stamp}-{seq}")
+def _ensure_legacy_gitignore(legacy_dir: Path) -> None:
+    """确保 cadence/legacy/.gitignore 为 * + !.gitignore；缺失/损坏则修复。"""
+    gi = legacy_dir / ".gitignore"
+    expected = "*\n!.gitignore\n"
     try:
+        current = gi.read_text(encoding="utf-8") if gi.exists() else None
+    except OSError as exc:
+        raise BackupError(f"无法检查归档忽略文件：{gi}（{exc}）") from exc
+    if current == expected:
+        return
+    try:
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write(gi, expected)
+    except OSError as exc:
+        raise BackupError(f"无法写入归档忽略文件：{gi}（{exc}）") from exc
+
+
+def backup_file(path: Path, root: Path) -> Path:
+    """复制原文件到 cadence/legacy/<时间戳[-N]>/<相对 root 路径>。
+
+    原位文件不动；归档复制失败抛 BackupError。同秒冲突在时间戳目录后追加 -2/-3。
+    每次归档前验证/修复 .gitignore。
+    """
+    legacy_root = root / "cadence" / "legacy"
+    _ensure_legacy_gitignore(legacy_root)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    try:
+        rel = path.relative_to(root)
+    except ValueError as exc:
+        raise BackupError(f"归档目标不在项目根目录内：{path}（root={root}）") from exc
+    dest_dir = legacy_root / stamp / rel.parent
+    seq = 2
+    while dest_dir.exists():
+        dest_dir = legacy_root / f"{stamp}-{seq}" / rel.parent
+        seq += 1
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = dest_dir / path.name
         shutil.copy2(path, backup_path)
     except OSError as exc:
-        raise BackupError(f"备份失败：{path} -> {backup_path}（{exc}）") from exc
+        raise BackupError(f"归档失败：{path} -> {dest_dir / path.name}（{exc}）") from exc
     return backup_path
 
 
@@ -1329,25 +1353,33 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s2["elapsed_ms"] = int((time.monotonic() - t_s2) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_TEMPLATES] = s2
 
-    # --- S3 rules files：探测普通规则文件（8 个）+ L1 独立分支 + Playwright ---
+    # --- S3 rules files：探测普通规则 + code-usage 单选 + L1 + Playwright ---
     s3 = _step_skeleton(STEP_RULES_FILES)
     t_s3 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     templates_info = plan.get("templates", {}) or {}
     rules_root_str = templates_info.get("rules_root")
     rules_root = Path(rules_root_str) if rules_root_str else None
     rules_dir = root / ".claude" / "rules"
-    # S3 处理的文件清单（按序）：普通 8 文件 + L1 + （enable_playwright 时）Playwright。
-    s3_targets = list(ORDINARY_RULE_FILES) + [L1_RULE_FILENAME]
-    if intents.enable_playwright:
-        s3_targets.append(PLAYWRIGHT_RULE_FILE)
-    for fname in s3_targets:
-        is_l1 = (fname == L1_RULE_FILENAME)
-        target = rules_dir / fname
-        rel = str(target.relative_to(root)) if target.exists() else f".claude/rules/{fname}"
+    project_type = plan.get("project_type", "non-coding")
+    code_usage_source = CODE_USAGE_SOURCE_MAP[project_type]
+    # (项目落地名, 模板来源名, 是否 L1)；code-usage 双模板只能单选一个来源。
+    s3_targets = [(fname, fname, False) for fname in ORDINARY_RULE_FILES]
+    s3_targets.append((CODE_USAGE_TARGET, code_usage_source, False))
+    # 已存在的 Playwright 即视为启用，进入与普通规则相同的 drift 分类。
+    if intents.enable_playwright or (rules_dir / PLAYWRIGHT_RULE_FILE).exists():
+        s3_targets.append((PLAYWRIGHT_RULE_FILE, PLAYWRIGHT_RULE_FILE, False))
+    s3_targets.append((L1_RULE_FILENAME, L1_RULE_FILENAME, True))
+    for target_name, src_name, is_l1 in s3_targets:
+        target = rules_dir / target_name
+        rel = (
+            str(target.relative_to(root))
+            if target.exists()
+            else f".claude/rules/{target_name}"
+        )
         # 模板源文本（rules_root 不可用时退化为空串，该文件跳过处理）。
         if rules_root is not None:
             try:
-                template_text = (rules_root / fname).read_text(encoding="utf-8")
+                template_text = (rules_root / src_name).read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 template_text = ""
         else:
@@ -1357,6 +1389,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             action = "create" if template_text else "skip"
             s3["assets"].append({
                 "path": rel,
+                "template_source": src_name,
                 "action": action,
                 "conflict": None,
                 "backup_needed": False,
@@ -1364,13 +1397,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             })
             continue
         # 文件存在 → 分类。
-        # Playwright 规则文件已存在时不覆盖（尊重用户自定义，无论内容差异）。
-        if fname == PLAYWRIGHT_RULE_FILE and target.exists():
-            s3["assets"].append({
-                "path": rel, "action": "skip", "conflict": None,
-                "backup_needed": False, "is_l1": False,
-            })
-            continue
         try:
             existing_text = target.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -1380,12 +1406,14 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             # L1：skip → 无冲突；upgrade/replace → 冲突（allowed=['replace','keep']）。
             if state == "skip":
                 s3["assets"].append({
-                    "path": rel, "action": "skip", "conflict": None,
+                    "path": rel, "template_source": src_name,
+                    "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": True,
                 })
             else:
                 s3["assets"].append({
-                    "path": rel, "action": "replace", "conflict": state,
+                    "path": rel, "template_source": src_name,
+                    "action": "replace", "conflict": state,
                     "backup_needed": True, "is_l1": True,
                 })
                 conflict_id = f"s3:{rel}"
@@ -1417,12 +1445,14 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             # 普通规则文件：一致 → skipped；冲突 → 冲突（allowed=['replace','keep']）。
             if existing_text == template_text:
                 s3["assets"].append({
-                    "path": rel, "action": "skip", "conflict": None,
+                    "path": rel, "template_source": src_name,
+                    "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": False,
                 })
             else:
                 s3["assets"].append({
-                    "path": rel, "action": "replace", "conflict": "drift",
+                    "path": rel, "template_source": src_name,
+                    "action": "replace", "conflict": "drift",
                     "backup_needed": True, "is_l1": False,
                 })
                 conflict_id = f"s3:{rel}"
@@ -1445,10 +1475,10 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "default_keep": True,
                 }
                 if intents.no_interrupt:
-                    # P1-1：no-interrupt 实际执行为章节合并写盘；显式标注真实动作，
-                    # 避免安全默认 recommendation=keep 误导为"保留原文件不动"。
-                    s3_conflict["no_interrupt_action"] = "markdown-merge"
-                    top_conflict["no_interrupt_action"] = "markdown-merge"
+                    # P1-1：no-interrupt 实际执行为框架模板权威全覆盖；显式标注
+                    # 真实动作，避免安全默认 recommendation=keep 误导为“保留原文件不动”。
+                    s3_conflict["no_interrupt_action"] = "authoritative-overwrite"
+                    top_conflict["no_interrupt_action"] = "authoritative-overwrite"
                 s3["conflicts"].append(s3_conflict)
                 plan["conflicts"].append(top_conflict)
                 _append_backup_need(plan, target)
@@ -2022,14 +2052,15 @@ def step_s2_locate_templates(root: Path, intents: Intents, plan: dict, report: d
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S3 执行（Task 6 实现）。
 
-    处理 8 个普通规则文件 + L1 独立分支 + （enable_playwright 时）Playwright。
-    每个资产按 compute_plan 探测的状态执行：
+    处理框架受管规则、按项目类型单选来源并落地为 code-usage.md、L1 独立分支，
+    以及显式启用或已存在的 Playwright。每个资产按 compute_plan 探测的状态执行：
       * create：读模板 atomic_write；
       * skip：不处理；
-      * drift/replay（普通规则）：普通模式按 decision（keep→不覆盖，replace→已备份后写模板）；
-        no-interrupt → merge_markdown，返回 None → 备份后标准结构 + `\n\n## 原项目补充\n\n` + 原文；
-      * upgrade/replace（L1）：**独立分支，不调 merge_markdown**；普通模式按 decision；
-        no-interrupt → 备份后写当前 v1 模板。
+      * drift（框架受管规则）：内容==模板则幂等跳过；普通模式按 decision；
+        no-interrupt 权威全覆盖为模板内容，不调用 merge_markdown；
+      * upgrade/replace（L1）：独立版本化分支，不调 merge_markdown；普通模式按 decision；
+        no-interrupt 写当前 v1 模板；
+      * 历史 code-usage-coding.md/code-usage-noncoding.md：独立复制归档后移除原位。
     """
     templates_info = plan.get("templates", {}) or {}
     rules_root_str = templates_info.get("rules_root")
@@ -2042,15 +2073,33 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     assets = s3_step.get("assets", []) or []
     actions_log: list = []
 
+    # 迁移历史框架产物（屏障外独立归档，因为这些文件不在 backup_needs 清单）。
+    for legacy_name in CODE_USAGE_LEGACY_FILES:
+        legacy_path = rules_dir / legacy_name
+        if legacy_path.exists():
+            backup_path = backup_file(legacy_path, root)
+            report.setdefault("backups", []).append({
+                "file": str(legacy_path),
+                "backup": str(backup_path),
+            })
+            legacy_path.unlink()
+            actions_log.append({
+                "path": f".claude/rules/{legacy_name}",
+                "action": "migrated-legacy",
+                "backup": str(backup_path),
+            })
+
     for asset in assets:
-        fname = Path(asset["path"]).name
+        target_name = Path(asset["path"]).name
+        template_source = asset.get("template_source", target_name)
         is_l1 = asset.get("is_l1", False)
-        target = rules_dir / fname
+        target = rules_dir / target_name
         action = asset.get("action")
         conflict = asset.get("conflict")
-        # 模板源文本。
+        # 模板来源可不同于落地名（code-usage.md 单选 coding/non-coding 来源）；
+        # .get 兜底兼容既有手工构造 asset 的测试和外部调用。
         try:
-            template_text = (rules_root / fname).read_text(encoding="utf-8")
+            template_text = (rules_root / template_source).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             template_text = ""
         if not template_text:
@@ -2084,28 +2133,36 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 else:
                     actions_log.append({"path": asset["path"], "action": "kept", "branch": "l1-keep"})
         else:
-            # --- 普通规则文件分支 ---
+            # --- 框架受管规则文件：权威全覆盖（不调 merge_markdown；屏障已归档）---
+            existing_text = _safe_read(target)
+            if existing_text == template_text:
+                actions_log.append({
+                    "path": asset["path"],
+                    "action": "unchanged",
+                    "branch": "authoritative-idempotent",
+                })
+                continue
             if intents.no_interrupt:
-                existing_text = _safe_read(target)
-                merged = merge_markdown(template_text, existing_text)
-                if merged is None:
-                    # NC-08 回退：标准结构 + `\n\n## 原项目补充\n\n` + 原文（备份已由屏障完成）。
-                    original = existing_text or ""
-                    fallback = template_text.rstrip("\n") + "\n\n## 原项目补充\n\n" + original
-                    atomic_write(target, fallback)
-                    actions_log.append({"path": asset["path"], "action": "merged-fallback", "branch": "markdown-unparseable"})
-                elif merged == existing_text:
-                    # 幂等短路：合并产物与现有文件逐字一致 → 跳过写盘（避免重跑刷新 mtime）。
-                    actions_log.append({"path": asset["path"], "action": "unchanged", "branch": "markdown-merge-idempotent"})
-                else:
-                    atomic_write(target, merged)
-                    actions_log.append({"path": asset["path"], "action": "merged", "branch": "markdown-merge"})
+                atomic_write(target, template_text)
+                actions_log.append({
+                    "path": asset["path"],
+                    "action": "overwritten",
+                    "branch": "authoritative-overwrite",
+                })
             else:
                 if decision == DECISION_REPLACE:
                     atomic_write(target, template_text)
-                    actions_log.append({"path": asset["path"], "action": "replaced", "branch": "rules-replace"})
+                    actions_log.append({
+                        "path": asset["path"],
+                        "action": "overwritten",
+                        "branch": "rules-replace",
+                    })
                 else:
-                    actions_log.append({"path": asset["path"], "action": "kept", "branch": "rules-keep"})
+                    actions_log.append({
+                        "path": asset["path"],
+                        "action": "kept",
+                        "branch": "rules-keep",
+                    })
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
@@ -2230,9 +2287,16 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             if existing is None:
                 actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
                 continue
-            composed = _compose_entry(existing, kernel_source, state="skip",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state="skip",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             if composed != existing:
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
@@ -2242,9 +2306,16 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
         if action == "create" and not entry_path.exists():
-            composed = _compose_entry(base_text, kernel_source, state="create",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                base_text, kernel_source, state="create",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             ensure_parent(entry_path)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
@@ -2257,25 +2328,46 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
         # upgrade 在全局备份屏障通过后升级为当前 v1。
         if action in ("insert", "upgrade"):
-            composed = _compose_entry(existing, kernel_source, state=state or action,
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state=state or action,
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
         # drift/broken → 按模式/决策处理。
         decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
-            composed = _compose_entry(existing, kernel_source, state=state or "insert",
-                                      project_type=project_type, tech_stack=tech_stack,
-                                      entry_name=entry_name)
+            composed, diffs = _compose_entry(
+                existing, kernel_source, state=state or "insert",
+                project_type=project_type, tech_stack=tech_stack,
+                entry_name=entry_name,
+            )
+            if diffs:
+                actions_log.append({
+                    "path": entry_name, "action": "techstack-diff",
+                    "diffs": diffs,
+                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
         else:
             if decision == DECISION_REPLACE:
-                composed = _compose_entry(existing, kernel_source, state=state or "insert",
-                                          project_type=project_type, tech_stack=tech_stack,
-                                          entry_name=entry_name)
+                composed, diffs = _compose_entry(
+                    existing, kernel_source, state=state or "insert",
+                    project_type=project_type, tech_stack=tech_stack,
+                    entry_name=entry_name,
+                )
+                if diffs:
+                    actions_log.append({
+                        "path": entry_name, "action": "techstack-diff",
+                        "diffs": diffs,
+                    })
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": f"replace-{state}"})
             else:
@@ -2285,8 +2377,9 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
-                   project_type: str, tech_stack: dict, entry_name: str) -> str:
-    """合成入口文件最终文本。
+                   project_type: str, tech_stack: dict,
+                   entry_name: str) -> tuple:
+    """合成入口文件最终文本，返回 ``(text, techstack_diffs)``。
 
     按状态区分 L0 区块处理（保证幂等与区块外保留）：
       * skip：L0 区块不动；
@@ -2298,7 +2391,8 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
     均执行规则 2 选文本、缺失摘要行追加（SM-02/03）与技术栈块写入（DF-02/S4
     「单次完成 L0、摘要、技术栈」）——L0 区块处理与摘要/技术栈是独立动作。
-    摘要与技术栈补全均为幂等追加（已存在则不动），区块外用户内容保留（L0-B2）。
+    摘要补全为幂等追加；技术栈逐项替换占位、保留用户真实值并返回差异，
+    区块外用户内容保留（L0-B2）。
     """
     text = existing
 
@@ -2330,10 +2424,10 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     # --- 步骤 3：缺失摘要行追加（I2：全状态执行，SM-02）---
     text = _ensure_summary_lines(text, entry_name, project_type)
 
-    # --- 步骤 4：技术栈块追加（I2：全状态执行；幂等，已含则不动）---
-    text = _ensure_techstack_block(text, tech_stack)
+    # --- 步骤 4：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
+    text, diffs = _ensure_techstack_block(text, tech_stack)
 
-    return text
+    return text, diffs
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
@@ -2433,97 +2527,134 @@ def _strip_l0_marker_lines_only(text: str) -> str:
 
 
 def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-coding") -> str:
-    """确保 ## 强制规则 章节含所有标准摘要行；缺失则追加到章节末尾。
-
-    覆盖 7 类摘要：语言(1)/代码使用(2)/文档存储(3)/Markdown(4)/MCP(5)/
-    项目个性化(6)/代码阅读(7)。其中：
-      * 规则 2 摘要按项目类型选文本（Coding→遵循 TDD；非 Coding→非必要不编写）；
-      * 规则 6 摘要是多行块，按完整块匹配（块内任一关键行缺失即整块追加）。
-
-    摘要编号冲突 → 保留原文，追加缺失行（不重新编号）。
-    """
-    # 规则 2 摘要按项目类型选择当前应有的文本。
+    """确保 ## 强制规则 章节含各规则文件引用；同一规则文件的多引用行去重。"""
     rule2_text = (
         RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
     )
-    # 规则 6 多行块按入口选择。
     rule6_block = (
         RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
     )
-
+    rule6_first_line = rule6_block.splitlines()[0]
     required = [
-        "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
-        rule2_text,
-        "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
-        "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+        (
+            "language.md",
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+        ),
+        ("code-usage.md", rule2_text),
+        (
+            "document-storage.md",
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
+        ),
+        (
+            "markdown-format.md",
+            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+        ),
+        (
+            "mcp-servers.md",
+            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`"
+            if entry_name == "CLAUDE.md"
+            else "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`",
+        ),
+        (
+            "code-reading.md",
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
+        ),
     ]
-    # CLAUDE.md 与 AGENTS.md 的 MCP 摘要行文本略有不同，按入口选择。
-    if entry_name == "CLAUDE.md":
-        required.append("- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`")
-    else:
-        required.append("- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`")
-    required.append(rule6_block)
-    required.append("- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`")
 
     lines = text.splitlines()
-    # 定位 ## 强制规则 章节范围（到下一个同级或更高级标题）。
-    rules_idx = None
-    for idx, line in enumerate(lines):
-        if line.strip() == "## 强制规则":
-            rules_idx = idx
-            break
+    rules_idx = next(
+        (idx for idx, line in enumerate(lines) if line.strip() == "## 强制规则"),
+        None,
+    )
     if rules_idx is None:
-        # 无 ## 强制规则 章节 → 不追加（BASE 已含；入口缺该章节属异常，不动）。
         return text
-    # 找章节末尾（下一个 ## 或 # 标题，或文件末尾）。
+
     end_idx = len(lines)
     for idx in range(rules_idx + 1, len(lines)):
         stripped = lines[idx].strip()
         if stripped.startswith("## ") or stripped.startswith("# "):
             end_idx = idx
             break
-    # 收集章节内现有文本，判定缺失行。
-    section_text = "\n".join(lines[rules_idx:end_idx])
-    missing = [line for line in required if line not in section_text]
-    if not missing:
-        return text
-    # 在章节末尾追加缺失行（保留原文，不重新编号）。
-    # 多行块（规则 6）展开为多行；单行摘要原样追加。
-    insert_lines = []
-    for item in missing:
-        insert_lines.extend(item.split("\n"))
-    new_lines = lines[:end_idx] + insert_lines + lines[end_idx:]
-    return "\n".join(new_lines)
+
+    section = lines[rules_idx:end_idx]
+    # 按裸文件名识别引用；同一规则文件仅保留首个引用行。
+    # 一行命中多个 marker 时按整行处理：只要其中任一引用已出现，就删除该行；
+    # 否则保留并将该行全部引用标记为已见。
+    rule_files = [marker for marker, _ in required]
+    seen_refs = set()
+    deduped = []
+    for line in section:
+        refs = [name for name in rule_files if name in line]
+        if refs and any(name in seen_refs for name in refs):
+            continue
+        seen_refs.update(refs)
+        deduped.append(line)
+
+    # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
+    deduped_text = "\n".join(deduped)
+    missing = [line for marker, line in required if marker not in deduped_text]
+    rule6_missing = rule6_first_line not in deduped_text
+    if not missing and not rule6_missing:
+        if deduped == section:
+            return text
+        return "\n".join(lines[:rules_idx] + deduped + lines[end_idx:])
+
+    insert = list(missing)
+    if rule6_missing:
+        insert.extend(rule6_block.split("\n"))
+    return "\n".join(lines[:rules_idx] + deduped + insert + lines[end_idx:])
 
 
-def _ensure_techstack_block(text: str, tech_stack: dict) -> str:
-    """追加技术栈/包管理器/覆盖率块（幂等：已含则不动）。
+PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}
 
-    块格式（追加到文件末尾的 ## 项目信息 或直接末尾）。
+
+def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
+    """逐项处理技术栈，占位替换为检测值，用户真实值保留并返回差异。
+
+    返回 ``(处理后文本, [{"field", "user_value", "detected_value"}])``。
+    技术栈区块缺失时整体追加；覆盖率阈值固定为 80%，不参与逐项替换。
     """
+    diffs = []
     if not tech_stack:
-        return text
-    # 幂等检查：若已含包管理器/覆盖率标记，视为已写入。
-    if "覆盖率阈值**：80%" in text or "### 项目技术栈" in text:
-        return text
-    language = tech_stack.get("language", "未检测到")
-    pkg = tech_stack.get("pkg_manager", "未检测到")
-    test_cmd = tech_stack.get("test", "未检测到")
-    lint_cmd = tech_stack.get("lint", "未检测到")
-    fmt_cmd = tech_stack.get("format", "未检测到")
-    block = (
-        "\n## 项目配置\n"
-        "\n> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。"
-        "\n\n### 项目技术栈"
-        f"\n- **语言**：{language}"
-        f"\n- **包管理器**：{pkg}"
-        f"\n- **测试命令**：{test_cmd}"
-        f"\n- **检查命令**：{lint_cmd}"
-        f"\n- **格式化命令**：{fmt_cmd}"
-        "\n- **覆盖率阈值**：80%"
-        "\n"
-    )
-    return text.rstrip("\n") + "\n" + block
+        return text, diffs
+
+    fields = [
+        ("语言", "language"),
+        ("包管理器", "pkg_manager"),
+        ("测试命令", "test"),
+        ("检查命令", "lint"),
+        ("格式化命令", "format"),
+    ]
+    if "### 项目技术栈" not in text:
+        lines = [
+            f"- **{label}**：{tech_stack.get(key, '未检测到')}"
+            for label, key in fields
+        ]
+        block = (
+            "\n## 项目配置\n\n"
+            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。\n\n"
+            "### 项目技术栈\n"
+            + "\n".join(lines)
+            + "\n- **覆盖率阈值**：80%\n"
+        )
+        return text.rstrip("\n") + "\n" + block, diffs
+
+    for label, key in fields:
+        detected = tech_stack.get(key, "未检测到")
+        pattern = f"- **{label}**："
+        for line in text.splitlines():
+            if line.startswith(pattern):
+                current = line[len(pattern):]
+                if current in PLACEHOLDER_VALUES:
+                    text = text.replace(line, f"{pattern}{detected}", 1)
+                elif current != detected:
+                    diffs.append({
+                        "field": label,
+                        "user_value": current,
+                        "detected_value": detected,
+                    })
+                break
+    return text, diffs
 
 
 
@@ -2960,7 +3091,7 @@ def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
         # 同样备份——原配置可能是用户仅存的恢复点）；备份失败即终止（PublishError）。
         if mcp_path.exists():
             try:
-                mcp_backup = backup_file(mcp_path)
+                mcp_backup = backup_file(mcp_path, root)
             except BackupError as exc:
                 raise PublishError(f".mcp.json 重写前备份失败：{exc}") from exc
             report.setdefault("backups", []).append({
@@ -3339,7 +3470,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
     backups_done: list = []
     for target in backup_needs:
         try:
-            backup_path = backup_file(Path(target))
+            backup_path = backup_file(Path(target), root)
             backups_done.append({"file": str(target), "backup": str(backup_path)})
             report["backups"] = list(backups_done)
         except BackupError as exc:
@@ -3414,23 +3545,25 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "conflicts": step_data.get("conflicts", []),
         })
     report["steps"] = report_steps
-    report["conflicts"] = [
-        {
+    report_conflicts: list = []
+    for c in (plan.get("conflicts", []) or []):
+        conflict_entry = {
             "conflict_id": c.get("conflict_id"),
             "asset": c.get("asset"),
             "state": c.get("state"),
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
-            # P1-1：no-interrupt 对外报告须如实暴露实际执行动作，避免 recommendation=keep 误导。
-            "no_interrupt_action": c.get("no_interrupt_action"),
-            # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
-            "allowed_decisions": c.get("allowed_decisions"),
-            # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
-            # （无响应→保留并报告 status=0），供 Agent 与测试判别 A/B 类。
-            "default_keep": c.get("default_keep", False),
         }
-        for c in (plan.get("conflicts", []) or [])
-    ]
+        if intents.no_interrupt:
+            # P1-1：仅 no-interrupt 对外报告暴露实际执行动作；普通模式不写该键。
+            conflict_entry["no_interrupt_action"] = c.get("no_interrupt_action")
+        # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
+        conflict_entry["allowed_decisions"] = c.get("allowed_decisions")
+        # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认
+        # （无响应→保留并报告 status=0），供 Agent 与测试判别 A/B 类。
+        conflict_entry["default_keep"] = c.get("default_keep", False)
+        report_conflicts.append(conflict_entry)
+    report["conflicts"] = report_conflicts
 
 
 # ---------------------------------------------------------------------------

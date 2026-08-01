@@ -1,8 +1,5 @@
-# managed-rule-lifecycle Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change improve-progressive-disclosure-routing. Update Purpose after archive.
-## Requirements
 ### Requirement: 完整协作规则必须有框架规范源
 系统 SHALL 在 `cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md` 维护 OpenSpec 与 Superpowers 完整协作规则，并 MUST 由 `rule-config` 将其生成到业务项目的 `.claude/rules/openspec-superpowers-workflow.md`。系统 MUST 按检测到的项目类型选择唯一的代码使用规则来源模板，并 MUST 始终以 `code-usage.md` 作为落地文件名，SHALL NOT 同时生成多个代码使用规则文件或使用带项目类型后缀的落地名。L0 受管区块的规范源 MUST 仅用于插入 `CLAUDE.md` 与 `AGENTS.md`，MUST NOT 作为受管规则文件复制到 `.claude/rules/`。
 
@@ -94,28 +91,3 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **WHEN** 受支持旧版本升级或未知本地修改处理等任意 L1 分支要求创建归档，但归档失败
 - **THEN** `rule-config` MUST 立即终止该次 L1 更新
 - **AND** `rule-config` SHALL NOT 替换或改变原协作规则文件
-
-### Requirement: Claude Code、Kimi Code 与 Codex 入口必须语义等价
-系统 SHALL 允许针对客户端入口语法进行适配，但 MUST 保持任务信号、Skill 顺序、阶段门禁、失败关闭和轻量豁免语义等价。
-
-#### Scenario: Kimi Code 使用 AGENTS 入口
-- **WHEN** Kimi Code 读取项目 `AGENTS.md`
-- **THEN** 它获得与 Claude Code 从 `CLAUDE.md` 获得的等价路由语义
-- **AND** 新功能、直接 apply 和完工声明使用相同门禁
-
-#### Scenario: 客户端语法不同
-- **WHEN** 某客户端调用 Skill 的语法与其他客户端不同
-- **THEN** 生成入口可以使用该客户端支持的语法
-- **AND** 不得删除或改变规范 Skill 的触发顺序
-
-### Requirement: 规则层集成不得依赖 legacy 或运行时状态机
-系统 MUST NOT 依赖 `cadence-workflow`、Hook、守护进程或“规则是否已读”状态来实现本协作流程。
-
-#### Scenario: 客户端没有 Hook 能力
-- **WHEN** 目标客户端没有可用的 SessionStart 或编辑前 Hook
-- **THEN** L0、L1 和 L2 仍独立表达完整的路由和门禁
-
-#### Scenario: cadence-workflow 被移除
-- **WHEN** 业务项目不存在或移除 legacy 的 `cadence-workflow`
-- **THEN** OpenSpec 与 Superpowers 协作规则仍可正常使用
-

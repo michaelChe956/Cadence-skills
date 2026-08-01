@@ -42,6 +42,8 @@ V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
 
 
 class TestMergeMarkdown(unittest.TestCase):
+    """merge_markdown 纯函数兼容测试；适用范围已收窄，不再用于框架受管规则文件。"""
+
     def test_appends_project_only_sections_in_order(self):
         """ut-merge_markdown-keep-project-sections / NC-02"""
         tpl = "# T\n\n## A\ntpl-a\n\n## B\ntpl-b\n"
@@ -342,60 +344,106 @@ class TestBackupFile(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir()
 
     def test_backup_naming_and_original_kept(self):
-        """ut-backup_file-naming / NB-02（备份名正则；原文件仍在且 sha256 不变）"""
-        p = Path(self.tmp.name) / "rule.md"
+        """ut-backup_file-naming / NB-02（归档路径含时间戳；原文件仍在且 sha256 不变）"""
+        p = self.root / "rule.md"
         p.write_text("content\n")
         before = rc.sha256_file(p)
-        backup = rc.backup_file(p)
-        self.assertRegex(str(backup), r".*\.cadence-backup-\d{14}$")
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/rule\.md$",
+        )
         self.assertTrue(p.exists())
         self.assertEqual(rc.sha256_file(p), before)
         self.assertEqual(Path(backup).read_text(), "content\n")
 
     def test_backup_openspec_naming(self):
-        """ut-backup_file-openspec-naming / OS-B1（固定名 config.yaml.cadence-backup-<14位时间戳>，同目录）"""
-        d = Path(self.tmp.name) / "openspec"
+        """ut-backup_file-openspec-naming / OS-B1（归档保留 openspec/config.yaml 相对路径）"""
+        d = self.root / "openspec"
         d.mkdir()
         p = d / "config.yaml"
         p.write_text("schema: spec-driven\n")
-        backup = rc.backup_file(p)
-        self.assertRegex(Path(backup).name, r"^config\.yaml\.cadence-backup-\d{14}$")
-        self.assertEqual(Path(backup).parent, d)
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/openspec/config\.yaml$",
+        )
 
     def test_backup_l1_naming(self):
-        """ut-backup_file-l1-naming / L1-B1（固定名 openspec-superpowers-workflow.md.cadence-backup-<14位时间戳>）"""
-        d = Path(self.tmp.name) / ".claude" / "rules"
+        """ut-backup_file-l1-naming / L1-B1（归档保留 .claude/rules 相对路径）"""
+        d = self.root / ".claude" / "rules"
         d.mkdir(parents=True)
         p = d / "openspec-superpowers-workflow.md"
         p.write_text(L1_V1)
-        backup = rc.backup_file(p)
-        self.assertRegex(Path(backup).name, r"^openspec-superpowers-workflow\.md\.cadence-backup-\d{14}$")
-        self.assertEqual(Path(backup).parent, d)
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/\.claude/rules/openspec-superpowers-workflow\.md$",
+        )
+
+    def test_backup_copies_to_legacy_with_relative_path(self):
+        """ut-backup_file-legacy-copy / B2：复制归档，原位不动，相对路径结构"""
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        target = self.root / ".claude" / "rules" / "mcp-servers.md"
+        target.write_text("old content", encoding="utf-8")
+
+        backup_path = rc.backup_file(target, self.root)
+
+        self.assertIn("cadence/legacy", str(backup_path))
+        self.assertIn(".claude/rules/mcp-servers.md", str(backup_path))
+        self.assertEqual(backup_path.read_text(encoding="utf-8"), "old content")
+        self.assertEqual(target.read_text(encoding="utf-8"), "old content")  # 原位不动
+
+    def test_backup_creates_and_repairs_gitignore(self):
+        """ut-backup_file-legacy-gitignore / 每次归档前验证/修复 .gitignore"""
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        target = self.root / ".claude" / "rules" / "language.md"
+        target.write_text("x", encoding="utf-8")
+        rc.backup_file(target, self.root)
+        gi = self.root / "cadence" / "legacy" / ".gitignore"
+        self.assertEqual(gi.read_text(encoding="utf-8"), "*\n!.gitignore\n")
+        # 损坏后再次归档自动修复
+        gi.write_text("wrong", encoding="utf-8")
+        rc.backup_file(target, self.root)
+        self.assertEqual(gi.read_text(encoding="utf-8"), "*\n!.gitignore\n")
+
+    def test_backup_gitignore_write_failure_raises_backup_error(self):
+        """ut-backup_file-legacy-gitignore-fail / .gitignore 写失败统一包装 BackupError"""
+        target = self.root / "rule.md"
+        target.write_text("content\n", encoding="utf-8")
+        with mock.patch.object(rc, "atomic_write", side_effect=rc.PublishError("write failed")):
+            with self.assertRaises(rc.BackupError):
+                rc.backup_file(target, self.root)
 
     def test_backup_same_second_unique_suffix(self):
         """ut-backup_file-unique-suffix / codex 终审 C1
-        （同秒同文件重复备份 → 追加 -2/-3 唯一后缀，两个备份都存在且不覆盖首次恢复点）"""
-        p = Path(self.tmp.name) / "config.yaml"
+        （同秒同文件重复备份 → 时间戳目录追加 -2/-3，三个恢复点互不覆盖）"""
+        p = self.root / "config.yaml"
         p.write_text("v1\n")
         fixed = rc.datetime(2026, 7, 31, 12, 0, 0)
         with mock.patch.object(rc, "datetime") as mdt:
             mdt.now.return_value = fixed
-            b1 = rc.backup_file(p)
+            b1 = rc.backup_file(p, self.root)
             p.write_text("v2\n")
-            b2 = rc.backup_file(p)
+            b2 = rc.backup_file(p, self.root)
             p.write_text("v3\n")
-            b3 = rc.backup_file(p)
-        # 三个备份名两两不同且全部存在（首次恢复点未被覆盖）
+            b3 = rc.backup_file(p, self.root)
+        # 三个归档路径两两不同且全部存在（首次恢复点未被覆盖）
         names = [str(b) for b in (b1, b2, b3)]
         self.assertEqual(len(set(names)), 3)
         for b in (b1, b2, b3):
             self.assertTrue(Path(b).exists())
-        # 首个备份保持无后缀基名（既有命名约定不变），后续追加 -2/-3
-        self.assertRegex(Path(b1).name, r"\.cadence-backup-\d{14}$")
-        self.assertRegex(Path(b2).name, r"\.cadence-backup-\d{14}-\d+$")
-        self.assertRegex(Path(b3).name, r"\.cadence-backup-\d{14}-\d+$")
+        # 同秒冲突后缀加在时间戳目录，而不是文件名
+        self.assertEqual(Path(b1).parent.name, "20260731120000")
+        self.assertEqual(Path(b2).parent.name, "20260731120000-2")
+        self.assertEqual(Path(b3).parent.name, "20260731120000-3")
+        self.assertEqual(Path(b1).name, "config.yaml")
+        self.assertEqual(Path(b2).name, "config.yaml")
+        self.assertEqual(Path(b3).name, "config.yaml")
         # 内容未被覆盖：每个备份保留各自时点内容
         self.assertEqual(Path(b1).read_text(), "v1\n")
         self.assertEqual(Path(b2).read_text(), "v2\n")
@@ -525,6 +573,237 @@ def _intents(**overrides):
     return rc.Intents(**defaults)
 
 
+class TestAuthoritativeOverwrite(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+        self.mcp_tpl = (self.rules_root / "mcp-servers.md").read_text(
+            encoding="utf-8"
+        )
+
+    def _apply(self):
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            result = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def test_drift_overwrite_no_supplement(self):
+        """ut-s3-authoritative-overwrite / RF-05：drift 全覆盖，无项目补充"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            "### Serena MCP\nold\n", encoding="utf-8"
+        )
+        self._apply()
+        content = (rules / "mcp-servers.md").read_text(encoding="utf-8")
+        self.assertEqual(content, self.mcp_tpl)
+        self.assertNotIn("Serena", content)
+        self.assertNotIn("**项目补充**", content)
+        self.assertTrue(
+            any((self.root / "cadence" / "legacy").rglob("mcp-servers.md"))
+        )
+
+    def test_idempotent_skip_when_equal_template(self):
+        """ut-s3-authoritative-idempotent / 内容==模板则跳过不归档"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            self.mcp_tpl, encoding="utf-8"
+        )
+        self._apply()
+        self.assertFalse((self.root / "cadence" / "legacy").exists())
+
+    def test_legacy_code_usage_migrated_custom_kept(self):
+        """历史 code-usage 双文件归档后移除；归档路径入报告；相似自定义文件保持不动。"""
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        coding_legacy = rules / "code-usage-coding.md"
+        noncoding_legacy = rules / "code-usage-noncoding.md"
+        coding_legacy.write_text(
+            "legacy", encoding="utf-8"
+        )
+        noncoding_legacy.write_text(
+            "legacy", encoding="utf-8"
+        )
+        (rules / "code-usage-extra.md").write_text(
+            "user custom", encoding="utf-8"
+        )
+        report = self._apply()
+        self.assertFalse(coding_legacy.exists())
+        self.assertFalse(noncoding_legacy.exists())
+        coding_archives = list(
+            (self.root / "cadence" / "legacy").rglob(
+                "code-usage-coding.md"
+            )
+        )
+        noncoding_archives = list(
+            (self.root / "cadence" / "legacy").rglob(
+                "code-usage-noncoding.md"
+            )
+        )
+        self.assertTrue(coding_archives)
+        self.assertTrue(noncoding_archives)
+        expected_backups = {
+            (str(coding_legacy), str(coding_archives[0])),
+            (str(noncoding_legacy), str(noncoding_archives[0])),
+        }
+        reported_backups = {
+            (item.get("file"), item.get("backup"))
+            for item in report["backups"]
+        }
+        self.assertTrue(expected_backups.issubset(reported_backups))
+        s3 = next(
+            step for step in report["steps"]
+            if step["name"] == rc.STEP_RULES_FILES
+        )
+        migrated = {
+            action["path"]: action.get("backup")
+            for action in s3.get("actions", [])
+            if action.get("action") == "migrated-legacy"
+        }
+        self.assertEqual(
+            migrated[".claude/rules/code-usage-coding.md"],
+            str(coding_archives[0]),
+        )
+        self.assertEqual(
+            migrated[".claude/rules/code-usage-noncoding.md"],
+            str(noncoding_archives[0]),
+        )
+        self.assertEqual(
+            coding_archives[0].read_text(encoding="utf-8"), "legacy"
+        )
+        self.assertEqual(
+            noncoding_archives[0].read_text(encoding="utf-8"), "legacy"
+        )
+        self.assertEqual(
+            (rules / "code-usage-extra.md").read_text(encoding="utf-8"),
+            "user custom",
+        )
+
+
+class TestCodeUsageSingleSource(unittest.TestCase):
+    """Task 2：code-usage 单选来源、固定落地名与 S3 资产来源字段。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for template in real_tpl.iterdir():
+            if template.is_file():
+                (self.rules_root / template.name).write_bytes(template.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+
+    def _apply(self, **overrides):
+        report = rc.build_report(
+            "no-interrupt" if overrides.get("no_interrupt") else "normal",
+            self.root,
+        )
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(**overrides), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def _compute(self, **overrides):
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            return rc.compute_plan(self.root, _intents(**overrides))
+
+    def test_coding_project_gets_code_usage_md(self):
+        self.root.mkdir(parents=True)
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
+        self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-usage.md"
+        self.assertTrue(target.exists())
+        self.assertIn("遵循 TDD", target.read_text(encoding="utf-8"))
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-coding.md").exists()
+        )
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-noncoding.md").exists()
+        )
+
+    def test_noncoding_project_gets_noncoding_source_at_fixed_name(self):
+        self.root.mkdir(parents=True)
+        self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-usage.md"
+        self.assertTrue(target.exists())
+        self.assertIn("非必要不编写代码", target.read_text(encoding="utf-8"))
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-coding.md").exists()
+        )
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-noncoding.md").exists()
+        )
+
+    def test_code_usage_asset_records_selected_template_source(self):
+        self.root.mkdir(parents=True)
+        plan = self._compute(project_type="coding")
+        assets = plan["steps"][rc.STEP_RULES_FILES]["assets"]
+        asset = next(a for a in assets if a["path"].endswith("/code-usage.md"))
+        self.assertEqual(asset["template_source"], "code-usage-coding.md")
+        self.assertEqual(Path(asset["path"]).name, "code-usage.md")
+
+    def test_agent_routing_kernel_not_copied(self):
+        self.root.mkdir(parents=True)
+        self._apply(no_interrupt=True)
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
+        )
+        self.assertIn(
+            "cadence-managed:openspec-superpowers-routing:v1",
+            (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
+        )
+
+    def test_existing_playwright_enters_unified_drift_detection(self):
+        target = self.root / ".claude" / "rules" / rc.PLAYWRIGHT_RULE_FILE
+        target.parent.mkdir(parents=True)
+        target.write_text("# 项目自定义 Playwright\n", encoding="utf-8")
+        plan = self._compute()
+        assets = plan["steps"][rc.STEP_RULES_FILES]["assets"]
+        asset = next(a for a in assets if a["path"].endswith("/playwright.md"))
+        self.assertEqual(asset["action"], "replace")
+        self.assertEqual(asset["conflict"], "drift")
+        self.assertTrue(asset["backup_needed"])
+        self.assertEqual(asset["template_source"], "playwright.md")
+
+
 class TestDetectProject(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -633,6 +912,189 @@ class TestDetectProject(unittest.TestCase):
         self.assertEqual(ts["format"], "未检测到")
         # coverage 默认仍为 80%
         self.assertEqual(ts["coverage"], "80%")
+
+
+class TestTechstackPlaceholder(unittest.TestCase):
+    """技术栈已有区块逐项收敛：占位替换、用户值保留、差异入报告。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for template in real_tpl.iterdir():
+            if template.is_file():
+                (self.rules_root / template.name).write_bytes(template.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+
+    def test_missing_block_appends_all_detected_fields_and_fixed_coverage(self):
+        """技术栈区块完全缺失时追加五个检测字段和固定 80% 阈值。"""
+        tech_stack = {
+            "language": "Python",
+            "pkg_manager": "uv",
+            "test": "pytest",
+            "lint": "ruff check .",
+            "format": "ruff format .",
+            "coverage": "99%",
+        }
+        result, diffs = rc._ensure_techstack_block(
+            "# CLAUDE.md\n\n项目说明\n", tech_stack
+        )
+        self.assertEqual(diffs, [])
+        self.assertIn("## 项目配置", result)
+        self.assertIn("### 项目技术栈", result)
+        self.assertIn("- **语言**：Python", result)
+        self.assertIn("- **包管理器**：uv", result)
+        self.assertIn("- **测试命令**：pytest", result)
+        self.assertIn("- **检查命令**：ruff check .", result)
+        self.assertIn("- **格式化命令**：ruff format .", result)
+        self.assertIn("- **覆盖率阈值**：80%", result)
+        self.assertNotIn("99%", result)
+
+    def test_empty_field_value_is_replaced_by_detected_value(self):
+        """字段冒号后为空字符串时按占位值处理并替换为检测值。"""
+        text = (
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：\n"
+            "- **包管理器**：待确认\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：待确认\n"
+            "- **覆盖率阈值**：80%\n"
+        )
+        result, diffs = rc._ensure_techstack_block(
+            text,
+            {
+                "language": "Go",
+                "pkg_manager": "go modules",
+                "test": "go test ./...",
+                "lint": "golangci-lint run",
+                "format": "gofmt -w .",
+            },
+        )
+        self.assertEqual(diffs, [])
+        self.assertIn("- **语言**：Go", result)
+        self.assertNotIn("- **语言**：\n", result)
+
+    def test_placeholder_replaced_user_value_kept_diff_reported(self):
+        """占位值收敛到检测值；用户真实值保留，冲突差异写入 S4 actions。"""
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest","lint":"eslint ."}}',
+            encoding="utf-8",
+        )
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：待确认\n"
+            "- **包管理器**：yarn\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：未检测到\n"
+            "- **覆盖率阈值**：80%\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(result, 0, report.get("failure"))
+
+        section = claude.read_text(encoding="utf-8")
+        self.assertIn("**语言**：JavaScript/TypeScript", section)
+        self.assertIn("**测试命令**：jest", section)
+        self.assertIn("**检查命令**：eslint .", section)
+        self.assertIn("**包管理器**：yarn", section)
+        self.assertIn("**格式化命令**：未检测到", section)
+        s4 = next(
+            step for step in report["steps"]
+            if step["name"] == rc.STEP_ENTRY_FILES
+        )
+        diff_actions = [
+            action for action in s4.get("actions", [])
+            if action.get("path") == "CLAUDE.md"
+            and action.get("action") == "techstack-diff"
+        ]
+        self.assertEqual(len(diff_actions), 1)
+        self.assertEqual(diff_actions[0]["diffs"], [{
+            "field": "包管理器",
+            "user_value": "yarn",
+            "detected_value": "pnpm",
+        }])
+        json.dumps(report, ensure_ascii=False)
+
+    def test_placeholder_replacement_is_idempotent_and_diff_not_duplicated(self):
+        """第二次运行不重复追加区块；已替换字段不再变化，差异每次仅报告一条。"""
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest","lint":"eslint ."}}',
+            encoding="utf-8",
+        )
+        claude = self.root / "CLAUDE.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
+            "- **语言**：待确认\n"
+            "- **包管理器**：yarn\n"
+            "- **测试命令**：待确认\n"
+            "- **检查命令**：待确认\n"
+            "- **格式化命令**：未检测到\n"
+            "- **覆盖率阈值**：80%\n",
+            encoding="utf-8",
+        )
+
+        reports = []
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            for _ in range(2):
+                report = rc.build_report("no-interrupt", self.root)
+                result = rc.run_apply(
+                    self.root, _intents(no_interrupt=True), report
+                )
+                self.assertEqual(result, 0, report.get("failure"))
+                reports.append(report)
+                if len(reports) == 1:
+                    first_content = claude.read_text(encoding="utf-8")
+
+        second_content = claude.read_text(encoding="utf-8")
+        self.assertEqual(second_content, first_content)
+        self.assertEqual(second_content.count("### 项目技术栈"), 1)
+        self.assertEqual(second_content.count("**覆盖率阈值**：80%"), 1)
+        for report in reports:
+            s4 = next(
+                step for step in report["steps"]
+                if step["name"] == rc.STEP_ENTRY_FILES
+            )
+            diff_actions = [
+                action for action in s4.get("actions", [])
+                if action.get("path") == "CLAUDE.md"
+                and action.get("action") == "techstack-diff"
+            ]
+            self.assertEqual(len(diff_actions), 1)
+            self.assertEqual(diff_actions[0]["diffs"], [{
+                "field": "包管理器",
+                "user_value": "yarn",
+                "detected_value": "pnpm",
+            }])
 
 
 class TestLocateTemplates(unittest.TestCase):
@@ -892,8 +1354,8 @@ class TestStepS3RulesFiles(unittest.TestCase):
         )
         self.assertEqual(target.read_text(encoding="utf-8"), custom)
 
-    def test_ordinary_no_interrupt_merge_uses_project_supplement(self):
-        """ut-step_s3-ordinary-merge / NC-03（普通规则 no-interrupt → merge_markdown 章节合并，含项目补充）"""
+    def test_ordinary_no_interrupt_overwrites_with_template(self):
+        """ut-step_s3-authoritative-overwrite / RF-05（普通规则 no-interrupt → 模板权威全覆盖）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         target = rules_dir / "language.md"
@@ -909,16 +1371,16 @@ class TestStepS3RulesFiles(unittest.TestCase):
         })
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, {})
         result = target.read_text(encoding="utf-8")
-        self.assertIn("项目补充", result)  # 普通规则走 merge，含项目补充
-        self.assertIn("项目独有行", result)
+        self.assertEqual(result, self.language_tpl)
+        self.assertNotIn("项目补充", result)
+        self.assertNotIn("项目独有行", result)
 
     def test_ordinary_no_interrupt_unchanged_skips_write(self):
-        """ut-step_s3-ordinary-unchanged / NC-03（no-interrupt 合并结果与现有文件逐字一致 → 跳过写盘，报告 unchanged）"""
+        """ut-step_s3-ordinary-unchanged / RF-05（内容==模板 → 跳过写盘，报告 unchanged）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         target = rules_dir / "language.md"
-        merged_once = rc.merge_markdown(self.language_tpl, self.language_tpl + "\n项目独有行\n")
-        target.write_text(merged_once, encoding="utf-8")
+        target.write_text(self.language_tpl, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_RULES_FILES: {
                 "name": rc.STEP_RULES_FILES, "status": "ok",
@@ -933,8 +1395,14 @@ class TestStepS3RulesFiles(unittest.TestCase):
             rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
         m_write.assert_not_called()
         s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
-        self.assertTrue(any(a.get("action") == "unchanged" for a in s3.get("actions", [])))
-        self.assertEqual(target.read_text(encoding="utf-8"), merged_once)
+        self.assertTrue(
+            any(
+                a.get("action") == "unchanged"
+                and a.get("branch") == "authoritative-idempotent"
+                for a in s3.get("actions", [])
+            )
+        )
+        self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
 
 
 class TestStepS4EntryFiles(unittest.TestCase):
@@ -982,10 +1450,11 @@ class TestStepS4EntryFiles(unittest.TestCase):
             "language": "Python", "pkg_manager": "uv", "test": "pytest",
             "lint": "未检测到", "format": "未检测到", "coverage": "80%",
         }
-        converged = rc._compose_entry(
+        converged, diffs = rc._compose_entry(
             rc.BASE_CLAUDE_MD, self.kernel, state="create",
             project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
         )
+        self.assertEqual(diffs, [])
         entry.write_text(converged, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -1246,6 +1715,75 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
         ))
 
 
+class TestSummaryDedup(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir(parents=True)
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references"
+            / "openspec"
+            / "config.yaml"
+        )
+
+    def test_different_wording_same_ref_not_duplicated(self):
+        claude = self.root / "CLAUDE.md"
+        custom_line = (
+            "- **文档存放（项目措辞）** -> 详见 "
+            "`.claude/rules/document-storage.md`"
+        )
+        standard_line = (
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code "
+            "框架规则保留在 `.claude/rules/` 目录下** → 详见 "
+            "`.claude/rules/document-storage.md`"
+        )
+        claude.write_text(
+            "# CLAUDE.md\n\n## 强制规则\n\n" + custom_line + "\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        section = claude.read_text(encoding="utf-8")
+        self.assertEqual(
+            section.count(".claude/rules/document-storage.md"), 1
+        )
+        self.assertIn(custom_line, section.splitlines())
+        self.assertNotIn(standard_line, section.splitlines())
+
+    def test_duplicate_ref_deduped(self):
+        claude = self.root / "CLAUDE.md"
+        first_line = "- **A（保留首个）** -> 详见 language.md"
+        duplicate_line = "- **B（删除后续）** -> 详见 language.md"
+        claude.write_text(
+            "# CLAUDE.md\n\n## 强制规则\n\n"
+            + first_line + "\n" + duplicate_line + "\n",
+            encoding="utf-8",
+        )
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        section = claude.read_text(encoding="utf-8")
+        self.assertEqual(section.count("language.md"), 1)
+        self.assertIn(first_line, section.splitlines())
+        self.assertNotIn(duplicate_line, section.splitlines())
+
+
 class TestEnsureSummaryLines(unittest.TestCase):
     """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
 
@@ -1301,6 +1839,29 @@ class TestEnsureSummaryLines(unittest.TestCase):
         # BASE_CLAUDE_MD 本身含 7 条摘要 → 不应改动
         out = rc._ensure_summary_lines(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding")
         self.assertEqual(out, rc.BASE_CLAUDE_MD)
+
+    def test_rule6_first_line_marker_prevents_block_reappend(self):
+        """CLAUDE/AGENTS 对应首行 marker 已存在时，均不重复追加规则 6 块。"""
+        cases = (
+            ("CLAUDE.md", rc.BASE_CLAUDE_MD, rc.RULE6_BLOCK_CLAUDE),
+            ("AGENTS.md", rc.BASE_AGENTS_MD, rc.RULE6_BLOCK_AGENTS),
+        )
+        for entry_name, base, block in cases:
+            with self.subTest(entry_name=entry_name):
+                first_line = block.splitlines()[0]
+                text = base.replace(block, first_line)
+                out = rc._ensure_summary_lines(text, entry_name, "non-coding")
+                self.assertEqual(out, text)
+                self.assertEqual(out.count(first_line), 1)
+
+    def test_multi_marker_dedup_recomputes_missing_from_result(self):
+        """删除含重复 marker 的多引用行后，补回该行承载的唯一规则引用。"""
+        combined_line = "- **组合引用** language.md + code-usage.md"
+        text = rc.BASE_CLAUDE_MD.replace(rc.RULE2_TEXT_NONCODING, combined_line)
+        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        self.assertNotIn(combined_line, out.splitlines())
+        self.assertIn(rc.RULE2_TEXT_NONCODING, out.splitlines())
+        self.assertEqual(out.count("code-usage.md"), 1)
 
     def test_agents_rule6_block_variant(self):
         """ut-ensure_summary-agents-rule6 / Important 1（AGENTS.md 规则 6 块文本与 CLAUDE.md 不同）"""
@@ -1599,7 +2160,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         report = {"backups": []}
         actions: list = []
         rc._s8_ensure_mcp_configs(self.root, report, actions)
-        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        backups = list(
+            (self.root / "cadence" / "legacy").glob("*/.mcp.json")
+        )
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(encoding="utf-8"), "{invalid json\n")
         doc = json.loads(mcp.read_text(encoding="utf-8"))
@@ -1617,7 +2180,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         )
         report = {"backups": []}
         rc._s8_ensure_mcp_configs(self.root, report, [])
-        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        backups = list(
+            (self.root / "cadence" / "legacy").glob("*/.mcp.json")
+        )
         self.assertEqual(len(backups), 1)
         doc = json.loads(mcp.read_text(encoding="utf-8"))
         self.assertIn("codegraph", doc["mcpServers"])
@@ -1628,7 +2193,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         report = {"backups": []}
         rc._s8_ensure_mcp_configs(self.root, report, [])
         self.assertTrue((self.root / ".mcp.json").is_file())
-        self.assertEqual(list(self.root.glob(".mcp.json.cadence-backup-*")), [])
+        self.assertEqual(
+            list((self.root / "cadence" / "legacy").glob("*/.mcp.json")), []
+        )
         self.assertEqual(report["backups"], [])
 
 
@@ -1910,14 +2477,14 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             return rc.compute_plan(self.root, _intents(**overrides))
 
     def test_no_interrupt_marks_real_action(self):
-        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 冲突含 no_interrupt_action=markdown-merge，recommendation 不变）"""
+        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 标注 authoritative-overwrite，recommendation 不变）"""
         plan = self._compute(no_interrupt=True)
         s3 = plan["steps"][rc.STEP_RULES_FILES]
         entry = next(c for c in s3["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(entry["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(entry["no_interrupt_action"], "authoritative-overwrite")
         self.assertEqual(entry["recommendation"], "keep")
         top = next(c for c in plan["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(top["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(top["no_interrupt_action"], "authoritative-overwrite")
 
     def test_normal_mode_omits_field(self):
         """ut-compute-plan-normal-no-action-field / P1-1（普通模式冲突条目不新增字段）"""
@@ -1927,7 +2494,7 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
         self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
 
     def test_report_no_interrupt_action(self):
-        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 的真实合并动作）"""
+        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 权威覆盖动作）"""
         plan = self._compute(no_interrupt=True)
         report: dict = {}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
@@ -1935,7 +2502,9 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             c for c in report["conflicts"]
             if str(c.get("asset", "")).endswith("language.md")
         )
-        self.assertEqual(conflict["no_interrupt_action"], "markdown-merge")
+        self.assertEqual(
+            conflict["no_interrupt_action"], "authoritative-overwrite"
+        )
 
     def test_report_normal_no_action_field(self):
         """ut-report-normal-no-action-field / P1-1（普通模式对外报告无 no-interrupt 动作）"""
@@ -1946,7 +2515,296 @@ class TestDriftConflictNoInterruptAction(unittest.TestCase):
             c for c in report["conflicts"]
             if str(c.get("asset", "")).endswith("language.md")
         )
-        self.assertIsNone(conflict.get("no_interrupt_action"))
+        self.assertNotIn("no_interrupt_action", conflict)
+
+
+class TestTask6RegressionMatrix(unittest.TestCase):
+    """Task 6：dry-run 字段、幂等与跨资产失败关闭回归矩阵。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir(parents=True)
+        self.rules_root = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references"
+            / "openspec"
+            / "config.yaml"
+        )
+
+    def _apply(self, *, coding=False):
+        report = rc.build_report("no-interrupt", self.root)
+        patches = [
+            mock.patch.object(
+                rc,
+                "locate_templates",
+                return_value=(self.rules_root, self.openspec_yaml),
+            )
+        ]
+        if coding:
+            patches.append(
+                mock.patch.object(
+                    rc.subprocess, "run", return_value=mock.Mock(returncode=0)
+                )
+            )
+        with patches[0]:
+            if coding:
+                with patches[1]:
+                    code = rc.run_apply(
+                        self.root, _intents(no_interrupt=True), report
+                    )
+            else:
+                code = rc.run_apply(
+                    self.root, _intents(no_interrupt=True), report
+                )
+        return code, report
+
+    def _snapshot_files(self):
+        return {
+            str(path): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+
+    @staticmethod
+    def _snapshot_paths(root):
+        if not root.exists():
+            return set()
+        return {str(path) for path in root.rglob("*")}
+
+    def test_dry_run_no_interrupt_action_field(self):
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
+        report = {}
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_dry_run(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(code, 0)
+        mcp = [
+            conflict
+            for conflict in report.get("conflicts", [])
+            if "mcp-servers" in conflict.get("conflict_id", "")
+        ]
+        self.assertTrue(mcp)
+        self.assertEqual(
+            mcp[0]["no_interrupt_action"], "authoritative-overwrite"
+        )
+
+    def test_dry_run_normal_mode_no_field(self):
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
+        report = {}
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_dry_run(
+                self.root, _intents(no_interrupt=False), report
+            )
+        self.assertEqual(code, 0)
+        mcp = [
+            conflict
+            for conflict in report.get("conflicts", [])
+            if "mcp-servers" in conflict.get("conflict_id", "")
+        ]
+        self.assertTrue(mcp)
+        self.assertNotIn("no_interrupt_action", mcp[0])
+
+    def test_double_apply_idempotent(self):
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
+        code, report = self._apply(coding=True)
+        self.assertEqual(code, 0, report.get("failure"))
+        snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_paths1 = self._snapshot_paths(legacy_root)
+
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply(coding=True)
+
+        self.assertEqual(code, 0, report.get("failure"))
+        atomic_write_spy.assert_not_called()
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        self.assertEqual(
+            self._snapshot_paths(legacy_root), legacy_paths1
+        )
+
+    def test_drift_overwrite_then_rerun_no_archive(self):
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "mcp-servers.md").write_text(
+            "### Serena\nold\n", encoding="utf-8"
+        )
+        code, report = self._apply()
+        self.assertEqual(code, 0, report.get("failure"))
+        snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_paths1 = self._snapshot_paths(legacy_root)
+
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply()
+
+        self.assertEqual(code, 0, report.get("failure"))
+        self.assertEqual(atomic_write_spy.call_count, 0)
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        self.assertEqual(
+            self._snapshot_paths(legacy_root), legacy_paths1
+        )
+
+    def test_type_switch_then_rerun_stable(self):
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "code-usage.md").write_text(
+            "非必要不编写代码", encoding="utf-8"
+        )
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
+        code, report = self._apply(coding=True)
+        self.assertEqual(code, 0, report.get("failure"))
+        snapshot1 = self._snapshot_files()
+        legacy_root = self.root / "cadence" / "legacy"
+        legacy_dirs_before = (
+            {path.name for path in legacy_root.iterdir() if path.is_dir()}
+            if legacy_root.exists()
+            else set()
+        )
+
+        with mock.patch.object(
+            rc, "atomic_write", wraps=rc.atomic_write
+        ) as atomic_write_spy:
+            code, report = self._apply(coding=True)
+
+        self.assertEqual(code, 0, report.get("failure"))
+        self.assertEqual(atomic_write_spy.call_count, 0)
+        snapshot2 = self._snapshot_files()
+        self.assertEqual(set(snapshot1), set(snapshot2))
+        for path, content in snapshot1.items():
+            self.assertEqual(snapshot2[path], content, f"changed: {path}")
+        legacy_dirs_after = (
+            {path.name for path in legacy_root.iterdir() if path.is_dir()}
+            if legacy_root.exists()
+            else set()
+        )
+        self.assertEqual(legacy_dirs_after, legacy_dirs_before)
+
+    def test_l0_second_archive_failure_keeps_both(self):
+        """L0 双入口：第二个归档失败时两入口都不写入（构造 drift 触发备份）"""
+        for entry in ("CLAUDE.md", "AGENTS.md"):
+            (self.root / entry).write_text(
+                f"# {entry}\n\n{rc.L0_BEGIN}\nDRIFTED\n{rc.L0_END}\n\n## 强制规则\n", encoding="utf-8")
+        orig = rc.backup_file; calls = []
+        def fail_second(path, r):
+            calls.append(path)
+            if len(calls) == 2:
+                raise rc.BackupError("simulated")
+            return orig(path, r)
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc, "backup_file", side_effect=fail_second
+        ), mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+        self.assertEqual(code, 1)
+        # 两入口 L0 仍是 drift 状态（未写入）
+        self.assertIn("DRIFTED", (self.root / "CLAUDE.md").read_text(encoding="utf-8"))
+        self.assertIn("DRIFTED", (self.root / "AGENTS.md").read_text(encoding="utf-8"))
+
+    def test_atomic_write_failure_keeps_original(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        target = rules / "mcp-servers.md"
+        target.write_text("old", encoding="utf-8")
+        original_atomic_write = rc.atomic_write
+
+        def fail_target(path, content):
+            if Path(path) == target:
+                raise OSError("simulated")
+            return original_atomic_write(path, content)
+
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(rc, "atomic_write", side_effect=fail_target), \
+             mock.patch.object(rc, "locate_templates", return_value=(self.rules_root, self.openspec_yaml)):
+            rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(target.read_text(encoding="utf-8"), "old")  # 原文件不变
+        self.assertTrue(any((self.root / "cadence" / "legacy").rglob("mcp-servers.md")))  # 归档保留
+
+    def test_legacy_unlink_failure_keeps_file(self):
+        rules = self.root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        legacy_file = rules / "code-usage-coding.md"
+        legacy_file.write_text("legacy", encoding="utf-8")
+        original_unlink = rc.Path.unlink
+        unlink_calls = []
+
+        def fail_legacy_unlink(path, *args, **kwargs):
+            unlink_calls.append(Path(path))
+            if Path(path) == legacy_file:
+                raise OSError("simulated")
+            return original_unlink(path, *args, **kwargs)
+
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc.Path, "unlink", new=fail_legacy_unlink
+        ), mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            code = rc.run_apply(
+                self.root, _intents(no_interrupt=True), report
+            )
+
+        self.assertEqual(code, 1)
+        self.assertEqual(report["overall"], "fail")
+        self.assertIn(legacy_file, unlink_calls)
+        self.assertTrue(legacy_file.exists())
+        self.assertFalse((rules / "code-usage.md").exists())
+        self.assertTrue(
+            any(
+                (self.root / "cadence" / "legacy").rglob(
+                    "code-usage-coding.md"
+                )
+            )
+        )
+
+    def test_same_second_conflict_suffix(self):
+        rules = self.root / ".claude" / "rules"; rules.mkdir(parents=True)
+        target = rules / "language.md"; target.write_text("old", encoding="utf-8")
+        # 固定时钟，确保两次归档确实发生在同一秒。
+        fixed = rc.datetime(2026, 8, 1, 12, 0, 0)
+        with mock.patch.object(rc, "datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed
+            rc.backup_file(target, self.root)
+            rc.backup_file(target, self.root)
+        legacy = self.root / "cadence" / "legacy"
+        dirs = sorted(d.name for d in legacy.iterdir() if d.is_dir())
+        self.assertEqual(dirs, ["20260801120000", "20260801120000-2"])
 
 
 class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
@@ -1993,14 +2851,16 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
         )
 
     def test_no_interrupt_execute_merges_codegraph_section(self):
-        """ut-s3-codegraph-section-unified-merge / RF-04（no-interrupt 自动合并：模板 CodeGraph 段落并入、项目原文保留）"""
+        """ut-s3-codegraph-section-unified-merge / RF-05（no-interrupt 权威覆盖为完整模板）"""
         plan = self._compute()
         report = {"steps": [], "overall": "ok"}
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
         result = (self.root / ".claude" / "rules" / "code-reading.md").read_text(encoding="utf-8")
-        self.assertIn("CodeGraph", result)          # 模板段落并入
-        self.assertIn("仅 ast-grep", result)        # 项目原文保留（项目补充/独有章节）
+        template = (self.refs / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        self.assertEqual(result, template)
+        self.assertIn("CodeGraph", result)
+        self.assertNotIn("仅 ast-grep", result)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
