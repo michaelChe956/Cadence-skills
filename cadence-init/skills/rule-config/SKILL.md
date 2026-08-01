@@ -74,6 +74,8 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 
 单次 apply：直接执行 `apply --no-interrupt` 一次完成（可选先跑 dry-run 摸底）。脚本不读取也不要求决策文件，全部冲突按 `references/merge-semantics.md` 的权威规则内部决策并记入报告。此模式禁止 Agent 调用 `AskUserQuestion`、`request_user_input` 或等价提问工具，禁止等待用户输入。
 
+**汇报冲突实际动作（强制）**：no-interrupt 模式下汇报某冲突的处理结果时，Agent MUST 依据该冲突条目的 `no_interrupt_action` 字段（如 `authoritative-overwrite`）或对应 `steps[].actions[]` 条目的 `action`/`branch`（如 `overwritten`/`authoritative-overwrite`）描述**实际执行动作**。`default_keep` 与 `recommendation` 是**普通模式无响应时的安全兜底语义**（保留原文件并报告 status=0），no-interrupt 模式不读取也不按其执行，Agent MUST NOT 用其描述 no-interrupt 实际动作（例如不得把框架规则文件 drift 的 `authoritative-overwrite` 说成"已保留现有文件"）。
+
 ## 有界扫描说明
 
 项目类型检测使用一次有界首命中扫描。以下命令**仅用于项目类型判定**，其剪枝目录清单与脚本 `PRUNE_DIRS` 常量逐项一致，不得增删：
@@ -97,10 +99,12 @@ find . \
 ```bash
 # 总体结果与项目类型
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d['overall'], d['project_type'])"
-# 冲突清单（普通模式提问与决策文件依据）
+# 冲突清单（普通模式提问与决策文件依据；no-interrupt 模式另含 no_interrupt_action 字段标注实际动作）
 python3 -c "import json;d=json.load(open('<REPORT>'));print(json.dumps(d.get('conflicts',[]),ensure_ascii=False,indent=2))"
 # 各步骤状态
 python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],s['status']) for s in d['steps']])"
+# 各资产实际动作明细（no-interrupt 模式汇报冲突结果的权威依据）
+python3 -c "import json;d=json.load(open('<REPORT>'));print([(a.get('path'),a.get('action'),a.get('branch')) for s in d['steps'] for a in s.get('actions',[])])"
 # 失败详情与恢复建议
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 ```
