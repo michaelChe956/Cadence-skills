@@ -571,6 +571,111 @@ def _intents(**overrides):
     return rc.Intents(**defaults)
 
 
+class TestCodeUsageSingleSource(unittest.TestCase):
+    """Task 2：code-usage 单选来源、固定落地名与 S3 资产来源字段。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for template in real_tpl.iterdir():
+            if template.is_file():
+                (self.rules_root / template.name).write_bytes(template.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+
+    def _apply(self, **overrides):
+        report = rc.build_report(
+            "no-interrupt" if overrides.get("no_interrupt") else "normal",
+            self.root,
+        )
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(**overrides), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def _compute(self, **overrides):
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            return rc.compute_plan(self.root, _intents(**overrides))
+
+    def test_coding_project_gets_code_usage_md(self):
+        self.root.mkdir(parents=True)
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8"
+        )
+        self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-usage.md"
+        self.assertTrue(target.exists())
+        self.assertIn("遵循 TDD", target.read_text(encoding="utf-8"))
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-coding.md").exists()
+        )
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-noncoding.md").exists()
+        )
+
+    def test_noncoding_project_gets_noncoding_source_at_fixed_name(self):
+        self.root.mkdir(parents=True)
+        self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-usage.md"
+        self.assertTrue(target.exists())
+        self.assertIn("非必要不编写代码", target.read_text(encoding="utf-8"))
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-coding.md").exists()
+        )
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "code-usage-noncoding.md").exists()
+        )
+
+    def test_code_usage_asset_records_selected_template_source(self):
+        self.root.mkdir(parents=True)
+        plan = self._compute(project_type="coding")
+        assets = plan["steps"][rc.STEP_RULES_FILES]["assets"]
+        asset = next(a for a in assets if a["path"].endswith("/code-usage.md"))
+        self.assertEqual(asset["template_source"], "code-usage-coding.md")
+        self.assertEqual(Path(asset["path"]).name, "code-usage.md")
+
+    def test_agent_routing_kernel_not_copied(self):
+        self.root.mkdir(parents=True)
+        self._apply(no_interrupt=True)
+        self.assertFalse(
+            (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
+        )
+        self.assertIn(
+            "cadence-managed:openspec-superpowers-routing:v1",
+            (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
+        )
+
+    def test_existing_playwright_enters_unified_drift_detection(self):
+        target = self.root / ".claude" / "rules" / rc.PLAYWRIGHT_RULE_FILE
+        target.parent.mkdir(parents=True)
+        target.write_text("# 项目自定义 Playwright\n", encoding="utf-8")
+        plan = self._compute()
+        assets = plan["steps"][rc.STEP_RULES_FILES]["assets"]
+        asset = next(a for a in assets if a["path"].endswith("/playwright.md"))
+        self.assertEqual(asset["action"], "replace")
+        self.assertEqual(asset["conflict"], "drift")
+        self.assertTrue(asset["backup_needed"])
+        self.assertEqual(asset["template_source"], "playwright.md")
+
+
 class TestDetectProject(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

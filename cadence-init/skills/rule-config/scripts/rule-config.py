@@ -120,20 +120,23 @@ KNOWN_L1_VERSIONS: dict = {}
 # L1 规则文件名（走独立分支，**不**进入 merge_markdown 章节合并）。
 L1_RULE_FILENAME = "openspec-superpowers-workflow.md"
 
-# S3 普通规则文件清单（8 个，不含 L1_RULE_FILENAME；document-storage/code-reading/
-# markdown-format/mcp-servers/language/code-usage-coding/code-usage-noncoding/
-# agent-routing-kernel）。
+# S3 普通规则文件清单（5 个，不含 L1_RULE_FILENAME、L0 kernel、
+# code-usage 双来源模板与可选 Playwright）。
 ORDINARY_RULE_FILES = (
-    "agent-routing-kernel.md",
     "language.md",
     "document-storage.md",
     "markdown-format.md",
     "mcp-servers.md",
     "code-reading.md",
-    "code-usage-coding.md",
-    "code-usage-noncoding.md",
 )
-# Playwright 规则文件（仅 intents.enable_playwright 时处理）。
+# code-usage 按最终项目类型单选规范源，但项目落地名始终固定为 code-usage.md。
+CODE_USAGE_SOURCE_MAP = {
+    "coding": "code-usage-coding.md",
+    "non-coding": "code-usage-noncoding.md",
+}
+CODE_USAGE_TARGET = "code-usage.md"
+CODE_USAGE_LEGACY_FILES = ("code-usage-coding.md", "code-usage-noncoding.md")
+# Playwright 规则文件（显式启用或目标已存在时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
 # OP-01：可选规则完整性检查使用的 CodeGraph 规则文件。
@@ -1350,25 +1353,33 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s2["elapsed_ms"] = int((time.monotonic() - t_s2) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_TEMPLATES] = s2
 
-    # --- S3 rules files：探测普通规则文件（8 个）+ L1 独立分支 + Playwright ---
+    # --- S3 rules files：探测普通规则 + code-usage 单选 + L1 + Playwright ---
     s3 = _step_skeleton(STEP_RULES_FILES)
     t_s3 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     templates_info = plan.get("templates", {}) or {}
     rules_root_str = templates_info.get("rules_root")
     rules_root = Path(rules_root_str) if rules_root_str else None
     rules_dir = root / ".claude" / "rules"
-    # S3 处理的文件清单（按序）：普通 8 文件 + L1 + （enable_playwright 时）Playwright。
-    s3_targets = list(ORDINARY_RULE_FILES) + [L1_RULE_FILENAME]
-    if intents.enable_playwright:
-        s3_targets.append(PLAYWRIGHT_RULE_FILE)
-    for fname in s3_targets:
-        is_l1 = (fname == L1_RULE_FILENAME)
-        target = rules_dir / fname
-        rel = str(target.relative_to(root)) if target.exists() else f".claude/rules/{fname}"
+    project_type = plan.get("project_type", "non-coding")
+    code_usage_source = CODE_USAGE_SOURCE_MAP[project_type]
+    # (项目落地名, 模板来源名, 是否 L1)；code-usage 双模板只能单选一个来源。
+    s3_targets = [(fname, fname, False) for fname in ORDINARY_RULE_FILES]
+    s3_targets.append((CODE_USAGE_TARGET, code_usage_source, False))
+    # 已存在的 Playwright 即视为启用，进入与普通规则相同的 drift 分类。
+    if intents.enable_playwright or (rules_dir / PLAYWRIGHT_RULE_FILE).exists():
+        s3_targets.append((PLAYWRIGHT_RULE_FILE, PLAYWRIGHT_RULE_FILE, False))
+    s3_targets.append((L1_RULE_FILENAME, L1_RULE_FILENAME, True))
+    for target_name, src_name, is_l1 in s3_targets:
+        target = rules_dir / target_name
+        rel = (
+            str(target.relative_to(root))
+            if target.exists()
+            else f".claude/rules/{target_name}"
+        )
         # 模板源文本（rules_root 不可用时退化为空串，该文件跳过处理）。
         if rules_root is not None:
             try:
-                template_text = (rules_root / fname).read_text(encoding="utf-8")
+                template_text = (rules_root / src_name).read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 template_text = ""
         else:
@@ -1378,6 +1389,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             action = "create" if template_text else "skip"
             s3["assets"].append({
                 "path": rel,
+                "template_source": src_name,
                 "action": action,
                 "conflict": None,
                 "backup_needed": False,
@@ -1385,13 +1397,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             })
             continue
         # 文件存在 → 分类。
-        # Playwright 规则文件已存在时不覆盖（尊重用户自定义，无论内容差异）。
-        if fname == PLAYWRIGHT_RULE_FILE and target.exists():
-            s3["assets"].append({
-                "path": rel, "action": "skip", "conflict": None,
-                "backup_needed": False, "is_l1": False,
-            })
-            continue
         try:
             existing_text = target.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -1401,12 +1406,14 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             # L1：skip → 无冲突；upgrade/replace → 冲突（allowed=['replace','keep']）。
             if state == "skip":
                 s3["assets"].append({
-                    "path": rel, "action": "skip", "conflict": None,
+                    "path": rel, "template_source": src_name,
+                    "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": True,
                 })
             else:
                 s3["assets"].append({
-                    "path": rel, "action": "replace", "conflict": state,
+                    "path": rel, "template_source": src_name,
+                    "action": "replace", "conflict": state,
                     "backup_needed": True, "is_l1": True,
                 })
                 conflict_id = f"s3:{rel}"
@@ -1438,12 +1445,14 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             # 普通规则文件：一致 → skipped；冲突 → 冲突（allowed=['replace','keep']）。
             if existing_text == template_text:
                 s3["assets"].append({
-                    "path": rel, "action": "skip", "conflict": None,
+                    "path": rel, "template_source": src_name,
+                    "action": "skip", "conflict": None,
                     "backup_needed": False, "is_l1": False,
                 })
             else:
                 s3["assets"].append({
-                    "path": rel, "action": "replace", "conflict": "drift",
+                    "path": rel, "template_source": src_name,
+                    "action": "replace", "conflict": "drift",
                     "backup_needed": True, "is_l1": False,
                 })
                 conflict_id = f"s3:{rel}"
@@ -2043,8 +2052,8 @@ def step_s2_locate_templates(root: Path, intents: Intents, plan: dict, report: d
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S3 执行（Task 6 实现）。
 
-    处理 8 个普通规则文件 + L1 独立分支 + （enable_playwright 时）Playwright。
-    每个资产按 compute_plan 探测的状态执行：
+    处理普通规则、按项目类型单选来源并落地为 code-usage.md、L1 独立分支，
+    以及显式启用或已存在的 Playwright。每个资产按 compute_plan 探测的状态执行：
       * create：读模板 atomic_write；
       * skip：不处理；
       * drift/replay（普通规则）：普通模式按 decision（keep→不覆盖，replace→已备份后写模板）；
@@ -2064,14 +2073,16 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     actions_log: list = []
 
     for asset in assets:
-        fname = Path(asset["path"]).name
+        target_name = Path(asset["path"]).name
+        template_source = asset.get("template_source", target_name)
         is_l1 = asset.get("is_l1", False)
-        target = rules_dir / fname
+        target = rules_dir / target_name
         action = asset.get("action")
         conflict = asset.get("conflict")
-        # 模板源文本。
+        # 模板来源可不同于落地名（code-usage.md 单选 coding/non-coding 来源）；
+        # .get 兜底兼容既有手工构造 asset 的测试和外部调用。
         try:
-            template_text = (rules_root / fname).read_text(encoding="utf-8")
+            template_text = (rules_root / template_source).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             template_text = ""
         if not template_text:
