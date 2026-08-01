@@ -2535,27 +2535,23 @@ def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-c
             break
 
     section = lines[rules_idx:end_idx]
-    section_text = "\n".join(section)
-
-    # 同一规则文件仅保留首个精确 `.claude/rules/<name>` 引用行。
+    # 按裸文件名识别引用；同一规则文件仅保留首个引用行。
+    # 一行命中多个 marker 时按整行处理：只要其中任一引用已出现，就删除该行；
+    # 否则保留并将该行全部引用标记为已见。
     rule_files = [marker for marker, _ in required]
     seen_refs = set()
     deduped = []
     for line in section:
-        refs = [
-            name
-            for name in rule_files
-            if f".claude/rules/{name}" in line
-        ]
-        if refs:
-            key = refs[0]
-            if key in seen_refs:
-                continue
-            seen_refs.add(key)
+        refs = [name for name in rule_files if name in line]
+        if refs and any(name in seen_refs for name in refs):
+            continue
+        seen_refs.update(refs)
         deduped.append(line)
 
-    missing = [line for marker, line in required if marker not in section_text]
-    rule6_missing = rule6_first_line not in section_text
+    # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
+    deduped_text = "\n".join(deduped)
+    missing = [line for marker, line in required if marker not in deduped_text]
+    rule6_missing = rule6_first_line not in deduped_text
     if not missing and not rule6_missing:
         if deduped == section:
             return text

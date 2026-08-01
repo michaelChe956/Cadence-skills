@@ -1523,9 +1523,17 @@ class TestSummaryDedup(unittest.TestCase):
 
     def test_different_wording_same_ref_not_duplicated(self):
         claude = self.root / "CLAUDE.md"
+        custom_line = (
+            "- **文档存放（项目措辞）** -> 详见 "
+            "`.claude/rules/document-storage.md`"
+        )
+        standard_line = (
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code "
+            "框架规则保留在 `.claude/rules/` 目录下** → 详见 "
+            "`.claude/rules/document-storage.md`"
+        )
         claude.write_text(
-            "# CLAUDE.md\n\n## 强制规则\n\n"
-            "- **文档存放（项目措辞）** -> 详见 `.claude/rules/document-storage.md`\n",
+            "# CLAUDE.md\n\n## 强制规则\n\n" + custom_line + "\n",
             encoding="utf-8",
         )
         report = rc.build_report("no-interrupt", self.root)
@@ -1539,13 +1547,16 @@ class TestSummaryDedup(unittest.TestCase):
         self.assertEqual(
             section.count(".claude/rules/document-storage.md"), 1
         )
+        self.assertIn(custom_line, section.splitlines())
+        self.assertNotIn(standard_line, section.splitlines())
 
     def test_duplicate_ref_deduped(self):
         claude = self.root / "CLAUDE.md"
+        first_line = "- **A（保留首个）** -> 详见 language.md"
+        duplicate_line = "- **B（删除后续）** -> 详见 language.md"
         claude.write_text(
             "# CLAUDE.md\n\n## 强制规则\n\n"
-            "- **A** -> 详见 `.claude/rules/language.md`\n"
-            "- **B** -> 详见 `.claude/rules/language.md`\n",
+            + first_line + "\n" + duplicate_line + "\n",
             encoding="utf-8",
         )
         report = rc.build_report("no-interrupt", self.root)
@@ -1556,7 +1567,9 @@ class TestSummaryDedup(unittest.TestCase):
         ):
             rc.run_apply(self.root, _intents(no_interrupt=True), report)
         section = claude.read_text(encoding="utf-8")
-        self.assertEqual(section.count(".claude/rules/language.md"), 1)
+        self.assertEqual(section.count("language.md"), 1)
+        self.assertIn(first_line, section.splitlines())
+        self.assertNotIn(duplicate_line, section.splitlines())
 
 
 class TestEnsureSummaryLines(unittest.TestCase):
@@ -1616,12 +1629,27 @@ class TestEnsureSummaryLines(unittest.TestCase):
         self.assertEqual(out, rc.BASE_CLAUDE_MD)
 
     def test_rule6_first_line_marker_prevents_block_reappend(self):
-        """规则 6 首行 marker 已存在时，即使块内其余措辞不完整也不重复追加。"""
-        first_line = rc.RULE6_BLOCK_CLAUDE.splitlines()[0]
-        text = rc.BASE_CLAUDE_MD.replace(rc.RULE6_BLOCK_CLAUDE, first_line)
+        """CLAUDE/AGENTS 对应首行 marker 已存在时，均不重复追加规则 6 块。"""
+        cases = (
+            ("CLAUDE.md", rc.BASE_CLAUDE_MD, rc.RULE6_BLOCK_CLAUDE),
+            ("AGENTS.md", rc.BASE_AGENTS_MD, rc.RULE6_BLOCK_AGENTS),
+        )
+        for entry_name, base, block in cases:
+            with self.subTest(entry_name=entry_name):
+                first_line = block.splitlines()[0]
+                text = base.replace(block, first_line)
+                out = rc._ensure_summary_lines(text, entry_name, "non-coding")
+                self.assertEqual(out, text)
+                self.assertEqual(out.count(first_line), 1)
+
+    def test_multi_marker_dedup_recomputes_missing_from_result(self):
+        """删除含重复 marker 的多引用行后，补回该行承载的唯一规则引用。"""
+        combined_line = "- **组合引用** language.md + code-usage.md"
+        text = rc.BASE_CLAUDE_MD.replace(rc.RULE2_TEXT_NONCODING, combined_line)
         out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
-        self.assertEqual(out, text)
-        self.assertEqual(out.count(first_line), 1)
+        self.assertNotIn(combined_line, out.splitlines())
+        self.assertIn(rc.RULE2_TEXT_NONCODING, out.splitlines())
+        self.assertEqual(out.count("code-usage.md"), 1)
 
     def test_agents_rule6_block_variant(self):
         """ut-ensure_summary-agents-rule6 / Important 1（AGENTS.md 规则 6 块文本与 CLAUDE.md 不同）"""
