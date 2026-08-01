@@ -520,26 +520,47 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def backup_file(path: Path) -> Path:
-    """备份文件：shutil.copy2 到同目录的 <name>.cadence-backup-<14位时间戳>。
-
-    返回备份文件 Path；失败抛 BackupError。
-    命名约定：config.yaml.cadence-backup-20260731120000（NB-02/OS-B1/L1-B1）。
-    codex 终审 C1：同秒同文件重复备份时追加 -2/-3 唯一后缀，
-    保证不 copy2 覆盖既有备份（不丢首次恢复点）。
-    """
-    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = Path(str(path) + f".cadence-backup-{stamp}")
-    if backup_path.exists():
-        # 同秒冲突：追加递增序号直至唯一（-2、-3 …）
-        seq = 2
-        while Path(str(path) + f".cadence-backup-{stamp}-{seq}").exists():
-            seq += 1
-        backup_path = Path(str(path) + f".cadence-backup-{stamp}-{seq}")
+def _ensure_legacy_gitignore(legacy_dir: Path) -> None:
+    """确保 cadence/legacy/.gitignore 为 * + !.gitignore；缺失/损坏则修复。"""
+    gi = legacy_dir / ".gitignore"
+    expected = "*\n!.gitignore\n"
     try:
+        current = gi.read_text(encoding="utf-8") if gi.exists() else None
+    except OSError as exc:
+        raise BackupError(f"无法检查归档忽略文件：{gi}（{exc}）") from exc
+    if current == expected:
+        return
+    try:
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write(gi, expected)
+    except OSError as exc:
+        raise BackupError(f"无法写入归档忽略文件：{gi}（{exc}）") from exc
+
+
+def backup_file(path: Path, root: Path) -> Path:
+    """复制原文件到 cadence/legacy/<时间戳[-N]>/<相对 root 路径>。
+
+    原位文件不动；归档复制失败抛 BackupError。同秒冲突在时间戳目录后追加 -2/-3。
+    每次归档前验证/修复 .gitignore。
+    """
+    legacy_root = root / "cadence" / "legacy"
+    _ensure_legacy_gitignore(legacy_root)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    try:
+        rel = path.relative_to(root)
+    except ValueError as exc:
+        raise BackupError(f"归档目标不在项目根目录内：{path}（root={root}）") from exc
+    dest_dir = legacy_root / stamp / rel.parent
+    seq = 2
+    while dest_dir.exists():
+        dest_dir = legacy_root / f"{stamp}-{seq}" / rel.parent
+        seq += 1
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = dest_dir / path.name
         shutil.copy2(path, backup_path)
     except OSError as exc:
-        raise BackupError(f"备份失败：{path} -> {backup_path}（{exc}）") from exc
+        raise BackupError(f"归档失败：{path} -> {dest_dir / path.name}（{exc}）") from exc
     return backup_path
 
 
@@ -2960,7 +2981,7 @@ def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
         # 同样备份——原配置可能是用户仅存的恢复点）；备份失败即终止（PublishError）。
         if mcp_path.exists():
             try:
-                mcp_backup = backup_file(mcp_path)
+                mcp_backup = backup_file(mcp_path, root)
             except BackupError as exc:
                 raise PublishError(f".mcp.json 重写前备份失败：{exc}") from exc
             report.setdefault("backups", []).append({
@@ -3339,7 +3360,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
     backups_done: list = []
     for target in backup_needs:
         try:
-            backup_path = backup_file(Path(target))
+            backup_path = backup_file(Path(target), root)
             backups_done.append({"file": str(target), "backup": str(backup_path)})
             report["backups"] = list(backups_done)
         except BackupError as exc:

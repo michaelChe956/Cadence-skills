@@ -342,60 +342,106 @@ class TestBackupFile(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir()
 
     def test_backup_naming_and_original_kept(self):
-        """ut-backup_file-naming / NB-02（备份名正则；原文件仍在且 sha256 不变）"""
-        p = Path(self.tmp.name) / "rule.md"
+        """ut-backup_file-naming / NB-02（归档路径含时间戳；原文件仍在且 sha256 不变）"""
+        p = self.root / "rule.md"
         p.write_text("content\n")
         before = rc.sha256_file(p)
-        backup = rc.backup_file(p)
-        self.assertRegex(str(backup), r".*\.cadence-backup-\d{14}$")
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/rule\.md$",
+        )
         self.assertTrue(p.exists())
         self.assertEqual(rc.sha256_file(p), before)
         self.assertEqual(Path(backup).read_text(), "content\n")
 
     def test_backup_openspec_naming(self):
-        """ut-backup_file-openspec-naming / OS-B1（固定名 config.yaml.cadence-backup-<14位时间戳>，同目录）"""
-        d = Path(self.tmp.name) / "openspec"
+        """ut-backup_file-openspec-naming / OS-B1（归档保留 openspec/config.yaml 相对路径）"""
+        d = self.root / "openspec"
         d.mkdir()
         p = d / "config.yaml"
         p.write_text("schema: spec-driven\n")
-        backup = rc.backup_file(p)
-        self.assertRegex(Path(backup).name, r"^config\.yaml\.cadence-backup-\d{14}$")
-        self.assertEqual(Path(backup).parent, d)
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/openspec/config\.yaml$",
+        )
 
     def test_backup_l1_naming(self):
-        """ut-backup_file-l1-naming / L1-B1（固定名 openspec-superpowers-workflow.md.cadence-backup-<14位时间戳>）"""
-        d = Path(self.tmp.name) / ".claude" / "rules"
+        """ut-backup_file-l1-naming / L1-B1（归档保留 .claude/rules 相对路径）"""
+        d = self.root / ".claude" / "rules"
         d.mkdir(parents=True)
         p = d / "openspec-superpowers-workflow.md"
         p.write_text(L1_V1)
-        backup = rc.backup_file(p)
-        self.assertRegex(Path(backup).name, r"^openspec-superpowers-workflow\.md\.cadence-backup-\d{14}$")
-        self.assertEqual(Path(backup).parent, d)
+        backup = rc.backup_file(p, self.root)
+        self.assertRegex(
+            str(backup.relative_to(self.root)),
+            r"^cadence/legacy/\d{14}/\.claude/rules/openspec-superpowers-workflow\.md$",
+        )
+
+    def test_backup_copies_to_legacy_with_relative_path(self):
+        """ut-backup_file-legacy-copy / B2：复制归档，原位不动，相对路径结构"""
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        target = self.root / ".claude" / "rules" / "mcp-servers.md"
+        target.write_text("old content", encoding="utf-8")
+
+        backup_path = rc.backup_file(target, self.root)
+
+        self.assertIn("cadence/legacy", str(backup_path))
+        self.assertIn(".claude/rules/mcp-servers.md", str(backup_path))
+        self.assertEqual(backup_path.read_text(encoding="utf-8"), "old content")
+        self.assertEqual(target.read_text(encoding="utf-8"), "old content")  # 原位不动
+
+    def test_backup_creates_and_repairs_gitignore(self):
+        """ut-backup_file-legacy-gitignore / 每次归档前验证/修复 .gitignore"""
+        (self.root / ".claude" / "rules").mkdir(parents=True)
+        target = self.root / ".claude" / "rules" / "language.md"
+        target.write_text("x", encoding="utf-8")
+        rc.backup_file(target, self.root)
+        gi = self.root / "cadence" / "legacy" / ".gitignore"
+        self.assertEqual(gi.read_text(encoding="utf-8"), "*\n!.gitignore\n")
+        # 损坏后再次归档自动修复
+        gi.write_text("wrong", encoding="utf-8")
+        rc.backup_file(target, self.root)
+        self.assertEqual(gi.read_text(encoding="utf-8"), "*\n!.gitignore\n")
+
+    def test_backup_gitignore_write_failure_raises_backup_error(self):
+        """ut-backup_file-legacy-gitignore-fail / .gitignore 写失败统一包装 BackupError"""
+        target = self.root / "rule.md"
+        target.write_text("content\n", encoding="utf-8")
+        with mock.patch.object(rc, "atomic_write", side_effect=rc.PublishError("write failed")):
+            with self.assertRaises(rc.BackupError):
+                rc.backup_file(target, self.root)
 
     def test_backup_same_second_unique_suffix(self):
         """ut-backup_file-unique-suffix / codex 终审 C1
-        （同秒同文件重复备份 → 追加 -2/-3 唯一后缀，两个备份都存在且不覆盖首次恢复点）"""
-        p = Path(self.tmp.name) / "config.yaml"
+        （同秒同文件重复备份 → 时间戳目录追加 -2/-3，三个恢复点互不覆盖）"""
+        p = self.root / "config.yaml"
         p.write_text("v1\n")
         fixed = rc.datetime(2026, 7, 31, 12, 0, 0)
         with mock.patch.object(rc, "datetime") as mdt:
             mdt.now.return_value = fixed
-            b1 = rc.backup_file(p)
+            b1 = rc.backup_file(p, self.root)
             p.write_text("v2\n")
-            b2 = rc.backup_file(p)
+            b2 = rc.backup_file(p, self.root)
             p.write_text("v3\n")
-            b3 = rc.backup_file(p)
-        # 三个备份名两两不同且全部存在（首次恢复点未被覆盖）
+            b3 = rc.backup_file(p, self.root)
+        # 三个归档路径两两不同且全部存在（首次恢复点未被覆盖）
         names = [str(b) for b in (b1, b2, b3)]
         self.assertEqual(len(set(names)), 3)
         for b in (b1, b2, b3):
             self.assertTrue(Path(b).exists())
-        # 首个备份保持无后缀基名（既有命名约定不变），后续追加 -2/-3
-        self.assertRegex(Path(b1).name, r"\.cadence-backup-\d{14}$")
-        self.assertRegex(Path(b2).name, r"\.cadence-backup-\d{14}-\d+$")
-        self.assertRegex(Path(b3).name, r"\.cadence-backup-\d{14}-\d+$")
+        # 同秒冲突后缀加在时间戳目录，而不是文件名
+        self.assertEqual(Path(b1).parent.name, "20260731120000")
+        self.assertEqual(Path(b2).parent.name, "20260731120000-2")
+        self.assertEqual(Path(b3).parent.name, "20260731120000-3")
+        self.assertEqual(Path(b1).name, "config.yaml")
+        self.assertEqual(Path(b2).name, "config.yaml")
+        self.assertEqual(Path(b3).name, "config.yaml")
         # 内容未被覆盖：每个备份保留各自时点内容
         self.assertEqual(Path(b1).read_text(), "v1\n")
         self.assertEqual(Path(b2).read_text(), "v2\n")
@@ -1599,7 +1645,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         report = {"backups": []}
         actions: list = []
         rc._s8_ensure_mcp_configs(self.root, report, actions)
-        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        backups = list(
+            (self.root / "cadence" / "legacy").glob("*/.mcp.json")
+        )
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(encoding="utf-8"), "{invalid json\n")
         doc = json.loads(mcp.read_text(encoding="utf-8"))
@@ -1617,7 +1665,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         )
         report = {"backups": []}
         rc._s8_ensure_mcp_configs(self.root, report, [])
-        backups = list(self.root.glob(".mcp.json.cadence-backup-*"))
+        backups = list(
+            (self.root / "cadence" / "legacy").glob("*/.mcp.json")
+        )
         self.assertEqual(len(backups), 1)
         doc = json.loads(mcp.read_text(encoding="utf-8"))
         self.assertIn("codegraph", doc["mcpServers"])
@@ -1628,7 +1678,9 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         report = {"backups": []}
         rc._s8_ensure_mcp_configs(self.root, report, [])
         self.assertTrue((self.root / ".mcp.json").is_file())
-        self.assertEqual(list(self.root.glob(".mcp.json.cadence-backup-*")), [])
+        self.assertEqual(
+            list((self.root / "cadence" / "legacy").glob("*/.mcp.json")), []
+        )
         self.assertEqual(report["backups"], [])
 
 
