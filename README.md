@@ -448,6 +448,7 @@ OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kim
 - ✅ 默认写入智普/MiniMax API Key 占位配置
 - ✅ 默认同步 stdio MCP 到 `.codex/config.toml`（Codex 不支持 HTTP 类型 MCP）
 - ✅ pi 经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置
+- ✅ Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置
 - ✅ 默认将 `.worktrees/`、`.mcp.json`、`.codex/` 加入 `.gitignore`
 
 ### 步骤 5（推荐）：项目个性化规则

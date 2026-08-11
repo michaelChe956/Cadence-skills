@@ -8,7 +8,7 @@
 
 **Goals**
 - pre-check 将 OpenSpec 产物检查扩为四客户端，老项目重跑自动补齐 kimi 产物。
-- mcp-configuration 为 Kimi 生成项目级 `.kimi-code/mcp.json` 并纳入 `.gitignore`。
+- mcp-configuration 补充 Kimi 消费方式说明（Kimi 原生读取根目录 `.mcp.json`），不生成第二份配置，不新增 `.gitignore` 条目。
 - rule-config 项目类型扫描剪枝 `.kimi-code`。
 - README 与 skills 文档以四客户端口径更新。
 
@@ -47,12 +47,12 @@
 
 - **OpenSpec `--tools kimi` 最低版本未知** → 实现时查证 changelog，在 SKILL.md 标注与 pi 的 ">= 1.4.1" 同款版本注记；pre-check 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时按现有逻辑升级。
 - **Kimi 解析 OpenSpec 生成 SKILL.md 的非标准 frontmatter 字段**（`allowed-tools`/`license`/`metadata`）→ Kimi 目录形式仅强制 `name`/`description`，未知字段忽略；OpenSpec 官方支持 kimi 工具即保证兼容；实现时对生成的 5 个 SKILL.md 做一次解析冒烟验证。
-- **`.kimi-code/mcp.json` 含 API Key 占位** → 纳入 `.gitignore`，与 `.mcp.json`/`.codex/config.toml` 同策略；文档保留安全提醒。
+- **`.mcp.json` 含 API Key 占位** → 已入 `.gitignore`；Kimi 与 pi 均复用同一文件，无需额外配置副本或忽略条目。
 - **老项目三客户端产物齐全但无 kimi 产物** → 重跑 `/pre-check` 按增量逻辑仅 `init --tools kimi`，不触碰既有产物。
 
 ## Migration Plan
 
-- 老项目：重跑 `/pre-check`（自动补齐 `.kimi-code/skills/openspec-*`）与 `/mcp-configuration`（生成 `.kimi-code/mcp.json`、追加 `.gitignore`）。
+- 老项目：重跑 `/pre-check`（自动补齐 `.kimi-code/skills/openspec-*`）；MCP 配置无需额外动作（Kimi 与 pi 均原生复用已有根目录 `.mcp.json`）。
 - 回滚：改动均为增量补写，不覆盖既有文件；删除新增条目即回退，无需专门回滚流程。
 
 ## Open Questions

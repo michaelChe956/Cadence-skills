@@ -409,7 +409,7 @@ cd /tmp && rm -rf kimi-e2e && mkdir kimi-e2e && cd kimi-e2e
 git init -q && openspec init --tools claude,codex,pi,kimi 2>&1 | tail -5
 # 验证四客户端产物
 test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
-test -d .codex/skills/openspec-propose
+test -d .agents/skills/openspec-propose
 test -f .pi/skills/openspec-propose/SKILL.md
 test -f .kimi-code/skills/openspec-propose/SKILL.md
 test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5

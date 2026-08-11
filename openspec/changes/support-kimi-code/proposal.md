@@ -20,7 +20,7 @@ Cadence 目前只对 Claude Code、Codex、pi 三客户端做环境初始化（O
 ## Impact
 
 - `cadence-init/skills/pre-check/SKILL.md`（步骤 5、no-interrupt 门槛、增量、快速参考、验证命令）与 `scripts/pre-check.sh`（职责边界注释）
-- `cadence-init/skills/mcp-configuration/SKILL.md`（`.kimi-code/mcp.json` 同步、格式差异表、.gitignore）
+- `cadence-init/skills/mcp-configuration/SKILL.md`（Kimi 消费方式说明、格式差异表 Kimi 列）
 - `cadence-init/skills/rule-config/SKILL.md` 与 `scripts/rule-config.py`（PRUNE_DIRS 有界扫描剪枝）
 - `README.md`（客户端表述与 skills 表格）
 - OpenSpec specs：`init-skill-sequencing`（修改）、`kimi-code-support`（新增）

@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
-**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.codex/.pi` 写入待初始化项目根目录。
+**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.agents/.pi/.kimi-code` 写入待初始化项目根目录。
 
 ## 参数模式
 
@@ -180,7 +180,7 @@ digraph check_flow {
 
 **第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
 
-1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.codex/.pi` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
+1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.agents/.pi/.kimi-code` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
 2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录，也**不要**把脚本单独复制到别处执行——它依赖同目录下的 `mirrors/`（镜像配置），必须连同 skill 目录一起定位。
 
 **第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
@@ -277,7 +277,7 @@ ls ~/.claude/skills/playwright-cli
 
 **初始化与更新命令**：
 
-> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi/.kimi-code`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.agents/.pi/.kimi-code`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
 
 ```bash
 # 四客户端产物均缺失（新项目）
