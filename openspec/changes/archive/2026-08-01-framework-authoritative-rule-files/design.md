@@ -6,7 +6,7 @@
 
 实测（naruto 执行 `rule-config no-interrupt`）暴露：Serena MCP 整段复活、模板已更新措辞的旧行重复、入口摘要块重复追加、`code-usage.md` 引用断链（落地的是 `code-usage-coding.md`/`code-usage-noncoding.md` 两个互斥模板）、`agent-routing-kernel.md` 既作 L0 插入源又被复制为规则文件的矛盾。
 
-术语澄清：现有 `managed-rule-lifecycle` spec 中"规则层集成不得依赖 legacy"的 "legacy" 指 `cadence-workflow` 遗留框架；本设计的 `cadence/legacy/` 是备份归档目录，二者无关。
+术语澄清：现有 `managed-rule-lifecycle` spec 中“规则层集成不得依赖 legacy”的 “legacy” 指任何 legacy 工作流插件遗留框架；本设计的 `cadence/legacy/` 是备份归档目录，二者无关。
 
 ## Goals / Non-Goals
 
@@ -87,7 +87,7 @@
 
 - **[框架规则文件全覆盖丢失项目侧改写]** -> 项目定制本就该在 `cadence/project-rules/`，且原文件副本归档到 `cadence/legacy/` 可恢复。设计上可接受。
 - **[项目类型检测不稳定导致 `code-usage.md` 反复切换]** -> 类型检测基于有界扫描+工程配置文件，稳定；且每次切换都有归档，不丢数据。若检测抖动，报告会显式提示类型变化。
-- **[`cadence/legacy/` 术语与现有 spec "legacy" 冲突]** -> design 与 spec 已显式澄清二者无关；`cadence/legacy/` 是目录名，spec 中的 "legacy" 指 `cadence-workflow` 遗留框架。
+- **[`cadence/legacy/` 术语与现有 spec "legacy" 冲突]** -> design 与 spec 已显式澄清二者无关；`cadence/legacy/` 是目录名，spec 中的 "legacy" 指任何 legacy 工作流插件遗留框架。
 - **[复制归档+原子覆盖改变 §11.1/§11.2 备份契约]** -> `backup_file` 重构为复制归档 + `atomic_write` 原子覆盖，§11.1 命名、§11.2 L0 全局屏障、OS-08/L1-07 屏障都需同步改写；测试需覆盖归档失败与 `atomic_write` 失败分支（后者原文件不变）。
 - **[历史污染产物不自动清理]** -> 新设计只保证后续幂等，业务项目既有污染（如 naruto 的 Serena 段落）需项目自行重跑或手动清理。已列入 Non-Goals。
 

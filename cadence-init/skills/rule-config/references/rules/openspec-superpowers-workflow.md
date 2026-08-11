@@ -48,6 +48,6 @@
 - 用户当前明确指令与既有契约冲突时停止，先更新权威产物。
 
 ## 八、禁止事项
-- 不依赖 `cadence-workflow`、Hook、插件或阅读状态机。
+- 不依赖任何 legacy 工作流插件、Hook、插件或阅读状态机。
 - 不添加无效的 OpenSpec `rules.apply`。
 - 不把框架规则写入 `cadence/project-rules/`，也不把用户自定义规则写入 `.claude/rules/`。

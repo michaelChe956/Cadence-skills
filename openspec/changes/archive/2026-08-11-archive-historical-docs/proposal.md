@@ -26,4 +26,4 @@
 - 影响 `cadence/` 下 docs、analysis、analysis-docs、designs、designs-reviews、plans、prds 共 7 个目录 63 份文档（18 份删除、45 份归档）的位置或存续。
 - 影响 `openspec/changes/` 与 `openspec/specs/` 的结构。
 - 新增 `cadence/archive/` 目录及其 `INDEX.md`。
-- 不改动 `readmes/`、`.claude/`、`cadence/project-rules/`、`cadence-init/`、`cadence-workflow/` 及任何 Skill 正文；如引用扫描发现上述位置存在活引用，只修复引用本身。
+- 不改动 `readmes/`、`.claude/`、`cadence/project-rules/`、`cadence-init/` 及任何 Skill 正文；如引用扫描发现上述位置存在活引用，只修复引用本身。

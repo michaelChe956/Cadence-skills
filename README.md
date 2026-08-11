@@ -115,12 +115,11 @@ sudo apt install claude-code
 
 ## 安装
 
-Cadence 由两个独立插件组成：
+Cadence 当前提供以下插件：
 
 | 插件 | 说明 |
 |------|------|
 | **cadence-init** | 项目初始化 — 环境检查、项目分析、规则配置、MCP 配置、Skill 创建及 KnowledgeBase 生成与消费 |
-| **cadence-workflow** | 开发工作流 — 完整/快速/探索流程、TDD、代码审查、进度追踪 |
 
 ### 方式 1: 通过插件市场安装（推荐）
 
@@ -130,14 +129,11 @@ Cadence 由两个独立插件组成：
 /plugin marketplace add michaelChe956/Cadence-skills
 ```
 
-然后分别安装两个插件：
+然后安装插件：
 
 ```bash
 /plugin install cadence-init@cadence-skills-marketplace
-/plugin install cadence-workflow@cadence-skills-marketplace
 ```
-
-> 两个插件可以独立安装。如果只需要项目初始化功能，安装 `cadence-init` 即可；如果只需要开发工作流，安装 `cadence-workflow` 即可。推荐同时安装以获得完整体验。
 
 ### 方式 2: 离线安装
 
@@ -158,7 +154,7 @@ cd Cadence-skills
 
 #### 步骤 2: 运行安装脚本
 
-项目提供了跨平台安装脚本（v2.0，已适配双插件结构）：
+项目提供了跨平台安装脚本（v2.1，已适配单插件结构）：
 
 **Linux/macOS**：
 ```bash
@@ -173,9 +169,8 @@ install-offline.bat
 ```
 
 安装脚本会自动完成：
-- 将 `cadence-init` 和 `cadence-workflow` 安装到 `~/.claude/plugins/marketplaces/cadence-skills-local/`
+- 将 `cadence-init` 安装到 `~/.claude/plugins/marketplaces/cadence-skills-local/`
 - 配置 `known_marketplaces.json` 注册本地 marketplace
-- 设置 `cadence-workflow/hooks/session-start` 的执行权限（macOS/Linux）
 
 #### 步骤 3: 配置项目启用插件
 
@@ -190,8 +185,7 @@ mkdir -p .claude
 ```json
 {
   "enabledPlugins": {
-    "cadence-init@cadence-skills-local": true,
-    "cadence-workflow@cadence-skills-local": true
+    "cadence-init@cadence-skills-local": true
   }
 }
 ```
@@ -472,206 +466,53 @@ OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kim
 
 **完成后**，您的项目就准备好使用 Cadence 的完整工作流程了！
 
-## 基本工作流程（cadence-workflow 插件）
-
-Cadence 提供 3 种流程模式，适应不同的开发场景：
-
-### 1. 完整流程（Full Flow）
-
-**适用场景**：复杂功能开发（预估>2小时）、团队协作项目、企业级应用
-
-**流程节点**：
-1. **Brainstorm** - 需求探索，通过苏格拉底式对话明确需求
-2. **Analyze** - 存量分析，分析现有代码库
-3. **Requirement** - 需求分析，输出结构化需求文档
-4. **Design** - 技术设计，输出详细技术方案
-5. **Design Review** - 设计审查，验证设计质量
-6. **Plan** - 实现计划，分解为具体任务
-7. **Git Worktrees** - 创建隔离环境，避免冲突
-8. **Subagent Development** - 代码实现 + 单元测试
-
-**关键特性**：
-- 每个节点完成后人工确认
-- 支持断点续传
-- 两阶段审查（规范审查 + 代码质量审查）
-
-### 2. 快速流程（Quick Flow）
-
-**适用场景**：简单功能开发（预估<2小时）、原型验证、Bug 修复
-
-**流程节点**：
-1. **Requirement** - 需求分析
-2. **Plan** - 实现计划
-3. **Git Worktrees** - 创建隔离环境
-4. **Subagent Development** - 代码实现
-
-**关键特性**：
-- 跳过探索和分析阶段
-- 快速进入开发
-- 仍然保持 TDD 和审查机制
-
-### 3. 探索流程（Exploration Flow）
-
-**适用场景**：新技术验证、技术选型、创新功能、原型开发、POC 验证
-
-**流程节点**：
-1. **Brainstorm** - 需求探索（探索性 PRD）
-2. **Analyze** - 存量分析（简化分析）
-3. **Git Worktrees** - 创建隔离环境（poc/ 分支）
-4. **Subagent Development** - 原型开发 + 测试（质量要求较低）
-
-**关键特性**：
-- 允许失败和迭代，可从任何节点回到之前的节点
-- 原型代码质量要求较低，但必须能验证核心想法
-- Subagent Development 完成后进入**评估阶段**，有 4 种结局：
-  - ✅ **结局1: 转标准流程** - 功能可行 + 需要正式实现 → 清理 POC 代码，从 Design 开始正式实现
-  - 🔄 **结局2: 继续探索** - 功能可行但需要调整 → 再次循环 Subagent Development
-  - 📚 **结局3: 技术储备完成** - 功能可行但暂不需要 → 清理 POC 代码，记录技术方案
-  - ❌ **结局4: 记录教训** - 功能不可行 → 清理 POC 代码，记录失败原因
-- 探索成功后建议从 Design 节点开始正式实现（不直接使用 POC 代码）
-- 产物可能是技术验证报告而非最终代码
-
-**助手会在任何任务前检查相关的 Skills。** 这是强制性工作流程，不是建议。
-
 ## Skills 库
 
-> **注**：Cadence 包含 14 个核心 Skills（下文列出）和 5 个从 [superpowers](https://github.com/obra/superpowers) 继承的 Skills（test-driven-development, verification-before-completion, requesting-code-review, receiving-code-review, finishing-a-development-branch）。
+> **注**：Cadence 当前以 Skill 形式提供能力，核心为 `cadence-init` 插件下的以下 Skills。
 
-### 核心节点 Skills（8个）
+### 元 Skills（1个）
 
-**需求阶段**
-- **brainstorming** - 需求探索，通过苏格拉底式对话明确需求 [📖 详细指南](readmes/skills/brainstorming.md)
-- **analyze** - 存量分析，分析现有代码库
-- **requirement** - 需求分析，输出结构化需求文档
-
-**设计阶段**
-- **design** - 技术设计，输出详细技术方案（支持带着审查报告重新设计）
-- **design-review** - 设计审查，验证设计质量（4 个维度）
-- **plan** - 实现计划，分解为具体任务（每个任务 2-5 分钟）
-
-**开发阶段**
-- **using-git-worktrees** - 创建隔离环境，避免冲突
-- **subagent-development** - 代码实现 + 单元测试（3 个 Subagent 角色）
-
-**进度追踪阶段**
-- **status** - 查看项目进度，计算完成百分比，显示时间统计 [📖 详细指南](readmes/skills/status.md)
-- **checkpoint** - 创建检查点，保存完整上下文，支持恢复 [📖 详细指南](readmes/skills/checkpoint.md)
-- **resume** - 恢复中断的工作流程，重建上下文 [📖 详细指南](readmes/skills/resume.md)
-- **report** - 生成进度报告，支持日报和周报 [📖 详细指南](readmes/skills/report.md)
-- **monitor** - 查看状态快照（一次性，非实时）[📖 详细指南](readmes/skills/monitor.md)
-
-**数据管理阶段**
-- **data-validation** - 数据验证，写入前验证数据格式和必填字段 [📖 详细指南](readmes/skills/data-validation.md)
-- **data-cleanup** - 数据清理，归档旧数据并删除过期数据 [📖 详细指南](readmes/skills/data-cleanup.md)
-- **version-migration** - 版本迁移，升级旧版本数据到当前版本 [📖 详细指南](readmes/skills/version-migration.md)
-
-**📖 [查看所有 Skills 详细指南](readmes/skills/README.md)**
-
-### 流程 Skills（3个）
-
-- **full-flow** - 完整流程（8 个节点），适用于复杂功能开发 [📖 详细指南](readmes/skills/full-flow.md)
-- **quick-flow** - 快速流程（4 个节点），适用于简单功能开发 [📖 详细指南](readmes/skills/quick-flow.md)
-- **exploration-flow** - 探索流程（4 个节点 + 迭代），适用于新技术验证 [📖 详细指南](readmes/skills/exploration-flow.md)
-
-**📖 [查看所有 Skills 详细指南](readmes/skills/README.md)**
-
-### 元 Skills（3个）
-
-- **using-cadence** - Cadence Skills 系统使用指南 [📖 详细指南](readmes/skills/using-cadence.md)
-- **cad-load** - 项目上下文加载 [📖 详细指南](readmes/skills/cad-load.md)
 - **skill-creator** - 创建、校验、打包并优化 Claude Code skills [📖 详细指南](readmes/skills/skill-creator.md)
+
+### KnowledgeBase Skills（7个）
+
+- **knowledge-base-bootstrap** - 校验用户输入、初始化 Schema 4.0 KnowledgeBase 并编排领域分析 [📖 详细指南](readmes/skills/knowledge-base-bootstrap.md)
+- `knowledge-base-base-info` - 生成工程、服务、数据、中间件和开发方式信息
+- `knowledge-base-api` - 分析对外能力和工程内对内能力
+- `knowledge-base-pages` - 分析页面、路由、权限和 REST API 关联
+- `knowledge-base-overview` - 生成知识库入口、导航和项目使用规则
+- **knowledge-base-update** - 消费完整变更包，幂等更新已有 KnowledgeBase [📖 详细指南](readmes/skills/knowledge-base-update.md)
+- **knowledge-base-context** - 从任务出发，同时读取 KnowledgeBase 与当前实现并生成最小上下文 [📖 详细指南](readmes/skills/knowledge-base-context.md)
 
 **📖 [查看所有 Skills 详细指南](readmes/skills/README.md)**
 
 ## Commands 库
 
-> **注**：Cadence 包含 15 个核心 Commands（下文列出）和 5 个从 [superpowers](https://github.com/obra/superpowers) 继承的 Commands（/tdd, /verify, /request-review, /receive-review, /finish）。
+Cadence 当前以 Skill 形式提供能力，不再提供独立的 Command。其中 `skill-creator`、`pre-check` 等由 `cadence-init` 插件以 Skill 形式提供，直接输入 `/skill-creator`、`/pre-check` 即可触发。
 
-### 节点 Commands（7个）
-
-- `/brainstorm` - 启动需求探索
-- `/analyze` - 启动存量分析
-- `/requirement` - 启动需求分析
-- `/design` - 启动技术设计
-- `/design-review` - 启动设计审查
-- `/plan` - 启动实现计划
-- `/develop` - 启动代码实现
-
-**📖 [查看所有 Commands 详细指南](readmes/commands/README.md)**
-
-### 流程 Commands（6个）
-
-- `/worktree` - 创建 Git Worktree 隔离环境
-- `/status` - 查看当前进度 [📖 详细指南](readmes/skills/status.md)
-- `/resume` - 恢复之前的进度 [📖 详细指南](readmes/skills/resume.md)
-- `/checkpoint` - 创建检查点 [📖 详细指南](readmes/skills/checkpoint.md)
-- `/report` - 生成进度报告 [📖 详细指南](readmes/skills/report.md)
-- `/monitor` - 状态快照（非实时）[📖 详细指南](readmes/skills/monitor.md)
-
-**📖 [查看所有 Commands 详细指南](readmes/skills/README.md)**
-
-### 元能力（3个）
-
-- `/pre-check` - 前置条件检查，一键检查补齐六个基础工具（支持大陆镜像加速与一键升级，cadence-init Skill）
-- `/cad-load` - 加载项目上下文（支持 quick/standard/full 三种模式）
-- `/skill-creator` - 创建和优化 Skills（创建模板、打包、触发率优化，cadence-init Skill）
-
-> **说明**：`pre-check` 与 `skill-creator` 由 `cadence-init` 插件以 Skill 形式提供，直接输入 `/pre-check`、`/skill-creator` 即可触发。
-
-**📖 [查看所有 Commands 详细指南](readmes/commands/README.md)**
+**📖 [查看详细指南](readmes/commands/README.md)**
 
 ## 最佳实践
 
-### 1. 选择正确的流程模式
+### 1. 规范化项目初始化
 
-- **复杂功能** → 使用完整流程（Full Flow）
-- **简单功能** → 使用快速流程（Quick Flow）
-- **技术调研** → 使用探索流程（Exploration Flow）
+- 使用 `cadence-init` 完成环境检查、项目分析与规则配置
+- 通过 KnowledgeBase 为后续开发提供经过校验的项目上下文
 
-### 2. 充分利用断点续传
+### 2. 基于知识库开展工作
 
-- 每个节点完成后会自动创建检查点
-- 使用 `/resume` 恢复之前的进度
-- 使用 `/status` 查看当前进度
-
-### 3. 保持 TDD 实践
-
-- Subagent Development 强制执行 TDD
-- 测试覆盖率 ≥ 80%
-- 两阶段审查确保质量
-
-### 5. 合理使用 Git Worktrees
-
-- 每个功能开发在独立的 Worktree 中
-- 避免主分支污染
-- 方便并行开发
+- 首次建立 KnowledgeBase 后，在需求、设计、编码、评审等任务前使用 `knowledge-base-context` 获取最小上下文
+- 项目事实变化时使用 `knowledge-base-update` 幂等更新
 
 ## 技术亮点
 
-### 1. 完整的开发流程
+### 1. Schema 4.0 KnowledgeBase
 
-- 8 个核心节点覆盖完整开发生命周期
-- 3 种流程模式适应不同场景
-- 支持断点续传和会话恢复
+- 覆盖工程、服务、数据、中间件与开发方式
+- 字段级数据模型与配置快照
+- 支持渐进式任务上下文生成
 
-### 2. 智能进度追踪
-
-- 自动创建检查点
-- 实时监控和报告生成
-
-### 3. 两阶段审查机制
-
-- **Spec Reviewer**: 验证规范符合性（4 个维度）
-- **Code Quality Reviewer**: 验证代码质量（5 个维度）
-- **TDD 强制执行**: 测试覆盖率 ≥ 80%
-
-### 4. 灵活的流程模式
-
-- **完整流程**: 确保质量和可追溯性
-- **快速流程**: 提高小功能开发效率
-- **探索流程**: 支持技术调研和 POC
-
-### 5. 智能项目初始化
+### 2. 智能项目初始化
 
 - 自动检测项目类型和技术栈
 - 跨平台兼容（macOS/Linux/Windows）
@@ -687,7 +528,7 @@ Cadence 提供 3 种流程模式，适应不同的开发场景：
 
 ## Skill Creator（生成可直接调用的 Skills）
 
-仓库提供了元技能 [`skills/skill-creator/SKILL.md`](skills/skill-creator/SKILL.md)，用于在本仓库中持续创建和维护可直接调用的 Skills。
+仓库提供了元技能 [`cadence-init/skills/skill-creator/SKILL.md`](cadence-init/skills/skill-creator/SKILL.md)，用于在本仓库中持续创建和维护可直接调用的 Skills。
 
 使用方式很简单：
 
@@ -710,7 +551,7 @@ Skills 直接存储在这个仓库中。要贡献：
 
 1. Fork 仓库
 2. 为你的 Skill 创建分支
-3. 遵循 `skills/skill-creator/SKILL.md` 创建和测试新 Skills
+3. 遵循 `cadence-init/skills/skill-creator/SKILL.md` 创建和测试新 Skills
 4. 提交 PR
 
 ## 更新
@@ -719,7 +560,6 @@ Skills 直接存储在这个仓库中。要贡献：
 
 ```bash
 /plugin update cadence-init
-/plugin update cadence-workflow
 ```
 
 ### 离线安装更新
@@ -730,35 +570,6 @@ Skills 直接存储在这个仓库中。要贡献：
 git pull
 ./install-offline.sh  # 或 install-offline.bat
 ```
-
-## 版本历史
-
-### v2.4 MVP（2026-03-02）
-
-**已完成功能**：
-- ✅ 8 个核心节点 Skills
-- ✅ 3 个流程 Skills
-- ✅ 3 个元 Skills（using-cadence, cad-load, pre-check）
-- ✅ 15 个 Commands
-- ✅ 3 个 Subagent Prompts
-- ✅ 智能进度追踪系统
-- ✅ 两阶段审查机制
-
-**统计数据**：
-- 20 个 Skills（15 个 Cadence 核心 + 5 个 superpowers 继承）
-- 20 个 Commands（15 个 Cadence 核心 + 5 个 superpowers 继承）
-- 3 个 Subagent Prompts
-- 约 50 个文件，约 150KB 代码
-
-**Cadence 核心 Skills（15个）**：
-- 8 个核心节点：brainstorming, analyze, requirement, design, design-review, plan, using-git-worktrees, subagent-development
-- 3 个流程：full-flow, quick-flow, exploration-flow
-- 3 个元 Skills：using-cadence, cad-load, pre-check
-
-**从 superpowers 继承（5个）**：
-- test-driven-development, verification-before-completion, requesting-code-review, receiving-code-review, finishing-a-development-branch
-
-**详细发布说明**：[RELEASE-NOTES.md](RELEASE-NOTES.md)
 
 ## 许可证
 

@@ -6,7 +6,7 @@
 
 当用户进行需求澄清、Design、Plan、Coding、Testing、Review 或 Debug 时，它先从当前任务出发，分别读取知识库语义、当前代码、数据模型和配置快照，生成最小任务上下文包，再将控制权交回当前 Agent 继续用户原始任务。
 
-该 Skill 不负责初始化或更新 KnowledgeBase，也不依赖 `cadence-workflow`。
+该 Skill 不负责初始化或更新 KnowledgeBase。
 
 ## 使用前提
 

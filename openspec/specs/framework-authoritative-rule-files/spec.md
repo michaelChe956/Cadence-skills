@@ -3,7 +3,7 @@
 ## Purpose
 定义框架受管规则文件的权威覆盖语义：哪些资产由框架模板整体决定内容、哪些保留原有合并语义、被替换的原文件如何归档到 `cadence/legacy/`，以及重复执行 `rule-config` 必须产出一致结果的幂等契约。
 
-术语定义：`cadence/legacy/` 是 rule-config 产生的被动恢复归档目录，仅用于存放被覆盖前的原文件副本，不属于 `cadence-workflow` 遗留框架；协作路由与运行不依赖其中内容，与 `managed-rule-lifecycle` 中"规则层集成不得依赖 legacy"的 legacy（指 cadence-workflow）无关。
+术语定义：`cadence/legacy/` 是 rule-config 产生的被动恢复归档目录，仅用于存放被覆盖前的原文件副本，不属于 legacy 工作流插件遗留框架；协作路由与运行不依赖其中内容，与 `managed-rule-lifecycle` 中“规则层集成不得依赖 legacy”的 legacy（指任何 legacy 工作流插件）无关。
 
 ## Requirements
 ### Requirement: 受管资产必须按三类策略分别处理

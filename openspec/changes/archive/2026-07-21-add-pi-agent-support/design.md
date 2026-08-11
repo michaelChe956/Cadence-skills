@@ -30,7 +30,7 @@ pi 侧已确认的事实（勘察证据）：
 
 **Non-Goals:**
 
-- 不修改 `cadence-workflow`（legacy）。
+- 不修改任何 legacy 工作流插件。
 - 不修改 `install-offline.sh/.bat`。
 - 不自建 pi MCP 扩展，不维护 pi 专属 MCP 配置文件（不引入 `.pi/mcp.json`）。
 - 不升级本仓库根 `AGENTS.md`/`CLAUDE.md` 自身受管区块（后续重跑 rule-config 处理）。

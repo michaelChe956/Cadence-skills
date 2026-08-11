@@ -7,8 +7,9 @@ REM   双击运行 install-offline.bat
 REM   或在命令行中执行: install-offline.bat
 REM
 REM 作者: Cadence Team
-REM 版本: v2.0
+REM 版本: v2.1
 REM 更新记录:
+REM   v2.1 (2026-08): 移除 cadence-workflow 插件，仅保留 cadence-init
 REM   v2.0 (2026-04-03): 适配拆分后的双插件 marketplace 结构 (cadence-init + cadence-workflow)
 REM   v1.1 (2025-03-17): 修复步骤4的 JSON 配置生成语法错误
 REM   v1.0: 初始版本
@@ -18,8 +19,8 @@ setlocal enabledelayedexpansion
 
 REM 打印横幅
 echo ============================================================
-echo   Cadence Skills 离线安装脚本 v2.0 (Windows)
-echo   包含插件: cadence-init + cadence-workflow
+echo   Cadence Skills 离线安装脚本 v2.1 (Windows)
+echo   包含插件: cadence-init
 echo ============================================================
 echo.
 
@@ -82,11 +83,6 @@ if exist "%SOURCE_DIR%\cadence-init" (
     xcopy "%SOURCE_DIR%\cadence-init" "%TARGET_DIR%\cadence-init\" /E /I /Y >nul
 )
 
-REM 复制 cadence-workflow 插件
-if exist "%SOURCE_DIR%\cadence-workflow" (
-    xcopy "%SOURCE_DIR%\cadence-workflow" "%TARGET_DIR%\cadence-workflow\" /E /I /Y >nul
-)
-
 REM 复制根目录文件
 for %%f in (CLAUDE.md README.md LICENSE .mcp.json) do (
     if exist "%SOURCE_DIR%\%%f" (
@@ -129,7 +125,6 @@ echo 📍 安装位置: %TARGET_DIR%
 echo.
 echo 📦 已安装插件:
 echo   - cadence-init: 项目初始化 (环境检查、项目分析、规则配置、MCP配置)
-echo   - cadence-workflow: 开发工作流 (完整流程、快速流程、探索流程、TDD等)
 echo.
 echo 💡 提示:
 echo   - 重启 Claude Code 以加载新安装的插件

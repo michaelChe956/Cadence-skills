@@ -7,8 +7,9 @@
 #   ./install-offline.sh
 #
 # 作者: Cadence Team
-# 版本: v2.0
+# 版本: v2.1
 # 更新记录:
+#   v2.1 (2026-08): 移除 cadence-workflow 插件，仅保留 cadence-init
 #   v2.0 (2026-04-03): 适配拆分后的双插件 marketplace 结构 (cadence-init + cadence-workflow)
 #   v1.0: 初始版本
 ################################################################################
@@ -24,8 +25,8 @@ NC='\033[0m' # No Color
 
 # 打印横幅
 echo "============================================================"
-echo "  Cadence Skills 离线安装脚本 v2.0 (Linux/macOS)"
-echo "  包含插件: cadence-init + cadence-workflow"
+echo "  Cadence Skills 离线安装脚本 v2.1 (Linux/macOS)"
+echo "  包含插件: cadence-init"
 echo "============================================================"
 echo ""
 
@@ -68,15 +69,43 @@ echo ""
 
 if command -v rsync &> /dev/null; then
     echo -e "  ${BLUE}使用 rsync 复制文件...${NC}"
-    rsync -av \
+    rsync -av --delete \
         --exclude='.git' \
         --exclude='install-offline.sh' \
         --exclude='install-offline.bat' \
         "$SOURCE_DIR/" "$TARGET_DIR/"
 else
     echo -e "  ${BLUE}使用 cp 复制文件...${NC}"
+    # 清理目标目录中已不再提供的旧插件与已删除的文档，避免升级残留
+    for stale in "cadence-workflow"; do
+        if [ -e "$TARGET_DIR/$stale" ]; then
+            rm -rf "$TARGET_DIR/$stale"
+            echo -e "  ${YELLOW}⚠️  已清理旧文件:${NC} $stale"
+        fi
+    done
+    # readmes 在 cp -r 下只叠加复制，需显式删除已移除的 workflow 指南
+    for stale_doc in \
+        "readmes/skills/brainstorming.md" \
+        "readmes/skills/cad-load.md" \
+        "readmes/skills/checkpoint.md" \
+        "readmes/skills/data-cleanup.md" \
+        "readmes/skills/data-validation.md" \
+        "readmes/skills/exploration-flow.md" \
+        "readmes/skills/full-flow.md" \
+        "readmes/skills/monitor.md" \
+        "readmes/skills/quick-flow.md" \
+        "readmes/skills/report.md" \
+        "readmes/skills/resume.md" \
+        "readmes/skills/status.md" \
+        "readmes/skills/using-cadence.md" \
+        "readmes/skills/version-migration.md"; do
+        if [ -e "$TARGET_DIR/$stale_doc" ]; then
+            rm -f "$TARGET_DIR/$stale_doc"
+            echo -e "  ${YELLOW}⚠️  已清理旧文件:${NC} $stale_doc"
+        fi
+    done
     # 复制主要目录和文件
-    for item in ".claude-plugin" "cadence-init" "cadence-workflow" "CLAUDE.md" "README.md" "LICENSE" ".mcp.json" "readmes"; do
+    for item in ".claude-plugin" "cadence-init" "CLAUDE.md" "README.md" "LICENSE" ".mcp.json" "readmes"; do
         if [ -e "$SOURCE_DIR/$item" ]; then
             cp -r "$SOURCE_DIR/$item" "$TARGET_DIR/"
         fi
@@ -87,19 +116,8 @@ echo ""
 echo -e "  ${GREEN}✅ 复制完成${NC}"
 echo ""
 
-# 步骤 4: 确保 hooks 脚本有执行权限
-echo -e "${YELLOW}🔨 步骤 4:${NC} 设置 hooks 执行权限"
-HOOK_SCRIPT="$TARGET_DIR/cadence-workflow/hooks/session-start"
-if [ -f "$HOOK_SCRIPT" ]; then
-    chmod +x "$HOOK_SCRIPT"
-    echo -e "  ${GREEN}✅ 已设置执行权限:${NC} cadence-workflow/hooks/session-start"
-else
-    echo -e "  ${YELLOW}⚠️  未找到 hooks 脚本:${NC} $HOOK_SCRIPT"
-fi
-echo ""
-
-# 步骤 5: 配置 known_marketplaces.json
-echo -e "${YELLOW}🔨 步骤 5:${NC} 配置 known_marketplaces.json"
+# 步骤 4: 配置 known_marketplaces.json
+echo -e "${YELLOW}🔨 步骤 4:${NC} 配置 known_marketplaces.json"
 
 PLUGINS_DIR="$HOME/.claude/plugins"
 MARKETPLACES_FILE="$PLUGINS_DIR/known_marketplaces.json"
@@ -190,7 +208,6 @@ echo -e "📍 安装位置: $TARGET_DIR"
 echo ""
 echo -e "📦 已安装插件:"
 echo "  - cadence-init: 项目初始化 (环境检查、项目分析、规则配置、MCP配置)"
-echo "  - cadence-workflow: 开发工作流 (完整流程、快速流程、探索流程、TDD等)"
 echo ""
 echo "💡 提示:"
 echo "  - 重启 Claude Code 以加载新安装的插件"

@@ -130,12 +130,9 @@ A: 至少满足三点：
 
 ## 相关 Skills
 
-- **using-cadence** - Cadence 系统使用指南
 - **cadencing** - 项目初始化
-- **quick-flow** - 快速流程开发
-- **full-flow** - 完整流程开发
 
 ## 技术细节
 
 完整脚本参数、目录结构和进阶用法请参考：  
-[skills/skill-creator/SKILL.md](../../skills/skill-creator/SKILL.md)
+[skills/skill-creator/SKILL.md](../../cadence-init/skills/skill-creator/SKILL.md)

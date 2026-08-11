@@ -14,7 +14,7 @@ Cadence 框架当前的客户端支持矩阵只覆盖 Claude Code 与 Codex：Su
 
 非目标：
 
-- 不修改 `cadence-workflow`（legacy，后续废弃）。
+- 不修改任何 legacy 工作流插件（后续废弃）。
 - 不修改根目录 `install-offline.sh/.bat`（Claude marketplace 安装，与本变更无关）。
 - 不自建 pi MCP 扩展，不维护 pi 专属 MCP 配置文件。
 - 不升级本仓库根 `AGENTS.md`/`CLAUDE.md` 自身的受管区块（模板更新后另行重跑 rule-config 升级）。

@@ -36,7 +36,7 @@ cadence/project-rules/knowledge-base-usage.md
 - Skill 只接受 Schema 4.0，并按 `README.md` 的一级导航渐进读取任务相关文档。
 - 表相关任务同时读取字段级表文档和当前结构证据；配置相关任务同时读取服务配置文档和当前快照证据。
 - Skill 同时读取 KnowledgeBase 与当前源码、DDL、有效配置和证据，不把任一方作为另一方的替代。
-- Skill 只负责原始任务的前置上下文阶段，不调用 `cadence-workflow`；上下文准备完成后，调用方继续用户原始任务。
+- Skill 只负责原始任务的前置上下文阶段；上下文准备完成后，调用方继续用户原始任务。
 
 Schema 4.0 KnowledgeBase 安装或升级到包含本 Skill 的插件版本后，应重新执行 `knowledge-base-overview` 刷新入口与稳定管理区块；也可以在下一次 `knowledge-base-update` 消费符合固定契约的完整变更包时完成刷新。不得直接覆盖管理区块外的人工规则。
 

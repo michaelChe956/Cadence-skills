@@ -7,7 +7,7 @@ description: "MUST use when an agent is about to perform project-specific 需求
 
 ## 概述
 
-从用户当前任务出发，沿知识库语义、当前代码、数据模型、配置四条独立证据路径渐进读取，生成支持下游工作的最小任务上下文包。本 Skill 只接受 Manifest 4.0，是需求、Design、Plan、Coding、Testing、Review 或 Debug 的前置上下文阶段，不代替下游工作，也不调用或依赖 `cadence-workflow`。
+从用户当前任务出发，沿知识库语义、当前代码、数据模型、配置四条独立证据路径渐进读取，生成支持下游工作的最小任务上下文包。本 Skill 只接受 Manifest 4.0，是需求、Design、Plan、Coding、Testing、Review 或 Debug 的前置上下文阶段，不代替下游工作。
 
 上下文准备完成后，调用方必须继续用户原始任务；只有用户明确只要求加载、整理或保存上下文时，才在上下文包处结束。
 
@@ -232,4 +232,3 @@ YYYY-MM-DD_任务上下文_任务名称_v1.0.md
 - Review 或 Debug 的强制核对项已完成。
 - 冲突、漂移、缺口和就绪状态明确。
 - 已将上下文交回调用方继续原始任务，或用户明确只要求上下文。
-- 本 Skill 未绑定、调用或修改 `cadence-workflow`。

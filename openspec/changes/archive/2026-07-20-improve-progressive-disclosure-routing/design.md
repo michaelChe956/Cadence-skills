@@ -20,7 +20,7 @@
 **Non-Goals:**
 
 - 不安装、升级或检测 OpenSpec 与 Superpowers；该职责属于 `/pre-check`。
-- 不使用 `cadence-workflow`，不新增 Hook、插件、守护进程或“是否读过文件”的状态机。
+- 不使用任何 legacy 工作流插件，不新增 Hook、插件、守护进程或“是否读过文件”的状态机。
 - 不修改 OpenSpec 或 Superpowers 上游 Skill 的实现。
 - 不要求所有任务都创建 OpenSpec change 或详细 Plan。
 - 不拆分现有 MCP 规则，不重写无关规则和 Skill。

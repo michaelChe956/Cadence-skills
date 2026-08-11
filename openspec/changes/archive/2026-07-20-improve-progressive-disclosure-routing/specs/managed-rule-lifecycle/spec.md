@@ -95,12 +95,12 @@
 - **AND** 不得删除或改变规范 Skill 的触发顺序
 
 ### Requirement: 规则层集成不得依赖 legacy 或运行时状态机
-系统 MUST NOT 依赖 `cadence-workflow`、Hook、守护进程或“规则是否已读”状态来实现本协作流程。
+系统 MUST NOT 依赖任何 legacy 工作流插件、Hook、守护进程或“规则是否已读”状态来实现本协作流程。
 
 #### Scenario: 客户端没有 Hook 能力
 - **WHEN** 目标客户端没有可用的 SessionStart 或编辑前 Hook
 - **THEN** L0、L1 和 L2 仍独立表达完整的路由和门禁
 
-#### Scenario: cadence-workflow 被移除
-- **WHEN** 业务项目不存在或移除 legacy 的 `cadence-workflow`
+#### Scenario: legacy 工作流插件被移除
+- **WHEN** 业务项目不存在或移除 legacy 工作流插件
 - **THEN** OpenSpec 与 Superpowers 协作规则仍可正常使用

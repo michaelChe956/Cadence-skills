@@ -29,4 +29,4 @@
 - 影响业务项目根目录的 `CLAUDE.md`、`AGENTS.md`、`.claude/rules/openspec-superpowers-workflow.md` 与 `openspec/config.yaml`。
 - 影响当前仓库中上述生成内容的同步副本，以及相关使用说明和验证记录。
 - 不负责安装 OpenSpec 或 Superpowers；`/pre-check` 已承担该职责。
-- 不依赖或修改 legacy 的 `cadence-workflow`，不新增 Hook、运行时插件或阅读状态服务。
+- 不依赖或修改任何 legacy 工作流插件，不新增 Hook、运行时插件或阅读状态服务。
