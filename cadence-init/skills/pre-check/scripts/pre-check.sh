@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cadence pre-check 主脚本：六个基础工具的探测/安装/复验。
 # 职责边界：仅处理 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter。
-# 不处理 Superpowers 软链、OpenSpec 三客户端产物、Playwright、API Key（由 SKILL.md 处理）。
+# 不处理 Superpowers 软链、OpenSpec 四客户端产物、Playwright、API Key（由 SKILL.md 处理）。
 # 用法:
 #   pre-check.sh run   [--mirror <name>] [--no-interrupt] [--upgrade]
 #   pre-check.sh check [--mirror <name>] [--no-interrupt]

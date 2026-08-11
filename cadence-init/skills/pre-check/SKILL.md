@@ -344,6 +344,8 @@ cd "<PROJECT_ROOT>" && test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -t
 | Claude Code 目标目录 | `~/.claude/skills` |
 | pi 目标目录 | `~/.pi/agent/skills` |
 
+> 说明：Kimi Code 扫描用户级通用目录 `~/.agents/skills`（superpowers 软链第 2 层即此目录），经该层直接获得 Superpowers skills，无需新增 `~/.kimi-code/skills` 软链目标；`~/.kimi-code/skills` 是 Kimi 专属用户 skills 目录，不放通用 superpowers。
+
 **在线安装来源**：
 
 > **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（`/tmp` 下 mktemp 生成的独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
