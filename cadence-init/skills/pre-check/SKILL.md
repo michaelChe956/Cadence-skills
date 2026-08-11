@@ -277,7 +277,7 @@ ls ~/.claude/skills/playwright-cli
 
 **初始化与更新命令**：
 
-> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi/.kimi-code`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
 
 ```bash
 # 四客户端产物均缺失（新项目）
@@ -309,7 +309,7 @@ cd "<PROJECT_ROOT>" && openspec update
 - 已就绪客户端不得重新 init，不覆盖用户改动。
 - `openspec init` 检测到 `openspec/config.yaml` 已存在时原样保留（CLI 行为），不覆盖 rule-config 写入的内容。
 - `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
-- OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
+- OpenSpec 生成的 Claude Code、Codex、pi 与 Kimi Code 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
   - Codex：`.codex/skills/openspec-*`
   - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
