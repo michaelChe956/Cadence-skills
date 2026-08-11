@@ -300,7 +300,7 @@ cd "<PROJECT_ROOT>" && openspec update
 | 客户端 | 产物就绪判定 |
 |--------|--------------|
 | claude | `.claude/commands/opsx/` 存在，或 `.claude/skills/` 下存在 `openspec-*` 目录 |
-| codex | `.codex/skills/` 下存在 `openspec-*` 目录 |
+| codex | `.agents/skills/` 下存在 `openspec-*` 目录（最新 OpenSpec skills-only，codex 产物落项目根 `.agents/skills/`） |
 | pi | `.pi/skills/` 下恰有 5 个 `openspec-*` 目录，且 `.pi/prompts/` 下恰有 5 个 `opsx-*.md` 文件 |
 | kimi | `.kimi-code/skills/` 下存在 5 个 `openspec-*` 目录 |
 
@@ -311,7 +311,7 @@ cd "<PROJECT_ROOT>" && openspec update
 - `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
 - OpenSpec 生成的 Claude Code、Codex、pi 与 Kimi Code 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
-  - Codex：`.codex/skills/openspec-*`
+  - Codex：`.agents/skills/openspec-*`（最新 OpenSpec skills-only，产物落项目根 `.agents/skills/`，不产生 `.codex/`）
   - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
   - Kimi Code：`.kimi-code/skills/openspec-*`（无 commands/adapter，仅 5 个 skill）
 - `--tools pi` 需要 OpenSpec CLI >= 1.4.1；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
@@ -321,7 +321,7 @@ cd "<PROJECT_ROOT>" && openspec update
 **验证命令**：
 
 ```bash
-cd "<PROJECT_ROOT>" && test -f .codex/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .agents/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
