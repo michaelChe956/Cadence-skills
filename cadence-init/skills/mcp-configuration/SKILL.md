@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 
 ## 参数模式
 
@@ -108,7 +108,8 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
 5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
-7. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore
+7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
+8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore（Kimi 复用 `.mcp.json`，无需新增条目）
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -559,16 +560,18 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 - 写入顺序：基础配置 → CodeGraph 配置（仅 Coding 项目） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
 - **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
 
-**Claude Code、Codex 与 pi 格式差异**：
+**Claude Code、Codex、pi 与 Kimi Code 格式差异**：
 
-| 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) | pi（pi-mcp-adapter） |
-|------|--------------------------|------------------------------|----------------------|
-| 格式 | JSON | TOML | 复用 `.mcp.json`（JSON），无第二份配置 |
-| 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` | 同 `.mcp.json` |
-| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** | stdio 与 HTTP 均支持 |
-| 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` | 同 `.mcp.json` |
-| HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` | 同 `.mcp.json` |
-| type 字段 | 必须显式声明 | 不需要（自动推断） | 同 `.mcp.json` |
+| 特征 | Claude Code (`.mcp.json`) | Codex (`.codex/config.toml`) | pi（pi-mcp-adapter） | Kimi Code（原生） |
+|------|--------------------------|------------------------------|----------------------|-------------------|
+| 格式 | JSON | TOML | 复用 `.mcp.json`（JSON），无第二份配置 | 复用根目录 `.mcp.json`（JSON），无第二份配置 |
+| 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` | 同 `.mcp.json` | 同 `.mcp.json` |
+| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** | stdio 与 HTTP 均支持 | stdio / HTTP / SSE 均支持 |
+| 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` | 同 `.mcp.json` | 同 `.mcp.json` |
+| HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` | 同 `.mcp.json` | 同 `.mcp.json` |
+| type 字段 | 必须显式声明 | 不需要（自动推断） | 同 `.mcp.json` | 不需要（按 `command`/`url` 自动推断） |
+
+> 说明：Kimi 的 schema 为非严格解析，`.mcp.json` 中 pi 扩展的 `directTools` 等未知字段会被静默忽略，无需为 Kimi 剥离。
 
 **信任提醒**：
 - 提醒用户：首次在 Codex 中打开项目时需确认信任项目，否则 `.codex/config.toml` 不会被加载
@@ -637,6 +640,17 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 - `.gitignore` 无需新增条目：pi 复用的 `.mcp.json` 已在忽略清单内。
 
 **pi 侧验证方式**：pi 会话中输入 `/mcp`（由 adapter 提供）查看 server 列表与连接状态。
+
+### 7.5 Kimi Code MCP 说明
+
+> **无需同步步骤** — Kimi Code 不维护第二份 MCP 配置文件。
+
+- Kimi Code 原生支持 MCP（stdio / HTTP / SSE 三种传输），直接读取项目根目录 `.mcp.json`（源码三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者）。
+- 本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源：智普的 `web-search-prime`、`web-reader`、`zread`（HTTP）与 `zai-mcp-server`、MiniMax（stdio）在 Kimi 下均可用，无需任何同步。
+- `.mcp.json` 中的 `directTools` 等 pi 扩展字段对 Kimi 无害（非严格 schema 静默忽略）。
+- `.gitignore` 无需新增条目：Kimi 复用的 `.mcp.json` 已在忽略清单内。
+
+**Kimi 侧验证方式**：Kimi Code 会话中输入 `/mcp` 查看 server 连接状态，输入 `/mcp-config` 交互式新增/编辑/删除 server。
 
 ### 8. 配置 .gitignore
 
