@@ -354,6 +354,7 @@ PRUNE_DIRS = [
     ".claude-plugin",
     ".codex",
     ".pi",
+    ".kimi-code",
     ".codegraph",
     "cadence-init",
     "Cadence-skills",

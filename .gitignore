@@ -7,5 +7,8 @@
 # macOS
 .DS_Store
 
+# Python 缓存
+__pycache__/
+
 # pi-subagents 运行时产物（审查/任务临时工件）
 .pi-subagents/

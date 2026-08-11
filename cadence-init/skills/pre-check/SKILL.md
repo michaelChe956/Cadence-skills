@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
 
-**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.codex/.pi` 写入待初始化项目根目录。
+**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.agents/.pi/.kimi-code` 写入待初始化项目根目录。
 
 ## 参数模式
 
@@ -41,7 +41,7 @@ disable-model-invocation: true
 | 项目 | 完成条件 | 失败动作 |
 |------|----------|----------|
 | 六个基础工具 | 脚本 `run --no-interrupt` 退出码为 0 且 JSON `overall=success` | 立即终止 |
-| OpenSpec 三客户端产物 | claude/codex/pi 三客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
+| OpenSpec 四客户端产物 | claude/codex/pi/kimi 四客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
 | Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
 | Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
 
@@ -124,7 +124,8 @@ digraph when_to_use {
 典型场景：
 - 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
 - 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：缺少 `.pi` 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目或三客户端产物均缺失时执行 `openspec init --tools claude,codex,pi`。
+- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：缺少 `.pi` 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目或四客户端产物均缺失时执行 `openspec init --tools claude,codex,pi,kimi`。
+- 框架新增 OpenSpec kimi 支持后，老项目重新运行 `/pre-check`：缺少 `.kimi-code` 产物时先执行 `openspec init --tools kimi`，再执行 `openspec update`；若 kimi 产物已存在，则直接执行 `openspec update`。新项目或四客户端产物均缺失时执行 `openspec init --tools claude,codex,pi,kimi`。
 - 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
 - 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
 
@@ -140,7 +141,7 @@ digraph check_flow {
     read_report [label="读取 JSON 报告\noverall + steps[]"];
     judge [label="overall 判定", shape=diamond];
     fail_stop [label="失败处理：\nno-interrupt 终止\n普通模式报告不继续"];
-    openspec_clients [label="步骤 5：OpenSpec 三客户端产物补齐"];
+    openspec_clients [label="步骤 5：OpenSpec 四客户端产物补齐"];
     superpowers_sync [label="步骤 6：Superpowers clone/更新 + 四层软链"];
     playwright [label="可选：用户明确要求时安装 Playwright", shape=box];
     apikey [label="API Key 占位提醒"];
@@ -164,7 +165,7 @@ digraph check_flow {
 |------|----------------|----------|----------|
 | **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
 | （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
-| **5. OpenSpec** | 脚本报告 `openspec` 项 + 三客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
+| **5. OpenSpec** | 脚本报告 `openspec` 项 + 四客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
 | **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
@@ -179,7 +180,7 @@ digraph check_flow {
 
 **第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
 
-1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.codex/.pi` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
+1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.agents/.pi/.kimi-code` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
 2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录，也**不要**把脚本单独复制到别处执行——它依赖同目录下的 `mirrors/`（镜像配置），必须连同 skill 目录一起定位。
 
 **第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
@@ -223,7 +224,7 @@ python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_
 **JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
 
 **判定规则**：
-- `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 三客户端检查与步骤 6 的 Superpowers 同步。
+- `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 四客户端检查与步骤 6 的 Superpowers 同步。
 - `overall` 为 `partial` 或 `failed`，或任一 `steps[].status=failed`，或脚本非零退出：no-interrupt 模式立即终止 `/pre-check` 并报告失败；普通模式报告失败项与恢复建议，**不得继续后续步骤，不宣称成功**。
 - pi-mcp-adapter 的 `status=skipped`（action=pi-not-found）不算失败。
 
@@ -263,62 +264,70 @@ ls ~/.claude/skills/playwright-cli
 - **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
 - **默认行为**：不安装、不启用；需要时由用户显式要求
 
-### 步骤 5：检查 OpenSpec 三客户端产物
+### 步骤 5：检查 OpenSpec 四客户端产物
 
 > **OpenSpec CLI 就绪以脚本报告为准**：openspec CLI 的探测/安装/复验由步骤 0 脚本统一完成，不再单独执行 `openspec --version`。仅当步骤 0 报告 `steps[]` 中 `name=openspec` 项为就绪（ready/installed/upgraded）时才继续本节；未就绪时先回步骤 0 处理。
 
 **行为（中文输出）**：
-- CLI 已就绪（脚本报告 `openspec` 项为 ready/installed/upgraded）：继续本节三客户端产物检查
-- CLI 未就绪：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行三客户端产物检查
+- CLI 已就绪（脚本报告 `openspec` 项为 ready/installed/upgraded）：继续本节四客户端产物检查
+- CLI 未就绪：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行四客户端产物检查
 - `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
 
-**安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节三客户端产物检查。
+**安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节四客户端产物检查。
 
 **初始化与更新命令**：
 
-> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.codex/.pi`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
+> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.agents/.pi/.kimi-code`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
 
 ```bash
-# 三客户端产物均缺失（新项目）
-cd "<PROJECT_ROOT>" && openspec init --tools claude,codex,pi
+# 四客户端产物均缺失（新项目）
+cd "<PROJECT_ROOT>" && openspec init --tools claude,codex,pi,kimi
+
+# 仅 kimi 产物缺失
+cd "<PROJECT_ROOT>" && openspec init --tools kimi && openspec update
 
 # 仅 pi 产物缺失
 cd "<PROJECT_ROOT>" && openspec init --tools pi && openspec update
 
-# 三客户端产物齐全
+# 四客户端产物齐全
 cd "<PROJECT_ROOT>" && openspec update
 ```
 
 **增量要求**：
 
-按 claude、codex、pi 三客户端分别检测指令产物存在性，`openspec/config.yaml` 是否存在不作为分支判断条件：
+按 claude、codex、pi、kimi 四客户端分别检测指令产物存在性，`openspec/config.yaml` 是否存在不作为分支判断条件：
 
 | 客户端 | 产物就绪判定 |
 |--------|--------------|
 | claude | `.claude/commands/opsx/` 存在，或 `.claude/skills/` 下存在 `openspec-*` 目录 |
-| codex | `.codex/skills/` 下存在 `openspec-*` 目录 |
+| codex | `.agents/skills/` 下存在 `openspec-*` 目录（最新 OpenSpec skills-only，codex 产物落项目根 `.agents/skills/`） |
 | pi | `.pi/skills/` 下恰有 5 个 `openspec-*` 目录，且 `.pi/prompts/` 下恰有 5 个 `opsx-*.md` 文件 |
+| kimi | `.kimi-code/skills/` 下存在 5 个 `openspec-*` 目录 |
 
-- 存在缺失客户端：对缺失客户端执行 `openspec init --tools <缺失客户端列表>`（如 `claude,codex,pi`、`pi`），再执行 `openspec update`。
-- 三客户端产物均齐全：直接执行 `openspec update`。
+- 存在缺失客户端：对缺失客户端执行 `openspec init --tools <缺失客户端列表>`（如 `claude,codex,pi,kimi`、`pi`、`kimi`），再执行 `openspec update`。
+- 四客户端产物均齐全：直接执行 `openspec update`。
 - 已就绪客户端不得重新 init，不覆盖用户改动。
 - `openspec init` 检测到 `openspec/config.yaml` 已存在时原样保留（CLI 行为），不覆盖 rule-config 写入的内容。
 - `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
-- OpenSpec 生成的 Claude Code、Codex 和 pi 目录结构不同，不能混用：
+- OpenSpec 生成的 Claude Code、Codex、pi 与 Kimi Code 目录结构不同，不能混用：
   - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
-  - Codex：`.codex/skills/openspec-*`
+  - Codex：`.agents/skills/openspec-*`（最新 OpenSpec skills-only，产物落项目根 `.agents/skills/`，不产生 `.codex/`）
   - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
+  - Kimi Code：`.kimi-code/skills/openspec-*`（无 commands/adapter，仅 5 个 skill）
 - `--tools pi` 需要 OpenSpec CLI >= 1.4.1；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
+- `--tools kimi` 需要 OpenSpec CLI >= 1.7.0（生成 `.kimi-code/skills/`；1.4.0 起支持 kimi 但路径为旧 `.kimi/skills/`，1.7.0 起改用 `.kimi-code/` 并自动迁移旧 `.kimi` 配置）；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
 - 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
 
 **验证命令**：
 
 ```bash
-cd "<PROJECT_ROOT>" && test -f .codex/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test -f .agents/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md
 cd "<PROJECT_ROOT>" && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
 cd "<PROJECT_ROOT>" && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
+cd "<PROJECT_ROOT>" && test -f .kimi-code/skills/openspec-propose/SKILL.md
+cd "<PROJECT_ROOT>" && test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
 ```
 
 > 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
@@ -334,6 +343,8 @@ cd "<PROJECT_ROOT>" && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f 
 | Codex 目标目录 | `~/.codex/skills/skills` |
 | Claude Code 目标目录 | `~/.claude/skills` |
 | pi 目标目录 | `~/.pi/agent/skills` |
+
+> 说明：Kimi Code 扫描用户级通用目录 `~/.agents/skills`（superpowers 软链第 2 层即此目录），经该层直接获得 Superpowers skills，无需新增 `~/.kimi-code/skills` 软链目标；`~/.kimi-code/skills` 是 Kimi 专属用户 skills 目录，不放通用 superpowers。
 
 **在线安装来源**：
 

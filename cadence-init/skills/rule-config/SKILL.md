@@ -82,7 +82,7 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 
 ```bash
 find . \
-  \( -type d \( -name .git -o -name .claude -o -name .claude-plugin -o -name .codex -o -name .pi -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
+  \( -type d \( -name .git -o -name .claude -o -name .claude-plugin -o -name .codex -o -name .pi -o -name .kimi-code -o -name .codegraph -o -name cadence-init -o -name Cadence-skills \
     -o -name node_modules -o -name vendor -o -name venv -o -name .venv -o -name env -o -name .env \
     -o -name dist -o -name build -o -name coverage -o -name .next -o -name target -o -name __pycache__ \) -prune \) \
   -o \( -type f \( -name '*.java' -o -name '*.js' -o -name '*.ts' -o -name '*.py' -o -name '*.go' \
