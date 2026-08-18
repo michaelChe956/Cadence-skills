@@ -3362,6 +3362,94 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
         self.assertNotIn("仅 ast-grep", result)
 
 
+class TestEndToEndRegression(unittest.TestCase):
+    """ut-e2e-entry-kb / ut-e2e-entry-claude：问题入口文件端到端回归。
+
+    fixture 来源于初始化问题现场的 /tmp/AGENTS.md 与 /tmp/CLAUDE.md；报告路径
+    特意放在项目根外，覆盖真实 CLI ``apply --no-interrupt`` 而非仅调用内部函数。
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+    def _run(self):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        root = Path(td.name)
+        (root / "package.json").write_text(
+            '{"scripts":{"test":"vitest","lint":"oxlint src"}}',
+            encoding="utf-8",
+        )
+        (root / "AGENTS.md").write_text(
+            (self.FIXTURES / "entry-kb-agents.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (root / "CLAUDE.md").write_text(
+            (self.FIXTURES / "entry-drift-claude.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        report_fd, report_name = tempfile.mkstemp(
+            prefix="rule-config-entry-e2e-", suffix=".json"
+        )
+        os.close(report_fd)
+        report = Path(report_name)
+        self.addCleanup(lambda: report.unlink(missing_ok=True))
+        self.assertNotIn(root, report.parents)
+        subprocess.run(
+            [
+                "python3",
+                str(SCRIPT_PATH),
+                "apply",
+                "--project-root",
+                str(root),
+                "--report",
+                str(report),
+                "--no-interrupt",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(result["overall"], "ok")
+        return root, result
+
+    def test_kb_agents_gets_full_section(self):
+        """ut-e2e-kb：KB 型 AGENTS.md 获得完整强制规则且用户内容保留。"""
+        root, _report = self._run()
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        for number, title in (
+            (1, "语言规则"),
+            (2, "代码使用规则"),
+            (3, "文档存储规则"),
+            (4, "Markdown 格式规则"),
+            (5, "MCP Server 使用规则"),
+            (6, "项目个性化规则"),
+            (7, "代码阅读规则"),
+        ):
+            self.assertIn(f"### {number}. {title}", agents)
+        self.assertIn(V2_START, agents)
+        self.assertIn(V2_END, agents)
+        self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
+        self.assertIn("产物自动提交（design/plan）**：关闭", agents)
+        self.assertNotIn("serena-usage.md", agents)
+
+    def test_claude_serena_removed_and_renumbered(self):
+        """ut-e2e-claude：CLAUDE.md Serena 清理、重排、双入口技术栈一致。"""
+        root, _report = self._run()
+        claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertNotIn("Serena", claude)
+        self.assertNotIn("serena-usage.md", claude)
+        self.assertIn("### 1. 语言规则", claude)
+        self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
+        self.assertNotIn("playwright.md", claude)
+        self.assertIn(V2_START, claude)
+        self.assertIn(V2_END, claude)
+        # 双入口技术栈一致；fixture 项目由 package.json 检测为 JavaScript/TypeScript。
+        for name, text in (("CLAUDE.md", claude), ("AGENTS.md", agents)):
+            self.assertIn("- **语言**：JavaScript/TypeScript", text, name)
+
+
 class TestOptionalRuleIntegrity(unittest.TestCase):
     """codex 终审 I5 / OP-01：可选规则文件+摘要均存在 → 仅检查完整性并报告，不重写。"""
 
