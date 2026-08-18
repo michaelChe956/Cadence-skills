@@ -110,6 +110,16 @@ L0_CURRENT_VERSION = "v2"
 L0_OLD_VERSIONS = ["v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
+
+# Skill 默认产物路径在本项目中的强制覆盖表。该文本是单一事实源，必须与
+# references/rules/agent-routing-kernel.md 和 document-storage.md 中的表逐字一致。
+ARTIFACT_PATH_OVERRIDE_TABLE = (
+    "| Skill 默认路径 | 本项目强制路径 |\n"
+    "|---|---|\n"
+    "| `docs/superpowers/specs/`（design/spec） | `cadence/designs/` |\n"
+    "| `docs/superpowers/plans/`（plan） | `cadence/plans/` |"
+)
+
 # L1 规则文件版本标记（单行注释，位于文件首行）。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
 L1_V1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v1 -->"

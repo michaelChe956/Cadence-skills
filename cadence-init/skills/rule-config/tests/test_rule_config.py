@@ -44,6 +44,36 @@ V0_L1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v0 -->
 V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
 
 
+class TestArtifactPathOverrides(unittest.TestCase):
+    def test_three_sources_verbatim_consistent(self):
+        """ut-override-3src：内核/document-storage/脚本常量三源映射表逐字一致。"""
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        kernel = (refs / "agent-routing-kernel.md").read_text()
+        doc_storage = (refs / "document-storage.md").read_text()
+        table = rc.ARTIFACT_PATH_OVERRIDE_TABLE
+        self.assertIn(table, kernel)
+        self.assertIn(table, doc_storage)
+        self.assertIn("docs/superpowers/specs/", table)
+        self.assertIn("cadence/designs/", table)
+        self.assertIn("docs/superpowers/plans/", table)
+        self.assertIn("cadence/plans/", table)
+        self.assertIn("优先级高于任何 Skill 正文", kernel)
+
+    def test_kernel_is_v2(self):
+        """ut-kernel-v2：内核标记为 v2。"""
+        kernel = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                  / "agent-routing-kernel.md").read_text()
+        self.assertTrue(kernel.startswith(V2_START))
+        self.assertIn("产物自动提交", kernel)
+
+    def test_openspec_path_preserved_in_kernel(self):
+        """ut-override-no-skill-rewrite：覆盖声明不改写 Skill 路径（openspec 保留）。"""
+        kernel = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                  / "agent-routing-kernel.md").read_text()
+        self.assertIn("openspec/", kernel)
+        self.assertIn("优先级高于任何 Skill 正文", kernel)
+
+
 class TestCanonicalRules(unittest.TestCase):
     def test_base_rendered_from_canonical_rules(self):
         """验证关键规则条目存在，且渲染结果无 serena 残留。"""
