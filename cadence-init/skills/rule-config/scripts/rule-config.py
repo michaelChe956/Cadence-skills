@@ -2909,24 +2909,52 @@ def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
 
 
 def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
-    """确保首个 ``## 项目配置`` 中存在唯一的产物自动提交开关。
+    """确保全文件唯一开关行，并将其归并到首个项目配置章节。
 
-    开关只管理首个项目配置章节：已有的合法或非法用户值均原样保留，
-    缺失时在章节末尾写入默认的“关闭”。多个项目配置章节不会被合并，
-    但会发出与其他章节规范化逻辑一致的 ``DUPLICATE_H2`` 警告。
+    开关前缀行无论位于章节内外都纳入收敛：章节外孤儿行被删除并在首个
+    ``## 项目配置`` 末尾重建；孤儿与章节值冲突或任一值非法时按“关闭”处理，
+    并报告 ``INVALID_TOGGLE``。没有项目配置章节时沿用原有创建逻辑。
     """
     warns: list[dict] = []
     trailing_newline = text.endswith("\n")
     lines = text.splitlines()
     idxs = [i for i, line in enumerate(lines) if line.strip() == "## 项目配置"]
+    all_toggle_idxs = [
+        i for i, line in enumerate(lines) if line.startswith(TOGGLE_PREFIX)
+    ]
+    all_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip() for i in all_toggle_idxs
+    ]
+    valid_values = {"开启", "关闭"}
+
+    def warn_invalid(reason: str, values: list[str]) -> None:
+        warns.append({
+            "code": "INVALID_TOGGLE", "file": entry_name,
+            "message": "产物自动提交开关值冲突或非法，按关闭处理",
+            "detail": {"reason": reason, "values": values},
+        })
+
     if not idxs:
+        # 没有章节时，所有现有开关行都属于孤儿；提取其值后由创建逻辑
+        # 在新章节内重建唯一行。
+        chosen = TOGGLE_DEFAULT
+        if all_values:
+            if any(value not in valid_values for value in all_values):
+                warn_invalid("存在非法开关值", all_values)
+            elif len(set(all_values)) > 1:
+                warn_invalid("存在多处开关值冲突", all_values)
+            else:
+                chosen = all_values[0]
+        clean_lines = [
+            line for i, line in enumerate(lines) if i not in set(all_toggle_idxs)
+        ]
         block = [
             "", "## 项目配置", "",
             "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。", "",
-            TOGGLE_PREFIX + TOGGLE_DEFAULT,
+            TOGGLE_PREFIX + chosen,
         ]
-        return "\n".join(lines).rstrip("\n") + "\n" + "\n".join(block) + "\n", warns
-
+        result = "\n".join(clean_lines).rstrip("\n") + "\n" + "\n".join(block) + "\n"
+        return result, warns
     if len(idxs) > 1:
         warns.append({
             "code": "DUPLICATE_H2", "file": entry_name,
@@ -2940,39 +2968,74 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         if stripped.startswith("## ") or stripped.startswith("# "):
             end = i
             break
-
-    # 章节内重复开关只保留首个；首个值即使非法也保留原文。
-    toggle_idxs = [
-        i for i in range(start + 1, end)
-        if lines[i].startswith(TOGGLE_PREFIX)
+    section_toggle_idxs = [
+        i for i in all_toggle_idxs if start < i < end
     ]
-    if toggle_idxs:
-        first = toggle_idxs[0]
-        value = lines[first][len(TOGGLE_PREFIX):].strip()
-        if value not in ("开启", "关闭"):
+    orphan_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip()
+        for i in all_toggle_idxs if i not in section_toggle_idxs
+    ]
+    section_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip()
+        for i in section_toggle_idxs
+    ]
+    values = orphan_values + section_values
+    # 保持既有契约：章节内唯一开关即使非法也保留原文，只记录 warning。
+    # 只有出现孤儿行或多行并存时才进入“归并为一行”的安全默认语义。
+    if not orphan_values and len(section_values) == 1:
+        value = section_values[0]
+        if value not in valid_values:
             warns.append({
                 "code": "INVALID_TOGGLE", "file": entry_name,
                 "message": f"产物自动提交开关值非法（{value}），按关闭处理",
                 "detail": {},
             })
-        drop = set(toggle_idxs[1:])
-        if drop:
-            lines = [line for i, line in enumerate(lines) if i not in drop]
-        result = "\n".join(lines)
-        if trailing_newline:
-            result += "\n"
-        return result, warns
+        return text, warns
 
-    # 章节末尾插入，吸收章节尾部空行，避免二次运行继续移动开关。
-    insert_at = end
-    while insert_at > start + 1 and lines[insert_at - 1].strip() == "":
+    chosen = TOGGLE_DEFAULT
+    if not orphan_values and section_values:
+        # 单一章节内开关延续既有“保留原文”语义；多行并存则按归并规则处理。
+        if len(section_values) == 1:
+            chosen = section_values[0]
+            if chosen not in valid_values:
+                warns.append({
+                    "code": "INVALID_TOGGLE", "file": entry_name,
+                    "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
+                    "detail": {},
+                })
+        else:
+            # 章节内重复行保持原有“保留首个”语义，即使后续值不同。
+            chosen = section_values[0]
+            if chosen not in valid_values:
+                warns.append({
+                    "code": "INVALID_TOGGLE", "file": entry_name,
+                    "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
+                    "detail": {},
+                })
+    elif any(value not in valid_values for value in values):
+        warn_invalid("孤儿行归并中存在非法开关值", values)
+    elif len(set(values)) > 1:
+        warn_invalid("孤儿行归并中存在多处开关值冲突", values)
+    elif values:
+        chosen = values[0]
+
+    # 删除全文件原有开关行，再在首个项目配置章节规范位置写回唯一行；
+    # 这样孤儿行、第二章节中的开关行及章节内重复行都不会残留。
+    toggle_set = set(all_toggle_idxs)
+    clean_lines = [line for i, line in enumerate(lines) if i not in toggle_set]
+    clean_idxs = [i for i, line in enumerate(clean_lines) if line.strip() == "## 项目配置"]
+    clean_start = clean_idxs[0]
+    clean_end = len(clean_lines)
+    for i in range(clean_start + 1, len(clean_lines)):
+        stripped = clean_lines[i].strip()
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            clean_end = i
+            break
+    insert_at = clean_end
+    while insert_at > clean_start + 1 and clean_lines[insert_at - 1].strip() == "":
         insert_at -= 1
-    lines = (
-        lines[:insert_at]
-        + [TOGGLE_PREFIX + TOGGLE_DEFAULT, ""]
-        + lines[end:]
-    )
-    result = "\n".join(lines)
+    clean_lines[insert_at:insert_at] = [TOGGLE_PREFIX + chosen, ""]
+    result = "\n".join(clean_lines)
     if trailing_newline and not result.endswith("\n"):
         result += "\n"
     return result, warns

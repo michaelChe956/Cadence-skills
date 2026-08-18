@@ -1650,6 +1650,49 @@ class TestCommitToggle(unittest.TestCase):
         self.assertIn("：也许", out)
         self.assertTrue(any(w["code"] == "INVALID_TOGGLE" for w in warns))
 
+    def test_orphan_toggle_is_merged_into_config_section(self):
+        """ut-toggle-orphan：章节外合法开关归并到项目配置并保留值。"""
+        text = "# x\n\n" + rc.TOGGLE_PREFIX + "开启\n\n## 项目配置\n\n内容\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        section = out.split("## 项目配置", 1)[1]
+        self.assertIn("内容", section)
+        self.assertIn(rc.TOGGLE_PREFIX + "开启", section)
+        self.assertEqual(warns, [])
+
+    def test_orphan_and_section_same_value_are_deduped(self):
+        """ut-toggle-orphan-same：章节外与章节内同值归并为一行。"""
+        text = (
+            rc.TOGGLE_PREFIX + "开启\n\n"
+            "## 项目配置\n\n"
+            + rc.TOGGLE_PREFIX + "开启\n"
+        )
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn(rc.TOGGLE_PREFIX + "开启", out)
+        self.assertEqual(warns, [])
+
+    def test_orphan_and_section_conflict_defaults_closed(self):
+        """ut-toggle-orphan-conflict：孤儿与章节值冲突时关闭并告警。"""
+        text = (
+            rc.TOGGLE_PREFIX + "开启\n\n"
+            "## 项目配置\n\n"
+            + rc.TOGGLE_PREFIX + "关闭\n"
+        )
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn(rc.TOGGLE_PREFIX + "关闭", out)
+        warning = next(w for w in warns if w["code"] == "INVALID_TOGGLE")
+        self.assertIn("冲突", warning["detail"]["reason"])
+
+    def test_orphan_toggle_merge_is_idempotent(self):
+        """ut-toggle-orphan-idempotent：孤儿开关归并后二次运行逐字不变。"""
+        text = rc.TOGGLE_PREFIX + "开启\n\n## 项目配置\n\n内容\n"
+        once, _ = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        twice, warns = rc._ensure_commit_toggle(once, "CLAUDE.md")
+        self.assertEqual(once, twice)
+        self.assertEqual(warns, [])
+
     def test_toggle_after_techstack_block(self):
         """ut-toggle-position：落点在 ### 项目技术栈 块之后、章节末尾。"""
         text = ("## 项目配置\n\n### 项目技术栈\n- **语言**：Java\n\n## 其他\n")

@@ -32,3 +32,20 @@
 ## 风险评估
 
 本轮未改变 apply 发布路径、入口规范化语义或备份屏障；新增逻辑只在 dry-run 中进行内存预演。唯一残余假设是 dry-run 后至 apply 前目标项目和模板不发生外部变化，符合任务契约中“无用户干预、无外部修改”条件。
+
+## 章节外孤儿开关行修复追加
+
+依据 change spec `superpowers-artifact-governance` 的“章节外孤儿开关行归并”场景，`_ensure_commit_toggle` 现先全文收集 `TOGGLE_PREFIX` 行，再将所有开关行收敛到首个 `## 项目配置` 章节的规范位置：
+
+- 章节外孤儿行被删除并归并；全文件最终恰好一行开关行；
+- 孤儿值与章节值一致且合法时保留该值；
+- 孤儿/章节值冲突或归并集合含非法值时按 `关闭` 处理，并发出 `INVALID_TOGGLE`，detail 含原因和值集合；
+- 章节内仅一行时保持既有用户值语义，非法值原文保留并告警；既有重复章节内开关测试继续保留首行；
+- 归并结果二次运行逐字幂等。
+
+新增四个回归测试覆盖孤儿单独归并、同值去重、冲突关闭告警和幂等；同时同步收紧 change spec 对既有章节内单一非法值保留语义的表述。
+
+验证结果：
+
+- `python3 -m unittest discover -s cadence-init/skills/rule-config/tests -v`：221/221 通过；
+- `bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh`：`SUMMARY pass=104 fail=0`。
