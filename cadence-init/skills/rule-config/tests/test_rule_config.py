@@ -1454,6 +1454,33 @@ class TestTechStackDualEntry(unittest.TestCase):
                               f"{name} 技术栈未写入检测值")
 
 
+class TestComposeEntryWarnings(unittest.TestCase):
+    def test_compose_returns_warnings(self):
+        """ut-compose-warnings：_compose_entry 返回 (text, diffs, warnings)。"""
+        text, diffs, warns = rc._compose_entry(
+            "## 笔记\n\n遵循 TDD 和代码规范 保留我\n", rc._load_kernel_source(),
+            state="insert", project_type="non-coding",
+            tech_stack={}, entry_name="CLAUDE.md", existing_rule_files=set())
+        self.assertIsInstance(warns, list)
+        self.assertIn("遵循 TDD 和代码规范 保留我", text)  # 章节外不被全文替换
+
+    def test_step_s4_aggregates_warnings_to_report(self):
+        """ut-s4-warnings：S4 执行后 report['warnings'] 汇总入口类 warning。"""
+        # 用 Task 1 的临时项目方式跑 apply，断言 report JSON 含 warnings 数组
+        import tempfile, subprocess, json
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "AGENTS.md").write_text("## 强制规则\n\n- 我的行 `.claude/rules/my-x.md`\n")
+            report_path = Path(td).parent / "r.json"
+            subprocess.run(["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
+                            "--report", str(report_path), "--no-interrupt"], check=True)
+            rep = json.loads(report_path.read_text())
+            self.assertIn("warnings", rep)
+            self.assertTrue(any(w["code"] == "USER_LINES_KEPT" for w in rep["warnings"]))
+            self.assertEqual(rep["overall"], "ok")  # warning 不影响 overall
+
+
 class TestStepS4EntryFiles(unittest.TestCase):
     """step_s4_entry_files 集成断言：双入口合成、幂等、漂移修复。"""
 
@@ -1499,7 +1526,7 @@ class TestStepS4EntryFiles(unittest.TestCase):
             "language": "Python", "pkg_manager": "uv", "test": "pytest",
             "lint": "未检测到", "format": "未检测到", "coverage": "80%",
         }
-        converged, diffs = rc._compose_entry(
+        converged, diffs, _warnings = rc._compose_entry(
             rc.BASE_CLAUDE_MD, self.kernel, state="create",
             project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
         )

@@ -484,6 +484,7 @@ def build_report(mode: str, project_root: Path) -> dict:
         "budget_seconds_excluding_codegraph": None,
         "steps": [],
         "conflicts": [],
+        "warnings": [],
         "backups": [],
         "hints": {"next": "mcp-configuration"},
         "failure": None,
@@ -2185,7 +2186,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
-    # 文件与摘要不重写。摘要缺失时由 S4 摘要补全（SM-02）处理。
+    # 文件与摘要不重写。摘要缺失时由 S4 规则章节规范化（SM-02）处理。
     optional_rules = [CODEGRAPH_RULE_FILE]
     if intents.enable_playwright:
         optional_rules.append(PLAYWRIGHT_RULE_FILE)
@@ -2206,7 +2207,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             "result": "ok" if summary_present else "summary-missing",
             "detail": (
                 "规则文件与摘要均已存在（视为已启用）"
-                if summary_present else "摘要缺失（S4 摘要补全将处理）"
+                if summary_present else "摘要缺失（S4 规则章节规范化将处理）"
             ),
         })
 
@@ -2277,8 +2278,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
       1. 各入口在内存合成最终文本（入口不存在 → BASE 文本为基线）；
       2. L0 插入位置 = 首个 `## 强制规则` 前；无则文件说明后；
       3. drift/upgrade/broken → 替换/修复 L0 区块为规范源，区块外内容逐字保留；
-      4. 缺失摘要行追加；技术栈/包管理器/覆盖率 80% 块追加；规则 2 按项目类型选文本；
-      5. 摘要编号冲突 → 保留原文追加缺失并在 detail 说明；
+      4. 强制规则章节按规范化语义收敛；技术栈/包管理器/覆盖率 80% 块追加；
+      5. 规范化产生的 warnings 汇总到顶层报告，不影响 overall；
       6. 各一次 atomic_write（全局备份屏障已由 run_apply 完成）。
     """
     kernel_source = _load_kernel_source()
@@ -2304,18 +2305,19 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         )
 
         if action == "skip" or (state is None and action != "create"):
-            # codex 终审 I2：L0 skip 状态也执行摘要补全与技术栈写入（SM-02/03、
-            # S4「单次完成 L0、摘要、技术栈」；L0 区块处理与摘要/技术栈是独立动作）。
+            # codex 终审 I2：L0 skip 状态也执行章节规范化与技术栈写入（SM-02/03、
+            # S4「单次完成 L0、规则章节、技术栈」；L0 区块处理与规则章节/技术栈是独立动作）。
             # 内容无变化时不写盘（保持幂等，L0-02/SM-01）。
             existing = _safe_read(entry_path)
             if existing is None:
                 actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
                 continue
-            composed, diffs = _compose_entry(
+            composed, diffs, warnings = _compose_entry(
                 existing, kernel_source, state="skip",
                 project_type=project_type, tech_stack=tech_stack,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
+            report.setdefault("warnings", []).extend(warnings)
             if diffs:
                 actions_log.append({
                     "path": entry_name, "action": "techstack-diff",
@@ -2330,11 +2332,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
         if action == "create" and not entry_path.exists():
-            composed, diffs = _compose_entry(
+            composed, diffs, warnings = _compose_entry(
                 base_text, kernel_source, state="create",
                 project_type=project_type, tech_stack=tech_stack,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
+            report.setdefault("warnings", []).extend(warnings)
             if diffs:
                 actions_log.append({
                     "path": entry_name, "action": "techstack-diff",
@@ -2352,11 +2355,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
         # upgrade 在全局备份屏障通过后升级为当前 v1。
         if action in ("insert", "upgrade"):
-            composed, diffs = _compose_entry(
+            composed, diffs, warnings = _compose_entry(
                 existing, kernel_source, state=state or action,
                 project_type=project_type, tech_stack=tech_stack,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
+            report.setdefault("warnings", []).extend(warnings)
             if diffs:
                 actions_log.append({
                     "path": entry_name, "action": "techstack-diff",
@@ -2368,11 +2372,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         # drift/broken → 按模式/决策处理。
         decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
-            composed, diffs = _compose_entry(
+            composed, diffs, warnings = _compose_entry(
                 existing, kernel_source, state=state or "insert",
                 project_type=project_type, tech_stack=tech_stack,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
+            report.setdefault("warnings", []).extend(warnings)
             if diffs:
                 actions_log.append({
                     "path": entry_name, "action": "techstack-diff",
@@ -2382,11 +2387,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
         else:
             if decision == DECISION_REPLACE:
-                composed, diffs = _compose_entry(
+                composed, diffs, warnings = _compose_entry(
                     existing, kernel_source, state=state or "insert",
                     project_type=project_type, tech_stack=tech_stack,
                     entry_name=entry_name, existing_rule_files=existing_rule_files,
                 )
+                report.setdefault("warnings", []).extend(warnings)
                 if diffs:
                     actions_log.append({
                         "path": entry_name, "action": "techstack-diff",
@@ -2403,8 +2409,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
                    project_type: str, tech_stack: dict,
                    entry_name: str,
-                   existing_rule_files: set[str] = frozenset()) -> tuple:
-    """合成入口文件最终文本，返回 ``(text, techstack_diffs)``。
+                   existing_rule_files: set[str] | None = None) -> tuple:
+    """合成入口文件最终文本，返回 ``(text, techstack_diffs, warnings)``。
 
     按状态区分 L0 区块处理（保证幂等与区块外保留）：
       * skip：L0 区块不动；
@@ -2420,6 +2426,8 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     区块外用户内容保留（L0-B2）。
     """
     text = existing
+    if existing_rule_files is None:
+        existing_rule_files = set()
 
     # --- 步骤 1：规范化 L0 ---
     if state == "skip":
@@ -2438,23 +2446,15 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
         text = _strip_l0_marker_lines_only(text)
         text = _insert_l0_block(text, l0_source)
 
-    # --- 步骤 2：规则 2 摘要行按项目类型选择（I2：全状态执行）---
-    rule2_text = (
-        RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
-    )
-    for variant in (RULE2_TEXT_CODING, RULE2_TEXT_NONCODING):
-        if variant in text and variant != rule2_text:
-            text = text.replace(variant, rule2_text, 1)
-
-    # --- 步骤 3：强制规则章节规范化（I2：全状态执行）---
-    text, _warnings = _normalize_mandatory_rules(
+    # --- 步骤 2：强制规则章节规范化（I2：全状态执行）---
+    text, warnings = _normalize_mandatory_rules(
         text, entry_name, project_type, existing_rule_files
     )
 
-    # --- 步骤 4：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
+    # --- 步骤 3：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
     text, diffs = _ensure_techstack_block(text, tech_stack)
 
-    return text, diffs
+    return text, diffs, warnings
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
