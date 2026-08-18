@@ -101,6 +101,15 @@ done
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
+# 测试隔离：脚本的 S2 契约要求优先读取 $HOME 下的在线 plugin 模板。将本 worktree
+# 的 references 复制到临时 HOME 的该优先路径，避免读取开发机插件缓存造成 fixture 与
+# 运行时模板版本不一致。仅隔离环境，不改变任何生产模板定位优先级或断言语义。
+TEST_HOME="$TEST_ROOT/home"
+ONLINE_TEMPLATE_SKILL="$TEST_HOME/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config"
+mkdir -p "$ONLINE_TEMPLATE_SKILL" || exit 1
+cp -R "$TEST_DIR/../references" "$ONLINE_TEMPLATE_SKILL/references" || exit 1
+export HOME="$TEST_HOME"
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
