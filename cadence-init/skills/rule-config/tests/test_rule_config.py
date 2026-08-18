@@ -41,6 +41,34 @@ V0_L1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v0 -->
 V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
 
 
+class TestCanonicalRules(unittest.TestCase):
+    def test_base_rendered_from_canonical_rules(self):
+        """ut-canonical-base：BASE 与 CANONICAL_RULES 渲染逐字一致（防双事实源漂移）。"""
+        for entry in ("CLAUDE.md", "AGENTS.md"):
+            rendered = rc.render_base_entry(entry, "non-coding", set())
+            self.assertIn("### 1. 语言规则", rendered)
+            self.assertIn("### 7. 代码阅读规则", rendered)
+            self.assertNotIn("serena", rendered.lower())
+
+    def test_rule6_identity_marker(self):
+        """ut-rule6-marker：规则 6 以 cadence/project-rules/ 为身份 marker。"""
+        markers = dict()
+        for m, title, _c, _a in rc.CANONICAL_RULES:
+            markers[title] = m
+        self.assertIn("cadence/project-rules/", markers["项目个性化规则"])
+
+    def test_playwright_conditional(self):
+        """ut-canonical-playwright：playwright.md 存在时清单含第 8 条。"""
+        with_pw = rc._canonical_rules_for({"playwright.md"})
+        without = rc._canonical_rules_for(set())
+        self.assertEqual(len(with_pw), len(without) + 1)
+        self.assertIn("playwright.md", with_pw[-1][0])
+
+    def test_retired_list_seed(self):
+        """ut-retired-seed：退役清单初始含 serena-usage.md。"""
+        self.assertEqual(rc.RETIRED_RULE_FILES, ["serena-usage.md"])
+
+
 class TestMergeMarkdown(unittest.TestCase):
     """merge_markdown 纯函数兼容测试；适用范围已收窄，不再用于框架受管规则文件。"""
 

@@ -245,81 +245,6 @@ except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模
 # 块按检测结果追加；规则 2 摘要行按项目类型选择文本。
 # ---------------------------------------------------------------------------
 
-BASE_CLAUDE_MD = """# CLAUDE.md
-
-本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 使用规则
-- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则（强制规则）
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
-"""
-
-BASE_AGENTS_MD = """# AGENTS.md
-
-本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
-
-## 默认角色
-
-- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按指令完成实现、验证与结果汇报。
-- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 与工具使用规则
-- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `.claude/rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
-"""
-
 # 规则 2（代码使用规则）摘要行：按项目类型选择文本（Coding → 遵循 TDD；非 Coding → 非必要不编写）。
 RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/code-usage.md`"
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
@@ -340,6 +265,103 @@ RULE6_BLOCK_AGENTS = (
     "- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件\n"
     "- 详见 `cadence/project-rules/README.md`"
 )
+RULE6_BLOCK_CLAUDE_BODY = "\n".join(RULE6_BLOCK_CLAUDE.splitlines()[1:])
+RULE6_BLOCK_AGENTS_BODY = "\n".join(RULE6_BLOCK_AGENTS.splitlines()[1:])
+
+RETIRED_RULE_FILES = ["serena-usage.md"]
+
+# 权威规则清单。每项依次为身份 marker、标题、CLAUDE.md 正文和 AGENTS.md 正文。
+# 规则 2 的占位符在渲染时按 project_type 替换；规则 6 的正文复用既有块。
+CANONICAL_RULES: list[tuple[tuple[str, ...], str, str, str]] = [
+    (("language.md",), "语言规则",
+     "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+     "- **必须使用中文回答** → 详见 `.claude/rules/language.md`"),
+    (("code-usage.md",), "代码使用规则", "{RULE2}", "{RULE2}"),
+    (("document-storage.md",), "文档存储规则",
+     "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
+     "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`"),
+    (("markdown-format.md",), "Markdown 格式规则",
+     "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+     "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`"),
+    (("mcp-servers.md",), "MCP Server 使用规则",
+     "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`",
+     "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`"),
+    (("cadence/project-rules/",), "项目个性化规则",
+     RULE6_BLOCK_CLAUDE_BODY, RULE6_BLOCK_AGENTS_BODY),
+    (("code-reading.md",), "代码阅读规则",
+     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
+     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`"),
+]
+
+CANONICAL_RULE_PLAYWRIGHT = (
+    ("playwright.md",), "Playwright CLI 使用规则",
+    "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`",
+    "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`",
+)
+
+
+def _canonical_rules_for(existing_rule_files: set[str]) -> list:
+    """返回目标项目适用的有序权威规则清单。"""
+    rules = list(CANONICAL_RULES)
+    if "playwright.md" in existing_rule_files:
+        rules.append(CANONICAL_RULE_PLAYWRIGHT)
+    return rules
+
+
+def render_mandatory_section(entry_name: str, project_type: str,
+                            existing_rule_files: set[str]) -> str:
+    """根据权威清单渲染入口文件的 ``## 强制规则`` 章节。"""
+    lines = [
+        "## 强制规则",
+        "",
+        "> **🔴 必须遵守 - 无例外**",
+        "> 详细规则见 `.claude/rules/` 目录下的各规则文件。",
+        "> 用户自定义规则见 `cadence/project-rules/` 目录。",
+        "",
+    ]
+    for number, (_markers, title, claude_text, agents_text) in enumerate(
+        _canonical_rules_for(existing_rule_files), 1
+    ):
+        body = claude_text if entry_name == "CLAUDE.md" else agents_text
+        if body == "{RULE2}":
+            body = RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+        # 入口 BASE 保留既有规则 6 标题（CLAUDE 带“强制规则”、AGENTS 不带），
+        # 规则身份仍由 CANONICAL_RULES 的 cadence/project-rules/ marker 统一提供。
+        heading = title
+        if _markers == ("cadence/project-rules/",):
+            legacy_block = (
+                RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
+            )
+            heading = legacy_block.splitlines()[0].split(". ", 1)[1]
+        lines.extend([f"### {number}. {heading}", *body.splitlines(), ""])
+    return "\n".join(lines)
+
+
+_CLAUDE_HEADER = """# CLAUDE.md
+
+本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。"""
+_AGENTS_HEADER = """# AGENTS.md
+
+本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
+
+## 默认角色
+
+- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按指令完成实现、验证与结果汇报。
+- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。"""
+
+
+def render_base_entry(entry_name: str, project_type: str,
+                      existing_rule_files: set[str]) -> str:
+    """渲染入口不存在时使用的基础文本。"""
+    header = _CLAUDE_HEADER if entry_name == "CLAUDE.md" else _AGENTS_HEADER
+    return header + "\n\n" + render_mandatory_section(
+        entry_name, project_type, existing_rule_files
+    )
+
+
+# 兼容既有引用点：默认非 Coding、无条件规则文件时的 BASE 文本。
+BASE_CLAUDE_MD = render_base_entry("CLAUDE.md", "non-coding", set())
+BASE_AGENTS_MD = render_base_entry("AGENTS.md", "non-coding", set())
 
 # 决策枚举：规则文件/L0/L1 冲突 replace|keep；OpenSpec rules.apply 冲突 remove_apply|keep。
 DECISION_REPLACE = "replace"
@@ -1499,6 +1521,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "action": "create",
                 "conflict": None,
                 "backup_needed": False,
+                "existing_rule_files": sorted(
+                    p.name for p in rules_dir.glob("*.md")
+                ),
             })
             continue
         # 文件存在 → 检测 L0 区块状态（骨架：存在即视为可能漂移 → conflict）
@@ -2278,7 +2303,10 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         entry_path = root / entry_name
         state = asset.get("conflict")  # None=skip/create, 或 insert/drift/upgrade/broken
         action = asset.get("action")
-        base_text = BASE_CLAUDE_MD if entry_name == "CLAUDE.md" else BASE_AGENTS_MD
+        existing_rule_files = set(asset.get("existing_rule_files", ()))
+        base_text = render_base_entry(
+            entry_name, project_type, existing_rule_files
+        )
 
         if action == "skip" or (state is None and action != "create"):
             # codex 终审 I2：L0 skip 状态也执行摘要补全与技术栈写入（SM-02/03、
@@ -2594,7 +2622,12 @@ def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-c
     # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
     deduped_text = "\n".join(deduped)
     missing = [line for marker, line in required if marker not in deduped_text]
-    rule6_missing = rule6_first_line not in deduped_text
+    # 规则 6 的权威身份 marker 不依赖标题文案；同时保留旧标题首行的兼容判定。
+    rule6_missing = (
+        rule6_first_line not in deduped_text
+        and "### 6. 项目个性化规则" not in deduped_text
+        and "cadence/project-rules/" not in deduped_text
+    )
     if not missing and not rule6_missing:
         if deduped == section:
             return text
