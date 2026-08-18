@@ -268,7 +268,7 @@ RULE6_BLOCK_AGENTS = (
 RULE6_BLOCK_CLAUDE_BODY = "\n".join(RULE6_BLOCK_CLAUDE.splitlines()[1:])
 RULE6_BLOCK_AGENTS_BODY = "\n".join(RULE6_BLOCK_AGENTS.splitlines()[1:])
 
-RETIRED_RULE_FILES = ["serena-usage.md"]
+RETIRED_RULE_FILES: list[str] = ["serena-usage.md"]
 
 # 权威规则清单。每项依次为身份 marker、标题、CLAUDE.md 正文和 AGENTS.md 正文。
 # 规则 2 的占位符在渲染时按 project_type 替换；规则 6 的正文复用既有块。
@@ -2622,12 +2622,15 @@ def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-c
     # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
     deduped_text = "\n".join(deduped)
     missing = [line for marker, line in required if marker not in deduped_text]
-    # 规则 6 的权威身份 marker 不依赖标题文案；同时保留旧标题首行的兼容判定。
-    rule6_missing = (
-        rule6_first_line not in deduped_text
-        and "### 6. 项目个性化规则" not in deduped_text
-        and "cadence/project-rules/" not in deduped_text
+    # 规则 6 仅以详情行或标题作为 marker；标准引用块中的裸
+    # `cadence/project-rules/` 路径不表示规则 6 正文存在。
+    rule6_detail_marker = "- 详见 `cadence/project-rules/README.md`"
+    rule6_present = (
+        rule6_first_line in deduped_text
+        or "### 6. 项目个性化规则" in deduped_text
+        or rule6_detail_marker in deduped_text
     )
+    rule6_missing = not rule6_present
     if not missing and not rule6_missing:
         if deduped == section:
             return text

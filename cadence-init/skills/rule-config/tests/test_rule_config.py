@@ -43,7 +43,7 @@ V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
 
 class TestCanonicalRules(unittest.TestCase):
     def test_base_rendered_from_canonical_rules(self):
-        """ut-canonical-base：BASE 与 CANONICAL_RULES 渲染逐字一致（防双事实源漂移）。"""
+        """验证关键规则条目存在，且渲染结果无 serena 残留。"""
         for entry in ("CLAUDE.md", "AGENTS.md"):
             rendered = rc.render_base_entry(entry, "non-coding", set())
             self.assertIn("### 1. 语言规则", rendered)
@@ -1875,6 +1875,28 @@ class TestEnsureSummaryLines(unittest.TestCase):
         # 规则 6 多行块被补回（至少首行 + 末行）
         self.assertIn("### 6. 项目个性化规则（强制规则）", out)
         self.assertIn("- 详见 `cadence/project-rules/README.md`", out)
+
+    def test_rule6_restored_when_only_standard_reference_block_remains(self):
+        """回归：标准引用块的 cadence/project-rules/ 路径不应伪装成规则 6 正文。"""
+        text = (
+            "# CLAUDE.md\n\n## 强制规则\n\n"
+            "> **🔴 必须遵守 - 无例外**\n"
+            "> 详细规则见 `.claude/rules/` 目录下的各规则文件。\n"
+            "> 用户自定义规则见 `cadence/project-rules/` 目录。\n\n"
+            "### 1. 语言规则\n"
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+            "### 2. 代码使用规则\n" + rc.RULE2_TEXT_NONCODING + "\n\n"
+            "### 3. 文档存储规则\n"
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`\n\n"
+            "### 4. Markdown 格式规则\n"
+            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`\n\n"
+            "### 5. MCP Server 使用规则\n"
+            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`\n\n"
+            "### 7. 代码阅读规则\n"
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
+        )
+        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        self.assertIn(rc.RULE6_BLOCK_CLAUDE, out)
 
     def test_missing_rule2_coding_variant_added_for_coding_project(self):
         """ut-ensure_summary-rule2-coding / Important 1（Coding 项目补回规则 2 = 遵循 TDD）"""
