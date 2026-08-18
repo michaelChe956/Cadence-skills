@@ -1405,6 +1405,27 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
 
 
+class TestTechStackDualEntry(unittest.TestCase):
+    def test_both_entries_receive_same_techstack(self):
+        """ut-dual-entry-techstack：双入口写入同一份 tech_stack（SM/DF 一致性）。"""
+        import tempfile, subprocess
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "package.json").write_text('{"scripts":{"test":"vitest"}}')
+            # 既有非 Cadence 入口（无 ## 强制规则、无技术栈块）
+            (root / "AGENTS.md").write_text("# KB\n\nEnglish content\n")
+            (root / "CLAUDE.md").write_text("# CLAUDE.md\n\n说明\n")
+            subprocess.run(
+                ["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
+                 "--report", str(root.parent / "r.json"), "--no-interrupt"],
+                check=True)
+            for name in ("AGENTS.md", "CLAUDE.md"):
+                text = (root / name).read_text()
+                self.assertIn("- **语言**：JavaScript/TypeScript", text,
+                              f"{name} 技术栈未写入检测值")
+
+
 class TestStepS4EntryFiles(unittest.TestCase):
     """step_s4_entry_files 集成断言：双入口合成、幂等、漂移修复。"""
 
