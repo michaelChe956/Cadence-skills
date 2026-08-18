@@ -110,10 +110,6 @@ L0_CURRENT_VERSION = "v2"
 L0_OLD_VERSIONS = ["v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
-# v1 有冻结的历史规范源，故升级前必须全文比对；v0 没有真实规范源，按
-# 历史兼容策略只要成对标记合法就允许确定性升级。
-L0_OLD_SOURCES: dict[str, str] = {}
-
 # L1 规则文件版本标记（单行注释，位于文件首行）。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
 L1_V1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v1 -->"
@@ -2462,14 +2458,12 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
                    existing_rule_files: set[str] | None = None) -> tuple:
     """合成入口文件最终文本，返回 ``(text, techstack_diffs, warnings)``。
 
-    按状态区分 L0 区块处理（保证幂等与区块外保留）：
-      * skip：L0 区块不动；
-      * create（入口不存在，基线=BASE 文本）：插入 L0；
-      * insert（入口存在但无 L0 标记）：插入 L0；
-      * drift/upgrade：移除旧区块对后重新插入规范 L0；
-      * broken：只移除孤立标记行后插入规范 L0。
+    L0 处理：skip 保持现有规范块；create 直接插入；insert、upgrade、dedup、
+    drift、broken 均统一调用 `_normalize_l0_to_single_block`，安全移除可处理
+    标记并生成唯一当前版本块。dedup 保留首个当前块；若其内容漂移，下一轮
+    会按 drift 再收敛一次（已知两轮收敛风险，按当前契约不改变该行为）。
 
-    codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
+    codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/dedup/drift/broken/create），
     均执行强制规则章节规范化（SM-02/03）与技术栈块写入（DF-02/S4
     「单次完成 L0、规则章节、技术栈」）——L0 区块处理与规则章节/技术栈是独立动作。
     规则章节规范化保留可识别的用户块；技术栈逐项替换占位、保留用户真实值并返回差异，
@@ -2551,9 +2545,25 @@ def _insert_l0_block(text: str, l0_source: str) -> str:
 
 
 def _remove_l0_ranges(text: str, ranges: list[tuple[int, int, bool]]) -> str:
-    """倒序删除 L0 区间；完整块压缩空行，孤儿标记仅删除自身行。"""
+    """删除经裁剪的 L0 区间，合并重叠范围后再倒序处理。
+
+    所有区间索引均基于原文本。先合并同类重叠/相邻区间，确保后续倒序删除
+    不会因前次删除改变后次的索引。完整块压缩边界空行；marker 行仅移除自身。
+    """
+    merged: list[tuple[int, int, bool]] = []
+    for start, end, is_block in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            old_start, old_end, old_is_block = merged[-1]
+            merged[-1] = (
+                old_start,
+                max(old_end, end),
+                old_is_block or is_block,
+            )
+        else:
+            merged.append((start, end, is_block))
+
     result = text
-    for start, end, is_block in sorted(ranges, reverse=True):
+    for start, end, is_block in reversed(merged):
         before = result[:start]
         after = result[end:]
         if not is_block:
@@ -2579,13 +2589,6 @@ def _l0_marker_line_range(text: str, event: dict) -> tuple[int, int]:
     return start, len(text) if end == -1 else end + 1
 
 
-def _remove_l0_block_pair(text: str) -> str:
-    """移除合法完整 L0 区块，绝不跨越任意版本的后续 begin。"""
-    pairs, _ = _analyze_l0_markers(text)
-    ranges = [(begin["start"], end["end"], True) for begin, end in pairs]
-    return _remove_l0_ranges(text, ranges)
-
-
 def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[dict]]:
     """将混合版本、重复或残留标记收敛为一个当前版本 L0 区块。
 
@@ -2602,15 +2605,29 @@ def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[
         1 for event in orphans if event["version"] == L0_CURRENT_VERSION
     )
     # 合同要求重复当前区块保留首个；其它版本完整块仍全部移除并迁移。
+    # 若完整块内部存在孤儿 marker，该块的边界无法再安全地声明为受管内容：
+    # 只剥离它的首尾 marker 行以保留全部内部用户文本，避免删除范围重叠。
     kept_pair = current_pairs[0] if current_pair_count > 1 else None
     pairs_to_remove = [pair for pair in pairs if pair != kept_pair]
-    ranges = [
-        (begin["start"], end["end"], True)
-        for begin, end in pairs_to_remove
+    orphan_ranges = [
+        _l0_marker_line_range(text, event) for event in orphans
     ]
-    ranges.extend(
-        (*_l0_marker_line_range(text, event), False) for event in orphans
-    )
+    ranges: list[tuple[int, int, bool]] = [
+        (*marker_range, False) for marker_range in orphan_ranges
+    ]
+    for begin, end in pairs_to_remove:
+        pair_range = (begin["start"], end["end"])
+        contaminated = any(
+            marker_start < pair_range[1] and pair_range[0] < marker_end
+            for marker_start, marker_end in orphan_ranges
+        )
+        if contaminated:
+            ranges.extend([
+                (*_l0_marker_line_range(text, begin), False),
+                (*_l0_marker_line_range(text, end), False),
+            ])
+        else:
+            ranges.append((*pair_range, True))
     normalized = _remove_l0_ranges(text, ranges)
     normalized = _insert_l0_block(normalized, l0_source)
     warnings: list[dict] = []
@@ -2624,24 +2641,6 @@ def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[
             },
         })
     return normalized, warnings
-
-
-def _strip_l0_marker_lines_only(text: str) -> str:
-    """仅移除独立的 L0 标记行（整行匹配），保留所有其他内容（含区块内正文）。
-
-    用于 broken 状态：单侧/乱序标记无法判定区块归属，只移除标记行本身。
-    """
-    lines = text.splitlines()
-    kept: list = []
-    for line in lines:
-        stripped = line.strip()
-        if (
-            stripped.startswith("<!-- cadence-managed:openspec-superpowers-routing:")
-            and stripped.endswith("-->")
-        ):
-            continue
-        kept.append(line)
-    return "\n".join(kept)
 
 
 def _split_into_blocks(lines: list[str]) -> list[tuple[str, list[str]]]:

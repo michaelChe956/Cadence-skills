@@ -306,6 +306,15 @@ class TestL0V2Migration(unittest.TestCase):
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
 
+    def test_overlapping_orphan_end_preserves_all_user_content(self):
+        """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
+        overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
+        out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        for user_text in ("A", "X", "Y", "B"):
+            self.assertIn(user_text, out)
+
     def test_orphan_current_marker_emits_l0_dedup(self):
         """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
         current_with_orphan = L0_SOURCE + "\n\n" + V2_START + "\n残留用户内容\n"
