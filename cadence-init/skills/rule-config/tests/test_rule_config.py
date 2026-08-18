@@ -29,9 +29,11 @@ TPL = (Path(__file__).resolve().parents[1] / "references" / "openspec" / "config
 L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "agent-routing-kernel.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v1 为当前版本；v0 为受支持旧版本的合成样本）
+# L0 受管区块标记（v2 为当前版本；v1/v0 为受支持旧版本的合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
+V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
+V2_END = "<!-- cadence-managed:openspec-superpowers-routing:v2:end -->"
 V0_START = "<!-- cadence-managed:openspec-superpowers-routing:v0:start -->"
 V0_END = "<!-- cadence-managed:openspec-superpowers-routing:v0:end -->"
 
@@ -205,14 +207,14 @@ class TestMergeMarkdown(unittest.TestCase):
 
 
 class TestL0Block(unittest.TestCase):
-    def test_skip_when_v1_block_matches_source(self):
-        """ut-l0_block-read-source / L0-P1 + L0-P6（v1 标记对且区块与规范源逐字一致）"""
+    def test_skip_when_v2_block_matches_source(self):
+        """ut-l0_block-read-source / L0-P1 + L0-P6（v2 标记对且区块与规范源逐字一致）"""
         text = "# CLAUDE.md\n\n文件说明\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
 
-    def test_drift_when_v1_markers_but_content_differs(self):
-        """ut-l0_block-drift / L0-P7（v1 标记对但区块内容不同）"""
-        text = V1_START + "\n本地修改内容\n" + V1_END + "\n"
+    def test_drift_when_v2_markers_but_content_differs(self):
+        """ut-l0_block-drift / L0-P7（v2 标记对但区块内容不同）"""
+        text = V2_START + "\n本地修改内容\n" + V2_END + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "drift")
 
     def test_insert_when_no_markers(self):
@@ -229,18 +231,20 @@ class TestL0Block(unittest.TestCase):
         self.assertEqual(out, "# 入口\n文件说明\n\n" + L0_SOURCE)
 
     def test_upgrade_when_old_version_markers(self):
-        """ut-l0_block-upgrade / L0-P9（成对受支持旧版本标记）"""
-        text = V0_START + "\n旧版区块内容\n" + V0_END + "\n"
-        self.assertEqual(rc.l0_block(text, L0_SOURCE), "upgrade")
+        """ut-l0_block-upgrade / L0-P9（v1/v0 成对受支持旧版本标记）"""
+        for start, end in ((V1_START, V1_END), (V0_START, V0_END)):
+            with self.subTest(version=start[-13:-11]):
+                text = start + "\n旧版区块内容\n" + end + "\n"
+                self.assertEqual(rc.l0_block(text, L0_SOURCE), "upgrade")
 
     def test_broken_when_single_side_marker(self):
-        """ut-l0_block-broken / L0-P10（单侧标记）"""
-        self.assertEqual(rc.l0_block(V1_START + "\n内容\n", L0_SOURCE), "broken")
-        self.assertEqual(rc.l0_block("内容\n" + V1_END + "\n", L0_SOURCE), "broken")
+        """ut-l0_block-broken / L0-P10（当前版本单侧标记）"""
+        self.assertEqual(rc.l0_block(V2_START + "\n内容\n", L0_SOURCE), "broken")
+        self.assertEqual(rc.l0_block("内容\n" + V2_END + "\n", L0_SOURCE), "broken")
 
     def test_broken_when_markers_out_of_order(self):
-        """ut-l0_block-broken / L0-P10（标记顺序错误）"""
-        text = V1_END + "\n内容\n" + V1_START + "\n"
+        """ut-l0_block-broken / L0-P10（当前版本标记顺序错误）"""
+        text = V2_END + "\n内容\n" + V2_START + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "broken")
 
     def test_skip_requires_verbatim_match_no_strip(self):
@@ -249,9 +253,54 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V1_START + " " + L0_SOURCE[len(V1_START):]
+        source_with_leading_space = V2_START + " " + L0_SOURCE[len(V2_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
+
+
+class TestL0V2Migration(unittest.TestCase):
+    def test_v1_pair_is_upgrade(self):
+        """ut-l0-v2-upgrade：v1 成对区块对 v2 源判 upgrade（非 drift）。"""
+        v1_text = V1_START + "\n旧路由内容\n" + V1_END + "\n"
+        self.assertEqual(rc.l0_block(v1_text, L0_SOURCE), "upgrade")
+
+    def test_upgrade_yields_single_v2_block(self):
+        """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
+        v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
+        out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+
+    def test_mixed_markers_not_broken_residue(self):
+        """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V2_START + "\n残留单侧\n"
+        out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+
+    def test_current_pair_with_old_residue_is_not_skip(self):
+        """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
+        current_with_old_residue = L0_SOURCE + "\n" + V1_START + "\n旧残留\n"
+        self.assertEqual(rc.l0_block(current_with_old_residue, L0_SOURCE), "broken")
+
+    def test_duplicate_current_blocks_deduped(self):
+        """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
+        dup = L0_SOURCE + "\n\n## 中间\n\n" + L0_SOURCE
+        out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
+        self.assertIn("## 中间", out)
+
+    def test_duplicate_current_blocks_classified_for_normalization(self):
+        """ut-l0-v2-dedup-state：重复 v2 成对块不可误判 skip。"""
+        dup = L0_SOURCE + "\n\n" + L0_SOURCE
+        self.assertEqual(rc.l0_block(dup, L0_SOURCE), "drift")
+
+    def test_v2_skip_idempotent(self):
+        """ut-l0-v2-skip：v2 与源一致判 skip。"""
+        self.assertEqual(rc.l0_block(L0_SOURCE, L0_SOURCE), "skip")
 
 
 class TestL0InsertPosition(unittest.TestCase):
@@ -848,7 +897,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v1",
+            "cadence-managed:openspec-superpowers-routing:v2",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -2058,6 +2107,21 @@ class TestNormalizeMandatoryRules(unittest.TestCase):
         twice, warns2 = self._norm(once)
         self.assertEqual(once, twice)
 
+    def test_idempotent_preserves_user_line_adjacent_to_canonical_h3(self):
+        """ut-norm-idempotent-adjacent：权威 H3 尾部用户行不可在第二次收敛时丢失。"""
+        text = (
+            "## 强制规则\n\n"
+            "### 7. 代码阅读规则\n"
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n\n"
+            "> **必须遵守 - 无例外**\n"
+            "### 7. Playwright CLI 使用规则\n"
+            "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`\n"
+        )
+        once, _ = self._norm(text)
+        twice, _ = self._norm(once)
+        self.assertEqual(once, twice)
+        self.assertIn("> **必须遵守 - 无例外**", twice)
+
     def test_rule2_coding_switch(self):
         """ut-norm-rule2：规则 2 按 project_type 选文案。"""
         text = "## 强制规则\n\n- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`\n"
@@ -2209,7 +2273,7 @@ class TestComputePlanFinalReview(unittest.TestCase):
         (rules_dir / "language.md").write_text("本地漂移\n", encoding="utf-8")
         (rules_dir / rc.L1_RULE_FILENAME).write_text("L1 本地漂移\n", encoding="utf-8")
         (self.root / "CLAUDE.md").write_text(
-            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+            "# CLAUDE.md\n\n" + V2_START + "\n漂移\n" + V2_END + "\n", encoding="utf-8"
         )
         (self.root / "AGENTS.md").write_text("# AGENTS.md\n无标记\n", encoding="utf-8")
         (self.root / "openspec").mkdir()
@@ -2274,7 +2338,7 @@ class TestComputePlanFinalReview(unittest.TestCase):
         """ut-compute_plan-l0-drift-conflict / 终审 I-2 边界
         （drift/broken 仍产 decision 冲突，allowed_decisions=['replace','keep']）"""
         (self.root / "CLAUDE.md").write_text(
-            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+            "# CLAUDE.md\n\n" + V2_START + "\n漂移\n" + V2_END + "\n", encoding="utf-8"
         )
         plan = rc.compute_plan(self.root, _intents())
         conflicts = self._conflicts_by_id(plan)

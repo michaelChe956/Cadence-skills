@@ -166,7 +166,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v2:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v2:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -622,16 +622,16 @@ fi
 # B4. 单侧与乱序标记修复必须保留所有非标记行（it-s4-broken-markers / L0-P10）。
 case_root="$TEST_ROOT/fx-l0-broken-markers"
 mkdir -p "$case_root"
-printf '# CLAUDE.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:start -->\n无法判定归属的本地内容\n任意后置内容\n' > "$case_root/CLAUDE.md"
-printf '# AGENTS.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:end -->\n无法判定归属的本地内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:start -->\n任意后置内容\n' > "$case_root/AGENTS.md"
+printf '# CLAUDE.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:start -->\n无法判定归属的本地内容\n任意后置内容\n' > "$case_root/CLAUDE.md"
+printf '# AGENTS.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:end -->\n无法判定归属的本地内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:start -->\n任意后置内容\n' > "$case_root/AGENTS.md"
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -1420,7 +1420,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1460,8 +1460,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass
@@ -1481,7 +1481,7 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && ! grep -q 'routing:v0' "$case_root/CLAUDE.md" \
   && grep -q '后置' "$case_root/CLAUDE.md"; then
-  record_result it-s4-upgrade "$RUN_STATUS" v0 v1 pass
+  record_result it-s4-upgrade "$RUN_STATUS" v0 v2 pass
 else
   record_result it-s4-upgrade "$RUN_STATUS" v0 v0 fail
 fi

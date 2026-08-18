@@ -104,9 +104,12 @@ STEP_ORDER = (
 
 # L0 受管区块标记：版本化注释对，用于在入口文件中圈定 cadence-managed 内容。
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
-# 锁定 L0_SOURCE 全文）。版本号固定为 v1（当前版本）。
-L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
-L0_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
+# 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
+# 漏检历史区块。
+L0_CURRENT_VERSION = "v2"
+L0_OLD_VERSIONS = ["v1", "v0"]
+L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
+L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
 
 # L1 规则文件版本标记（单行注释，位于文件首行）。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
@@ -892,10 +895,10 @@ def l0_block(text: str, source: str) -> str:
     """判定 L0 受管区块状态（L0-P6~P10）。
 
     返回五态之一：
-      * skip：当前 v1 标记对且区块与规范源逐字一致；
-      * drift：v1 标记对但区块内容不同；
+      * skip：当前版本标记对且区块与规范源逐字一致；
+      * drift：当前版本标记对但区块内容不同；
       * insert：两个标记都不存在（需插入）；
-      * upgrade：成对受支持旧版本标记（v0 等，不在当前 v1/source 中）；
+      * upgrade：成对受支持旧版本标记（v1/v0，不在当前版本/source 中）；
       * broken：单侧标记或标记顺序错误。
     """
     begin_idx = text.find(L0_BEGIN)
@@ -904,9 +907,25 @@ def l0_block(text: str, source: str) -> str:
     has_end = end_idx != -1
 
     if has_begin and has_end:
-        # 两个 v1 标记都在：顺序必须正确（begin 在 end 之前），否则 broken。
+        # 两个当前版本标记都在：顺序必须正确（begin 在 end 之前），否则 broken。
         if begin_idx > end_idx:
             return "broken"
+        begin_count = text.count(L0_BEGIN)
+        end_count = text.count(L0_END)
+        if begin_count != 1 or end_count != 1:
+            # 多个完整当前版本区块按 drift 进入确定性归并；数量不等说明仍有
+            # 单侧残留，按 broken 进入同一归并路径。
+            return "drift" if begin_count == end_count else "broken"
+        for ver in L0_OLD_VERSIONS:
+            old_begin = (
+                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
+            )
+            old_end = (
+                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
+            )
+            if old_begin in text or old_end in text:
+                # 当前规范块之外仍有历史标记时不能 skip，交由归并路径清除。
+                return "broken"
         block_start = begin_idx
         block_end = end_idx + len(L0_END)
         block = text[block_start:block_end]
@@ -916,9 +935,9 @@ def l0_block(text: str, source: str) -> str:
         # 非区块内容差异）。首部/内部任何字符差异均判 drift。
         return "skip" if block.rstrip("\n") == source.rstrip("\n") else "drift"
 
-    # 恰有一个 v1 标记 → 先看是否成对旧版标记（upgrade），否则单侧 broken。
+    # 恰有一个当前版本标记 → 先看是否成对旧版标记（upgrade），否则单侧 broken。
     if has_begin or has_end:
-        for ver in ("v0",):
+        for ver in L0_OLD_VERSIONS:
             old_begin_marker = (
                 "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
             )
@@ -929,11 +948,11 @@ def l0_block(text: str, source: str) -> str:
             oe = text.find(old_end_marker)
             if ob != -1 and oe != -1 and ob < oe:
                 return "upgrade"
-        # 单侧 v1 标记且无成对旧版标记 → broken。
+        # 单侧当前版本标记且无成对旧版标记 → broken。
         return "broken"
 
-    # 两个 v1 标记都不在：检查是否成对旧版标记（upgrade）。
-    for ver in ("v0",):
+    # 两个当前版本标记都不在：检查是否成对旧版标记（upgrade）。
+    for ver in L0_OLD_VERSIONS:
         old_begin_marker = (
             "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
         )
@@ -2352,8 +2371,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         conflict_id = f"s4:{entry_name}"
         existing = _safe_read(entry_path) or ""
         # I-2 修复：insert/upgrade 为确定性动作（merge-semantics L0-05/L0-04
-        # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
-        # upgrade 在全局备份屏障通过后升级为当前 v1。
+        # 「两模式同动作」），不走 decisions：insert 直接插入当前版本；
+        # upgrade 在全局备份屏障通过后升级为当前版本。
         if action in ("insert", "upgrade"):
             composed, diffs, warnings = _compose_entry(
                 existing, kernel_source, state=state or action,
@@ -2430,26 +2449,25 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
         existing_rule_files = set()
 
     # --- 步骤 1：规范化 L0 ---
+    l0_warnings: list[dict] = []
     if state == "skip":
         pass
-    elif state == "insert":
-        text = _insert_l0_block(text, l0_source)
-    elif state in ("drift", "upgrade"):
-        # 标记对完整：移除整个旧区块，保留区块外内容，重新插入规范 L0。
-        text = _remove_l0_block_pair(text)
-        text = _insert_l0_block(text, l0_source)
     elif state == "create":
         # BASE 基线本身无 L0 → 插入。
         text = _insert_l0_block(text, l0_source)
-    else:
-        # broken：只移除孤立标记行，保留所有非标记内容。
-        text = _strip_l0_marker_lines_only(text)
-        text = _insert_l0_block(text, l0_source)
-
+    elif state in ("insert", "upgrade", "drift", "broken"):
+        # 所有非收敛态统一走确定性归并：移除全部版本的完整区块，剥离
+        # 孤立标记，重新注入单一当前版本区块。drift 的替换语义同样只
+        # 影响受管区块，区块外文本逐字保留。
+        text, l0_warnings = _normalize_l0_to_single_block(text, l0_source)
+        for warning in l0_warnings:
+            warning.setdefault("file", entry_name)
+        # warning 在最终返回值中与强制规则 warning 合并。
     # --- 步骤 2：强制规则章节规范化（I2：全状态执行）---
     text, warnings = _normalize_mandatory_rules(
         text, entry_name, project_type, existing_rule_files
     )
+    warnings = l0_warnings + warnings
 
     # --- 步骤 3：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
     text, diffs = _ensure_techstack_block(text, tech_stack)
@@ -2505,10 +2523,10 @@ def _remove_l0_block_pair(text: str) -> str:
     """移除完整的 L0 受管区块对（begin...end 含内部全部内容），保留区块外内容。
 
     用于 drift/upgrade 状态：标记对完整时，整个旧区块（含漂移内容）移除。
-    支持任意版本（v1/v0 等）的成对标记。若仅有单侧标记则保留不动（由 broken 路径处理）。
+    支持当前版本及受支持旧版本（v2/v1/v0）的成对标记。若仅有单侧标记则保留不动（由 broken 路径处理）。
     """
     # 收集所有版本的 begin/end 标记对，逐个移除完整的 begin...end 区间。
-    versions = ["v1", "v0"]
+    versions = [L0_CURRENT_VERSION] + L0_OLD_VERSIONS
     result = text
     for ver in versions:
         begin_marker = (
@@ -2543,6 +2561,37 @@ def _remove_l0_block_pair(text: str) -> str:
     return result
 
 
+def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[dict]]:
+    """将混合版本、重复或残留标记收敛为一个当前版本 L0 区块。
+
+    完整区块先整体移除，因此旧区块中的漂移内容不会泄漏到入口；随后移除
+    无法配对的标记行，最后按既有插入定位策略注入规范源。区块外文本保持。
+    """
+    current_pair_count = 0
+    cursor = 0
+    while True:
+        begin_idx = text.find(L0_BEGIN, cursor)
+        if begin_idx == -1:
+            break
+        end_idx = text.find(L0_END, begin_idx + len(L0_BEGIN))
+        if end_idx == -1:
+            break
+        current_pair_count += 1
+        cursor = end_idx + len(L0_END)
+
+    normalized = _remove_l0_block_pair(text)
+    normalized = _strip_l0_marker_lines_only(normalized)
+    normalized = _insert_l0_block(normalized, l0_source)
+    warnings: list[dict] = []
+    if current_pair_count > 1:
+        warnings.append({
+            "code": "L0_DEDUP",
+            "message": "存在多个当前版本 L0 区块，已归并为单一区块",
+            "detail": {"count": current_pair_count},
+        })
+    return normalized, warnings
+
+
 def _strip_l0_marker_lines_only(text: str) -> str:
     """仅移除独立的 L0 标记行（整行匹配），保留所有其他内容（含区块内正文）。
 
@@ -2569,22 +2618,37 @@ def _split_into_blocks(lines: list[str]) -> list[tuple[str, list[str]]]:
     """
     blocks: list[tuple[str, list[str]]] = []
     heading_block: list[str] | None = None
+    after_heading_blank = False
+
+    def flush_heading_block() -> None:
+        nonlocal heading_block
+        if heading_block:
+            while heading_block and not heading_block[-1].strip():
+                heading_block.pop()
+            if heading_block:
+                blocks.append(("heading-block", heading_block))
+        heading_block = None
+
     for line in lines:
         if line.lstrip().startswith("### "):
-            if heading_block:
-                while heading_block and not heading_block[-1].strip():
-                    heading_block.pop()
-                blocks.append(("heading-block", heading_block))
+            flush_heading_block()
             heading_block = [line]
+            after_heading_blank = False
         elif heading_block is not None:
-            heading_block.append(line)
+            if not line.strip():
+                heading_block.append(line)
+                after_heading_blank = True
+            elif after_heading_blank:
+                # 空行后不是同一 H3 的紧邻正文，视为用户独立内容。否则该
+                # 用户行会被归入权威 H3，在下一次收敛时随框架块一同删除。
+                flush_heading_block()
+                blocks.append(("line", [line]))
+                after_heading_blank = False
+            else:
+                heading_block.append(line)
         elif line.strip():
             blocks.append(("line", [line]))
-    if heading_block:
-        while heading_block and not heading_block[-1].strip():
-            heading_block.pop()
-        if heading_block:
-            blocks.append(("heading-block", heading_block))
+    flush_heading_block()
     return blocks
 
 

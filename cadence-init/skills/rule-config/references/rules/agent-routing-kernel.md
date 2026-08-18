@@ -1,4 +1,4 @@
-<!-- cadence-managed:openspec-superpowers-routing:v1:start -->
+<!-- cadence-managed:openspec-superpowers-routing:v2:start -->
 ## OpenSpec 与 Superpowers 任务路由（强制）
 
 > 先通过客户端原生机制选择 `using-superpowers` 与当前阶段必调 Skill；首个用户可见段落输出路由回执；Skill 调用完成后才允许读取仓库规则或使用仓库工具。
@@ -26,4 +26,4 @@
 需要仓库勘察的新功能或行为变化，必须先原生调用 `using-superpowers`、`brainstorming`，再输出回执；回执必须先于 change、Plan、目录或文件勘察，澄清问题不得替代回执。
 Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；pi 以全文读取对应 SKILL.md 作为 Skill 调用；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
 失败关闭本身也属于当前阶段动作，不能用“只判断/只拒绝”豁免 Skill：无 Plan 时先调用 `using-superpowers`、`writing-plans` 再拒绝 apply；即使禁止运行验证命令，也必须先调用 `using-superpowers`、`verification-before-completion` 加载验证纪律，再拒绝无证据完成声明；其他必调 Skill 未加载则停止。
-<!-- cadence-managed:openspec-superpowers-routing:v1:end -->
+<!-- cadence-managed:openspec-superpowers-routing:v2:end -->
