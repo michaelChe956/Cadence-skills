@@ -2765,6 +2765,11 @@ def _normalize_mandatory_rules(
             continue
         if any(retired in block_text for retired in RETIRED_RULE_FILES):
             continue
+        # Playwright 是唯一按目标项目实际规则文件条件启用的摘要项：目标项目
+        # 未启用 playwright.md 时，旧入口中的失效框架引用必须删除；其余
+        # 不存在的未来规则引用仍按用户内容保留（前瞻引用保护）。
+        if PLAYWRIGHT_RULE_FILE in block_text and PLAYWRIGHT_RULE_FILE not in existing_rule_files:
+            continue
         owner = next(
             (title for title, markers in canonical_rules.items()
              if any(marker in block_text for marker in markers)),

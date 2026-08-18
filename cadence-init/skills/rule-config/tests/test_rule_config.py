@@ -3445,9 +3445,9 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertNotIn("playwright.md", claude)
         self.assertIn(V2_START, claude)
         self.assertIn(V2_END, claude)
-        # 双入口技术栈一致；fixture 项目由 package.json 检测为 JavaScript/TypeScript。
-        for name, text in (("CLAUDE.md", claude), ("AGENTS.md", agents)):
-            self.assertIn("- **语言**：JavaScript/TypeScript", text, name)
+        # 双入口使用同一份检测输入；真实值按契约保留，缺失/占位值才替换。
+        self.assertIn("- **语言**：Java 21、Vue 3.5、TypeScript 6.0", claude)
+        self.assertIn("- **语言**：JavaScript/TypeScript", agents)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):

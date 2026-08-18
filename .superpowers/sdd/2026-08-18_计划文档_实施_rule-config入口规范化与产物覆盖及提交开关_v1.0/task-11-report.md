@@ -63,3 +63,15 @@ self.assertNotIn("### 8. Playwright", claude)
 ## 结论
 
 Fixture 与回归测试已落地，问题入口文件的绝大多数规范化行为均得到真实 CLI 验证；全量测试唯一失败与 brief 的无 Playwright 条目要求一致，已保留为实现风险，不通过修改断言规避。
+
+## Round 1 修复追加
+
+依据设计 v1.2 §3.5 用例 7 与 `entry-file-normalization` spec，修复了 `_normalize_mandatory_rules` 的条件项分类：当 `playwright.md` 不在目标项目的 `existing_rule_files` 时，强制规则章节内引用 `playwright.md` 的整个块按失效框架引用删除；当文件存在时仍由条件权威清单渲染并去重。该特殊处理仅针对 `playwright.md`，其他不存在规则文件的前瞻引用仍按用户内容保留。
+
+同时按用户真实技术栈保留契约修正 E2E 技术栈断言：CLAUDE.md 的既有 `Java 21、Vue 3.5、TypeScript 6.0` 必须保留，AGENTS.md 缺失技术栈块时才断言由 package.json 写入 `JavaScript/TypeScript`；双入口共用同一检测输入的占位场景由既有 `test_both_entries_receive_same_techstack` 覆盖。
+
+修复后验证：
+
+- `python3 -m unittest cadence-init.skills.rule-config.tests.test_rule_config.TestEndToEndRegression cadence-init.skills.rule-config.tests.test_rule_config.TestNormalizeMandatoryRules -v`：18/18 通过。
+- `python3 -m unittest discover -s cadence-init/skills/rule-config/tests -v`：216/216 通过。
+- `bash cadence-init/skills/rule-config/tests/verify-managed-lifecycle.sh`：`SUMMARY pass=104 fail=0`。
