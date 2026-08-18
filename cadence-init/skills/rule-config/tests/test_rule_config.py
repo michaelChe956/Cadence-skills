@@ -220,11 +220,13 @@ class TestL0Block(unittest.TestCase):
         self.assertEqual(rc.l0_block("# 入口\n无标记内容\n", L0_SOURCE), "insert")
 
     def test_insert_position_two_branches(self):
-        """ut-l0_block-insert-position / L0-P8（有/无 `## 强制规则` 两分支均判 insert，落点由调用方保证）"""
+        """ut-l0_block-insert-position / L0-P8（有/无 `## 强制规则` 均判 insert；无章节时插在 H1 简介之后）"""
         with_rules = "# 入口\n文件说明\n\n## 强制规则\n- x\n"
         without_rules = "# 入口\n文件说明\n"
         self.assertEqual(rc.l0_block(with_rules, L0_SOURCE), "insert")
         self.assertEqual(rc.l0_block(without_rules, L0_SOURCE), "insert")
+        out = rc._insert_l0_block(without_rules, L0_SOURCE)
+        self.assertEqual(out, "# 入口\n文件说明\n\n" + L0_SOURCE)
 
     def test_upgrade_when_old_version_markers(self):
         """ut-l0_block-upgrade / L0-P9（成对受支持旧版本标记）"""
@@ -250,6 +252,37 @@ class TestL0Block(unittest.TestCase):
         source_with_leading_space = V1_START + " " + L0_SOURCE[len(V1_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
+
+
+class TestL0InsertPosition(unittest.TestCase):
+    def test_insert_after_intro_when_no_section(self):
+        """ut-l0-pos：无 ## 强制规则 时 L0 位于 H1+简介之后、用户内容之前。"""
+        text = "# KB\n\n项目简介段落。\n\n## NOTES\n\n- 用户内容\n"
+        out = rc._insert_l0_block(text, L0_SOURCE)
+        idx_l0 = out.index("<!-- cadence-managed")
+        idx_notes = out.index("## NOTES")
+        idx_intro = out.index("项目简介段落。")
+        self.assertLess(idx_intro, idx_l0)
+        self.assertLess(idx_l0, idx_notes)  # 不再追加到文件末尾
+
+    def test_insert_at_start_without_h1(self):
+        """无 H1 时防御性地将 L0 插入文首。"""
+        out = rc._insert_l0_block("用户内容\n", L0_SOURCE)
+        self.assertTrue(out.startswith(L0_SOURCE))
+
+    def test_global_order_end_to_end(self):
+        """ut-global-order：H1/说明 → L0 → 强制规则 → 用户内容。"""
+        import tempfile, subprocess
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "AGENTS.md").write_text("# KB\n\n简介。\n\n## NOTES\n\n- 用户内容\n")
+            subprocess.run(["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
+                            "--report", str(Path(td).parent / "r.json"), "--no-interrupt"], check=True)
+            out = (root / "AGENTS.md").read_text()
+            i1, i2, i3 = out.index("<!-- cadence-managed"), out.index("## 强制规则"), out.index("## NOTES")
+            self.assertLess(i1, i2)
+            self.assertLess(i2, i3)
 
 
 class TestMergeYaml(unittest.TestCase):

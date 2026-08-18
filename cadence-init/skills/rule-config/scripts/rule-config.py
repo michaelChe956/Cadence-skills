@@ -2458,9 +2458,10 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
-    """在首个 `## 强制规则` 前插入 L0 区块；无则在文件说明后插入。
+    """在首个 `## 强制规则` 前插入 L0；无该章节时置于 H1 简介之后。
 
-    L0 区块前后各保留一个空行分隔。幂等：若 L0_BEGIN 已存在则不重复插入。
+    无 H1 时退化为插入文件开头。L0 区块前后各保留一个空行分隔；若
+    L0_BEGIN 已存在则不重复插入。
     """
     if L0_BEGIN in text:
         return text
@@ -2471,13 +2472,20 @@ def _insert_l0_block(text: str, l0_source: str) -> str:
             insert_idx = idx
             break
     if insert_idx is None:
-        # 无 ## 强制规则 → 在文件说明后插入（首个空行分隔处之后）。
-        # 文件说明 = 首个非空段落后。简单策略：在文件末尾追加（保证 BASE 已含说明）。
-        # 但更稳妥：找首个 H1 后的简介段落结束位置。这里采用“首个空行后”启发式。
-        insert_idx = len(lines)
-        # 回溯跳过末尾空行。
-        while insert_idx > 0 and lines[insert_idx - 1].strip() == "":
-            insert_idx -= 1
+        h1_idx = next(
+            (idx for idx, line in enumerate(lines) if line.startswith("# ")), None
+        )
+        if h1_idx is None:
+            insert_idx = 0
+        else:
+            insert_idx = h1_idx + 1
+            while insert_idx < len(lines) and not lines[insert_idx].strip():
+                insert_idx += 1
+            if insert_idx < len(lines) and not lines[insert_idx].lstrip().startswith("#"):
+                while insert_idx < len(lines) and lines[insert_idx].strip():
+                    insert_idx += 1
+                while insert_idx < len(lines) and not lines[insert_idx].strip():
+                    insert_idx += 1
     block_lines = l0_source.splitlines()
     # 组装：[原有前部] + 空行 + L0 区块 + 空行 + [原有后部]
     head = lines[:insert_idx]
