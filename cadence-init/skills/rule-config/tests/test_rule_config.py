@@ -1506,7 +1506,7 @@ class TestComposeEntryWarnings(unittest.TestCase):
         self.assertNotIn("覆盖率阈值", out)
 
     def test_compose_returns_warnings(self):
-        """ut-compose-warnings：_compose_entry 返回 (text, diffs, warnings)。"""
+        """ut-compose-warnings：_compose_entry 返回 (text, warnings)。"""
         text, warns = rc._compose_entry(
             "## 笔记\n\n遵循 TDD 和代码规范 保留我\n", rc._load_kernel_source(),
             state="insert", project_type="non-coding",

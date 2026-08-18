@@ -259,8 +259,8 @@ L0_OLD_SOURCES = {
 # ---------------------------------------------------------------------------
 # BASE 入口文本常量（Task 6）：入口不存在时创建的基础文本（含文件说明 + ## 强制规则 骨架）
 # 模板来源：现行 SKILL.md 的 CLAUDE.md / AGENTS.md 模板章节（见 SKILL.md 行 205+、256+）。
-# L0 受管区块由 step_s4_entry_files 在首个 ## 强制规则 前插入；技术栈/包管理器/覆盖率 80%
-# 块按检测结果追加；规则 2 摘要行按项目类型选择文本。
+# L0 受管区块由 step_s4_entry_files 在首个 ## 强制规则 前插入；项目配置仅维护
+# 产物自动提交开关；规则 2 摘要行按项目类型选择文本。
 # ---------------------------------------------------------------------------
 
 # 规则 2（代码使用规则）摘要行：按项目类型选择文本（Coding → 遵循 TDD；非 Coding → 非必要不编写）。
@@ -2267,7 +2267,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
       1. 各入口在内存合成最终文本（入口不存在 → BASE 文本为基线）；
       2. L0 插入位置 = 首个 `## 强制规则` 前；无则文件说明后；
       3. drift/upgrade/broken → 替换/修复 L0 区块为规范源，区块外内容逐字保留；
-      4. 强制规则章节按规范化语义收敛；技术栈/包管理器/覆盖率 80% 块追加；
+      4. 强制规则章节按规范化语义收敛；项目配置开关按规范落位；
       5. 规范化产生的 warnings 汇总到顶层报告，不影响 overall；
       6. 各一次 atomic_write（全局备份屏障已由 run_apply 完成）。
     """
@@ -2293,8 +2293,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         )
 
         if action == "skip" or (state is None and action != "create"):
-            # codex 终审 I2：L0 skip 状态也执行章节规范化与技术栈写入（SM-02/03、
-            # S4「单次完成 L0、规则章节、技术栈」；L0 区块处理与规则章节/技术栈是独立动作）。
+            # codex 终审 I2：L0 skip 状态也执行章节规范化（SM-02/03、
+            # S4 单次完成 L0 与规则章节；L0 区块处理与规则章节是独立动作）。
             # 内容无变化时不写盘（保持幂等，L0-02/SM-01）。
             existing = _safe_read(entry_path)
             if existing is None:
