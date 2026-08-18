@@ -2507,6 +2507,10 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     # --- 步骤 3：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
     text, diffs = _ensure_techstack_block(text, tech_stack)
 
+    # --- 步骤 4：产物自动提交开关（缺失时默认关闭；用户值保留）---
+    text, toggle_warnings = _ensure_commit_toggle(text, entry_name)
+    warnings.extend(toggle_warnings)
+
     return text, diffs, warnings
 
 
@@ -2804,6 +2808,8 @@ def _normalize_mandatory_rules(
 
 
 PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}
+TOGGLE_PREFIX = "- **产物自动提交（design/plan）**："
+TOGGLE_DEFAULT = "关闭"
 
 
 def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
@@ -2853,6 +2859,76 @@ def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
                     })
                 break
     return text, diffs
+
+
+def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
+    """确保首个 ``## 项目配置`` 中存在唯一的产物自动提交开关。
+
+    开关只管理首个项目配置章节：已有的合法或非法用户值均原样保留，
+    缺失时在章节末尾写入默认的“关闭”。多个项目配置章节不会被合并，
+    但会发出与其他章节规范化逻辑一致的 ``DUPLICATE_H2`` 警告。
+    """
+    warns: list[dict] = []
+    trailing_newline = text.endswith("\n")
+    lines = text.splitlines()
+    idxs = [i for i, line in enumerate(lines) if line.strip() == "## 项目配置"]
+    if not idxs:
+        block = [
+            "", "## 项目配置", "",
+            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。", "",
+            TOGGLE_PREFIX + TOGGLE_DEFAULT,
+        ]
+        return "\n".join(lines).rstrip("\n") + "\n" + "\n".join(block) + "\n", warns
+
+    if len(idxs) > 1:
+        warns.append({
+            "code": "DUPLICATE_H2", "file": entry_name,
+            "message": "存在多个 ## 项目配置，仅处理首个", "detail": {},
+        })
+
+    start = idxs[0]
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            end = i
+            break
+
+    # 章节内重复开关只保留首个；首个值即使非法也保留原文。
+    toggle_idxs = [
+        i for i in range(start + 1, end)
+        if lines[i].startswith(TOGGLE_PREFIX)
+    ]
+    if toggle_idxs:
+        first = toggle_idxs[0]
+        value = lines[first][len(TOGGLE_PREFIX):].strip()
+        if value not in ("开启", "关闭"):
+            warns.append({
+                "code": "INVALID_TOGGLE", "file": entry_name,
+                "message": f"产物自动提交开关值非法（{value}），按关闭处理",
+                "detail": {},
+            })
+        drop = set(toggle_idxs[1:])
+        if drop:
+            lines = [line for i, line in enumerate(lines) if i not in drop]
+        result = "\n".join(lines)
+        if trailing_newline:
+            result += "\n"
+        return result, warns
+
+    # 章节末尾插入，吸收章节尾部空行，避免二次运行继续移动开关。
+    insert_at = end
+    while insert_at > start + 1 and lines[insert_at - 1].strip() == "":
+        insert_at -= 1
+    lines = (
+        lines[:insert_at]
+        + [TOGGLE_PREFIX + TOGGLE_DEFAULT, ""]
+        + lines[end:]
+    )
+    result = "\n".join(lines)
+    if trailing_newline and not result.endswith("\n"):
+        result += "\n"
+    return result, warns
 
 
 

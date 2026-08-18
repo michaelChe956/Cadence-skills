@@ -1600,6 +1600,64 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
 
 
+class TestCommitToggle(unittest.TestCase):
+    def test_default_written_when_missing(self):
+        """ut-toggle-default：缺失时写默认值 关闭。"""
+        out, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
+        self.assertIn("- **产物自动提交（design/plan）**：关闭", out)
+        self.assertIn("## 项目配置", out)
+
+    def test_user_value_preserved(self):
+        """ut-toggle-keep：用户值 开启 保留。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("：开启", out)
+        self.assertEqual(warns, [])
+
+    def test_invalid_value_kept_with_warning(self):
+        """ut-toggle-invalid：非法值保留原文 + INVALID_TOGGLE。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：也许\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("：也许", out)
+        self.assertTrue(any(w["code"] == "INVALID_TOGGLE" for w in warns))
+
+    def test_toggle_after_techstack_block(self):
+        """ut-toggle-position：落点在 ### 项目技术栈 块之后、章节末尾。"""
+        text = ("## 项目配置\n\n### 项目技术栈\n- **语言**：Java\n\n## 其他\n")
+        out, _ = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertLess(out.index("### 项目技术栈"), out.index(rc.TOGGLE_PREFIX))
+        self.assertLess(out.index(rc.TOGGLE_PREFIX), out.index("## 其他"))
+
+    def test_empty_techstack_still_lands(self):
+        """ut-toggle-empty-ts：tech_stack 为空时开关仍落位（独立于 _ensure_techstack_block）。"""
+        text, diffs, warns = rc._compose_entry(
+            "# x\n", rc._load_kernel_source(), state="insert",
+            project_type="non-coding", tech_stack={},
+            entry_name="CLAUDE.md", existing_rule_files=set())
+        self.assertIn(rc.TOGGLE_PREFIX, text)
+
+    def test_duplicate_toggle_deduped(self):
+        """ut-toggle-dup：重复开关行保留首个。"""
+        text = ("## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+                "- **产物自动提交（design/plan）**：关闭\n")
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn("：开启", out)
+
+    def test_multiple_project_config_sections(self):
+        """ut-toggle-multi-section：多个 ## 项目配置 仅处理首个 + DUPLICATE_H2。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n\n## 项目配置\n\nx\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
+        self.assertIn("：开启", out)
+
+    def test_idempotent(self):
+        """ut-toggle-idempotent：幂等。"""
+        once, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
+        twice, _ = rc._ensure_commit_toggle(once, "CLAUDE.md")
+        self.assertEqual(once, twice)
+
+
 class TestTechStackDualEntry(unittest.TestCase):
     def test_both_entries_receive_same_techstack(self):
         """ut-dual-entry-techstack：双入口写入同一份 tech_stack（SM/DF 一致性）。"""
