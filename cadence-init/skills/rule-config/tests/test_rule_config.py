@@ -1606,6 +1606,35 @@ class TestCommitToggle(unittest.TestCase):
         out, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
         self.assertIn("- **产物自动提交（design/plan）**：关闭", out)
         self.assertIn("## 项目配置", out)
+        self.assertGreater(out.index("## 项目配置"), out.index("# x"))
+        self.assertTrue(out.endswith(rc.TOGGLE_PREFIX + "关闭\n"))
+
+    def test_techstack_created_config_does_not_duplicate(self):
+        """ut-toggle-existing-config：已有技术栈配置章节时开关不重复创建 H2。"""
+        text, _ = rc._ensure_techstack_block(
+            "# x\n", {"language": "Python"})
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count("## 项目配置"), 1)
+        self.assertEqual(warns, [])
+        self.assertIn("### 项目技术栈", out)
+        self.assertIn(rc.TOGGLE_PREFIX, out)
+
+    def test_cross_run_empty_to_nonempty_techstack(self):
+        """ut-toggle-cross-run：空技术栈到非空技术栈复跑不重复项目配置章节。"""
+        first, _, first_warns = rc._compose_entry(
+            "# x\n", rc._load_kernel_source(), state="insert",
+            project_type="non-coding", tech_stack={},
+            entry_name="CLAUDE.md", existing_rule_files=set())
+        second, _, warns = rc._compose_entry(
+            first, rc._load_kernel_source(), state="skip",
+            project_type="non-coding", tech_stack={"language": "Python"},
+            entry_name="CLAUDE.md", existing_rule_files=set())
+        self.assertEqual(second.count("## 项目配置"), 1)
+        self.assertFalse(any(w["code"] == "DUPLICATE_H2" for w in warns))
+        section = second.split("## 项目配置", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("### 项目技术栈", section)
+        self.assertIn(rc.TOGGLE_PREFIX, section)
+        self.assertLess(section.index("### 项目技术栈"), section.index(rc.TOGGLE_PREFIX))
 
     def test_user_value_preserved(self):
         """ut-toggle-keep：用户值 开启 保留。"""
@@ -1650,6 +1679,7 @@ class TestCommitToggle(unittest.TestCase):
         out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
         self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
         self.assertIn("：开启", out)
+        self.assertIn("## 项目配置\n\nx\n", out)
 
     def test_idempotent(self):
         """ut-toggle-idempotent：幂等。"""

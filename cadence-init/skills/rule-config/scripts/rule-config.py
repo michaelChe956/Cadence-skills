@@ -2830,16 +2830,58 @@ def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
         ("格式化命令", "format"),
     ]
     if "### 项目技术栈" not in text:
-        lines = [
-            f"- **{label}**：{tech_stack.get(key, '未检测到')}"
-            for label, key in fields
+        tech_lines = [
+            "### 项目技术栈",
+            *[
+                f"- **{label}**：{tech_stack.get(key, '未检测到')}"
+                for label, key in fields
+            ],
+            "- **覆盖率阈值**：80%",
         ]
+        # 开关可能在上一轮运行中已经创建了项目配置章节。此时技术栈块
+        # 必须落入既有首个章节，避免跨运行产生重复 ## 项目配置。
+        lines = text.splitlines()
+        config_idxs = [
+            i for i, line in enumerate(lines)
+            if line.strip() == "## 项目配置"
+        ]
+        if config_idxs:
+            start = config_idxs[0]
+            end = len(lines)
+            for i in range(start + 1, len(lines)):
+                stripped = lines[i].strip()
+                if stripped.startswith("## ") or stripped.startswith("# "):
+                    end = i
+                    break
+            toggle_idxs = [
+                i for i in range(start + 1, end)
+                if lines[i].startswith(TOGGLE_PREFIX)
+            ]
+            if toggle_idxs:
+                # 首轮仅有开关时，技术栈块插入开关之前，保持最终顺序。
+                insert_at = toggle_idxs[0]
+            else:
+                insert_at = end
+                while insert_at > start + 1 and not lines[insert_at - 1].strip():
+                    insert_at -= 1
+            separator = (
+                [""]
+                if insert_at > start + 1 and lines[insert_at - 1].strip()
+                else []
+            )
+            lines[insert_at:insert_at] = (
+                separator + tech_lines + ([""] if toggle_idxs else [])
+            )
+            result = "\n".join(lines)
+            if text.endswith("\n"):
+                result += "\n"
+            return result, diffs
+
         block = (
             "\n## 项目配置\n\n"
             "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。\n\n"
-            "### 项目技术栈\n"
-            + "\n".join(lines)
-            + "\n- **覆盖率阈值**：80%\n"
+            + "\n".join(tech_lines)
+            + "\n"
         )
         return text.rstrip("\n") + "\n" + block, diffs
 
