@@ -3433,6 +3433,56 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertIn("产物自动提交（design/plan）**：关闭", agents)
         self.assertNotIn("serena-usage.md", agents)
 
+    def test_dry_run_warnings_match_apply(self):
+        """ut-e2e-warnings：dry-run 与无中断 apply 的 planned warnings 完全一致。"""
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        root = Path(td.name)
+        (root / "package.json").write_text(
+            '{"scripts":{"test":"vitest","lint":"oxlint src"}}',
+            encoding="utf-8",
+        )
+        # 构造会触发纯函数 warnings 的入口：重复强制规则 H2、孤立规则 6，
+        # 并保留正常用户内容以覆盖 warnings 的 code/file 字段。
+        (root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n"
+            "## 强制规则\n\n"
+            "### 1. 语言规则\n"
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+            "## 强制规则\n\n"
+            "- 用户自定义说明\n\n"
+            "## 项目个性化规则（强制规则）\n\n"
+            "- 孤立说明\n",
+            encoding="utf-8",
+        )
+        dry_fd, dry_name = tempfile.mkstemp(prefix="rule-config-dry-", suffix=".json")
+        apply_fd, apply_name = tempfile.mkstemp(prefix="rule-config-apply-", suffix=".json")
+        os.close(dry_fd); os.close(apply_fd)
+        dry_report = Path(dry_name); apply_report = Path(apply_name)
+        self.addCleanup(lambda: dry_report.unlink(missing_ok=True))
+        self.addCleanup(lambda: apply_report.unlink(missing_ok=True))
+        common = [
+            "python3", str(SCRIPT_PATH), "--project-root", str(root),
+        ]
+        subprocess.run(
+            common[:2] + ["dry-run"] + common[2:] + ["--report", str(dry_report)],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            common[:2] + ["apply"] + common[2:] + [
+                "--report", str(apply_report), "--no-interrupt",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        dry_warnings = json.loads(dry_report.read_text(encoding="utf-8"))["warnings"]
+        apply_warnings = json.loads(apply_report.read_text(encoding="utf-8"))["warnings"]
+        self.assertEqual(dry_warnings, apply_warnings)
+        self.assertTrue(dry_warnings)
+        self.assertEqual(
+            {(item["code"], item["file"]) for item in dry_warnings},
+            {(item["code"], item["file"]) for item in apply_warnings},
+        )
+
     def test_claude_serena_removed_and_renumbered(self):
         """ut-e2e-claude：CLAUDE.md Serena 清理、重排、双入口技术栈一致。"""
         root, _report = self._run()

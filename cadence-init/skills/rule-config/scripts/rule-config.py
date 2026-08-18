@@ -3695,10 +3695,55 @@ def _filter_backup_needs(plan: dict, intents: Intents, root: Path) -> list:
 # ---------------------------------------------------------------------------
 
 
+def _planned_entry_warnings(
+    root: Path, intents: Intents, plan: dict, report: dict,
+) -> list[dict]:
+    """只读预演 S4 入口合成，收集 apply 将产生的 warnings。
+
+    预演复用与 apply 相同的 ``_compose_entry`` 纯函数，但只操作内存文本；
+    因而不会创建入口、规则或备份文件。计划阶段的 ``tech_stack`` 已由
+    ``compute_plan`` 写入 plan，避免 dry-run 与 apply 因执行阶段回填顺序不同
+    而得到不同诊断。
+    """
+    kernel_source = _load_kernel_source()
+    if not kernel_source:
+        return []
+    project_type = plan.get("project_type", "non-coding")
+    tech_stack = plan.get("tech_stack") or report.get("tech_stack") or {}
+    s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
+    existing_rule_files = {
+        p.name for p in (root / ".claude" / "rules").glob("*.md")
+    }
+    # S3 在 S4 前按意图创建 Playwright；预演需反映同一份条件清单。
+    if intents.enable_playwright:
+        existing_rule_files.add(PLAYWRIGHT_RULE_FILE)
+    warnings: list[dict] = []
+    for asset in s4_step.get("assets", []) or []:
+        entry_name = asset["path"]
+        entry_path = root / entry_name
+        existing = _safe_read(entry_path)
+        if existing is None:
+            if asset.get("action") == "create":
+                existing = render_base_entry(entry_name, project_type, existing_rule_files)
+                state = "create"
+            else:
+                continue
+        else:
+            state = asset.get("conflict") or "skip"
+        _composed, _diffs, entry_warnings = _compose_entry(
+            existing, kernel_source, state=state,
+            project_type=project_type, tech_stack=tech_stack,
+            entry_name=entry_name, existing_rule_files=existing_rule_files,
+        )
+        warnings.extend(entry_warnings)
+    return warnings
+
+
 def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
-    """dry-run：compute_plan + 写报告，零写入。"""
+    """dry-run：compute_plan + 只读预演入口 warnings + 写报告，零写入。"""
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
+    report["tech_stack"] = plan.get("tech_stack", {})
     # S2 模板定位失败（§11.5：所有候选不完整 → 终止并报告，非零退出）
     if plan.get("failure"):
         report["overall"] = "fail"
@@ -3708,6 +3753,7 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
             "recovery": plan["failure"].get("recovery", ""),
         }
         return 1
+    report["warnings"] = _planned_entry_warnings(root, intents, plan, report)
     report["overall"] = "ok"
     return 0
 
