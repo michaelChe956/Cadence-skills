@@ -250,7 +250,7 @@ RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
 
 # 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
-# _ensure_summary_lines 按各入口块的首行 marker 判断规则 6 是否已存在。
+# 规则 6 正文按入口选择；规范化阶段通过 CANONICAL_RULES 的路径 marker 识别。
 RULE6_BLOCK_CLAUDE = (
     "### 6. 项目个性化规则（强制规则）\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
@@ -325,15 +325,8 @@ def render_mandatory_section(entry_name: str, project_type: str,
         body = claude_text if entry_name == "CLAUDE.md" else agents_text
         if body == "{RULE2}":
             body = RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
-        # 入口 BASE 保留既有规则 6 标题（CLAUDE 带“强制规则”、AGENTS 不带），
-        # 规则身份仍由 CANONICAL_RULES 的 cadence/project-rules/ marker 统一提供。
-        heading = title
-        if _markers == ("cadence/project-rules/",):
-            legacy_block = (
-                RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
-            )
-            heading = legacy_block.splitlines()[0].split(". ", 1)[1]
-        lines.extend([f"### {number}. {heading}", *body.splitlines(), ""])
+        # 规则标题由 CANONICAL_RULES 统一提供；入口差异只体现在正文。
+        lines.extend([f"### {number}. {title}", *body.splitlines(), ""])
     return "\n".join(lines)
 
 
@@ -2297,13 +2290,15 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
     assets = s4_step.get("assets", []) or []
     decisions_map = plan.get("decisions_map", {}) or {}
     actions_log: list = []
+    existing_rule_files = {
+        p.name for p in (root / ".claude/rules").glob("*.md")
+    }
 
     for asset in assets:
         entry_name = asset["path"]
         entry_path = root / entry_name
         state = asset.get("conflict")  # None=skip/create, 或 insert/drift/upgrade/broken
         action = asset.get("action")
-        existing_rule_files = set(asset.get("existing_rule_files", ()))
         base_text = render_base_entry(
             entry_name, project_type, existing_rule_files
         )
@@ -2319,7 +2314,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             composed, diffs = _compose_entry(
                 existing, kernel_source, state="skip",
                 project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             if diffs:
                 actions_log.append({
@@ -2338,7 +2333,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             composed, diffs = _compose_entry(
                 base_text, kernel_source, state="create",
                 project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             if diffs:
                 actions_log.append({
@@ -2360,7 +2355,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             composed, diffs = _compose_entry(
                 existing, kernel_source, state=state or action,
                 project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             if diffs:
                 actions_log.append({
@@ -2376,7 +2371,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             composed, diffs = _compose_entry(
                 existing, kernel_source, state=state or "insert",
                 project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             if diffs:
                 actions_log.append({
@@ -2390,7 +2385,7 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 composed, diffs = _compose_entry(
                     existing, kernel_source, state=state or "insert",
                     project_type=project_type, tech_stack=tech_stack,
-                    entry_name=entry_name,
+                    entry_name=entry_name, existing_rule_files=existing_rule_files,
                 )
                 if diffs:
                     actions_log.append({
@@ -2407,7 +2402,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
                    project_type: str, tech_stack: dict,
-                   entry_name: str) -> tuple:
+                   entry_name: str,
+                   existing_rule_files: set[str] = frozenset()) -> tuple:
     """合成入口文件最终文本，返回 ``(text, techstack_diffs)``。
 
     按状态区分 L0 区块处理（保证幂等与区块外保留）：
@@ -2418,9 +2414,9 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
       * broken：只移除孤立标记行后插入规范 L0。
 
     codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
-    均执行规则 2 选文本、缺失摘要行追加（SM-02/03）与技术栈块写入（DF-02/S4
-    「单次完成 L0、摘要、技术栈」）——L0 区块处理与摘要/技术栈是独立动作。
-    摘要补全为幂等追加；技术栈逐项替换占位、保留用户真实值并返回差异，
+    均执行强制规则章节规范化（SM-02/03）与技术栈块写入（DF-02/S4
+    「单次完成 L0、规则章节、技术栈」）——L0 区块处理与规则章节/技术栈是独立动作。
+    规则章节规范化保留可识别的用户块；技术栈逐项替换占位、保留用户真实值并返回差异，
     区块外用户内容保留（L0-B2）。
     """
     text = existing
@@ -2450,8 +2446,10 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
         if variant in text and variant != rule2_text:
             text = text.replace(variant, rule2_text, 1)
 
-    # --- 步骤 3：缺失摘要行追加（I2：全状态执行，SM-02）---
-    text = _ensure_summary_lines(text, entry_name, project_type)
+    # --- 步骤 3：强制规则章节规范化（I2：全状态执行）---
+    text, _warnings = _normalize_mandatory_rules(
+        text, entry_name, project_type, existing_rule_files
+    )
 
     # --- 步骤 4：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
     text, diffs = _ensure_techstack_block(text, tech_stack)
@@ -2555,91 +2553,139 @@ def _strip_l0_marker_lines_only(text: str) -> str:
     return "\n".join(kept)
 
 
-def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-coding") -> str:
-    """确保 ## 强制规则 章节含各规则文件引用；同一规则文件的多引用行去重。"""
-    rule2_text = (
-        RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
-    )
-    rule6_block = (
-        RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
-    )
-    rule6_first_line = rule6_block.splitlines()[0]
-    required = [
-        (
-            "language.md",
-            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
-        ),
-        ("code-usage.md", rule2_text),
-        (
-            "document-storage.md",
-            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
-        ),
-        (
-            "markdown-format.md",
-            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
-        ),
-        (
-            "mcp-servers.md",
-            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`"
-            if entry_name == "CLAUDE.md"
-            else "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`",
-        ),
-        (
-            "code-reading.md",
-            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
-        ),
-    ]
+def _split_into_blocks(lines: list[str]) -> list[tuple[str, list[str]]]:
+    """将强制规则章节切为 H3 整块和独立的非标题行。
 
+    H3 标题及其后续内容必须整体移动，避免用户小节在规范化时被拆散。
+    空行只作为 H3 块内部的排版内容保留，章节边界处的连续空行忽略。
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    heading_block: list[str] | None = None
+    for line in lines:
+        if line.lstrip().startswith("### "):
+            if heading_block:
+                while heading_block and not heading_block[-1].strip():
+                    heading_block.pop()
+                blocks.append(("heading-block", heading_block))
+            heading_block = [line]
+        elif heading_block is not None:
+            heading_block.append(line)
+        elif line.strip():
+            blocks.append(("line", [line]))
+    if heading_block:
+        while heading_block and not heading_block[-1].strip():
+            heading_block.pop()
+        if heading_block:
+            blocks.append(("heading-block", heading_block))
+    return blocks
+
+
+def _normalize_mandatory_rules(
+    text: str, entry_name: str, project_type: str,
+    existing_rule_files: set[str],
+) -> tuple[str, list[dict]]:
+    """将首个 ``## 强制规则`` 章节收敛到权威规则清单。
+
+    权威条目总是由渲染器重建，因此编号、标题、入口文案和条件项不会受旧
+    文本影响。无法识别为权威条目的用户块则原样移动到权威条目之后。
+    """
+    warnings_out: list[dict] = []
+    rules = _canonical_rules_for(existing_rule_files)
+    trailing_newline = text.endswith("\n")
     lines = text.splitlines()
-    rules_idx = next(
-        (idx for idx, line in enumerate(lines) if line.strip() == "## 强制规则"),
-        None,
-    )
-    if rules_idx is None:
-        return text
 
-    end_idx = len(lines)
-    for idx in range(rules_idx + 1, len(lines)):
-        stripped = lines[idx].strip()
+    def finish(result_lines: list[str]) -> str:
+        rendered = "\n".join(result_lines)
+        return rendered + "\n" if trailing_newline else rendered
+    h2_idx = [i for i, line in enumerate(lines) if line.strip() == "## 强制规则"]
+    if not h2_idx:
+        section_lines = render_mandatory_section(
+            entry_name, project_type, existing_rule_files
+        ).splitlines()
+        end_marker_idx = next(
+            (i for i, line in enumerate(lines) if line.strip() == L0_END), None
+        )
+        if end_marker_idx is None:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.extend(section_lines)
+        else:
+            lines[end_marker_idx + 1:end_marker_idx + 1] = [""] + section_lines
+        return finish(lines), warnings_out
+
+    if len(h2_idx) > 1:
+        warnings_out.append({
+            "code": "DUPLICATE_H2", "file": entry_name,
+            "message": "存在多个 ## 强制规则，仅规范化首个",
+            "detail": {"count": len(h2_idx)},
+        })
+    start = h2_idx[0]
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
         if stripped.startswith("## ") or stripped.startswith("# "):
-            end_idx = idx
+            end = i
             break
 
-    section = lines[rules_idx:end_idx]
-    # 按裸文件名识别引用；同一规则文件仅保留首个引用行。
-    # 一行命中多个 marker 时按整行处理：只要其中任一引用已出现，就删除该行；
-    # 否则保留并将该行全部引用标记为已见。
-    rule_files = [marker for marker, _ in required]
-    seen_refs = set()
-    deduped = []
-    for line in section:
-        refs = [name for name in rule_files if name in line]
-        if refs and any(name in seen_refs for name in refs):
-            continue
-        seen_refs.update(refs)
-        deduped.append(line)
-
-    # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
-    deduped_text = "\n".join(deduped)
-    missing = [line for marker, line in required if marker not in deduped_text]
-    # 规则 6 仅以详情行或标题作为 marker；标准引用块中的裸
-    # `cadence/project-rules/` 路径不表示规则 6 正文存在。
-    rule6_detail_marker = "- 详见 `cadence/project-rules/README.md`"
-    rule6_present = (
-        rule6_first_line in deduped_text
-        or "### 6. 项目个性化规则" in deduped_text
-        or rule6_detail_marker in deduped_text
+    canonical_rules = {title: markers for markers, title, _c, _a in rules}
+    rebuilt = render_mandatory_section(
+        entry_name, project_type, existing_rule_files
+    ).splitlines()
+    first_rule = next(
+        (i for i, line in enumerate(rebuilt) if line.startswith("### 1.")),
+        len(rebuilt),
     )
-    rule6_missing = not rule6_present
-    if not missing and not rule6_missing:
-        if deduped == section:
-            return text
-        return "\n".join(lines[:rules_idx] + deduped + lines[end_idx:])
+    standard_preamble = {
+        line for line in rebuilt[1:first_rule] if line.strip()
+    }
+    user_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    for _kind, block in _split_into_blocks(lines[start + 1:end]):
+        block_text = "\n".join(block)
+        if len(block) == 1 and block[0] in standard_preamble:
+            continue
+        if any(retired in block_text for retired in RETIRED_RULE_FILES):
+            continue
+        owner = next(
+            (title for title, markers in canonical_rules.items()
+             if any(marker in block_text for marker in markers)),
+            None,
+        )
+        if owner is not None:
+            if owner in seen:
+                continue
+            # The canonical renderer supplies the authoritative replacement.
+            seen.add(owner)
+            continue
+        user_blocks.append(block)
 
-    insert = list(missing)
-    if rule6_missing:
-        insert.extend(rule6_block.split("\n"))
-    return "\n".join(lines[:rules_idx] + deduped + insert + lines[end_idx:])
+    if user_blocks:
+        warnings_out.append({
+            "code": "USER_LINES_KEPT", "file": entry_name,
+            "message": "强制规则章节含非框架条目，已保留在权威条目之后",
+            "detail": {"blocks": len(user_blocks)},
+        })
+    # rebuilt includes its H2; retain the original H2 position and append user
+    # blocks after the final canonical blank line.
+    new_section = rebuilt[1:]
+    if user_blocks:
+        new_section.extend(["", *[line for block in user_blocks for line in block], ""])
+    elif end < len(lines):
+        # Preserve the separator before the following H2/H1 boundary.
+        new_section.append("")
+    result = lines[:start + 1] + new_section + lines[end:]
+
+    outside = result[:start] + result[start + 1 + len(new_section):]
+    if any(
+        line.startswith("## ") and "项目个性化规则" in line
+        for line in outside
+    ):
+        warnings_out.append({
+            "code": "ORPHAN_RULE6", "file": entry_name,
+            "message": "章节外存在孤立的项目个性化规则 H2，请人工确认",
+            "detail": {},
+        })
+    return finish(result), warnings_out
 
 
 PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}

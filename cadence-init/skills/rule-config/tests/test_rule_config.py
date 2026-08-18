@@ -1808,8 +1808,8 @@ class TestSummaryDedup(unittest.TestCase):
         self.assertEqual(
             section.count(".claude/rules/document-storage.md"), 1
         )
-        self.assertIn(custom_line, section.splitlines())
-        self.assertNotIn(standard_line, section.splitlines())
+        self.assertIn(standard_line, section.splitlines())
+        self.assertNotIn(custom_line, section.splitlines())
 
     def test_duplicate_ref_deduped(self):
         claude = self.root / "CLAUDE.md"
@@ -1829,12 +1829,13 @@ class TestSummaryDedup(unittest.TestCase):
             rc.run_apply(self.root, _intents(no_interrupt=True), report)
         section = claude.read_text(encoding="utf-8")
         self.assertEqual(section.count("language.md"), 1)
-        self.assertIn(first_line, section.splitlines())
+        self.assertNotIn(first_line, section.splitlines())
+        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", section.splitlines())
         self.assertNotIn(duplicate_line, section.splitlines())
 
 
-class TestEnsureSummaryLines(unittest.TestCase):
-    """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
+class TestNormalizeMandatoryRulesLegacy(unittest.TestCase):
+    """迁移自 _ensure_summary_lines 的规则 2/6 回归断言。"""
 
     def _base_rules_section(self, drop_lines=()):
         """构造一个含规则 1/3/4/5/7 但缺规则 2/6 的 ## 强制规则 章节（CLAUDE.md 风格）。"""
@@ -1868,12 +1869,12 @@ class TestEnsureSummaryLines(unittest.TestCase):
     def test_missing_rule2_and_rule6_are_added_claude_noncoding(self):
         """ut-ensure_summary-missing-rule2-rule6 / Important 1（CLAUDE.md 非 Coding：补回规则 2 非必要 + 规则 6 块）"""
         text = self._base_rules_section()
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
         # 规则 2（非 Coding 文本）被补回
         self.assertIn(rc.RULE2_TEXT_NONCODING, out)
         self.assertNotIn(rc.RULE2_TEXT_CODING, out)
         # 规则 6 多行块被补回（至少首行 + 末行）
-        self.assertIn("### 6. 项目个性化规则（强制规则）", out)
+        self.assertIn("### 6. 项目个性化规则", out)
         self.assertIn("- 详见 `cadence/project-rules/README.md`", out)
 
     def test_rule6_restored_when_only_standard_reference_block_remains(self):
@@ -1895,41 +1896,35 @@ class TestEnsureSummaryLines(unittest.TestCase):
             "### 7. 代码阅读规则\n"
             "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
         )
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
-        self.assertIn(rc.RULE6_BLOCK_CLAUDE, out)
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
+        self.assertIn("### 6. 项目个性化规则", out)
 
     def test_missing_rule2_coding_variant_added_for_coding_project(self):
         """ut-ensure_summary-rule2-coding / Important 1（Coding 项目补回规则 2 = 遵循 TDD）"""
         text = self._base_rules_section()
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "coding", set())[0]
         self.assertIn(rc.RULE2_TEXT_CODING, out)
         self.assertNotIn(rc.RULE2_TEXT_NONCODING, out)
 
     def test_complete_section_unchanged(self):
         """ut-ensure_summary-complete-unchanged / Important 1（7 类摘要齐全则不动）"""
         # BASE_CLAUDE_MD 本身含 7 条摘要 → 不应改动
-        out = rc._ensure_summary_lines(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding", set())[0]
         self.assertEqual(out, rc.BASE_CLAUDE_MD)
 
-    def test_rule6_first_line_marker_prevents_block_reappend(self):
-        """CLAUDE/AGENTS 对应首行 marker 已存在时，均不重复追加规则 6 块。"""
-        cases = (
-            ("CLAUDE.md", rc.BASE_CLAUDE_MD, rc.RULE6_BLOCK_CLAUDE),
-            ("AGENTS.md", rc.BASE_AGENTS_MD, rc.RULE6_BLOCK_AGENTS),
-        )
-        for entry_name, base, block in cases:
+    def test_rule6_heading_is_canonical_for_both_entries(self):
+        """规则 6 标题由权威清单统一渲染，入口差异仅保留在正文。"""
+        for entry_name, base in (("CLAUDE.md", rc.BASE_CLAUDE_MD), ("AGENTS.md", rc.BASE_AGENTS_MD)):
             with self.subTest(entry_name=entry_name):
-                first_line = block.splitlines()[0]
-                text = base.replace(block, first_line)
-                out = rc._ensure_summary_lines(text, entry_name, "non-coding")
-                self.assertEqual(out, text)
-                self.assertEqual(out.count(first_line), 1)
+                out, _ = rc._normalize_mandatory_rules(base, entry_name, "non-coding", set())
+                self.assertEqual(out.count("### 6. 项目个性化规则"), 1)
+                self.assertNotIn("### 6. 项目个性化规则（强制规则）", out)
 
     def test_multi_marker_dedup_recomputes_missing_from_result(self):
         """删除含重复 marker 的多引用行后，补回该行承载的唯一规则引用。"""
         combined_line = "- **组合引用** language.md + code-usage.md"
         text = rc.BASE_CLAUDE_MD.replace(rc.RULE2_TEXT_NONCODING, combined_line)
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
         self.assertNotIn(combined_line, out.splitlines())
         self.assertIn(rc.RULE2_TEXT_NONCODING, out.splitlines())
         self.assertEqual(out.count("code-usage.md"), 1)
@@ -1946,9 +1941,129 @@ class TestEnsureSummaryLines(unittest.TestCase):
             "### 5. MCP Server 使用规则\n- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`\n\n"
             "### 7. 代码阅读规则\n- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
         )
-        out = rc._ensure_summary_lines(text, "AGENTS.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "AGENTS.md", "non-coding", set())[0]
         self.assertIn("### 6. 项目个性化规则\n", out)
         self.assertIn("- 禁止在 `.claude/rules/` 目录中添加用户自定义规则", out)
+
+
+KB_AGENTS = "# KB\n\nEnglish knowledge base content.\n\n## NOTES\n\n- keep me\n"
+
+
+class TestNormalizeMandatoryRules(unittest.TestCase):
+    def _norm(self, text, entry="AGENTS.md", ptype="non-coding", files=set()):
+        return rc._normalize_mandatory_rules(text, entry, ptype, files)
+
+    def test_create_section_when_missing(self):
+        """ut-norm-create：无章节时创建（全局顺序在 Task 5 集成验证）。"""
+        out, warns = self._norm(KB_AGENTS)
+        self.assertIn("## 强制规则", out)
+        self.assertIn("### 1. 语言规则", out)
+        self.assertIn("### 7. 代码阅读规则", out)
+        self.assertIn("English knowledge base content.", out)
+
+    def test_serena_removed(self):
+        """ut-norm-retired：退役清单命中删除。"""
+        text = "## 强制规则\n\n### 5. Serena 使用规则\n- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`\n"
+        out, _ = self._norm(text, "CLAUDE.md")
+        self.assertNotIn("serena-usage.md", out)
+        self.assertNotIn("Serena", out)
+
+    def test_forward_reference_kept(self):
+        """ut-norm-forward-ref：未在退役清单的不存在文件引用按用户内容保留。"""
+        text = "## 强制规则\n\n### 9. 自定义规则\n- **我的规则** → 详见 `.claude/rules/my-future.md`\n"
+        out, warns = self._norm(text)
+        self.assertIn("my-future.md", out)
+        self.assertTrue(any(w["code"] == "USER_LINES_KEPT" for w in warns))
+
+    def test_renumber_1_to_9(self):
+        """ut-norm-renumber：1-9 错乱重排为权威 1-7。"""
+        text = ("## 强制规则\n\n### 5. Serena 使用规则\n- x `.claude/rules/serena-usage.md`\n"
+                "### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n")
+        out, _ = self._norm(text, "CLAUDE.md", "coding", set())
+        self.assertIn("### 1. 语言规则", out)
+        self.assertIn("### 2. 代码使用规则", out)
+        self.assertIn("遵循 TDD", out)
+        self.assertNotIn("### 8.", out)
+
+    def test_dedup_same_ref(self):
+        """ut-norm-dedup：同规则文件多引用保留首个。"""
+        text = ("## 强制规则\n\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
+                "- 重复行 `.claude/rules/language.md`\n")
+        out, _ = self._norm(text)
+        self.assertEqual(out.count("language.md"), 1)
+
+    def test_idempotent(self):
+        """ut-norm-idempotent：二次运行逐字不变。"""
+        once, _ = self._norm(KB_AGENTS)
+        twice, warns2 = self._norm(once)
+        self.assertEqual(once, twice)
+
+    def test_rule2_coding_switch(self):
+        """ut-norm-rule2：规则 2 按 project_type 选文案。"""
+        text = "## 强制规则\n\n- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`\n"
+        out, _ = self._norm(text, "CLAUDE.md", "coding", set())
+        self.assertIn("遵循 TDD", out)
+        self.assertNotIn("非必要不编写代码", out)
+
+    def test_playwright_included_when_file_exists(self):
+        """ut-norm-playwright：条件项。"""
+        out, _ = self._norm(KB_AGENTS, files={"playwright.md"})
+        self.assertIn("Playwright", out)
+        out2, _ = self._norm(KB_AGENTS)
+        self.assertNotIn("Playwright", out2)
+
+    def test_user_h3_block_moved_as_whole(self):
+        """ut-norm-user-h3：用户 H3 小节整体平移到权威条目之后。"""
+        text = ("## 强制规则\n\n### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
+                "### 我的自定义小节\n正文第一行\n正文第二行\n")
+        out, warns = self._norm(text)
+        idx_custom = out.index("### 我的自定义小节")
+        idx_rule7 = out.index("### 7. 代码阅读规则")
+        self.assertGreater(idx_custom, idx_rule7)
+        self.assertIn("正文第一行\n正文第二行", out)
+
+    def test_orphan_rule6_outside_section_warns(self):
+        """ut-norm-orphan-rule6：章节外孤立规则 6 H2 保留 + ORPHAN_RULE6。"""
+        text = ("## 强制规则\n\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+                "## 项目个性化规则（强制规则）\n\n- 旧文案\n")
+        out, warns = self._norm(text)
+        self.assertIn("## 项目个性化规则（强制规则）", out)
+        self.assertTrue(any(w["code"] == "ORPHAN_RULE6" for w in warns))
+
+    def test_duplicate_h2_only_first_normalized(self):
+        """ut-norm-dup-h2：多个 ## 强制规则 仅规范化首个 + DUPLICATE_H2。"""
+        text = "## 强制规则\n\n- x `.claude/rules/language.md`\n\n## 强制规则\n\n- 旧 `.claude/rules/serena-usage.md`\n"
+        out, warns = self._norm(text)
+        self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
+        self.assertEqual(out.count("## 强制规则"), 2)
+        self.assertIn("serena-usage.md", out.split("## 强制规则")[2])
+
+    def test_rule6_old_wording_replaced(self):
+        """ut-norm-rule6-old：旧 CLAUDE/AGENTS 规则 6 文案识别并替换为权威块。"""
+        old = "## 强制规则\n\n### 6. 项目个性化规则（强制规则）\n- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n- 禁止在 `rules/` 目录中添加用户自定义规则\n- 详见 `cadence/project-rules/README.md`\n"
+        out, _ = self._norm(old, "CLAUDE.md")
+        self.assertIn("### 6. 项目个性化规则", out)
+        self.assertNotIn("（强制规则）", out.split("## 强制规则")[1])
+
+    def test_rule2_text_outside_section_untouched(self):
+        """ut-norm-outside-rule2：章节外规则 2 旧文案不被修改。"""
+        text = "## 强制规则\n\n- x `.claude/rules/language.md`\n\n## 笔记\n\n遵循 TDD 和代码规范 是我的座右铭\n"
+        out, _ = self._norm(text, "CLAUDE.md", "non-coding", set())
+        self.assertIn("遵循 TDD 和代码规范 是我的座右铭", out)
+
+    def test_empty_retired_list_no_deletion(self):
+        """ut-norm-retired-empty：退役清单为空时无删除。"""
+        with mock.patch.object(rc, "RETIRED_RULE_FILES", []):
+            text = "## 强制规则\n\n- x `.claude/rules/serena-usage.md`\n"
+            out, _ = self._norm(text)
+            self.assertIn("serena-usage.md", out)
+
+    def test_claude_agents_wording_differs(self):
+        """ut-norm-wording：MCP/规则 6 双入口文案差异。"""
+        out_c, _ = self._norm(KB_AGENTS, "CLAUDE.md")
+        out_a, _ = self._norm(KB_AGENTS, "AGENTS.md")
+        self.assertIn("各 MCP 工具的使用规范", out_c)
+        self.assertIn("各 MCP 工具及相关自动化工具的使用必须遵循项目规范", out_a)
 
 
 class TestEnsureGitignoreLine(unittest.TestCase):
