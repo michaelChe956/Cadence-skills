@@ -426,11 +426,49 @@ your_minimax_api_key
 - ✅ 创建 `.claude/rules/` 规则目录
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
 - ✅ 创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）
-- ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
+- ✅ 在 CLAUDE.md 和 AGENTS.md 中规范化生成/修复 `## 强制规则` 章节（权威 7 条、清理已退役规则如 Serena、重排编号、用户内容逐字保留）
 - ✅ 配置目录结构
-- ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则
+- ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则（L0 v2 含产物路径覆盖表与自动提交开关条款）
 - ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
 - ✅ 默认不启用 Playwright 规则，除非显式要求
+- ✅ 写入产物自动提交开关（默认关闭，见下文）
+
+#### 入口文件规范化效果（v2 新增）
+
+对已存在非 Cadence 风格入口文件的项目（如自带知识库内容的 AGENTS.md），重跑 `/rule-config` 后：
+
+- 缺失的 `## 强制规则` 章节会被完整创建（L0 区块之后）；英文/自定义内容逐字保留；
+- 已退役规则残留（如 Serena）被删除，编号 1-9 错乱重排为权威 1-7；
+- 双入口写入同一份技术栈检测结果，用户已有真实值保留不变；
+- L0 旧版（v1）确定性升级为 v2，不再弹用户决策；重跑幂等零变更。
+
+#### 产物路径覆盖（v2 新增）
+
+L0 v2 内核与 `document-storage.md` 内置显式路径映射表，优先级高于任何 Superpowers Skill 正文中的默认路径：
+
+| Skill 默认路径 | 本项目强制路径 |
+|---|---|
+| `docs/superpowers/specs/`（design/spec） | `cadence/designs/` |
+| `docs/superpowers/plans/`（plan） | `cadence/plans/` |
+
+OpenSpec 产物仍存放在 `openspec/` 目录。设计文档、实施计划从此不再散落到 `docs/superpowers/` 下。
+
+#### 产物自动提交开关（v2 新增）
+
+初始化后入口文件 `## 项目配置` 章节会出现：
+
+```markdown
+- **产物自动提交（design/plan）**：关闭
+```
+
+**使用方法：**
+
+- **默认关闭**：Superpowers 的 `brainstorming`/`writing-plans` 写完设计文档/实施计划后**禁止自动 `git commit`**，只汇报产物路径等待你确认——适合不想被 Agent 动 git 历史的项目；
+- **开启自动提交**：把该行手改为 `：开启` 即可，之后 design/plan 写完会自动提交；
+- **取值语义**：仅精确值 `开启` 视为启用，`关闭` 或任何其他值均按关闭处理；非法值保留原文不改写并在报告中告警；
+- **开关位置**：脚本保证全文件恰好一行开关行且在 `## 项目配置` 章节内——即使你误把它挪到章节外，重跑 `/rule-config` 会自动归并回规范位置，开关不会失效；
+- **读取顺序**：Agent 以 CLAUDE.md 为准、AGENTS.md 为兜底，双入口值不一致时按关闭处理；
+- **修改后无需重跑初始化**，Agent 每次写产物前都会现读入口文件。
 
 OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kimi、Codex 与 pi 三类客户端的 Skill 调用与路由回执约定（pi 与 Codex 同类：显式选择 Skill → 用途并入首段回执 → 全文读取 `SKILL.md` → 读完后才允许仓库操作）。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则。普通模式遇到无法识别的本地修改且没有获得替换确认时会保留并报告；`no-interrupt` 模式会先备份，备份成功后再替换。
 
