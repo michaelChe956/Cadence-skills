@@ -110,6 +110,9 @@ L0_CURRENT_VERSION = "v2"
 L0_OLD_VERSIONS = ["v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
+# v1 有冻结的历史规范源，故升级前必须全文比对；v0 没有真实规范源，按
+# 历史兼容策略只要成对标记合法就允许确定性升级。
+L0_OLD_SOURCES: dict[str, str] = {}
 
 # L1 规则文件版本标记（单行注释，位于文件首行）。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
@@ -239,6 +242,12 @@ try:
     KNOWN_L1_VERSIONS["v1"] = _load_reference(Path("rules") / L1_RULE_FILENAME)
 except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模块导入
     KNOWN_L1_VERSIONS["v1"] = ""
+
+# L0 v1 历史规范源：只有与该文本逐字一致的完整 v1 区块才可确定性升级。
+# v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
+L0_OLD_SOURCES = {
+    "v1": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v1.md"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -891,83 +900,105 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
     return render_sections(merged)
 
 
+def _l0_markers(version: str) -> tuple[str, str]:
+    """返回指定 L0 版本的 begin/end 标记。"""
+    prefix = "<!-- cadence-managed:openspec-superpowers-routing:"
+    return (
+        f"{prefix}{version}:start -->",
+        f"{prefix}{version}:end -->",
+    )
+
+
+def _analyze_l0_markers(text: str) -> tuple[list[tuple[dict, dict]], list[dict]]:
+    """安全识别 L0 完整对与孤立标记。
+
+    一个 begin 只有在下一个 begin 出现前遇到同版本 end 时才构成完整对；
+    任意版本的嵌套/后续 begin 都会使先前 begin 成为孤儿。这样不会将孤儿
+    begin 跨越用户内容贪心配到远处的 end。
+    """
+    events: list[dict] = []
+    for version in [L0_CURRENT_VERSION] + L0_OLD_VERSIONS:
+        begin_marker, end_marker = _l0_markers(version)
+        for marker, kind in ((begin_marker, "begin"), (end_marker, "end")):
+            cursor = 0
+            while True:
+                index = text.find(marker, cursor)
+                if index == -1:
+                    break
+                events.append({
+                    "version": version,
+                    "kind": kind,
+                    "start": index,
+                    "end": index + len(marker),
+                })
+                cursor = index + len(marker)
+    events.sort(key=lambda event: event["start"])
+
+    pairs: list[tuple[dict, dict]] = []
+    orphans: list[dict] = []
+    pending_begin: dict | None = None
+    for event in events:
+        if event["kind"] == "begin":
+            if pending_begin is not None:
+                # 任意版本的新 begin 使此前 begin 不再可合法配对。
+                orphans.append(pending_begin)
+            pending_begin = event
+        elif pending_begin is not None and pending_begin["version"] == event["version"]:
+            pairs.append((pending_begin, event))
+            pending_begin = None
+        else:
+            # 没有同版本 pending begin 的 end 也只能剥离标记行。
+            orphans.append(event)
+    if pending_begin is not None:
+        orphans.append(pending_begin)
+    return pairs, orphans
+
+
 def l0_block(text: str, source: str) -> str:
     """判定 L0 受管区块状态（L0-P6~P10）。
 
-    返回五态之一：
-      * skip：当前版本标记对且区块与规范源逐字一致；
-      * drift：当前版本标记对但区块内容不同；
-      * insert：两个标记都不存在（需插入）；
-      * upgrade：成对受支持旧版本标记（v1/v0，不在当前版本/source 中）；
-      * broken：单侧标记或标记顺序错误。
+    返回六态之一：
+      * skip：唯一当前版本完整对且区块与规范源逐字一致；
+      * dedup：多个当前版本完整对，确定性归并且记录 warning；
+      * drift：当前版本内容不同，或有内容漂移的 v1 完整对；
+      * insert：没有 L0 标记；
+      * upgrade：可验证 v1 规范对，或无真实规范源的合法 v0 对；
+      * broken：孤立标记、顺序错误或混合残留。
     """
-    begin_idx = text.find(L0_BEGIN)
-    end_idx = text.find(L0_END)
-    has_begin = begin_idx != -1
-    has_end = end_idx != -1
+    pairs, orphans = _analyze_l0_markers(text)
+    current_pairs = [pair for pair in pairs if pair[0]["version"] == L0_CURRENT_VERSION]
+    current_orphans = [event for event in orphans if event["version"] == L0_CURRENT_VERSION]
+    old_pairs = [pair for pair in pairs if pair[0]["version"] in L0_OLD_VERSIONS]
+    old_events_present = any(
+        event["version"] in L0_OLD_VERSIONS
+        for pair in pairs for event in pair
+    ) or any(event["version"] in L0_OLD_VERSIONS for event in orphans)
 
-    if has_begin and has_end:
-        # 两个当前版本标记都在：顺序必须正确（begin 在 end 之前），否则 broken。
-        if begin_idx > end_idx:
+    if len(current_pairs) > 1:
+        # 不是 drift 决策：重复当前版本区块必须在两种模式均确定性归并。
+        return "dedup"
+    if len(current_pairs) == 1:
+        if current_orphans or old_events_present:
             return "broken"
-        begin_count = text.count(L0_BEGIN)
-        end_count = text.count(L0_END)
-        if begin_count != 1 or end_count != 1:
-            # 多个完整当前版本区块按 drift 进入确定性归并；数量不等说明仍有
-            # 单侧残留，按 broken 进入同一归并路径。
-            return "drift" if begin_count == end_count else "broken"
-        for ver in L0_OLD_VERSIONS:
-            old_begin = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-            )
-            old_end = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-            )
-            if old_begin in text or old_end in text:
-                # 当前规范块之外仍有历史标记时不能 skip，交由归并路径清除。
-                return "broken"
-        block_start = begin_idx
-        block_end = end_idx + len(L0_END)
-        block = text[block_start:block_end]
-        # 重要（评审 Important 5）：逐字比对区块内容，不 strip() 整个区块
-        # （避免吞掉首部/内部空白差异）。仅对尾随换行做 rstrip，以容忍
-        # 规范源文件末尾的换行符与入口切片之间的尾随换行差异（文件系统层面，
-        # 非区块内容差异）。首部/内部任何字符差异均判 drift。
+        begin, end = current_pairs[0]
+        block = text[begin["start"]:end["end"]]
+        # 逐字比对；仅容忍文件末尾换行差异。
         return "skip" if block.rstrip("\n") == source.rstrip("\n") else "drift"
 
-    # 恰有一个当前版本标记 → 先看是否成对旧版标记（upgrade），否则单侧 broken。
-    if has_begin or has_end:
-        for ver in L0_OLD_VERSIONS:
-            old_begin_marker = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-            )
-            old_end_marker = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-            )
-            ob = text.find(old_begin_marker)
-            oe = text.find(old_end_marker)
-            if ob != -1 and oe != -1 and ob < oe:
-                return "upgrade"
-        # 单侧当前版本标记且无成对旧版标记 → broken。
+    if old_pairs:
+        for begin, end in old_pairs:
+            version = begin["version"]
+            expected = L0_OLD_SOURCES.get(version)
+            if expected:
+                block = text[begin["start"]:end["end"]]
+                if block.rstrip("\n") != expected.rstrip("\n"):
+                    # 有真实历史源的版本必须匹配全文；漂移仍走冲突路径。
+                    return "drift"
+            # v0 无真实规范源，合法成对标记按历史兼容策略允许 upgrade。
+        return "upgrade"
+
+    if current_orphans or old_events_present:
         return "broken"
-
-    # 两个当前版本标记都不在：检查是否成对旧版标记（upgrade）。
-    for ver in L0_OLD_VERSIONS:
-        old_begin_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-        )
-        old_end_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-        )
-        ob = text.find(old_begin_marker)
-        oe = text.find(old_end_marker)
-        if ob != -1 and oe != -1 and ob < oe:
-            return "upgrade"
-        if ob != -1 or oe != -1:
-            # 旧版单侧标记 → broken。
-            return "broken"
-
-    # 两标记都不存在 → 需插入。
     return "insert"
 
 
@@ -1553,18 +1584,19 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict": None,
                 "backup_needed": False,
             })
-        # I-2 修复：insert/upgrade 为「两模式同动作」确定性动作
-        # （merge-semantics L0-05：无标记→直接插入；L0-04：旧版标记成对→备份后
-        # 自动升级），不产 decision 冲突；allowed_decisions 仅用于 drift/broken。
-        elif state in ("insert", "upgrade"):
+        # insert/upgrade/dedup 为「两模式同动作」确定性动作：无标记直接插入；
+        # 合法旧版升级和重复当前版本归并均经备份屏障后执行，不产 decision 冲突。
+        # 只有 drift/broken 需要显式 replace/keep 决策。
+        elif state in ("insert", "upgrade", "dedup"):
             s4["assets"].append({
                 "path": entry_name,
-                "action": state,  # "insert" 直接插入 / "upgrade" 屏障后备份升级
+                "action": state,
                 "conflict": state,
-                # L0-05 insert 不改原内容无需备份；L0-04 upgrade 纳入备份屏障。
-                "backup_needed": state == "upgrade",
+                # insert 不改原内容无需备份；upgrade/dedup 确定性重写现有入口，
+                # 均纳入全局备份屏障。
+                "backup_needed": state in ("upgrade", "dedup"),
             })
-            if state == "upgrade":
+            if state in ("upgrade", "dedup"):
                 _append_backup_need(plan, entry_path)
         else:
             # drift/broken → 需要决策的冲突（普通模式；C-1 修复：推荐保守 keep）。
@@ -2367,13 +2399,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
             continue
 
-        # 入口存在且状态为 insert/upgrade/drift/broken。
+        # 入口存在且状态为 insert/upgrade/dedup/drift/broken。
         conflict_id = f"s4:{entry_name}"
         existing = _safe_read(entry_path) or ""
-        # I-2 修复：insert/upgrade 为确定性动作（merge-semantics L0-05/L0-04
-        # 「两模式同动作」），不走 decisions：insert 直接插入当前版本；
-        # upgrade 在全局备份屏障通过后升级为当前版本。
-        if action in ("insert", "upgrade"):
+        # insert/upgrade/dedup 为确定性动作，不走 decisions：insert 直接插入；
+        # upgrade 和 dedup 在全局备份屏障通过后分别升级/归并为当前版本。
+        if action in ("insert", "upgrade", "dedup"):
             composed, diffs, warnings = _compose_entry(
                 existing, kernel_source, state=state or action,
                 project_type=project_type, tech_stack=tech_stack,
@@ -2455,7 +2486,7 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     elif state == "create":
         # BASE 基线本身无 L0 → 插入。
         text = _insert_l0_block(text, l0_source)
-    elif state in ("insert", "upgrade", "drift", "broken"):
+    elif state in ("insert", "upgrade", "dedup", "drift", "broken"):
         # 所有非收敛态统一走确定性归并：移除全部版本的完整区块，剥离
         # 孤立标记，重新注入单一当前版本区块。drift 的替换语义同样只
         # 影响受管区块，区块外文本逐字保留。
@@ -2519,75 +2550,78 @@ def _insert_l0_block(text: str, l0_source: str) -> str:
     return "\n".join(parts)
 
 
-def _remove_l0_block_pair(text: str) -> str:
-    """移除完整的 L0 受管区块对（begin...end 含内部全部内容），保留区块外内容。
-
-    用于 drift/upgrade 状态：标记对完整时，整个旧区块（含漂移内容）移除。
-    支持当前版本及受支持旧版本（v2/v1/v0）的成对标记。若仅有单侧标记则保留不动（由 broken 路径处理）。
-    """
-    # 收集所有版本的 begin/end 标记对，逐个移除完整的 begin...end 区间。
-    versions = [L0_CURRENT_VERSION] + L0_OLD_VERSIONS
+def _remove_l0_ranges(text: str, ranges: list[tuple[int, int, bool]]) -> str:
+    """倒序删除 L0 区间；完整块压缩空行，孤儿标记仅删除自身行。"""
     result = text
-    for ver in versions:
-        begin_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-        )
-        end_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-        )
-        while True:
-            b_idx = result.find(begin_marker)
-            if b_idx == -1:
-                break
-            e_idx = result.find(end_marker, b_idx)
-            if e_idx == -1:
-                # 单侧 begin 无配对 end → 不处理（broken 路径负责）。
-                break
-            e_end = e_idx + len(end_marker)
-            # 移除区间，同时吸收周围多余空行（避免出现连续多个空行）。
-            before = result[:b_idx]
-            after = result[e_end:]
-            # 合并：去掉 before 尾部与 after 头部的空行，中间保留至多一个空行分隔。
-            before = before.rstrip("\n")
-            after = after.lstrip("\n")
-            if before and after:
-                result = before + "\n\n" + after
-            elif before:
-                result = before + "\n"
-            elif after:
-                result = after
-            else:
-                result = ""
+    for start, end, is_block in sorted(ranges, reverse=True):
+        before = result[:start]
+        after = result[end:]
+        if not is_block:
+            result = before + after
+            continue
+        before = before.rstrip("\n")
+        after = after.lstrip("\n")
+        if before and after:
+            result = before + "\n\n" + after
+        elif before:
+            result = before + "\n"
+        elif after:
+            result = after
+        else:
+            result = ""
     return result
+
+
+def _l0_marker_line_range(text: str, event: dict) -> tuple[int, int]:
+    """返回孤立 marker 的完整行范围（含换行）；marker 正文不会被保留。"""
+    start = text.rfind("\n", 0, event["start"]) + 1
+    end = text.find("\n", event["end"])
+    return start, len(text) if end == -1 else end + 1
+
+
+def _remove_l0_block_pair(text: str) -> str:
+    """移除合法完整 L0 区块，绝不跨越任意版本的后续 begin。"""
+    pairs, _ = _analyze_l0_markers(text)
+    ranges = [(begin["start"], end["end"], True) for begin, end in pairs]
+    return _remove_l0_ranges(text, ranges)
 
 
 def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[dict]]:
     """将混合版本、重复或残留标记收敛为一个当前版本 L0 区块。
 
-    完整区块先整体移除，因此旧区块中的漂移内容不会泄漏到入口；随后移除
-    无法配对的标记行，最后按既有插入定位策略注入规范源。区块外文本保持。
+    只移除经安全配对的完整区块；若 begin 之前有另一个任意版本 begin，
+    前者是孤儿，只删除自身标记行，用户正文不被跨区块吞掉。重复当前版本
+    区块保留首个，删除其余块并记录 ``L0_DEDUP``。
     """
-    current_pair_count = 0
-    cursor = 0
-    while True:
-        begin_idx = text.find(L0_BEGIN, cursor)
-        if begin_idx == -1:
-            break
-        end_idx = text.find(L0_END, begin_idx + len(L0_BEGIN))
-        if end_idx == -1:
-            break
-        current_pair_count += 1
-        cursor = end_idx + len(L0_END)
-
-    normalized = _remove_l0_block_pair(text)
-    normalized = _strip_l0_marker_lines_only(normalized)
+    pairs, orphans = _analyze_l0_markers(text)
+    current_pairs = [
+        pair for pair in pairs if pair[0]["version"] == L0_CURRENT_VERSION
+    ]
+    current_pair_count = len(current_pairs)
+    current_orphan_count = sum(
+        1 for event in orphans if event["version"] == L0_CURRENT_VERSION
+    )
+    # 合同要求重复当前区块保留首个；其它版本完整块仍全部移除并迁移。
+    kept_pair = current_pairs[0] if current_pair_count > 1 else None
+    pairs_to_remove = [pair for pair in pairs if pair != kept_pair]
+    ranges = [
+        (begin["start"], end["end"], True)
+        for begin, end in pairs_to_remove
+    ]
+    ranges.extend(
+        (*_l0_marker_line_range(text, event), False) for event in orphans
+    )
+    normalized = _remove_l0_ranges(text, ranges)
     normalized = _insert_l0_block(normalized, l0_source)
     warnings: list[dict] = []
-    if current_pair_count > 1:
+    if current_pair_count > 1 or current_orphan_count:
         warnings.append({
             "code": "L0_DEDUP",
-            "message": "存在多个当前版本 L0 区块，已归并为单一区块",
-            "detail": {"count": current_pair_count},
+            "message": "存在重复或孤立的当前版本 L0 标记，已归并为单一区块",
+            "detail": {
+                "count": current_pair_count,
+                "orphan_markers": current_orphan_count,
+            },
         })
     return normalized, warnings
 
@@ -3466,8 +3500,8 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action == "upgrade":
-            # 确定性升级（两模式同动作）→ 始终写入
+        if action in ("upgrade", "dedup"):
+            # 确定性升级/重复归并（两模式同动作）→ 始终写入
             return True
         if action == "replace":  # drift/broken
             if intents.no_interrupt:

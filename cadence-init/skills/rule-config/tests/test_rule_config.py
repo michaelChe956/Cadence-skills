@@ -27,6 +27,7 @@ rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
 
 TPL = (Path(__file__).resolve().parents[1] / "references" / "openspec" / "config.yaml").read_text()
 L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "agent-routing-kernel.md").read_text()
+L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
 # L0 受管区块标记（v2 为当前版本；v1/v0 为受支持旧版本的合成样本）
@@ -230,12 +231,10 @@ class TestL0Block(unittest.TestCase):
         out = rc._insert_l0_block(without_rules, L0_SOURCE)
         self.assertEqual(out, "# 入口\n文件说明\n\n" + L0_SOURCE)
 
-    def test_upgrade_when_old_version_markers(self):
-        """ut-l0_block-upgrade / L0-P9（v1/v0 成对受支持旧版本标记）"""
-        for start, end in ((V1_START, V1_END), (V0_START, V0_END)):
-            with self.subTest(version=start[-13:-11]):
-                text = start + "\n旧版区块内容\n" + end + "\n"
-                self.assertEqual(rc.l0_block(text, L0_SOURCE), "upgrade")
+    def test_upgrade_when_v0_old_version_markers(self):
+        """ut-l0_block-upgrade / L0-P9（v0 无真实规范源，成对标记维持 upgrade）。"""
+        text = V0_START + "\n旧版区块内容\n" + V0_END + "\n"
+        self.assertEqual(rc.l0_block(text, L0_SOURCE), "upgrade")
 
     def test_broken_when_single_side_marker(self):
         """ut-l0_block-broken / L0-P10（当前版本单侧标记）"""
@@ -259,10 +258,18 @@ class TestL0Block(unittest.TestCase):
 
 
 class TestL0V2Migration(unittest.TestCase):
+    def test_v1_history_source_loaded(self):
+        """ut-l0-v2-history-source：脚本加载冻结 v1 内核全文用于升级前比对。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v1"], L0_V1_SOURCE)
+
     def test_v1_pair_is_upgrade(self):
-        """ut-l0-v2-upgrade：v1 成对区块对 v2 源判 upgrade（非 drift）。"""
-        v1_text = V1_START + "\n旧路由内容\n" + V1_END + "\n"
-        self.assertEqual(rc.l0_block(v1_text, L0_SOURCE), "upgrade")
+        """ut-l0-v2-upgrade：完整 v1 规范块对 v2 源判 upgrade（非 drift）。"""
+        self.assertEqual(rc.l0_block(L0_V1_SOURCE, L0_SOURCE), "upgrade")
+
+    def test_v1_pair_with_drift_is_drift(self):
+        """ut-l0-v2-v1-drift：v1 成对但正文漂移必须判 drift。"""
+        v1_drift = V1_START + "\n旧路由内容\n" + V1_END + "\n"
+        self.assertEqual(rc.l0_block(v1_drift, L0_SOURCE), "drift")
 
     def test_upgrade_yields_single_v2_block(self):
         """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
@@ -271,6 +278,41 @@ class TestL0V2Migration(unittest.TestCase):
         self.assertEqual(out.count(V2_START), 1)
         self.assertEqual(out.count(V2_END), 1)
         self.assertIn("## 用户章节", out)
+        self.assertNotIn("旧路由", out)
+
+    def test_broken_nested_begin_preserves_user_section(self):
+        """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
+        broken = (
+            V2_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + V2_START + "\nfull\n" + V2_END
+        )
+        out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+        self.assertIn("x", out)
+        self.assertNotIn("full", out)
+
+    def test_upgrade_orphan_between_v1_pairs_preserves_user_section(self):
+        """ut-l0-v2-upgrade-orphan：旧版孤儿 begin 不得跨块吞掉用户章节。"""
+        upgrade = (
+            L0_V1_SOURCE + "\n\n" + V1_START
+            + "\n## 用户章节\nx\n\n" + L0_V1_SOURCE
+        )
+        self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
+        out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+        self.assertIn("x", out)
+
+    def test_orphan_current_marker_emits_l0_dedup(self):
+        """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
+        current_with_orphan = L0_SOURCE + "\n\n" + V2_START + "\n残留用户内容\n"
+        out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
+        warning = next(w for w in warns if w["code"] == "L0_DEDUP")
+        self.assertEqual(warning["detail"]["orphan_markers"], 1)
+        self.assertIn("残留用户内容", out)
 
     def test_mixed_markers_not_broken_residue(self):
         """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
@@ -286,17 +328,21 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_duplicate_current_blocks_deduped(self):
         """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
-        dup = L0_SOURCE + "\n\n## 中间\n\n" + L0_SOURCE
+        first = V2_START + "\n首个当前块\n" + V2_END
+        second = V2_START + "\n重复当前块\n" + V2_END
+        dup = first + "\n\n## 中间\n\n" + second
         out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
         self.assertEqual(out.count(V2_START), 1)
         self.assertEqual(out.count(V2_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
+        self.assertIn("首个当前块", out)
+        self.assertNotIn("重复当前块", out)
         self.assertIn("## 中间", out)
 
     def test_duplicate_current_blocks_classified_for_normalization(self):
-        """ut-l0-v2-dedup-state：重复 v2 成对块不可误判 skip。"""
+        """ut-l0-v2-dedup-state：重复 v2 成对块走确定性 dedup，不可误判 skip/drift。"""
         dup = L0_SOURCE + "\n\n" + L0_SOURCE
-        self.assertEqual(rc.l0_block(dup, L0_SOURCE), "drift")
+        self.assertEqual(rc.l0_block(dup, L0_SOURCE), "dedup")
 
     def test_v2_skip_idempotent(self):
         """ut-l0-v2-skip：v2 与源一致判 skip。"""
@@ -1883,7 +1929,8 @@ class TestSummaryDedup(unittest.TestCase):
         real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
         self.rules_root.mkdir(parents=True)
         for f in real_tpl.iterdir():
-            (self.rules_root / f.name).write_bytes(f.read_bytes())
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
         self.openspec_yaml = (
             Path(__file__).resolve().parents[1]
             / "references"
@@ -2332,6 +2379,21 @@ class TestComputePlanFinalReview(unittest.TestCase):
         }
         self.assertEqual(assets["CLAUDE.md"]["action"], "upgrade")
         self.assertEqual(assets["CLAUDE.md"]["backup_needed"], True)
+        self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
+
+    def test_duplicate_current_blocks_are_deterministic_not_conflicts(self):
+        """ut-compute-plan-l0-dedup：重复 v2 块必须直接归并，普通模式不要求决策。"""
+        duplicate = L0_SOURCE + "\n\n## 用户章节\nx\n\n" + L0_SOURCE
+        (self.root / "CLAUDE.md").write_text(duplicate, encoding="utf-8")
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        self.assertNotIn("s4:CLAUDE.md", conflicts)
+        asset = next(
+            a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
+            if a["path"] == "CLAUDE.md"
+        )
+        self.assertEqual(asset["action"], "dedup")
+        self.assertTrue(asset["backup_needed"])
         self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
 
     def test_drift_still_conflict_with_allowed_decisions(self):
