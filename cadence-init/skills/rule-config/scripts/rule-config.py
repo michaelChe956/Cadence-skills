@@ -1366,7 +1366,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "backup_needs": [],
     }
 
-    # --- S1 detect：项目类型 + 技术栈 ---
+    # --- S1 detect：项目类型 ---
     # codex 五轮重构：detect 只返回检测结果；最终 project_type 由两模式规则计算
     # （no-interrupt 以检测为准、普通模式 CLI 仅提升）。s1:project-type-conflict
     # 冲突机制已删除——任意检测+CLI 组合都有唯⼀确定结果，不再产冲突。
@@ -1377,7 +1377,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         detect_result["project_type"], intents
     )
     plan["project_type"] = final_project_type
-    plan["tech_stack"] = detect_result["tech_stack"]
     s1["status"] = "ok"
     s1["note"] = (
         f"project_type={final_project_type}; "
@@ -1392,7 +1391,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "detected_type": detect_result["project_type"],
         "project_type": final_project_type,
         "evidence": detect_result["evidence"],
-        "tech_stack": detect_result["tech_stack"],
     }]
     s1["elapsed_ms"] = int((time.monotonic() - t_s1) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_DETECT] = s1
@@ -1828,17 +1826,7 @@ _FALLBACK_GLOB_PATTERN = "**/cadence-init/skills/rule-config/references/rules/la
 
 
 def detect_project(root: Path, intents: Intents) -> dict:
-    """S1 项目类型与技术栈检测（codex 五轮重构：只返回检测结果）。
-
-    返回 dict：
-      {
-        "project_type": "coding"|"non-coding",   # 等同 detected_type（检测结果）
-        "evidence": str,            # 检测证据（相对路径 / 主配置名 / "none"）
-        "tech_stack": {             # 五类技术栈检测（未检出写「未检测到」）
-          "language": str, "pkg_manager": str,
-          "test": str, "lint": str, "format": str, "coverage": "80%",
-        },
-      }
+    """S1 项目类型检测（仅返回项目类型与检测证据）。
 
     用户裁决的项目类型规则（删除 s1:project-type-conflict 后）：detect 只负责自动检测，
     **完全不读取 intents**（既不应用 CLI --project-type，也不产生任何冲突）。最终
@@ -1861,13 +1849,9 @@ def detect_project(root: Path, intents: Intents) -> dict:
             detected_type = "coding"
             evidence = f"main config: {main_cfg}"
 
-    # 2) 技术栈检测（不受 project_type 影响，始终扫描配置文件）。
-    tech_stack = _detect_tech_stack(root)
-
     return {
         "project_type": detected_type,
         "evidence": evidence,
-        "tech_stack": tech_stack,
     }
 
 
@@ -1888,55 +1872,6 @@ def _detect_main_config(root: Path) -> Optional[str]:
         if (root / name).is_file():
             return name
     return None
-
-
-def _detect_tech_stack(root: Path) -> dict:
-    """S4 技术栈检测五类（DF-02 / S4-01~03）。
-
-    返回 dict(language, pkg_manager, test, lint, format, coverage)。
-    未检出的字段写「未检测到」（不阻塞初始化）；coverage 默认 80%。
-    """
-    ts = {
-        "language": "未检测到",
-        "pkg_manager": "未检测到",
-        "test": "未检测到",
-        "lint": "未检测到",
-        "format": "未检测到",
-        "coverage": "80%",
-    }
-    package_json = root / "package.json"
-    if package_json.is_file():
-        ts["language"] = "JavaScript/TypeScript"
-        ts["pkg_manager"] = "pnpm"
-        try:
-            data = json.loads(package_json.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            data = {}
-        scripts = data.get("scripts") if isinstance(data, dict) else None
-        if isinstance(scripts, dict):
-            for key in ("test", "lint", "format"):
-                val = scripts.get(key)
-                if isinstance(val, str) and val:
-                    ts[key] = val
-
-    requirements = root / "requirements.txt"
-    pyproject = root / "pyproject.toml"
-    has_python_cfg = requirements.is_file() or pyproject.is_file()
-    if has_python_cfg:
-        if ts["language"] == "未检测到":
-            ts["language"] = "Python"
-        ts["pkg_manager"] = "uv"
-        # 检测 pytest（requirements.txt 或 pyproject.toml 任一含 pytest）
-        py_text = ""
-        for p in (requirements, pyproject):
-            if p.is_file():
-                try:
-                    py_text += "\n" + p.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    pass
-        if "pytest" in py_text:
-            ts["test"] = "pytest"
-    return ts
 
 
 def locate_templates() -> tuple:
@@ -2097,16 +2032,13 @@ def _load_kernel_source() -> str:
 
 
 def step_s1_detect(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。
+    """S1 执行（Task 5 实现）：回填 project_type 与检测证据到报告。
 
-    codex 五轮重构：project_type 已在 compute_plan 阶段按两模式规则计算为最终值
-    （plan["project_type"]）；detect_project 在此只用于补全 tech_stack/evidence。
+    codex 五轮重构：project_type 已在 compute_plan 阶段按两模式规则计算为最终值。
     s1 决策消费机制已删除（无 s1 冲突）。
     """
     detect_result = detect_project(root, intents)
     report["project_type"] = plan.get("project_type") or detect_result["project_type"]
-    # tech_stack 写入报告（供后续 S4 入口文件技术栈章节使用）。
-    report["tech_stack"] = detect_result["tech_stack"]
     report["evidence"] = detect_result["evidence"]
 
 
@@ -2343,7 +2275,6 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
     if not kernel_source:
         return
     project_type = plan.get("project_type", "non-coding")
-    tech_stack = report.get("tech_stack") or {}
     s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
     assets = s4_step.get("assets", []) or []
     decisions_map = plan.get("decisions_map", {}) or {}
@@ -2369,17 +2300,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             if existing is None:
                 actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
                 continue
-            composed, diffs, warnings = _compose_entry(
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state="skip",
-                project_type=project_type, tech_stack=tech_stack,
+                project_type=project_type,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
             if composed != existing:
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
@@ -2389,17 +2315,12 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
         if action == "create" and not entry_path.exists():
-            composed, diffs, warnings = _compose_entry(
+            composed, warnings = _compose_entry(
                 base_text, kernel_source, state="create",
-                project_type=project_type, tech_stack=tech_stack,
+                project_type=project_type,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
             ensure_parent(entry_path)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
@@ -2411,49 +2332,34 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
         # insert/upgrade/dedup 为确定性动作，不走 decisions：insert 直接插入；
         # upgrade 和 dedup 在全局备份屏障通过后分别升级/归并为当前版本。
         if action in ("insert", "upgrade", "dedup"):
-            composed, diffs, warnings = _compose_entry(
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state=state or action,
-                project_type=project_type, tech_stack=tech_stack,
+                project_type=project_type,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
         # drift/broken → 按模式/决策处理。
         decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
-            composed, diffs, warnings = _compose_entry(
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state=state or "insert",
-                project_type=project_type, tech_stack=tech_stack,
+                project_type=project_type,
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
         else:
             if decision == DECISION_REPLACE:
-                composed, diffs, warnings = _compose_entry(
+                composed, warnings = _compose_entry(
                     existing, kernel_source, state=state or "insert",
-                    project_type=project_type, tech_stack=tech_stack,
+                    project_type=project_type,
                     entry_name=entry_name, existing_rule_files=existing_rule_files,
                 )
                 report.setdefault("warnings", []).extend(warnings)
-                if diffs:
-                    actions_log.append({
-                        "path": entry_name, "action": "techstack-diff",
-                        "diffs": diffs,
-                    })
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": f"replace-{state}"})
             else:
@@ -2463,20 +2369,19 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
-                   project_type: str, tech_stack: dict,
+                   project_type: str,
                    entry_name: str,
                    existing_rule_files: set[str] | None = None) -> tuple:
-    """合成入口文件最终文本，返回 ``(text, techstack_diffs, warnings)``。
+    """合成入口文件最终文本，返回 ``(text, warnings)``。
 
     L0 处理：skip 保持现有规范块；create 直接插入；insert、upgrade、dedup、
     drift、broken 均统一调用 `_normalize_l0_to_single_block`，安全移除可处理
     标记并生成唯一当前版本块。dedup 保留首个当前块；若其内容漂移，下一轮
     会按 drift 再收敛一次（已知两轮收敛风险，按当前契约不改变该行为）。
 
-    codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/dedup/drift/broken/create），
-    均执行强制规则章节规范化（SM-02/03）与技术栈块写入（DF-02/S4
-    「单次完成 L0、规则章节、技术栈」）——L0 区块处理与规则章节/技术栈是独立动作。
-    规则章节规范化保留可识别的用户块；技术栈逐项替换占位、保留用户真实值并返回差异，
+    无论 L0 状态如何（skip/insert/upgrade/dedup/drift/broken/create），均执行强制规则
+    章节规范化与产物开关归并；L0 区块处理与规则章节是独立动作。
+    规则章节规范化保留可识别的用户块；
     区块外用户内容保留（L0-B2）。
     """
     text = existing
@@ -2504,14 +2409,11 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     )
     warnings = l0_warnings + warnings
 
-    # --- 步骤 3：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
-    text, diffs = _ensure_techstack_block(text, tech_stack)
-
-    # --- 步骤 4：产物自动提交开关（缺失时默认关闭；用户值保留）---
+    # --- 步骤 3：产物自动提交开关（缺失时默认关闭；用户值保留）---
     text, toggle_warnings = _ensure_commit_toggle(text, entry_name)
     warnings.extend(toggle_warnings)
 
-    return text, diffs, warnings
+    return text, warnings
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
@@ -2812,100 +2714,8 @@ def _normalize_mandatory_rules(
     return finish(result), warnings_out
 
 
-PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}
 TOGGLE_PREFIX = "- **产物自动提交（design/plan）**："
 TOGGLE_DEFAULT = "关闭"
-
-
-def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
-    """逐项处理技术栈，占位替换为检测值，用户真实值保留并返回差异。
-
-    返回 ``(处理后文本, [{"field", "user_value", "detected_value"}])``。
-    技术栈区块缺失时整体追加；覆盖率阈值固定为 80%，不参与逐项替换。
-    """
-    diffs = []
-    if not tech_stack:
-        return text, diffs
-
-    fields = [
-        ("语言", "language"),
-        ("包管理器", "pkg_manager"),
-        ("测试命令", "test"),
-        ("检查命令", "lint"),
-        ("格式化命令", "format"),
-    ]
-    if "### 项目技术栈" not in text:
-        tech_lines = [
-            "### 项目技术栈",
-            *[
-                f"- **{label}**：{tech_stack.get(key, '未检测到')}"
-                for label, key in fields
-            ],
-            "- **覆盖率阈值**：80%",
-        ]
-        # 开关可能在上一轮运行中已经创建了项目配置章节。此时技术栈块
-        # 必须落入既有首个章节，避免跨运行产生重复 ## 项目配置。
-        lines = text.splitlines()
-        config_idxs = [
-            i for i, line in enumerate(lines)
-            if line.strip() == "## 项目配置"
-        ]
-        if config_idxs:
-            start = config_idxs[0]
-            end = len(lines)
-            for i in range(start + 1, len(lines)):
-                stripped = lines[i].strip()
-                if stripped.startswith("## ") or stripped.startswith("# "):
-                    end = i
-                    break
-            toggle_idxs = [
-                i for i in range(start + 1, end)
-                if lines[i].startswith(TOGGLE_PREFIX)
-            ]
-            if toggle_idxs:
-                # 首轮仅有开关时，技术栈块插入开关之前，保持最终顺序。
-                insert_at = toggle_idxs[0]
-            else:
-                insert_at = end
-                while insert_at > start + 1 and not lines[insert_at - 1].strip():
-                    insert_at -= 1
-            separator = (
-                [""]
-                if insert_at > start + 1 and lines[insert_at - 1].strip()
-                else []
-            )
-            lines[insert_at:insert_at] = (
-                separator + tech_lines + ([""] if toggle_idxs else [])
-            )
-            result = "\n".join(lines)
-            if text.endswith("\n"):
-                result += "\n"
-            return result, diffs
-
-        block = (
-            "\n## 项目配置\n\n"
-            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。\n\n"
-            + "\n".join(tech_lines)
-            + "\n"
-        )
-        return text.rstrip("\n") + "\n" + block, diffs
-
-    for label, key in fields:
-        detected = tech_stack.get(key, "未检测到")
-        pattern = f"- **{label}**："
-        for line in text.splitlines():
-            if line.startswith(pattern):
-                current = line[len(pattern):]
-                if current in PLACEHOLDER_VALUES:
-                    text = text.replace(line, f"{pattern}{detected}", 1)
-                elif current != detected:
-                    diffs.append({
-                        "field": label,
-                        "user_value": current,
-                        "detected_value": detected,
-                    })
-                break
-    return text, diffs
 
 
 def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
@@ -2950,7 +2760,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         ]
         block = [
             "", "## 项目配置", "",
-            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。", "",
+            "> 以下配置由初始化脚本维护。", "",
             TOGGLE_PREFIX + chosen,
         ]
         result = "\n".join(clean_lines).rstrip("\n") + "\n" + "\n".join(block) + "\n"
@@ -3031,9 +2841,9 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         if stripped.startswith("## ") or stripped.startswith("# "):
             clean_end = i
             break
+    # 在章节边界前追加开关，不吸收既有尾部空行，确保技术栈、包管理器等
+    # 用户项目配置内容逐字保留。
     insert_at = clean_end
-    while insert_at > clean_start + 1 and clean_lines[insert_at - 1].strip() == "":
-        insert_at -= 1
     clean_lines[insert_at:insert_at] = [TOGGLE_PREFIX + chosen, ""]
     result = "\n".join(clean_lines)
     if trailing_newline and not result.endswith("\n"):
@@ -3764,15 +3574,12 @@ def _planned_entry_warnings(
     """只读预演 S4 入口合成，收集 apply 将产生的 warnings。
 
     预演复用与 apply 相同的 ``_compose_entry`` 纯函数，但只操作内存文本；
-    因而不会创建入口、规则或备份文件。计划阶段的 ``tech_stack`` 已由
-    ``compute_plan`` 写入 plan，避免 dry-run 与 apply 因执行阶段回填顺序不同
-    而得到不同诊断。
+    因而不会创建入口、规则或备份文件。
     """
     kernel_source = _load_kernel_source()
     if not kernel_source:
         return []
     project_type = plan.get("project_type", "non-coding")
-    tech_stack = plan.get("tech_stack") or report.get("tech_stack") or {}
     s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
     existing_rule_files = {
         p.name for p in (root / ".claude" / "rules").glob("*.md")
@@ -3793,9 +3600,9 @@ def _planned_entry_warnings(
                 continue
         else:
             state = asset.get("conflict") or "skip"
-        _composed, _diffs, entry_warnings = _compose_entry(
+        _composed, entry_warnings = _compose_entry(
             existing, kernel_source, state=state,
-            project_type=project_type, tech_stack=tech_stack,
+            project_type=project_type,
             entry_name=entry_name, existing_rule_files=existing_rule_files,
         )
         warnings.extend(entry_warnings)
@@ -3806,7 +3613,6 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
     """dry-run：compute_plan + 只读预演入口 warnings + 写报告，零写入。"""
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
-    report["tech_stack"] = plan.get("tech_stack", {})
     # S2 模板定位失败（§11.5：所有候选不完整 → 终止并报告，非零退出）
     if plan.get("failure"):
         report["overall"] = "fail"

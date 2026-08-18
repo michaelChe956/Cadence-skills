@@ -216,7 +216,7 @@ git pull
 |------|----------|--------------------|
 | `/pre-check` | 一键检查并补齐六个基础工具 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、pi-mcp-adapter（pi 存在时）：已装的工具秒级跳过，缺什么装什么，装完自动复验；支持**大陆镜像加速**与**一键升级已装工具**（见下方“大陆镜像与工具升级”）；OpenSpec 检查范围为 CLI 与 `claude,codex,pi,kimi` 四客户端指令产物，按缺失客户端精确补齐（缺哪个 init 哪个）；`openspec/config.yaml` 由 `/rule-config` 创建与合并，缺失时仅提示不影响判定；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
-| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
+| `/rule-config` | 自动检测项目类型；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
@@ -439,7 +439,6 @@ your_minimax_api_key
 
 - 缺失的 `## 强制规则` 章节会被完整创建（L0 区块之后）；英文/自定义内容逐字保留；
 - 已退役规则残留（如 Serena）被删除，编号 1-9 错乱重排为权威 1-7；
-- 双入口写入同一份技术栈检测结果，用户已有真实值保留不变；
 - L0 旧版（v1）确定性升级为 v2，不再弹用户决策；重跑幂等零变更。
 
 #### 产物路径覆盖（v2 新增）
@@ -553,7 +552,7 @@ Cadence 当前以 Skill 形式提供能力，不再提供独立的 Command。其
 
 ### 2. 智能项目初始化
 
-- 自动检测项目类型和技术栈
+- 自动检测项目类型
 - 跨平台兼容（macOS/Linux/Windows）
 - 同时支持 Claude Code、Codex、pi 与 Kimi Code 四类客户端的环境初始化（OpenSpec 产物、Superpowers 软链、MCP 接入）
 - 用户确认机制确保准确性

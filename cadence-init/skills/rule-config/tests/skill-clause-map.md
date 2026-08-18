@@ -31,7 +31,7 @@
 | 处理流程 S1（1a/1b/1c/1d） | 115-183 | S1a-01~05、S1b-01~04、S1c-01、S1d-01~11 | 21 |
 | 处理流程 S2（L0 处理 12 条 + 两模板 + 注意） | 185-308 | L0-P1~P12、S2-T1~T3 | 15 |
 | 处理流程 S3 包管理器 | 310-333 | S3-01~02 | 2 |
-| 处理流程 S4 技术栈 | 335-375 | S4-01~05 | 5 |
+| 处理流程 S4 项目配置开关 | 335-375 | S4-01~05 | 5 |
 | 处理流程 S5 目录结构 | 377-406 | S5-01~02 | 2 |
 | 处理流程 S6 历史产物迁移（表 HM + 禁止迁移 + 命令/报告） | 408-460 | HM-01~03、S6-01~02 | 5 |
 | 处理流程 S7 gitignore | 462-481 | S7-01~02 | 2 |
@@ -101,7 +101,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 66 | DF-01 检测到源码或主配置→Coding；否则非 Coding | 两模式 | detect_project | fx-coding-project / fx-noncoding-project | ut-detect_project-coding / ut-detect_project-noncoding | 返回类型与预期一致并写入报告 |
-| 67 | DF-02 技术栈自动检测写入；未检出写"未检测到" | 两模式 | detect_project / step_entry_files | fx-techstack-frontend | it-s1-techstack | CLAUDE.md/AGENTS.md 项目技术栈章节含检出值；缺失命令字段为"未检测到" |
+| 67 | DF-02 项目类型检测；技术栈不参与脚本配置 | 两模式 | detect_project | fx-project-type | TestDetectProject | 仅返回 project_type/evidence，不检测或写入技术栈 |
 | 68 | DF-03 历史迁移无冲突自动迁移；目标非空跳过并报告 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-skip | 非空目标目录不动，报告含冲突项 |
 | 69 | DF-04 `cadence/` 默认不加入 `.gitignore` | 两模式 | step_gitignore | fx-empty-project | it-s6-cadence-gitignore-default | `.gitignore` 不含 `cadence/` 行 |
 | 70 | DF-05 代码阅读规则所有项目创建；非 Coding 只跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-all-projects | 非 Coding 项目仍存在 `.claude/rules/code-reading.md` |
@@ -169,13 +169,13 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 310-333 | S3-01 前端项目包管理器 pnpm、Python 项目 uv；检测后写入 CLAUDE.md 项目配置 | 两模式 | detect_project / step_entry_files | fx-techstack-frontend / fx-techstack-python | it-s1-pkg-manager | 含 `package.json` 项目写入 pnpm 规则；含 `requirements.txt`/`pyproject.toml` 项目写入 uv 规则；禁用项文本保留 |
-| 319-325 | S3-02 禁止使用 npm（前端）、pip（Python）、yarn（前端） | 两模式 | step_entry_files | fx-techstack-frontend | it-s1-pkg-manager-forbidden | 写入文本含三条禁止项 |
-| 335-347 | S4-01 技术栈检测五类：语言、test/lint/format 脚本、覆盖率阈值默认 80% | 两模式 | detect_project | fx-techstack-frontend | ut-detect_project-techstack | 从 `package.json` scripts 提取 test/lint/format；覆盖率默认 80% |
-| 358-362 | S4-02 技术栈区块缺失时追加完整区块；已有区块按字段逐项处理，仅替换 `待确认`/`未检测到`/空字符串占位，真实用户值保留并将差异写入 report | 两模式 | `_ensure_techstack_block` / step_entry_files | fx-techstack-frontend | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported / test_placeholder_replacement_is_idempotent_and_diff_not_duplicated | 占位字段收敛到检测值；非占位真实值不覆盖；`techstack-diff` 含 field/user_value/detected_value；重跑不重复区块或差异 |
-| 362 | S4-03 未检测到的命令写"未检测到"，不阻塞初始化；该值作为占位，未来检测到真实值时可逐项替换 | 两模式 | step_entry_files / `_ensure_techstack_block` | fx-techstack-python | TestTechstackPlaceholder / it-s4-techstack-undetected | 缺失命令字段写"未检测到"；后续运行仅替换检测到的占位项；步骤状态成功 |
-| 364 | S4-04 用户写入的非占位技术栈真实值保留，若与检测值不同则记录 `techstack-diff` action | 两模式 | step_entry_files / `_ensure_techstack_block` | fx-techstack-frontend | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported | 用户值不被检测值覆盖；差异进入可 JSON 序列化的 report |
-| 368-374 | S4-05 项目技术栈完整区块含覆盖率阈值 80%；区块缺失时一次追加完整区块；开关始终位于首个既有 `## 项目配置` 章节末尾 | 两模式 | step_entry_files / `_ensure_techstack_block` / `_ensure_commit_toggle` | fx-techstack-frontend | TestTechstackPlaceholder / TestTechStackDualEntry / TestCommitToggle / it-s4-coverage-80 | 双入口接收同一技术栈；完整区块只出现一次；开关与技术栈同节且重跑幂等 |
+| 310-333 | S3-01 项目配置仅维护提交开关；用户既有包管理器内容保留 | 两模式 | step_entry_files / _ensure_commit_toggle | fx-entry-user-config | TestComposeEntryWarnings | 不检测或写入包管理器规则 |
+| 319-325 | S3-02 用户既有项目配置内容逐字保留 | 两模式 | step_entry_files | fx-entry-user-config | TestComposeEntryWarnings | 不生成技术栈/包管理器字段 |
+| 335-347 | S4-01 技术栈检测与写入已删除；入口用户技术栈内容原样保留 | 两模式 | step_s4_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 不生成技术栈区块或字段 |
+| 358-362 | S4-02 项目配置章节仅维护提交开关；已有技术栈/包管理器等用户内容逐字保留 | 两模式 | _ensure_commit_toggle / step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 不检测、不生成、不更新技术栈字段 |
+| 362 | S4-03 技术栈不检测、不写入；用户既有命令字段不变 | 两模式 | step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 缺失技术栈区块不生成字段；步骤成功 |
+| 364 | S4-04 用户写入的技术栈真实值逐字保留，报告不产生技术栈差异动作 | 两模式 | step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 用户值保持不变且无技术栈差异动作 |
+| 368-374 | S4-05 项目配置章节仅维护唯一提交开关；既有用户技术栈块保留 | 两模式 | step_entry_files / _ensure_commit_toggle | fx-entry-user-techstack | TestComposeEntryWarnings / TestCommitToggle | 不生成技术栈块；开关位于项目配置章节内且幂等 |
 | 377-386 | S5-01 创建 `.claude/rules` 与 17 个 `cadence/` 子目录（含 project-rules/examples 与 cache） | 两模式 | step_scaffold | fx-empty-project | it-s5-scaffold-dirs | 17 个子目录全部存在；重复运行幂等 |
 | 388-406 | S5-02 目录用途说明表为文档性条款 | 两模式 | references/merge-semantics.md 目录用途节 | —（仓库内文档） | sc-scaffold-dir-doc | 瘦身后 SKILL 或 references 保留目录用途说明 |
 
@@ -303,7 +303,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 715 | SM-01 已收敛的强制规则章节与摘要引用→幂等跳过，不写盘 | 两模式 | `_normalize_mandatory_rules` / step_entry_files | fx-entry-idempotent | TestNormalizeMandatoryRules::test_idempotent / TestStepS4EntryFiles::test_skip_state_idempotent_no_change / it-s4-idempotent | 重跑逐字不变；顶层 warnings 字段仍存在且不改变 overall |
-| 716 | SM-02 `## 强制规则` 缺失或缺少权威摘要→在 L0 后创建章节并补齐 | 两模式 | `_normalize_mandatory_rules` / step_entry_files | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_create_section_when_missing / TestNormalizeMandatoryRulesLegacy / TestTechStackDualEntry / TestStepS4EntryFiles::test_skip_state_backfills_missing_summary_and_techstack | 创建完整规范章节；规则 2/6、技术栈与开关同次合成且不重复 H2 |
+| 716 | SM-02 `## 强制规则` 缺失或缺少权威摘要→在 L0 后创建章节并补齐 | 两模式 | `_normalize_mandatory_rules` / step_entry_files | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_create_section_when_missing / TestNormalizeMandatoryRulesLegacy / TestStepS4EntryFiles::test_skip_state_idempotent_no_change | 创建完整规范章节；规则 2/6 与项目配置开关不重复创建 H2 |
 | 717 | SM-03 命中 `RETIRED_RULE_FILES` 的引用块→仅删除当前清单中的 `serena-usage.md`，不误删前向引用 | 两模式 | `_normalize_mandatory_rules` | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_serena_removed / TestNormalizeMandatoryRules::test_forward_reference_kept / TestNormalizeMandatoryRules::test_empty_retired_list_no_deletion | 退役引用删除；未退役用户内容保留 |
 | 717 | SM-04 编号、规则 6 两类旧文案或规则 5 标题不符合权威文本→重排重编号，规则 5 统一为 `MCP Server 使用规则` | 两模式 | `CANONICAL_RULES` / `_normalize_mandatory_rules` | fx-entry-missing-summary | TestCanonicalRules / TestNormalizeMandatoryRules::test_renumber_1_to_9 / TestNormalizeMandatoryRules::test_rule6_old_wording_replaced / TestNormalizeMandatoryRules::test_claude_agents_wording_differs | 权威 1~7 顺序稳定，旧文案替换，双入口允许正文差异 |
 | 717 | SM-05 用户 H3/行块、重复 H2、孤立规则 6→保留用户内容，仅规范化首个章节，并记录 warnings | 两模式 | `_normalize_mandatory_rules` / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_user_h3_block_moved_as_whole / TestNormalizeMandatoryRules::test_orphan_rule6_outside_section_warns / TestNormalizeMandatoryRules::test_duplicate_h2_only_first_normalized / TestComposeEntryWarnings | 用户内容放在权威条目后；`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6` 等诊断进入顶层 warnings，不影响 overall |
@@ -351,7 +351,7 @@
 | —（D3） | XC-07 横切原子写 `os.replace()` 与 sha256 工具 | 两模式 | atomic_write / sha256_file | fx-empty-project | ut-atomic_write-replace / ut-sha256_file-basic | 写入经原子替换；sha256 结果与系统工具一致（含 sha256sum/shasum 回退环境） |
 | —（L0 v2） | XC-08 产物路径覆盖表在 kernel v2、`document-storage.md` 与 `ARTIFACT_PATH_OVERRIDE_TABLE` 三源逐字一致；design/spec→`cadence/designs/`、plan→`cadence/plans/`，OpenSpec 仍在 `openspec/` | 两模式 | `ARTIFACT_PATH_OVERRIDE_TABLE` / L0 v2 kernel / document-storage.md | —（三份仓库文档） | TestArtifactPathOverrides | 三份表逐字一致；kernel 为 v2；不改 OpenSpec 路径 |
 | —（S4） | XC-09 顶层 `warnings` 始终为数组且只承载诊断，不影响 `overall`；脚本 code 仅为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP` | 两模式 | build_report / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestComposeEntryWarnings / TestNormalizeMandatoryRules / TestL0V2Migration / TestCommitToggle | dry-run、apply、no-interrupt 均有字段；诊断不把 `overall` 从 ok 降为 fail |
-| —（S4） | XC-10 产物自动提交开关：缺失默认关闭，合法用户值保留，非法值保留原文并报 `INVALID_TOGGLE`；技术栈为空仍落位，首个既有项目配置章节内唯一 | 两模式 | `_ensure_commit_toggle` / `_ensure_techstack_block` | fx-empty-project / fx-techstack-frontend | TestCommitToggle / TestTechStackDualEntry | 不创建重复 `## 项目配置`；开关位于技术栈块后；双入口写入一致 |
+| —（S4） | XC-10 产物自动提交开关：缺失默认关闭，合法用户值保留，非法值保留原文并报 `INVALID_TOGGLE`；首个既有项目配置章节内唯一 | 两模式 | `_ensure_commit_toggle` | fx-empty-project / fx-entry-user-techstack | TestCommitToggle / TestComposeEntryWarnings | 不创建重复 `## 项目配置`；既有用户内容保留；开关归并后幂等 |
 
 ## 3. 自审覆盖度（Step 3）
 
@@ -378,7 +378,7 @@
 |---|--------|---------|------|
 | 1 | 历史目录两模式 | it-s5-history-no-interrupt（NH-02）/ it-s5-history-normal（NH-03） | ✅ |
 | 2 | 框架受管规则 drift（普通 keep / replace；no-interrupt 权威全覆盖） | it-s3-normal-keep-decision / it-s3-rules-drift-replace（replace 分支待补）/ ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | ✅ authoritative 覆盖与幂等已覆盖；普通 replace 集成待补 |
-| 3 | 技术栈占位逐项替换、用户真实值保留、差异入 report | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported / test_placeholder_replacement_is_idempotent_and_diff_not_duplicated | ✅ |
+| 3 | 既有技术栈等项目配置内容逐字保留；脚本不检测或写入技术栈 | TestComposeEntryWarnings | ✅ |
 | 4 | gitignore 两分支 | it-s6-gitignore-default / it-s6-gitignore-ignore（S7-01/02） | ✅ |
 | 5 | Playwright 两分支 | it-s3-playwright-skip / it-s3-playwright-enable（S10-01/02、OP-03） | ✅ |
 | 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ |
@@ -398,7 +398,7 @@
 | 20 | no-interrupt dry-run 动作字段 | test_dry_run_no_interrupt_action_field | ✅ `authoritative-overwrite` |
 | 21 | L0 v2 迁移、混合标记安全配对、重复归并与污染对内容保留 | TestL0V2Migration | ✅ 当前 v2、受支持 v0/v1、`L0_DEDUP` 与不吞用户正文均覆盖 |
 | 22 | 强制规则章节规范化 SM-01~05、退役 `serena-usage.md`、用户内容与 warnings | TestCanonicalRules / TestNormalizeMandatoryRules / TestComposeEntryWarnings | ✅ 创建/清理/重排/保留及顶层 warnings 均覆盖 |
-| 23 | 产物路径覆盖与自动提交开关 | TestArtifactPathOverrides / TestCommitToggle / TestTechStackDualEntry | ✅ 三源路径表、默认关闭/用户值保留/非法值告警、既有项目配置落位均覆盖 |
+| 23 | 产物路径覆盖与自动提交开关 | TestArtifactPathOverrides / TestCommitToggle / TestComposeEntryWarnings | ✅ 三源路径表、默认关闭/用户值保留/非法值告警、既有项目配置落位均覆盖 |
 
 ### 3.3 非表条款覆盖声明
 

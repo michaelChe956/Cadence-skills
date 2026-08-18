@@ -1,6 +1,6 @@
 ---
 name: rule-config
-description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、配置目录结构和项目技术栈"
+description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、配置目录结构和项目级提交开关"
 disable-model-invocation: true
 ---
 
@@ -8,9 +8,9 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 Claude Code 与 Codex 的规则：创建并维护 `.claude/rules/` 下 7 个框架受管规则文件，内容 drift 时执行框架权威全覆盖；`code-usage.md` 按最终项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源并以固定名称落地。流程还会将 CLAUDE.md 与 AGENTS.md 的 L0 受管区块升级到当前 **v2**（受支持旧版 v0、v1），创建 `cadence/` 产物目录、迁移历史产物、检测并写入项目技术栈、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright。入口中的 `## 强制规则` 不再以“缺失摘要行追加”为语义，而是执行**强制规则章节规范化**：创建、清理退役引用、按权威顺序重排并替换旧文案，同时保留无法识别的用户内容。所有需备份分支先将原文件复制归档到 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，原位文件不动，再以 `atomic_write` 原子发布。
+配置 Claude Code 与 Codex 的规则：创建并维护 `.claude/rules/` 下 7 个框架受管规则文件，内容 drift 时执行框架权威全覆盖；`code-usage.md` 按最终项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源并以固定名称落地。流程还会将 CLAUDE.md 与 AGENTS.md 的 L0 受管区块升级到当前 **v2**（受支持旧版 v0、v1），创建 `cadence/` 产物目录、迁移历史产物、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright；入口项目配置仅维护产物自动提交开关，不检测或写入技术栈。入口中的 `## 强制规则` 不再以“缺失摘要行追加”为语义，而是执行**强制规则章节规范化**：创建、清理退役引用、按权威顺序重排并替换旧文案，同时保留无法识别的用户内容。所有需备份分支先将原文件复制归档到 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，原位文件不动，再以 `atomic_write` 原子发布。
 
-脚本报告始终提供不影响 `overall` 的顶层 `warnings` 数组；其实际 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`，详情见 `references/merge-semantics.md` §11.3。入口首个 `## 项目配置` 章节还会确保唯一的“产物自动提交（design/plan）”开关：缺失时写入 `关闭`，合法用户值保留，非法值保留原文并报告 warning，即使技术栈为空也必须落位。Agent 读取时以 CLAUDE.md 为准、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`（这是读取层告警，不是脚本 `warnings` code）。
+脚本报告始终提供不影响 `overall` 的顶层 `warnings` 数组；其实际 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`，详情见 `references/merge-semantics.md` §11.3。入口首个 `## 项目配置` 章节还会确保唯一的“产物自动提交（design/plan）”开关：缺失时写入 `关闭`，合法用户值保留，非法值保留原文并报告 warning；既有技术栈等项目配置内容逐字保留，不由脚本检测或写入。Agent 读取时以 CLAUDE.md 为准、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`（这是读取层告警，不是脚本 `warnings` code）。
 
 全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告，并在普通模式就冲突逐条提问、回收决策；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
 

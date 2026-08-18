@@ -142,7 +142,7 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertIn("### 规则", out)
         self.assertIn("old", out)
 
-    def test_mandatory_conflict_template_wins_techstack_preserved(self):
+    def test_mandatory_conflict_template_wins_user_config_preserved(self):
         """ut-merge_markdown-mandatory-override / NC-04"""
         tpl = "## 强制规则\n- 必须使用中文回答 → 详见 `.claude/rules/language.md`\n"
         old = "## 强制规则\n- 旧摘要\n\n## 项目技术栈\n- Python\n"
@@ -1014,6 +1014,7 @@ class TestDetectProject(unittest.TestCase):
         self.assertEqual(result["project_type"], "coding")
         self.assertIsInstance(result["evidence"], str)
         self.assertTrue(result["evidence"])  # 非空证据
+        self.assertNotIn("tech_stack", result)
 
     # --- ut-detect_project-noncoding / DF-01（无源码无主配置 → 非 Coding）---
     def test_empty_project_is_noncoding(self):
@@ -1072,224 +1073,6 @@ class TestDetectProject(unittest.TestCase):
             self.assertEqual(result["project_type"], "coding")
             self.assertIsNone(result.get("conflict"))
 
-    # --- ut-detect_project-techstack / S4-01（package.json scripts + pytest 检测 + 默认覆盖率 80%）---
-    def test_techstack_extracted_from_package_json_and_pytest(self):
-        """ut-detect_project-techstack / S4-01（package.json scripts 提取 test/lint/format；requirements.txt 检测 pytest；coverage 默认 80%）"""
-        import json as _json
-        (self.root / "package.json").write_text(_json.dumps({
-            "name": "demo",
-            "scripts": {"test": "vitest", "lint": "eslint .", "format": "prettier --write ."},
-        }), encoding="utf-8")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "vitest")
-        self.assertEqual(ts["lint"], "eslint .")
-        self.assertEqual(ts["format"], "prettier --write .")
-        self.assertEqual(ts["coverage"], "80%")
-
-    def test_techstack_pytest_detected_from_requirements(self):
-        """ut-detect_project-techstack / S4-01（requirements.txt 含 pytest → test 字段为 pytest）"""
-        (self.root / "requirements.txt").write_text("pytest\nrequests\n", encoding="utf-8")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "pytest")
-        # lint/format 未检出 → 未检测到
-        self.assertEqual(ts["lint"], "未检测到")
-        self.assertEqual(ts["format"], "未检测到")
-
-    def test_techstack_undetected_defaults(self):
-        """ut-detect_project-techstack / S4-03（无任何可检测配置 → 各命令写「未检测到」不阻塞）"""
-        (self.root / "README.md").write_text("docs\n")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "未检测到")
-        self.assertEqual(ts["lint"], "未检测到")
-        self.assertEqual(ts["format"], "未检测到")
-        # coverage 默认仍为 80%
-        self.assertEqual(ts["coverage"], "80%")
-
-
-class TestTechstackPlaceholder(unittest.TestCase):
-    """技术栈已有区块逐项收敛：占位替换、用户值保留、差异入报告。"""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name) / "proj"
-        (self.root / ".claude" / "rules").mkdir(parents=True)
-        self.rules_root = Path(self.tmp.name) / "tpl"
-        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
-        self.rules_root.mkdir(parents=True)
-        for template in real_tpl.iterdir():
-            if template.is_file():
-                (self.rules_root / template.name).write_bytes(template.read_bytes())
-        self.openspec_yaml = (
-            Path(__file__).resolve().parents[1]
-            / "references" / "openspec" / "config.yaml"
-        )
-
-    def test_missing_block_appends_all_detected_fields_and_fixed_coverage(self):
-        """技术栈区块完全缺失时追加五个检测字段和固定 80% 阈值。"""
-        tech_stack = {
-            "language": "Python",
-            "pkg_manager": "uv",
-            "test": "pytest",
-            "lint": "ruff check .",
-            "format": "ruff format .",
-            "coverage": "99%",
-        }
-        result, diffs = rc._ensure_techstack_block(
-            "# CLAUDE.md\n\n项目说明\n", tech_stack
-        )
-        self.assertEqual(diffs, [])
-        self.assertIn("## 项目配置", result)
-        self.assertIn("### 项目技术栈", result)
-        self.assertIn("- **语言**：Python", result)
-        self.assertIn("- **包管理器**：uv", result)
-        self.assertIn("- **测试命令**：pytest", result)
-        self.assertIn("- **检查命令**：ruff check .", result)
-        self.assertIn("- **格式化命令**：ruff format .", result)
-        self.assertIn("- **覆盖率阈值**：80%", result)
-        self.assertNotIn("99%", result)
-
-    def test_empty_field_value_is_replaced_by_detected_value(self):
-        """字段冒号后为空字符串时按占位值处理并替换为检测值。"""
-        text = (
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：\n"
-            "- **包管理器**：待确认\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：待确认\n"
-            "- **覆盖率阈值**：80%\n"
-        )
-        result, diffs = rc._ensure_techstack_block(
-            text,
-            {
-                "language": "Go",
-                "pkg_manager": "go modules",
-                "test": "go test ./...",
-                "lint": "golangci-lint run",
-                "format": "gofmt -w .",
-            },
-        )
-        self.assertEqual(diffs, [])
-        self.assertIn("- **语言**：Go", result)
-        self.assertNotIn("- **语言**：\n", result)
-
-    def test_placeholder_replaced_user_value_kept_diff_reported(self):
-        """占位值收敛到检测值；用户真实值保留，冲突差异写入 S4 actions。"""
-        (self.root / "package.json").write_text(
-            '{"scripts":{"test":"jest","lint":"eslint ."}}',
-            encoding="utf-8",
-        )
-        claude = self.root / "CLAUDE.md"
-        claude.write_text(
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：待确认\n"
-            "- **包管理器**：yarn\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：未检测到\n"
-            "- **覆盖率阈值**：80%\n",
-            encoding="utf-8",
-        )
-        report = rc.build_report("no-interrupt", self.root)
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ), mock.patch.object(
-            rc.subprocess,
-            "run",
-            return_value=mock.Mock(returncode=0),
-        ):
-            result = rc.run_apply(
-                self.root, _intents(no_interrupt=True), report
-            )
-        self.assertEqual(result, 0, report.get("failure"))
-
-        section = claude.read_text(encoding="utf-8")
-        self.assertIn("**语言**：JavaScript/TypeScript", section)
-        self.assertIn("**测试命令**：jest", section)
-        self.assertIn("**检查命令**：eslint .", section)
-        self.assertIn("**包管理器**：yarn", section)
-        self.assertIn("**格式化命令**：未检测到", section)
-        s4 = next(
-            step for step in report["steps"]
-            if step["name"] == rc.STEP_ENTRY_FILES
-        )
-        diff_actions = [
-            action for action in s4.get("actions", [])
-            if action.get("path") == "CLAUDE.md"
-            and action.get("action") == "techstack-diff"
-        ]
-        self.assertEqual(len(diff_actions), 1)
-        self.assertEqual(diff_actions[0]["diffs"], [{
-            "field": "包管理器",
-            "user_value": "yarn",
-            "detected_value": "pnpm",
-        }])
-        json.dumps(report, ensure_ascii=False)
-
-    def test_placeholder_replacement_is_idempotent_and_diff_not_duplicated(self):
-        """第二次运行不重复追加区块；已替换字段不再变化，差异每次仅报告一条。"""
-        (self.root / "package.json").write_text(
-            '{"scripts":{"test":"jest","lint":"eslint ."}}',
-            encoding="utf-8",
-        )
-        claude = self.root / "CLAUDE.md"
-        claude.write_text(
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：待确认\n"
-            "- **包管理器**：yarn\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：未检测到\n"
-            "- **覆盖率阈值**：80%\n",
-            encoding="utf-8",
-        )
-
-        reports = []
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ), mock.patch.object(
-            rc.subprocess,
-            "run",
-            return_value=mock.Mock(returncode=0),
-        ):
-            for _ in range(2):
-                report = rc.build_report("no-interrupt", self.root)
-                result = rc.run_apply(
-                    self.root, _intents(no_interrupt=True), report
-                )
-                self.assertEqual(result, 0, report.get("failure"))
-                reports.append(report)
-                if len(reports) == 1:
-                    first_content = claude.read_text(encoding="utf-8")
-
-        second_content = claude.read_text(encoding="utf-8")
-        self.assertEqual(second_content, first_content)
-        self.assertEqual(second_content.count("### 项目技术栈"), 1)
-        self.assertEqual(second_content.count("**覆盖率阈值**：80%"), 1)
-        for report in reports:
-            s4 = next(
-                step for step in report["steps"]
-                if step["name"] == rc.STEP_ENTRY_FILES
-            )
-            diff_actions = [
-                action for action in s4.get("actions", [])
-                if action.get("path") == "CLAUDE.md"
-                and action.get("action") == "techstack-diff"
-            ]
-            self.assertEqual(len(diff_actions), 1)
-            self.assertEqual(diff_actions[0]["diffs"], [{
-                "field": "包管理器",
-                "user_value": "yarn",
-                "detected_value": "pnpm",
-            }])
 
 
 class TestLocateTemplates(unittest.TestCase):
@@ -1609,33 +1392,6 @@ class TestCommitToggle(unittest.TestCase):
         self.assertGreater(out.index("## 项目配置"), out.index("# x"))
         self.assertTrue(out.endswith(rc.TOGGLE_PREFIX + "关闭\n"))
 
-    def test_techstack_created_config_does_not_duplicate(self):
-        """ut-toggle-existing-config：已有技术栈配置章节时开关不重复创建 H2。"""
-        text, _ = rc._ensure_techstack_block(
-            "# x\n", {"language": "Python"})
-        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
-        self.assertEqual(out.count("## 项目配置"), 1)
-        self.assertEqual(warns, [])
-        self.assertIn("### 项目技术栈", out)
-        self.assertIn(rc.TOGGLE_PREFIX, out)
-
-    def test_cross_run_empty_to_nonempty_techstack(self):
-        """ut-toggle-cross-run：空技术栈到非空技术栈复跑不重复项目配置章节。"""
-        first, _, first_warns = rc._compose_entry(
-            "# x\n", rc._load_kernel_source(), state="insert",
-            project_type="non-coding", tech_stack={},
-            entry_name="CLAUDE.md", existing_rule_files=set())
-        second, _, warns = rc._compose_entry(
-            first, rc._load_kernel_source(), state="skip",
-            project_type="non-coding", tech_stack={"language": "Python"},
-            entry_name="CLAUDE.md", existing_rule_files=set())
-        self.assertEqual(second.count("## 项目配置"), 1)
-        self.assertFalse(any(w["code"] == "DUPLICATE_H2" for w in warns))
-        section = second.split("## 项目配置", 1)[1].split("\n## ", 1)[0]
-        self.assertIn("### 项目技术栈", section)
-        self.assertIn(rc.TOGGLE_PREFIX, section)
-        self.assertLess(section.index("### 项目技术栈"), section.index(rc.TOGGLE_PREFIX))
-
     def test_user_value_preserved(self):
         """ut-toggle-keep：用户值 开启 保留。"""
         text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
@@ -1700,14 +1456,6 @@ class TestCommitToggle(unittest.TestCase):
         self.assertLess(out.index("### 项目技术栈"), out.index(rc.TOGGLE_PREFIX))
         self.assertLess(out.index(rc.TOGGLE_PREFIX), out.index("## 其他"))
 
-    def test_empty_techstack_still_lands(self):
-        """ut-toggle-empty-ts：tech_stack 为空时开关仍落位（独立于 _ensure_techstack_block）。"""
-        text, diffs, warns = rc._compose_entry(
-            "# x\n", rc._load_kernel_source(), state="insert",
-            project_type="non-coding", tech_stack={},
-            entry_name="CLAUDE.md", existing_rule_files=set())
-        self.assertIn(rc.TOGGLE_PREFIX, text)
-
     def test_duplicate_toggle_deduped(self):
         """ut-toggle-dup：重复开关行保留首个。"""
         text = ("## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
@@ -1731,34 +1479,38 @@ class TestCommitToggle(unittest.TestCase):
         self.assertEqual(once, twice)
 
 
-class TestTechStackDualEntry(unittest.TestCase):
-    def test_both_entries_receive_same_techstack(self):
-        """ut-dual-entry-techstack：双入口写入同一份 tech_stack（SM/DF 一致性）。"""
-        import tempfile, subprocess
-        from pathlib import Path
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / "package.json").write_text('{"scripts":{"test":"vitest"}}')
-            # 既有非 Cadence 入口（无 ## 强制规则、无技术栈块）
-            (root / "AGENTS.md").write_text("# KB\n\nEnglish content\n")
-            (root / "CLAUDE.md").write_text("# CLAUDE.md\n\n说明\n")
-            subprocess.run(
-                ["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
-                 "--report", str(root.parent / "r.json"), "--no-interrupt"],
-                check=True)
-            for name in ("AGENTS.md", "CLAUDE.md"):
-                text = (root / name).read_text()
-                self.assertIn("- **语言**：JavaScript/TypeScript", text,
-                              f"{name} 技术栈未写入检测值")
-
-
 class TestComposeEntryWarnings(unittest.TestCase):
+    def test_existing_techstack_content_is_preserved(self):
+        """入口已有用户技术栈章节时逐字保留，且开关仍落位。"""
+        user_config = (
+            "### 项目技术栈\n- 用户自定义技术栈\n\n"
+            "### 包管理器规则\n- 用户指定 pnpm\n"
+        )
+        text = "# CLAUDE.md\n\n## 项目配置\n\n" + user_config
+        out, warns = rc._compose_entry(
+            text, rc._load_kernel_source(), state="skip",
+            project_type="non-coding", entry_name="CLAUDE.md",
+            existing_rule_files=set())
+        self.assertIn(user_config, out)
+        self.assertIn(rc.TOGGLE_PREFIX + "关闭", out)
+        self.assertEqual(warns, [])
+
+    def test_no_techstack_block_is_script_generated(self):
+        """无技术栈块入口处理后不得出现脚本生成的技术栈字段。"""
+        out, _warns = rc._compose_entry(
+            "# CLAUDE.md\n", rc._load_kernel_source(), state="create",
+            project_type="non-coding", entry_name="CLAUDE.md",
+            existing_rule_files=set())
+        self.assertNotIn("### 项目技术栈", out)
+        self.assertNotIn("### 包管理器规则", out)
+        self.assertNotIn("覆盖率阈值", out)
+
     def test_compose_returns_warnings(self):
         """ut-compose-warnings：_compose_entry 返回 (text, diffs, warnings)。"""
-        text, diffs, warns = rc._compose_entry(
+        text, warns = rc._compose_entry(
             "## 笔记\n\n遵循 TDD 和代码规范 保留我\n", rc._load_kernel_source(),
             state="insert", project_type="non-coding",
-            tech_stack={}, entry_name="CLAUDE.md", existing_rule_files=set())
+            entry_name="CLAUDE.md", existing_rule_files=set())
         self.assertIsInstance(warns, list)
         self.assertIn("遵循 TDD 和代码规范 保留我", text)  # 章节外不被全文替换
 
@@ -1817,18 +1569,13 @@ class TestStepS4EntryFiles(unittest.TestCase):
         self.assertIn("## 强制规则", text)
 
     def test_skip_state_idempotent_no_change(self):
-        """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要/技术栈已收敛 → 幂等零写入）"""
+        """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要已收敛 → 幂等零写入）"""
         entry = self.root / "CLAUDE.md"
-        # 构造收敛态入口（L0=规范源 + 全部摘要行 + 技术栈块）：skip 状态零写入
-        tech = {
-            "language": "Python", "pkg_manager": "uv", "test": "pytest",
-            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
-        }
-        converged, diffs, _warnings = rc._compose_entry(
+        # 构造收敛态入口（L0=规范源 + 全部摘要行）：skip 状态零写入
+        converged, _warnings = rc._compose_entry(
             rc.BASE_CLAUDE_MD, self.kernel, state="create",
-            project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
+            project_type="non-coding", entry_name="CLAUDE.md",
         )
-        self.assertEqual(diffs, [])
         entry.write_text(converged, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -1840,15 +1587,17 @@ class TestStepS4EntryFiles(unittest.TestCase):
             }
         })
         rc.step_s4_entry_files(
-            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
+            self.root, _intents(no_interrupt=True), plan, {},
         )
         self.assertEqual(entry.read_text(encoding="utf-8"), converged)
 
-    def test_skip_state_backfills_missing_summary_and_techstack(self):
-        """ut-step_s4-skip-backfill / codex 终审 I2 + SM-02
-        （L0 skip 但缺摘要/技术栈 → 补齐；L0 区块与用户内容不动）"""
+    def test_skip_state_backfills_missing_summary(self):
+        """ut-step_s4-skip-backfill：skip 状态仍补齐缺失摘要，不生成技术栈。"""
         entry = self.root / "CLAUDE.md"
-        base = "# CLAUDE.md\n\n说明\n\n" + self.kernel + "\n## 强制规则\n\n- 用户自定义规则\n"
+        base = (
+            "# CLAUDE.md\n\n说明\n\n" + self.kernel
+            + "\n## 强制规则\n\n- 用户自定义规则\n"
+        )
         entry.write_text(base, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -1859,20 +1608,14 @@ class TestStepS4EntryFiles(unittest.TestCase):
                 }],
             }
         })
-        tech = {
-            "language": "Python", "pkg_manager": "uv", "test": "pytest",
-            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
-        }
-        rc.step_s4_entry_files(
-            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
-        )
+        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
         result = entry.read_text(encoding="utf-8")
-        # 缺失摘要补齐（SM-02）与技术栈块写入（S4 单次完成）
-        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
-        self.assertIn("### 项目技术栈", result)
-        self.assertIn("**覆盖率阈值**：80%", result)
-        # 用户内容保留；L0 区块逐字不变
+        self.assertIn(
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+            result,
+        )
         self.assertIn("- 用户自定义规则", result)
+        self.assertNotIn("### 项目技术栈", result)
         begin = result.index(rc.L0_BEGIN)
         end = result.index(rc.L0_END, begin) + len(rc.L0_END)
         self.assertEqual(result[begin:end].strip(), self.kernel.strip())
@@ -3527,7 +3270,7 @@ class TestEndToEndRegression(unittest.TestCase):
         )
 
     def test_claude_serena_removed_and_renumbered(self):
-        """ut-e2e-claude：CLAUDE.md Serena 清理、重排、双入口技术栈一致。"""
+        """ut-e2e-claude：CLAUDE.md Serena 清理与规则重排。"""
         root, _report = self._run()
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
         agents = (root / "AGENTS.md").read_text(encoding="utf-8")
@@ -3538,9 +3281,6 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertNotIn("playwright.md", claude)
         self.assertIn(V2_START, claude)
         self.assertIn(V2_END, claude)
-        # 双入口使用同一份检测输入；真实值按契约保留，缺失/占位值才替换。
-        self.assertIn("- **语言**：Java 21、Vue 3.5、TypeScript 6.0", claude)
-        self.assertIn("- **语言**：JavaScript/TypeScript", agents)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
