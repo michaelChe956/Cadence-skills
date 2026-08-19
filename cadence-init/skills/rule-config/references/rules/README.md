@@ -40,7 +40,7 @@
 
 ## 从旧版迁移
 
-重新运行 `/cadence:init:rule-config` 会更新 L0 受管路由、L1 已知版本和上述框架受管规则文件。脚本以 dry-run / apply 两阶段执行：普通模式先 dry-run 探测 drift，就冲突逐条询问；无响应或缺失决策时按安全默认 keep 保留原文件并报告，选择 replace 时先统一复制归档到 `cadence/legacy/`，归档成功后再原子覆盖。`no-interrupt` 模式单次 apply，drift 文件在全局归档屏障成功后按模板权威全覆盖，不执行章节合并。
+重新运行 `/cadence:init:rule-config` 会更新 L0 受管路由、L1 已知版本和上述框架受管规则文件。脚本以 dry-run / apply 两阶段执行，两模式均在 dry-run/apply 两阶段内完成：drift 文件先统一复制归档到 `cadence/legacy/`，归档成功后按模板权威全覆盖，不经用户决策；不执行章节合并。
 
 ## 相关目录
 

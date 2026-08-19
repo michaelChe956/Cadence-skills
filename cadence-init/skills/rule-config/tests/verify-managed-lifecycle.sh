@@ -561,46 +561,28 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 assert_same it-s4-idempotent "$RUN_STATUS" "$before" "$after" 0
 
-# B2. L0 漂移普通模式无响应（Agent 写 keep / 决策缺失）→ 保留并报告 status=0（A 类 default_keep）。
-# codex 三轮 C3（方案 X）：L0 drift 回归 A 类——recommendation=keep 为安全默认，
-# 普通模式无响应时默认保留并报告 status=0，不 fail closed；与实现「keep→不写盘」一致。
-# 详细路径覆盖见 it-l0-drift-normal-keep-default（Agent 写 keep 决策）。
-# fixture 预收敛（I2 适配）：先跑 no-interrupt 收敛摘要，再注入 L0 区块内漂移，
-# 使「无响应→文件不变」断言不被 I2 摘要补齐扰动（同 it-s4-drift-replaced-outside-preserved）。
+# B2. L0 漂移普通模式权威替换（it-s4-drift-normal-replaced / L0-03）。
+# 契约：普通模式不再询问 keep/replace，屏障归档后以规范源当前版本替换，区块外逐字保留。
 case_root="$TEST_ROOT/fx-l0-drift-normal"
 mkdir -p "$case_root"
 mk_converged_entries "$case_root"
 replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
 replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
+outside_claude_before=$(outside_l0_hash "$case_root/CLAUDE.md")
+outside_agents_before=$(outside_l0_hash "$case_root/AGENTS.md")
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root"
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
-if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
-  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" pass
-else
-  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" fail
-fi
-
-# B2b. L0 漂移普通模式 Agent 写 keep 决策 → 保留并报告 status=0（it-l0-drift-normal-keep-default / L0-03）。
-# codex 三轮 C3：补「无响应编排路径」缺口——现有 it-s4-drift-normal 覆盖决策缺失（default_keep），
-# 本用例显式走 Agent 无响应→写 keep 决策→apply 的编排路径，断言 status=0 + 文件保留 +
-# 报告 default_keep=true。fixture 预收敛后注入双入口 L0 区块内漂移。
-case_root="$TEST_ROOT/fx-l0-drift-keep-default"
-mkdir -p "$case_root"
-mk_converged_entries "$case_root"
-replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
-replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
-before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
-dec_file="$TEST_ROOT/decisions-l0-drift-keep.json"
-write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep"},{"conflict_id":"s4:AGENTS.md","decision":"keep"}]'
-run_script apply "$case_root" --decisions "$dec_file"
-after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$before" = "$after" ] \
-  && jqr "['conflicts']" 2>/dev/null | grep -qi "default_keep.: True"; then
-  record_result it-l0-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" pass
+  && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
+  && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ] \
+  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md")" ] \
+  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md")" ] \
+  && legacy_archive_exists "$case_root" 'CLAUDE.md' \
+  && legacy_archive_exists "$case_root" 'AGENTS.md'; then
+  assert_changed it-s4-drift-normal-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-l0-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s4-drift-normal-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
@@ -666,7 +648,8 @@ else
   record_result it-s4-backup-barrier "$inject_status" "$before" "$after" fail
 fi
 
-# B6. L1 漂移普通保留、no-interrupt 替换和备份失败保留（it-s3-l1-* / L1-02~07）。
+# B6. L1 漂移两模式统一替换（it-s3-l1-drift-normal-replaced / L1-04~06）。
+# 契约：普通模式不再询问，drift 归档后替换为当前框架版本；备份失败保留见 it-s3-l1-backup-failure-preserved。
 case_root="$TEST_ROOT/fx-l1"
 mkdir -p "$case_root/.claude/rules"
 cp "$L1_SOURCE" "$case_root/.claude/rules/openspec-superpowers-workflow.md"
@@ -675,43 +658,20 @@ l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
 before=$(sha256_file "$l1_target")
 run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
-# codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep 为安全默认，
-# 普通模式无响应时默认保留并报告 status=0，不 fail closed。与 it-s4-drift-normal
-# 语义一致（codex 五轮：s1 冲突已删，当前无 B 类冲突，所有冲突均 A 类保留兜底）。
-# Agent 写 keep 决策路径见 it-l1-drift-normal-keep-default。
-if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
-  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && cmp -s "$l1_target" "$L1_SOURCE" \
+  && legacy_archive_exists "$case_root" '.claude/rules/openspec-superpowers-workflow.md'; then
+  assert_changed it-s3-l1-drift-normal-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s3-l1-drift-normal-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# B6b. L1 漂移普通模式 Agent 写 keep 决策 → 保留并报告 status=0（it-l1-drift-normal-keep-default / L1-04~06）。
-# codex 三轮 C3：补「无响应编排路径」缺口——现有 it-s3-l1-drift-normal 覆盖决策缺失（default_keep），
-# 本用例显式走 Agent 无响应→写 keep 决策→apply 的编排路径，断言 status=0 + L1 文件保留 +
-# 报告 default_keep=true。fixture 用预收敛入口 + L1 漂移文件。
-case_root="$TEST_ROOT/fx-l1-drift-keep-default"
-mkdir -p "$case_root/.claude/rules"
-mk_converged_entries "$case_root"
-cp "$L1_SOURCE" "$case_root/.claude/rules/openspec-superpowers-workflow.md"
-printf '\n本地漂移\n' >> "$case_root/.claude/rules/openspec-superpowers-workflow.md"
-l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
-before=$(sha256_file "$l1_target")
-dec_file="$TEST_ROOT/decisions-l1-drift-keep.json"
-write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/openspec-superpowers-workflow.md","decision":"keep"}]'
-run_script apply "$case_root" --decisions "$dec_file"
-after=$(sha256_file "$l1_target")
-if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$before" = "$after" ] \
-  && jqr "['conflicts']" 2>/dev/null | grep -qi "default_keep.: True"; then
-  record_result it-l1-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" pass
-else
-  record_result it-l1-drift-normal-keep-default "$RUN_STATUS" "$before" "$after" fail
-fi
 # 备份失败：父目录只读
-# 注意（评审 M3）：原实现用上一段的 $after（普通模式运行后状态）作为备份失败比对基准，
-# 隐含「L1-02 普通模式零写入」假设。改为显式取故障注入运行前的目标 hash（before_fail）
-# 作为独立比对基准，使断言语义自洽——不依赖普通模式是否真的零写入。
+# 注意（评审 M3）：基准取故障注入运行前目标 hash，与前置运行结果无关。
+# 显式取故障注入运行前的目标 hash（before_fail）作为独立比对基准，
+# 使断言语义自洽——不依赖前置运行是否零写入。
 saved_mode=$(stat -c %a "$case_root/.claude/rules" 2>/dev/null || stat -f %Lp "$case_root/.claude/rules")
+# 重注入漂移（B6 权威覆盖已替换为 v1，后续备份失败/替换子用例需要漂移态）。
+printf '\n本地漂移\n' >> "$l1_target"
 before_fail=$(sha256_file "$l1_target")
 chmod 555 "$case_root/.claude/rules"
 run_script apply "$case_root" --no-interrupt
@@ -733,38 +693,48 @@ else
   record_result it-s3-l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace" fail
 fi
 
-# B7. 普通模式 openspec config 无冲突必须保留（it-s7-openspec-normal / OS 行）。
+# B7. 普通模式 rules.apply 归档后移除（it-s7-openspec-normal-apply-removed / OS-04）。
+# 契约：普通模式不再询问，与 no-interrupt 同动作。
 case_root="$TEST_ROOT/fx-openspec-existing"
 mkdir -p "$case_root/openspec"
-printf 'schema: spec-driven\nrules:\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
+printf 'schema: spec-driven\nrules:\n  proposal:\n    - custom-proposal\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
-assert_same it-s7-openspec-normal-preserved "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -eq 0 ] && ! grep -q '^  apply:' "$case_root/openspec/config.yaml" \
+  && grep -q 'custom-proposal' "$case_root/openspec/config.yaml" \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
+  assert_changed it-s7-openspec-normal-apply-removed "$RUN_STATUS" "$before" "$after"
+else
+  record_result it-s7-openspec-normal-apply-removed "$RUN_STATUS" "$before" "$after" fail
+fi
 
-# B8. 不可解析 YAML 必须先归档后终止、原文件不变（it-s7-openspec-unparseable / OS-N9）。
+# B8. 不可解析/不兼容 YAML 两模式归档后模板替换（it-s7-openspec-invalid-yaml-backed-up-replaced 等 / OS-03/05）。
+# 契约：不再失败关闭；归档成功后以模板整体替换并正常完成，产物可解析且含模板 schema。
 case_root="$TEST_ROOT/fx-openspec-unparseable"
 mkdir -p "$case_root/openspec"
 printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
-  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
-  record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" != "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml' \
+  && python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d.get('schema')=='spec-driven'" "$case_root/openspec/config.yaml"; then
+  assert_changed it-s7-openspec-invalid-yaml-backed-up-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s7-openspec-invalid-yaml-backed-up-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
-# 类型冲突
+# 类型冲突（普通模式同样替换）
 printf 'schema: spec-driven\nrules:\n  proposal: invalid-string\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
-run_script apply "$case_root" --no-interrupt
+run_script apply "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
-  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
-  record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" != "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml' \
+  && python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert isinstance(d.get('rules',{}).get('proposal',[]),list)" "$case_root/openspec/config.yaml"; then
+  assert_changed it-s7-openspec-yaml-type-conflict-backed-up-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s7-openspec-yaml-type-conflict-backed-up-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # B9. 成功合并必须保留 schema/context/额外规则，四 artifact 分组补齐，且第二次运行幂等（it-s7-openspec-merge / OS-02）。
@@ -843,6 +813,7 @@ fi
 # 「未知 conflict_id」与「决策过期」两类异常针对决策内容错误，对任意冲突均生效，
 # 沿用 drift fixture（drift 为 A 类 default_keep，但未知/过期 decision 仍会被
 # validate_decisions 拒绝并 fail-closed）。
+# 2026-08-19：六类受管冲突转确定性动作后，unknown/stale 决策的 CLI 触发路径消亡，移至 ut-validate-decisions-* 单测。
 mk_drift_fixture() {
   local root="$TEST_ROOT/$1"
   mkdir -p "$root"
@@ -864,35 +835,6 @@ if [ "$RUN_STATUS" -eq 0 ] && jqr "['conflicts']" 2>/dev/null | grep -q '\[\]'; 
   record_result it-decisions-no-conflict-not-required "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-decisions-no-conflict-not-required "$RUN_STATUS" "$before" "$after" fail
-fi
-
-# C2b. 决策文件含未知 conflict_id（drift A 类 fixture + 未知 cid → fail-closed）
-case_root="$(mk_drift_fixture fx-decisions-unknown)"
-dec_file="$TEST_ROOT/decisions-unknown.json"
-write_decisions "$dec_file" '[{"conflict_id":"s4:unknown:id","decision":"replace"}]'
-before=$(tree_hash "$case_root")
-run_script apply "$case_root" --decisions "$dec_file"
-after=$(tree_hash "$case_root")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
-  record_result it-decisions-unknown "$RUN_STATUS" "$before" "$after" pass
-else
-  record_result it-decisions-unknown "$RUN_STATUS" "$before" "$after" fail
-fi
-
-# C2c. 决策与新鲜计划不符（decision=keep-foreign-value 不在冲突允许集内 → 「过期」违规）
-# 注：decisions 完整覆盖两个冲突（s4:CLAUDE.md 用非法 decision、s4:AGENTS.md 用合法 keep），
-# 使唯一违规为 s4:CLAUDE.md 的「过期」，确保真正经 allowed_decisions 过期路径判定，
-# 而非靠「缺失 s4:AGENTS.md」绕过。
-case_root="$(mk_drift_fixture fx-decisions-stale)"
-dec_file="$TEST_ROOT/decisions-stale.json"
-write_decisions "$dec_file" '[{"conflict_id":"s4:CLAUDE.md","decision":"keep-foreign-value"},{"conflict_id":"s4:AGENTS.md","decision":"keep"}]'
-before=$(tree_hash "$case_root")
-run_script apply "$case_root" --decisions "$dec_file"
-after=$(tree_hash "$case_root")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ]; then
-  record_result it-decisions-stale "$RUN_STATUS" "$before" "$after" pass
-else
-  record_result it-decisions-stale "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # C2e. --report 指向项目根内 → 越权拒绝（it-usage-report-inside-root / XC + Plan L22）。
@@ -1034,19 +976,24 @@ else
   record_result it-s5-history-conflict-skip "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C4. 普通规则已存在不覆盖（it-s3-normal-keep-decision / RF-02+DF-08）
+# C4. 普通模式规则 drift 权威覆盖（it-s3-normal-authoritative-overwrite / RF-05）
+# 契约：普通模式不再询问 keep/replace，drift 归档后以模板原子覆盖，全程无决策文件。
 case_root="$TEST_ROOT/fx-existing-rules"
 mkdir -p "$case_root/.claude/rules"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
 cp "$TEST_DIR/../references/rules/language.md" "$case_root/.claude/rules/language.md"
-printf '\n# 用户自定义补充\n不覆盖我\n' >> "$case_root/.claude/rules/language.md"
+printf '\n# 用户自定义补充\n覆盖我\n' >> "$case_root/.claude/rules/language.md"
 before=$(sha256_file "$case_root/.claude/rules/language.md")
-dec_file="$TEST_ROOT/decisions-keep.json"
-write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/language.md","decision":"keep"}]'
-run_script apply "$case_root" --decisions "$dec_file"
+run_script apply "$case_root"
 after=$(sha256_file "$case_root/.claude/rules/language.md")
-assert_same it-s3-normal-keep-decision "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -eq 0 ] \
+  && cmp -s "$case_root/.claude/rules/language.md" "$TEST_DIR/../references/rules/language.md" \
+  && legacy_archive_exists "$case_root" '.claude/rules/language.md'; then
+  assert_changed it-s3-normal-authoritative-overwrite "$RUN_STATUS" "$before" "$after"
+else
+  record_result it-s3-normal-authoritative-overwrite "$RUN_STATUS" "$before" "$after" fail
+fi
 
 # C5. Markdown 不可解析时框架规则权威覆盖（it-s3-markdown-unparseable-fallback / RF-05）
 case_root="$TEST_ROOT/fx-markdown-unparseable"
@@ -1496,8 +1443,12 @@ fi
 # overall 收敛 ok/degraded/fail 三值（不得为 crashed）；failure.file 填实际失败文件。
 case_root="$TEST_ROOT/fx-failure-report-fields"
 mkdir -p "$case_root/openspec"
-printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
+printf 'schema: spec-driven\ncontext: custom\n' > "$case_root/openspec/config.yaml"
+# 不可解析 YAML 已改为归档+模板替换（不再失败）；改用目标目录只读复现发布失败。
+saved_mode_fr="$(stat -c %a "$case_root/openspec" 2>/dev/null || stat -f %Lp "$case_root/openspec")"
+chmod 555 "$case_root/openspec"
 run_script apply "$case_root" --no-interrupt
+chmod "$saved_mode_fr" "$case_root/openspec"
 if [ "$RUN_STATUS" -ne 0 ] && python3 - "$REPORT" <<'PY'
 import json
 import sys
@@ -1817,6 +1768,7 @@ fi
 
 # ============================================================================
 # C17. codex 终审修复回归（C2/I1/I2/I3/I4/I5 集成证据）
+# 2026-08-19：C17d（keep 决策不备份）随决策编排路径消亡删除，条款覆盖迁移至 ut-filter-backup-s3-drift 与 it-s3-normal-authoritative-overwrite。
 # ============================================================================
 
 # C17a. 无效 .mcp.json 重写前归档（it-s8-mcpjson-invalid-backed-up / codex 终审 C2）。
@@ -1871,22 +1823,6 @@ else
   record_result it-s4-skip-summary-backfill "$RUN_STATUS" missing missing fail
 fi
 
-# C17d. keep 决策 → 不生成备份（it-s3-keep-decision-no-backup / codex 终审 I3）。
-case_root="$TEST_ROOT/fx-keep-no-backup"
-mkdir -p "$case_root/.claude/rules"
-cp "$TEST_DIR/../references/rules/language.md" "$case_root/.claude/rules/language.md"
-printf '\n# 用户自定义补充\n不覆盖我\n' >> "$case_root/.claude/rules/language.md"
-dec_file="$TEST_ROOT/decisions-keep-nobackup.json"
-write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/language.md","decision":"keep"}]'
-run_script apply "$case_root" --decisions "$dec_file"
-if [ "$RUN_STATUS" -eq 0 ] \
-  && ! legacy_archive_exists "$case_root" '.claude/rules/language.md' \
-  && grep -q '不覆盖我' "$case_root/.claude/rules/language.md"; then
-  record_result it-s3-keep-decision-no-backup "$RUN_STATUS" keep no-backup pass
-else
-  record_result it-s3-keep-decision-no-backup "$RUN_STATUS" keep backup fail
-fi
-
 # C17e. 幂等重跑 → 零备份零变更（it-idempotent-rerun-zero-backup / codex 终审 I3）。
 case_root="$TEST_ROOT/fx-idempotent-rerun"
 mkdir -p "$case_root"
@@ -1903,12 +1839,12 @@ else
   record_result it-idempotent-rerun-zero-backup "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C17f. dry-run 报告完整性：conflicts 含 allowed_decisions、steps 含真实 elapsed_ms
-# （it-dryrun-report-completeness / codex 终审 I4）。
+# C17f. dry-run 报告完整性：无活跃冲突类型（conflicts 为空）、steps 含真实 elapsed_ms
+# （it-dryrun-report-completeness / codex 终审 I4 + 2026-08-19 权威化）。
 case_root="$(mk_drift_fixture fx-dryrun-completeness)"
 run_script dry-run "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && jqr "['conflicts']" 2>/dev/null | grep -q 'allowed_decisions' \
+  && jqr "['conflicts']" 2>/dev/null | grep -q '\[\]' \
   && assert_report_completeness "$REPORT"; then
   record_result it-dryrun-report-completeness "$RUN_STATUS" present present pass
 else

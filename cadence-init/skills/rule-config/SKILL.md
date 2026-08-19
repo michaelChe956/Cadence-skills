@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 脚本报告始终提供不影响 `overall` 的顶层 `warnings` 数组；其实际 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`，详情见 `references/merge-semantics.md` §11.3。入口首个 `## 项目配置` 章节还会确保唯一的“产物自动提交（design/plan）”开关：缺失时写入 `关闭`，合法用户值保留，非法值保留原文并报告 warning；既有技术栈等项目配置内容逐字保留，不由脚本检测或写入。Agent 读取时以 CLAUDE.md 为准、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`（这是读取层告警，不是脚本 `warnings` code）。
 
-全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告，并在普通模式就冲突逐条提问、回收决策；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
+全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告；当前系统无活跃冲突类型，两模式全程不经用户决策（决策文件机制休眠兜底，见 references/merge-semantics.md §11.6）；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
 
 ## 参数模式
 
@@ -48,7 +48,7 @@ disable-model-invocation: true
 
 若候选根下 `scripts/` 缺失，说明命中了不含关联脚本的旧版本缓存；重新安装或刷新 plugin 后重试，不得从其他项目目录复制脚本。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
 
-**第二步——确定报告与决策路径**：报告 `<REPORT>` 与决策文件 `<DECISIONS_JSON>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
+**第二步——确定报告与决策路径**：报告 `<REPORT>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。决策文件 `<DECISIONS_JSON>` 为休眠兜底机制：当前无活跃冲突类型、计划不要求决策文件，仅在恢复逐条提问流程时才需生成（同样必须位于项目根之外）。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
 
 **第三步——调用脚本**：
 
@@ -56,7 +56,7 @@ disable-model-invocation: true
 # 阶段一：dry-run（零写入，只产出计划、冲突清单与备份需求）
 python3 "<RULE_CONFIG_PY>" dry-run --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--no-interrupt] [意图参数]
 
-# 阶段二：apply（执行发布；普通模式有计划内冲突时必须携带 --decisions）
+# 阶段二：apply（执行发布；当前无活跃冲突类型，不要求决策文件；--decisions 为休眠兜底参数）
 python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--decisions "<DECISIONS_JSON>"] [--no-interrupt] [意图参数]
 ```
 
@@ -66,17 +66,15 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 
 ### 普通模式
 
-1. **dry-run**：脚本只读探测目标项目，报告给出计划动作、冲突清单（`conflicts`，含 `conflict_id`、`question`、`recommendation`、`allowed_decisions`）与备份需求，对项目零写入。
-2. **读 plan**：Agent 读取报告中的计划与冲突清单。
-3. **逐条提问**：对每个冲突用 `AskUserQuestion` 逐条提问；每次只问一个冲突，问题必须附带脚本给出的推荐默认项（`recommendation`）。
-4. **无响应处理**：无法等待用户输入或提问无响应时，Agent 必须把脚本给出的推荐默认决策**显式写入**决策文件——在 `/tmp` 生成 `<DECISIONS_JSON>`，内容为 JSON 数组，元素形如 `{"conflict_id": "<id>", "decision": "<推荐默认值>"}`，`decision` 取值必须落在该冲突的 `allowed_decisions` 内。当前系统所有冲突均为**具备安全默认的冲突**（A 类：凡 `recommendation=keep` 的冲突——`rules.apply` / OpenSpec 结构或类型不兼容 / YAML 无法解析、**L0 drift/broken**（L0-03/L0-06）、**L1 drift/unmarked**（L1-04~06）、**框架受管规则文件 drift**（RF-05，RF-04 的框架资产统一按 RF-05 处理），详见 `references/merge-semantics.md` §11.6 A 类），决策文件缺该项时脚本亦按安全默认（keep / 保留原文件并报告、status=0）继续，不视为失败关闭；此类冲突在计划条目以 `default_keep: true` 标注。项目类型不再产生冲突（两模式唯⼀规则，见下），故当前无无安全默认的 B 类冲突。
-5. **apply**：携带 `--decisions` 执行阶段二命令。脚本在写入前重算新鲜计划并校验决策与之一致；决策文件缺失或无法解析、含未知或重复 `conflict_id`、决策与新鲜计划不符，任一发生即非零退出且零写入。`default_keep: true` 的 A 类冲突遗漏决策是合法的保留兜底（脚本按安全默认 keep 保留并报告 `status=0`）。计划无冲突时不要求决策文件。
+1. **dry-run**：脚本只读探测目标项目，报告给出计划动作（含 drift 资产的 `replace`/归档需求），对项目零写入。
+2. **读 plan**：Agent 读取报告中的计划，向用户汇报将以模板权威覆盖/处理的资产清单与归档位置。
+3. **apply**：执行阶段二命令。当前系统无活跃冲突类型，计划不要求决策文件；`--decisions`/`validate_decisions`/`default_keep` 机制保留休眠兜底（未来引入需用户决策的冲突类型时恢复"逐条提问、每次一问、附带推荐默认项"流程，语义见 references/merge-semantics.md §11.3/§11.6）。
 
 ### no-interrupt 模式
 
 单次 apply：直接执行 `apply --no-interrupt` 一次完成（可选先跑 dry-run 摸底）。脚本不读取也不要求决策文件，全部冲突按 `references/merge-semantics.md` 的权威规则内部决策并记入报告。此模式禁止 Agent 调用 `AskUserQuestion`、`request_user_input` 或等价提问工具，禁止等待用户输入。
 
-**汇报冲突实际动作（强制）**：no-interrupt 模式下汇报某冲突的处理结果时，Agent MUST 依据该冲突条目的 `no_interrupt_action` 字段（如 `authoritative-overwrite`）或对应 `steps[].actions[]` 条目的 `action`/`branch`（如 `overwritten`/`authoritative-overwrite`）描述**实际执行动作**。`default_keep` 与 `recommendation` 是**普通模式无响应时的安全兜底语义**（保留原文件并报告 status=0），no-interrupt 模式不读取也不按其执行，Agent MUST NOT 用其描述 no-interrupt 实际动作（例如不得把框架规则文件 drift 的 `authoritative-overwrite` 说成"已保留现有文件"）。
+**汇报冲突实际动作（强制）**：两模式汇报 drift 处理结果时，Agent MUST 依据报告 `steps[].actions[]` 条目的 `action`/`branch`（如 `overwritten`/`authoritative-overwrite`/`l1-authoritative-replace`/`rules-apply-removed`/`template-replace`）描述**实际执行动作**。冲突清单已不再承载 drift 条目。
 
 ## 有界扫描说明
 
@@ -101,11 +99,11 @@ find . \
 ```bash
 # 总体结果与项目类型
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d['overall'], d['project_type'])"
-# 冲突清单（普通模式提问与决策文件依据；no-interrupt 模式另含 no_interrupt_action 字段标注实际动作）
+# 冲突清单（决策文件机制的休眠兜底字段；当前系统无活跃冲突类型，两模式不依赖此清单）
 python3 -c "import json;d=json.load(open('<REPORT>'));print(json.dumps(d.get('conflicts',[]),ensure_ascii=False,indent=2))"
 # 各步骤状态
 python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],s['status']) for s in d['steps']])"
-# 各资产实际动作明细（no-interrupt 模式汇报冲突结果的权威依据）
+# 各资产实际动作明细（两模式汇报 drift 实际动作的权威依据）
 python3 -c "import json;d=json.load(open('<REPORT>'));print([(a.get('path'),a.get('action'),a.get('branch')) for s in d['steps'] for a in s.get('actions',[])])"
 # 规范化诊断（始终存在；不改变 overall）
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d['warnings'])"
