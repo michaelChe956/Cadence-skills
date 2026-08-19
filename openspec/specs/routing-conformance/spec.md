@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change improve-progressive-disclosure-routing. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: OpenSpec 配置必须冗余职责和 artifact 边界
 系统 SHALL 在 `openspec/config.yaml` 的公共 `context` 中声明 OpenSpec 管契约、Superpowers 管行为，并 SHALL 为 proposal、design、specs 和 tasks 配置各自的产物边界规则。
 
@@ -38,20 +40,30 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **AND** 先更新并重新审阅 OpenSpec，再重新生成或更新 Plan
 
 ### Requirement: 路由目标和版本必须通过静态检查
-系统 MUST 提供可重复的静态检查，确认 L0 引用的规则文件与 Skill 名称存在、`CLAUDE.md` 和 `AGENTS.md` 的路由版本一致、L1 规范源与生成副本一致，并且 OpenSpec 配置只使用有效 artifact 规则键。系统还 MUST 提供直接驱动 rule-config 脚本执行体的可执行生命周期测试，证明同版本幂等、内容漂移保护、双入口备份屏障、候选 YAML 解析与结构预检和原子发布失败关闭；该测试 SHALL 通过脚本 CLI 断言真实文件系统结果与 JSON 报告字段，不得再以独立参考模型模拟 Skill 行为。
+
+系统 MUST 提供可重复的静态检查，确认 L0 引用的规则文件与 Skill 名称存在、`CLAUDE.md` 和 `AGENTS.md` 的路由版本一致、L1 规范源与生成副本一致，并且 OpenSpec 配置只使用有效 artifact 规则键。系统还 MUST 提供直接驱动 rule-config 脚本执行体的可执行生命周期测试，证明同版本幂等、内容漂移归档后权威覆盖、双入口备份屏障、候选 YAML 解析与结构预检和原子发布失败关闭；该测试 SHALL 通过脚本 CLI 断言真实文件系统结果与 JSON 报告字段，不得再以独立参考模型模拟 Skill 行为。
 
 #### Scenario: 入口引用不存在的 Skill
+
 - **WHEN** L0 引用当前项目应已安装但实际不存在的 Superpowers Skill
 - **THEN** 静态检查失败并报告入口文件、任务信号和缺失名称
 
 #### Scenario: OpenSpec 包含 rules.apply
+
 - **WHEN** `openspec/config.yaml` 将 `apply` 配置为 artifact 规则键
 - **THEN** 静态检查失败并指出 `apply` 是特殊命令而非有效 artifact
 
 #### Scenario: 受管生命周期失败关闭
-- **WHEN** 测试夹具模拟 L0/L1 备份失败、不可解析 YAML、目标字段类型冲突、候选结构预检失败或原子发布失败
+
+- **WHEN** 测试夹具模拟 L0/L1 备份失败、候选结构预检失败或原子发布失败
 - **THEN** 脚本执行体 MUST 返回非零状态并保持目标文件运行前后哈希一致
 - **AND** 测试报告 MUST 记录场景、退出状态和运行前后 SHA-256
+
+#### Scenario: 不可解析或不兼容的既有配置归档后替换
+
+- **WHEN** 测试夹具模拟既有 `openspec/config.yaml` YAML 不可解析或目标字段类型冲突
+- **THEN** 脚本执行体 MUST 先将原文件归档到 `cadence/legacy/`，归档成功后以模板原子替换并正常完成
+- **AND** 归档失败时 MUST 返回非零状态且目标文件保持运行前后哈希一致
 
 ### Requirement: 必须验证跨客户端关键场景
 系统 SHALL 对 Claude Code、Kimi Code 与 Codex 执行新功能、Bug、直接 apply、上下文恢复、纯问答和完工声明场景验证，并 MUST 记录原生 Skill 调用事件、首个用户可见路由回执、Skill 正文与仓库工具调用顺序、门禁结果和无关正文误加载项。最终自然路由门禁使用的提示词 SHALL NOT 直接补入“Skill 前静默”“先调用后回执”等待验证顺序；除纯概念问答只要求全局 `using-superpowers` 外，每个场景的全部必调 Skill 都 MUST 通过客户端原生机制实际调用。Claude/Kimi 仅普通读取 `SKILL.md`、输出名称、复述流程或声称已加载 SHALL 判定失败；Codex 必须记录从平台 Skill 目录显式选择、首段用途公告、全文读取对应 `SKILL.md`，并确认全文读取前没有仓库操作。
@@ -84,4 +96,3 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **WHEN** 任一客户端在没有已确认 Plan 的情况下继续执行 OpenSpec 工作包
 - **THEN** 验证记录判定失败
 - **AND** 明确指出是入口路由、协作规则还是 artifacts 中的 Plan 门禁未生效
-
