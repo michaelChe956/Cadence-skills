@@ -1353,6 +1353,47 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertNotIn("项目补充", result)
         self.assertNotIn("项目独有行", result)
 
+    def test_ordinary_normal_mode_overwrites_with_template(self):
+        """ut-step_s3-authoritative-overwrite-normal / RF-05（普通模式无决策 → 模板权威全覆盖）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "language.md"
+        target.write_text(self.language_tpl + "\n项目独有行\n", encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": ".claude/rules/language.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True, "is_l1": False,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(self.root, _intents(), plan, {})
+        result = target.read_text(encoding="utf-8")
+        self.assertEqual(result, self.language_tpl)
+        self.assertNotIn("项目补充", result)
+        self.assertNotIn("项目独有行", result)
+
+    def test_l1_normal_mode_replaced_with_v1(self):
+        """ut-step_s3-l1-authoritative-normal / L1-04~06（普通模式无决策 → 替换为当前框架版本）"""
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / rc.L1_RULE_FILENAME
+        target.write_text("# 被篡改的旧版\n项目内容\n", encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_RULES_FILES: {
+                "name": rc.STEP_RULES_FILES, "status": "ok",
+                "assets": [{
+                    "path": f".claude/rules/{rc.L1_RULE_FILENAME}", "action": "replace",
+                    "conflict": "replace", "backup_needed": True, "is_l1": True,
+                }],
+            }
+        })
+        rc.step_s3_rules_files(self.root, _intents(), plan, {})
+        result = target.read_text(encoding="utf-8")
+        self.assertEqual(result, self.l1_v1)
+        self.assertNotIn("项目补充", result)
+
     def test_ordinary_no_interrupt_unchanged_skips_write(self):
         """ut-step_s3-ordinary-unchanged / RF-05（内容==模板 → 跳过写盘，报告 unchanged）"""
         rules_dir = self.root / ".claude" / "rules"

@@ -643,7 +643,8 @@ else
   record_result it-s4-backup-barrier "$inject_status" "$before" "$after" fail
 fi
 
-# B6. L1 漂移普通保留、no-interrupt 替换和备份失败保留（it-s3-l1-* / L1-02~07）。
+# B6. L1 漂移两模式统一替换（it-s3-l1-drift-normal-replaced / L1-04~06）。
+# 契约：普通模式不再询问，drift 归档后替换为当前框架版本；备份失败保留见 it-s3-l1-backup-failure-preserved。
 case_root="$TEST_ROOT/fx-l1"
 mkdir -p "$case_root/.claude/rules"
 cp "$L1_SOURCE" "$case_root/.claude/rules/openspec-superpowers-workflow.md"
@@ -652,13 +653,11 @@ l1_target="$case_root/.claude/rules/openspec-superpowers-workflow.md"
 before=$(sha256_file "$l1_target")
 run_script apply "$case_root"
 after=$(sha256_file "$l1_target")
-# codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep 为安全默认，
-# 普通模式无响应时默认保留并报告 status=0，不 fail closed。与 it-s4-drift-normal
-# 语义一致（codex 五轮：s1 冲突已删，当前无 B 类冲突，所有冲突均 A 类保留兜底）。
-if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
-  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && cmp -s "$l1_target" "$L1_SOURCE" \
+  && legacy_archive_exists "$case_root" '.claude/rules/openspec-superpowers-workflow.md'; then
+  assert_changed it-s3-l1-drift-normal-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s3-l1-drift-normal "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s3-l1-drift-normal-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # 备份失败：父目录只读
@@ -666,6 +665,8 @@ fi
 # 显式取故障注入运行前的目标 hash（before_fail）作为独立比对基准，
 # 使断言语义自洽——不依赖前置运行是否零写入。
 saved_mode=$(stat -c %a "$case_root/.claude/rules" 2>/dev/null || stat -f %Lp "$case_root/.claude/rules")
+# 重注入漂移（B6 权威覆盖已替换为 v1，后续备份失败/替换子用例需要漂移态）。
+printf '\n本地漂移\n' >> "$l1_target"
 before_fail=$(sha256_file "$l1_target")
 chmod 555 "$case_root/.claude/rules"
 run_script apply "$case_root" --no-interrupt
@@ -960,19 +961,24 @@ else
   record_result it-s5-history-conflict-skip "$RUN_STATUS" "$before" "$after" fail
 fi
 
-# C4. 普通规则已存在不覆盖（it-s3-normal-keep-decision / RF-02+DF-08）
+# C4. 普通模式规则 drift 权威覆盖（it-s3-normal-authoritative-overwrite / RF-05）
+# 契约：普通模式不再询问 keep/replace，drift 归档后以模板原子覆盖，全程无决策文件。
 case_root="$TEST_ROOT/fx-existing-rules"
 mkdir -p "$case_root/.claude/rules"
 cp "$REPO_ROOT/CLAUDE.md" "$case_root/CLAUDE.md"
 cp "$REPO_ROOT/AGENTS.md" "$case_root/AGENTS.md"
 cp "$TEST_DIR/../references/rules/language.md" "$case_root/.claude/rules/language.md"
-printf '\n# 用户自定义补充\n不覆盖我\n' >> "$case_root/.claude/rules/language.md"
+printf '\n# 用户自定义补充\n覆盖我\n' >> "$case_root/.claude/rules/language.md"
 before=$(sha256_file "$case_root/.claude/rules/language.md")
-dec_file="$TEST_ROOT/decisions-keep.json"
-write_decisions "$dec_file" '[{"conflict_id":"s3:.claude/rules/language.md","decision":"keep"}]'
-run_script apply "$case_root" --decisions "$dec_file"
+run_script apply "$case_root"
 after=$(sha256_file "$case_root/.claude/rules/language.md")
-assert_same it-s3-normal-keep-decision "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -eq 0 ] \
+  && cmp -s "$case_root/.claude/rules/language.md" "$TEST_DIR/../references/rules/language.md" \
+  && legacy_archive_exists "$case_root" '.claude/rules/language.md'; then
+  assert_changed it-s3-normal-authoritative-overwrite "$RUN_STATUS" "$before" "$after"
+else
+  record_result it-s3-normal-authoritative-overwrite "$RUN_STATUS" "$before" "$after" fail
+fi
 
 # C5. Markdown 不可解析时框架规则权威覆盖（it-s3-markdown-unparseable-fallback / RF-05）
 case_root="$TEST_ROOT/fx-markdown-unparseable"

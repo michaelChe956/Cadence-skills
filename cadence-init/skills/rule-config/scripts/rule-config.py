@@ -1971,10 +1971,9 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     以及显式启用或已存在的 Playwright。每个资产按 compute_plan 探测的状态执行：
       * create：读模板 atomic_write；
       * skip：不处理；
-      * drift（框架受管规则）：内容==模板则幂等跳过；普通模式按 decision；
-        no-interrupt 权威全覆盖为模板内容，不调用 merge_markdown；
-      * upgrade/replace（L1）：独立版本化分支，不调 merge_markdown；普通模式按 decision；
-        no-interrupt 写当前 v1 模板；
+      * drift（框架受管规则）：两模式统一权威全覆盖为模板内容，不调 merge_markdown；
+        内容==模板则幂等跳过；
+      * upgrade/replace（L1）：独立版本化分支，不调 merge_markdown；两模式统一替换为当前模板；
       * 历史 code-usage-coding.md/code-usage-noncoding.md：独立复制归档后移除原位。
     """
     templates_info = plan.get("templates", {}) or {}
@@ -1983,7 +1982,6 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
         return
     rules_root = Path(rules_root_str)
     rules_dir = root / ".claude" / "rules"
-    decisions_map = plan.get("decisions_map", {}) or {}
     s3_step = (plan.get("steps", {}) or {}).get(STEP_RULES_FILES, {})
     assets = s3_step.get("assets", []) or []
     actions_log: list = []
@@ -2031,24 +2029,17 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             continue
 
         # 冲突资产（conflict 非空）。
-        conflict_id = f"s3:{asset['path']}"
-        decision = decisions_map.get(conflict_id)
 
         if is_l1:
-            # --- L1 独立分支：绝不调 merge_markdown，结果绝不后「项目补充」 ---
-            if intents.no_interrupt:
-                # no-interrupt：备份已由全局屏障完成；直接写当前 v1 模板（upgrade/replace 均替换为 v1）。
-                atomic_write(target, template_text)
-                actions_log.append({"path": asset["path"], "action": "replaced", "branch": "l1-no-interrupt"})
-            else:
-                # 普通模式：按 decision（replace→已备份后写 v1 模板；keep→保留报告）。
-                if decision == DECISION_REPLACE:
-                    atomic_write(target, template_text)
-                    actions_log.append({"path": asset["path"], "action": "replaced", "branch": "l1-replace"})
-                else:
-                    actions_log.append({"path": asset["path"], "action": "kept", "branch": "l1-keep"})
+            # --- L1 独立分支：绝不调 merge_markdown，结果绝不含「项目补充」 ---
+            # 两模式统一：备份已由全局屏障完成；直接写当前模板（upgrade/replace 均替换）。
+            atomic_write(target, template_text)
+            actions_log.append({
+                "path": asset["path"], "action": "replaced",
+                "branch": f"l1-authoritative-{conflict}",
+            })
         else:
-            # --- 框架受管规则文件：权威全覆盖（不调 merge_markdown；屏障已归档）---
+            # --- 框架受管规则文件：两模式统一权威全覆盖（不调 merge_markdown；屏障已归档）---
             existing_text = _safe_read(target)
             if existing_text == template_text:
                 actions_log.append({
@@ -2057,27 +2048,12 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
                     "branch": "authoritative-idempotent",
                 })
                 continue
-            if intents.no_interrupt:
-                atomic_write(target, template_text)
-                actions_log.append({
-                    "path": asset["path"],
-                    "action": "overwritten",
-                    "branch": "authoritative-overwrite",
-                })
-            else:
-                if decision == DECISION_REPLACE:
-                    atomic_write(target, template_text)
-                    actions_log.append({
-                        "path": asset["path"],
-                        "action": "overwritten",
-                        "branch": "rules-replace",
-                    })
-                else:
-                    actions_log.append({
-                        "path": asset["path"],
-                        "action": "kept",
-                        "branch": "rules-keep",
-                    })
+            atomic_write(target, template_text)
+            actions_log.append({
+                "path": asset["path"],
+                "action": "overwritten",
+                "branch": "authoritative-overwrite",
+            })
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
