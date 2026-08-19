@@ -428,7 +428,19 @@ compute_overall() {
 emit_report() {
   _overall="${1:-$(compute_overall)}"
   _ts="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
-  _git="$(json_escape "$CADENCE_SUPERPOWERS_GIT")"
+  # CADENCE_SUPERPOWERS_GIT 使用空格分隔候选；逐项转义后输出 JSON 数组。
+  _git_candidates="["
+  _git_first=1
+  for _candidate in $CADENCE_SUPERPOWERS_GIT; do
+    _candidate="$(json_escape "$_candidate")"
+    if [ "$_git_first" -eq 1 ]; then
+      _git_first=0
+    else
+      _git_candidates="$_git_candidates,"
+    fi
+    _git_candidates="$_git_candidates\"$_candidate\""
+  done
+  _git_candidates="$_git_candidates]"
   _mirror="$(json_escape "$MIRROR")"
   _mode="$(json_escape "$MODE")"
   printf '{\n'
@@ -440,7 +452,7 @@ emit_report() {
   printf '  "overall": "%s",\n' "$_overall"
   printf '  "steps": [%s],\n' "$STEPS_JSON"
   printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
-  printf '  "hints": {"superpowers_git": "%s"}\n' "$_git"
+  printf '  "hints": {"superpowers_git_candidates": %s}\n' "$_git_candidates"
   printf '}\n'
 }
 
