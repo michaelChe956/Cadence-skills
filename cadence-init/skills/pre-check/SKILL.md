@@ -49,12 +49,11 @@ disable-model-invocation: true
 
 ### no-interrupt Superpowers 处理
 
-1. 先验证 `~/.agents/superpowers/skills`；有效时按现有同步逻辑完成四层软链。
-2. 来源目录无效或缺失时，尝试在线 clone 或 Git 更新。
-3. 在线操作失败后，只允许校验固定离线目录 `~/.agents/superpowers/skills`，不询问其他离线来源路径。
-4. 固定离线目录仍无效时立即报错，终止 `/pre-check`。
-5. Superpowers 来源目录或软链目标存在同名非软链内容时，将冲突内容重命名为 `<原名称>.cadence-backup-YYYYMMDDHHMMSS`，再创建正确目录或软链并验证。
-6. 备份、创建或验证任一步失败时立即终止；禁止删除原内容，也禁止跳过冲突项继续。
+1. 先验证 `~/.agents/superpowers/skills`；有效时按候选源更新逻辑完成四层软链。
+2. 来源目录无效或缺失时，按报告中的代理候选顺序在线浅克隆。
+3. 候选全部失败、来源目录不是 Git 仓库或更新失败时立即报错，终止 `/pre-check`；不得降级为警告或离线来源。
+4. Superpowers 来源目录或软链目标存在同名非软链内容时，将冲突内容重命名为 `<原名称>.cadence-backup-YYYYMMDDHHMMSS`，再创建正确目录或软链并验证。
+5. 备份、创建或验证任一步失败时立即终止；禁止删除原内容，也禁止跳过冲突项继续。
 
 **核心原则**：检查-验证-安装-同步-记录
 
@@ -62,7 +61,7 @@ disable-model-invocation: true
 1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
 2. **必须完成所有六个基础检查** - 不允许跳过 npx/uvx/ast-grep/codegraph/openspec/superpowers 任一步骤
 3. **必须支持增量运行** - 老项目重新运行 `/pre-check` 时，只补齐缺失能力，不重装、不覆盖已就绪配置
-4. **Superpowers 必须支持离线安装** - 用户可手动复制 `superpowers` 到 `~/.agents/superpowers`
+4. **Superpowers 必须使用在线候选源** - 按报告中的候选顺序 clone 或更新，失败即终止
 5. **Playwright 默认跳过** - 仅用户明确要求浏览器自动化能力时才安装 playwright-cli 与 skills
 6. **API Key 配置默认占位** - 不询问、不收集真实密钥；mcp-configuration 默认写入智普/MiniMax API Key 占位配置，并提醒用户后续自行替换
 
@@ -74,7 +73,6 @@ disable-model-invocation: true
 
 | 触发条件 | 处理方式 |
 |----------|----------|
-| 在线安装失败且存在离线安装路径选择 | 询问用户是否已准备离线目录；无法等待时报告离线复制路径并继续其他检查 |
 | Superpowers 目标目录存在同名非软链 | 不覆盖；如用户明确要求替换，再询问并执行 |
 | 用户明确要求安装 Playwright | 检查并安装；安装失败时提供手动命令 |
 | 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只提醒后续替换占位符 |
@@ -166,7 +164,7 @@ digraph check_flow {
 | **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
 | （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
 | **5. OpenSpec** | 脚本报告 `openspec` 项 + 四客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
-| **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 在线 clone；失败时提示离线复制 |
+| **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 按候选在线 clone/更新；全败即报告 failed 并终止 |
 | **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
 | **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
 
@@ -214,14 +212,14 @@ python3 -c "import json;print(json.load(open('<REPORT>'))['overall'])"
 # 某工具状态
 python3 -c "import json;d=json.load(open('<REPORT>'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
 # Superpowers 远端地址（供步骤 6 使用）
-python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])"
+python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates'])"
 ```
 
 **报告生命周期**：报告是 `/tmp` 下的临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件：
 - 成功路径：全部检查完成后 `rm -f "<REPORT>"`。
 - 失败路径：任一失败终止或报告后，同样 `rm -f "<REPORT>"`，避免残留。
 
-**JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git`。
+**JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git_candidates`（JSON 字符串数组）。
 
 **判定规则**：
 - `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 四客户端检查与步骤 6 的 Superpowers 同步。
@@ -351,40 +349,24 @@ cd "<PROJECT_ROOT>" && test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -t
 > **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（`/tmp` 下 mktemp 生成的独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
 
 ```bash
-# 单条命令自包含：从 <REPORT> 读出 Superpowers 远端地址并 clone（同一 shell 内完成）
-git clone "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" "$HOME/.agents/superpowers"
+# 单条命令自包含：从 <REPORT> 读出候选数组，逐个浅克隆；全部失败时逐项报告错误并终止
+mkdir -p "$HOME/.agents" && _tmp="$(mktemp -d "${TMPDIR:-/tmp}/superpowers-clone.XXXXXX")" && _errors="" && for _candidate in $(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))") ; do _output="$(git clone --depth 1 "$_candidate" "$_tmp/repo" 2>&1)" && mv "$_tmp/repo" "$HOME/.agents/superpowers" && rm -rf "$_tmp" && exit 0; _errors="$_errors$_candidate: $_output\n"; rm -rf "$_tmp/repo"; done; rm -rf "$_tmp"; printf 'Superpowers clone 失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1
 ```
 
-Superpowers 远端地址必须从 `<REPORT>` 的 `hints.superpowers_git` 读出；使用 cn 镜像时直接 clone 国内地址，不配置 git 代理、不修改 git 全局配置。
-
-**离线安装方式**：
-
-用户可自行下载或复制 Superpowers 到：
-
-```bash
-$HOME/.agents/superpowers
-```
-
-只要存在以下目录，即视为有效离线来源：
-
-```bash
-$HOME/.agents/superpowers/skills
-```
+Superpowers 远端候选必须从 `<REPORT>` 的 `hints.superpowers_git_candidates` 数组读出；按数组顺序尝试，使用 `--depth 1`，不配置 git 代理、不修改 git 全局配置。clone 全部失败时命令以非零退出并逐项报告错误，不提示或校验离线来源。
 
 **行为（中文输出）**：
-- `~/.agents/superpowers/.git` 存在：执行 Git 更新逻辑，然后同步软链。
-- `~/.agents/superpowers/.git` 不存在但 `~/.agents/superpowers/skills` 存在：报告 "检测到 Superpowers 离线安装目录，跳过 Git 更新"，继续同步软链。
-- `~/.agents/superpowers/skills` 不存在：尝试在线 clone；如果失败，提示用户离线复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check`。
+- `~/.agents/superpowers/.git` 存在：按候选更新逻辑执行，然后同步软链。
+- `~/.agents/superpowers` 存在但不是 Git 仓库：报告来源目录无效并终止，不降级为离线安装。
+- `~/.agents/superpowers` 不存在：按候选顺序在线浅克隆；全部失败时报告每个候选的错误并终止。
 
 **Git 更新逻辑**：
 
-> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 在 `/tmp` 生成的独占绝对路径字面值）。
+> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 在 `/tmp` 生成的独占绝对路径字面值）。origin 已是候选时直接 fetch+pull；否则逐个 fetch 候选，首个成功者先设为 origin 再 pull。
 
 ```bash
-# 从 <REPORT> 读出远端地址并更新（同一 shell 内完成，cn 模式走国内镜像而非残留的原 origin）
-git -C "$HOME/.agents/superpowers" remote set-url origin "$(python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git'])")" && \
-git -C "$HOME/.agents/superpowers" fetch origin && \
-git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
+# 从 <REPORT> 读出候选数组并更新；origin 非候选时切换到首个 fetch 成功的候选
+git -C "$HOME/.agents/superpowers" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf 'Superpowers 来源目录不是有效 Git 仓库：%s\n' "$HOME/.agents/superpowers" >&2; exit 1; }; _candidates="$(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))")"; _origin="$(git -C "$HOME/.agents/superpowers" remote get-url origin)"; _matched=0; for _candidate in $_candidates; do [ "$_origin" = "$_candidate" ] && _matched=1 && break; done; if [ "$_matched" -eq 1 ]; then git -C "$HOME/.agents/superpowers" fetch origin; else _selected=""; _errors=""; for _candidate in $_candidates; do _output="$(git -C "$HOME/.agents/superpowers" fetch "$_candidate" 2>&1)" && _selected="$_candidate" && break; _errors="$_errors$_candidate: $_output\n"; done; [ -n "$_selected" ] || { printf 'Superpowers 更新失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1; }; git -C "$HOME/.agents/superpowers" remote set-url origin "$_selected"; fi && git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
 ```
 
 **软链同步逻辑**：
@@ -414,8 +396,7 @@ test -d "$HOME/.pi/agent/skills"
 **增量要求**：
 - 重新运行 `/pre-check` 时，已有正确软链必须跳过。
 - 只补齐缺失软链或更新指向旧来源的软链。
-- 离线安装目录有效时，不要求 `.git` 存在，不尝试 Git 更新。
-- 在线 clone 或 Git 更新失败时，不删除已有离线目录或已有软链。
+- 来源目录必须是有效 Git 仓库；在线 clone 或 Git 更新失败即终止，不提供离线降级。
 
 ### 默认步骤：API Key 占位配置提醒
 
@@ -453,7 +434,7 @@ test -d "$HOME/.pi/agent/skills"
 | **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
 | **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
 | **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
-| **Superpowers 在线安装失败** | GitHub 网络不可用或 git 不可用 | 手动复制 Superpowers 到 `~/.agents/superpowers` 后重新运行 `/pre-check` |
+| **Superpowers 在线安装失败** | 代理候选均不可用或 git 不可用 | 检查网络与代理可达性，确认候选地址后重新运行 `/pre-check` |
 | **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
 | **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash "<PRE_CHECK_SH>" run`，或修复 pi 环境后重新运行 `/pre-check` |
 | **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
