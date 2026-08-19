@@ -216,7 +216,7 @@ git pull
 |------|----------|--------------------|
 | `/pre-check` | 一键检查并补齐六个基础工具 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、pi-mcp-adapter（pi 存在时）：已装的工具秒级跳过，缺什么装什么，装完自动复验；支持**大陆镜像加速**与**一键升级已装工具**（见下方“大陆镜像与工具升级”）；OpenSpec 检查范围为 CLI 与 `claude,codex,pi,kimi` 四客户端指令产物，按缺失客户端精确补齐（缺哪个 init 哪个）；`openspec/config.yaml` 由 `/rule-config` 创建与合并，缺失时仅提示不影响判定；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
-| `/rule-config` | 自动检测项目类型和技术栈；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
+| `/rule-config` | 自动检测项目类型；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
 | `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
@@ -426,11 +426,48 @@ your_minimax_api_key
 - ✅ 创建 `.claude/rules/` 规则目录
 - ✅ 创建 `cadence/project-rules/` 用户规则目录
 - ✅ 创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）
-- ✅ 在 CLAUDE.md 和 AGENTS.md 中添加规则摘要引用
+- ✅ 在 CLAUDE.md 和 AGENTS.md 中规范化生成/修复 `## 强制规则` 章节（权威 7 条、清理已退役规则如 Serena、重排编号、用户内容逐字保留）
 - ✅ 配置目录结构
-- ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则
+- ✅ 生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则（L0 v2 含产物路径覆盖表与自动提交开关条款）
 - ✅ Coding 项目默认启用 CodeGraph 与代码阅读规则
 - ✅ 默认不启用 Playwright 规则，除非显式要求
+- ✅ 写入产物自动提交开关（默认关闭，见下文）
+
+#### 入口文件规范化效果（v2 新增）
+
+对已存在非 Cadence 风格入口文件的项目（如自带知识库内容的 AGENTS.md），重跑 `/rule-config` 后：
+
+- 缺失的 `## 强制规则` 章节会被完整创建（L0 区块之后）；英文/自定义内容逐字保留；
+- 已退役规则残留（如 Serena）被删除，编号 1-9 错乱重排为权威 1-7；
+- L0 旧版（v1）确定性升级为 v2，不再弹用户决策；重跑幂等零变更。
+
+#### 产物路径覆盖（v2 新增）
+
+L0 v2 内核与 `document-storage.md` 内置显式路径映射表，优先级高于任何 Superpowers Skill 正文中的默认路径：
+
+| Skill 默认路径 | 本项目强制路径 |
+|---|---|
+| `docs/superpowers/specs/`（design/spec） | `cadence/designs/` |
+| `docs/superpowers/plans/`（plan） | `cadence/plans/` |
+
+OpenSpec 产物仍存放在 `openspec/` 目录。设计文档、实施计划从此不再散落到 `docs/superpowers/` 下。
+
+#### 产物自动提交开关（v2 新增）
+
+初始化后入口文件 `## 项目配置` 章节会出现：
+
+```markdown
+- **产物自动提交（design/plan）**：关闭
+```
+
+**使用方法：**
+
+- **默认关闭**：Superpowers 的 `brainstorming`/`writing-plans` 写完设计文档/实施计划后**禁止自动 `git commit`**，只汇报产物路径等待你确认——适合不想被 Agent 动 git 历史的项目；
+- **开启自动提交**：把该行手改为 `：开启` 即可，之后 design/plan 写完会自动提交；
+- **取值语义**：仅精确值 `开启` 视为启用，`关闭` 或任何其他值均按关闭处理；非法值保留原文不改写并在报告中告警；
+- **开关位置**：脚本保证全文件恰好一行开关行且在 `## 项目配置` 章节内——即使你误把它挪到章节外，重跑 `/rule-config` 会自动归并回规范位置，开关不会失效；
+- **读取顺序**：Agent 以 CLAUDE.md 为准、AGENTS.md 为兜底，双入口值不一致时按关闭处理；
+- **修改后无需重跑初始化**，Agent 每次写产物前都会现读入口文件。
 
 OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kimi、Codex 与 pi 三类客户端的 Skill 调用与路由回执约定（pi 与 Codex 同类：显式选择 Skill → 用途并入首段回执 → 全文读取 `SKILL.md` → 读完后才允许仓库操作）。已初始化项目更新 Cadence 后重新运行 `/rule-config`，即可升级受管规则。普通模式遇到无法识别的本地修改且没有获得替换确认时会保留并报告；`no-interrupt` 模式会先备份，备份成功后再替换。
 
@@ -515,7 +552,7 @@ Cadence 当前以 Skill 形式提供能力，不再提供独立的 Command。其
 
 ### 2. 智能项目初始化
 
-- 自动检测项目类型和技术栈
+- 自动检测项目类型
 - 跨平台兼容（macOS/Linux/Windows）
 - 同时支持 Claude Code、Codex、pi 与 Kimi Code 四类客户端的环境初始化（OpenSpec 产物、Superpowers 软链、MCP 接入）
 - 用户确认机制确保准确性

@@ -24,8 +24,6 @@
 #                  "conflicts": [ { "conflict_id": "<id>", "kind": "...", "decision": "..." } ] } ],
 #     "hints": { "next": "mcp-configuration" },
 #     "project_type": "coding|non-coding",
-#     "techstack": { "language": "...", "pkg_manager": "...", "test": "...",
-#                    "lint": "...", "format": "...", "coverage": "80%" },
 #     "history_detected": [ "<dir>", ... ],
 #     "decisions_applied": [ { "conflict_id": "...", "decision": "..." } ] }
 #
@@ -101,6 +99,15 @@ done
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
+# 测试隔离：脚本的 S2 契约要求优先读取 $HOME 下的在线 plugin 模板。将本 worktree
+# 的 references 复制到临时 HOME 的该优先路径，避免读取开发机插件缓存造成 fixture 与
+# 运行时模板版本不一致。仅隔离环境，不改变任何生产模板定位优先级或断言语义。
+TEST_HOME="$TEST_ROOT/home"
+ONLINE_TEMPLATE_SKILL="$TEST_HOME/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config"
+mkdir -p "$ONLINE_TEMPLATE_SKILL" || exit 1
+cp -R "$TEST_DIR/../references" "$ONLINE_TEMPLATE_SKILL/references" || exit 1
+export HOME="$TEST_HOME"
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -166,7 +173,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v1:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v1:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v2:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v2:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -331,10 +338,10 @@ mk_entry_fixture() {  # mk_entry_fixture <name> [drift-claude] [drift-agents]
   printf '%s\n' "$root"
 }
 
-# codex 终审 I2 适配：仓库真实入口复制件缺规范摘要行/技术栈块（L0 skip 但未收敛）。
-# I2 后 S4 对 skip 状态也会补齐摘要/技术栈（SM-02/DF-02），未收敛入口复制件在
+# codex 终审 I2 适配：仓库真实入口复制件缺规范摘要行（L0 skip 但未收敛）。
+# I2 后 S4 对 skip 状态也会补齐摘要（SM-02），未收敛入口复制件在
 # apply 后必然变化。需要先证明「其余内容不变」的用例，改用本 helper 预收敛：
-# 对入口复制件先跑一次 apply --no-interrupt（收敛摘要/技术栈），再供用例使用。
+# 对入口复制件先跑一次 apply --no-interrupt（收敛摘要），再供用例使用。
 mk_converged_entries() {  # mk_converged_entries <target_root> [coding]：向目标根写入收敛态 CLAUDE.md/AGENTS.md
   # 第二参数 coding 时 scratch 预置 application/app.py，使收敛态匹配 coding 项目入口
   # 描述（RULE2_TEXT_CODING），避免 coding fixture 第二次 apply 触发 S4 upgrade。
@@ -545,7 +552,7 @@ fi
 # ============================================================================
 
 # B1. 真实入口复制件收敛后必须幂等（it-s4-idempotent / L0-P6+L0-02+SM-01）。
-# codex 终审 I2：skip 状态也补齐缺失摘要/技术栈——首次 apply 为收敛写入（属
+# codex 终审 I2：skip 状态也补齐缺失摘要——首次 apply 为收敛写入（属
 # I2 预期行为），第二次 apply 起双入口 sha256 不变才是幂等断言点。
 case_root="$(mk_entry_fixture fx-entry-idempotent)"
 run_script apply "$case_root" --no-interrupt
@@ -558,7 +565,7 @@ assert_same it-s4-idempotent "$RUN_STATUS" "$before" "$after" 0
 # codex 三轮 C3（方案 X）：L0 drift 回归 A 类——recommendation=keep 为安全默认，
 # 普通模式无响应时默认保留并报告 status=0，不 fail closed；与实现「keep→不写盘」一致。
 # 详细路径覆盖见 it-l0-drift-normal-keep-default（Agent 写 keep 决策）。
-# fixture 预收敛（I2 适配）：先跑 no-interrupt 收敛摘要/技术栈，再注入 L0 区块内漂移，
+# fixture 预收敛（I2 适配）：先跑 no-interrupt 收敛摘要，再注入 L0 区块内漂移，
 # 使「无响应→文件不变」断言不被 I2 摘要补齐扰动（同 it-s4-drift-replaced-outside-preserved）。
 case_root="$TEST_ROOT/fx-l0-drift-normal"
 mkdir -p "$case_root"
@@ -597,7 +604,7 @@ else
 fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
-# codex 终审 I2 适配：入口先收敛（摘要/技术栈补齐），再注入 L0 区块内漂移，
+# codex 终审 I2 适配：入口先收敛（摘要补齐），再注入 L0 区块内漂移，
 # 使「区块外逐字保留」断言不被 I2 的缺失摘要补齐扰动。
 case_root="$TEST_ROOT/fx-l0-drift-replace"
 mkdir -p "$case_root"
@@ -622,16 +629,16 @@ fi
 # B4. 单侧与乱序标记修复必须保留所有非标记行（it-s4-broken-markers / L0-P10）。
 case_root="$TEST_ROOT/fx-l0-broken-markers"
 mkdir -p "$case_root"
-printf '# CLAUDE.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:start -->\n无法判定归属的本地内容\n任意后置内容\n' > "$case_root/CLAUDE.md"
-printf '# AGENTS.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:end -->\n无法判定归属的本地内容\n<!-- cadence-managed:openspec-superpowers-routing:v1:start -->\n任意后置内容\n' > "$case_root/AGENTS.md"
+printf '# CLAUDE.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:start -->\n无法判定归属的本地内容\n任意后置内容\n' > "$case_root/CLAUDE.md"
+printf '# AGENTS.md\n任意前置内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:end -->\n无法判定归属的本地内容\n<!-- cadence-managed:openspec-superpowers-routing:v2:start -->\n任意后置内容\n' > "$case_root/AGENTS.md"
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -1001,7 +1008,7 @@ fi
 # 用 HISTORY_DIRS 清单内目录（prds）+ 预置 rules 幂等 + cadence/prds 非空。
 case_root="$TEST_ROOT/fx-history-target-nonempty"
 mkdir -p "$case_root/.claude/rules"
-# codex 终审 I2 适配：入口预收敛（全树零写入断言不被摘要/技术栈补齐扰动）
+# codex 终审 I2 适配：入口预收敛（全树零写入断言不被摘要补齐扰动）
 mk_converged_entries "$case_root"
 mk_converged_rules "$case_root"
 mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
@@ -1098,26 +1105,6 @@ if [ "$RUN_STATUS" -eq 0 ] \
   record_result it-l1-unknown-replace "$RUN_STATUS" "$before" "$after" pass
 else
   record_result it-l1-unknown-replace "$RUN_STATUS" "$before" "$after" fail
-fi
-
-# C7. 技术栈写入（it-s1-techstack-written / DF-02+S4-02）
-case_root="$TEST_ROOT/fx-techstack-frontend"
-mkdir -p "$case_root/application"
-printf 'console.log("hi")\n' > "$case_root/application/app.ts"
-cat > "$case_root/package.json" <<'JSON'
-{
-  "name": "demo",
-  "scripts": { "test": "vitest", "lint": "eslint .", "format": "prettier --write ." }
-}
-JSON
-run_script apply "$case_root" --no-interrupt
-if [ "$RUN_STATUS" -eq 0 ] \
-  && grep -q 'pnpm' "$case_root/CLAUDE.md" \
-  && grep -q '80%' "$case_root/CLAUDE.md" \
-  && grep -q 'vitest' "$case_root/CLAUDE.md"; then
-  record_result it-s1-techstack-written "$RUN_STATUS" present present pass
-else
-  record_result it-s1-techstack-written "$RUN_STATUS" present missing fail
 fi
 
 # C8. gitignore 两分支（it-s6-gitignore-* / S7-01+02+CG-07/08）
@@ -1420,7 +1407,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1460,8 +1447,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v1:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v2:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass
@@ -1481,7 +1468,7 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && ! grep -q 'routing:v0' "$case_root/CLAUDE.md" \
   && grep -q '后置' "$case_root/CLAUDE.md"; then
-  record_result it-s4-upgrade "$RUN_STATUS" v0 v1 pass
+  record_result it-s4-upgrade "$RUN_STATUS" v0 v2 pass
 else
   record_result it-s4-upgrade "$RUN_STATUS" v0 v0 fail
 fi
@@ -1871,14 +1858,12 @@ else
   record_result it-s8-codegraph-existing-mcp-backfill "$RUN_STATUS" missing missing fail
 fi
 
-# C17c. L0 skip + 缺摘要/技术栈 → 补齐且 L0 区块不变（it-s4-skip-summary-backfill / codex 终审 I2 + SM-02）。
+# C17c. L0 skip + 缺规范摘要 → 补齐且 L0 区块不变（it-s4-skip-summary-backfill / SM-02）。
 case_root="$(mk_entry_fixture fx-skip-summary-backfill)"
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")" ] \
-  && grep -q '### 项目技术栈' "$case_root/CLAUDE.md" \
-  && grep -q '### 项目技术栈' "$case_root/AGENTS.md" \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ]; then
   record_result it-s4-skip-summary-backfill "$RUN_STATUS" missing backfilled pass

@@ -27,11 +27,14 @@ rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
 
 TPL = (Path(__file__).resolve().parents[1] / "references" / "openspec" / "config.yaml").read_text()
 L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "agent-routing-kernel.md").read_text()
+L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v1 为当前版本；v0 为受支持旧版本的合成样本）
+# L0 受管区块标记（v2 为当前版本；v1/v0 为受支持旧版本的合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
+V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
+V2_END = "<!-- cadence-managed:openspec-superpowers-routing:v2:end -->"
 V0_START = "<!-- cadence-managed:openspec-superpowers-routing:v0:start -->"
 V0_END = "<!-- cadence-managed:openspec-superpowers-routing:v0:end -->"
 
@@ -39,6 +42,64 @@ V0_END = "<!-- cadence-managed:openspec-superpowers-routing:v0:end -->"
 V1_L1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v1 -->"
 V0_L1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v0 -->"
 V0_L1_TEXT = V0_L1_MARKER + "\n# 旧版协作规则\n旧版正文\n"
+
+
+class TestArtifactPathOverrides(unittest.TestCase):
+    def test_three_sources_verbatim_consistent(self):
+        """ut-override-3src：内核/document-storage/脚本常量三源映射表逐字一致。"""
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        kernel = (refs / "agent-routing-kernel.md").read_text()
+        doc_storage = (refs / "document-storage.md").read_text()
+        table = rc.ARTIFACT_PATH_OVERRIDE_TABLE
+        self.assertIn(table, kernel)
+        self.assertIn(table, doc_storage)
+        self.assertIn("docs/superpowers/specs/", table)
+        self.assertIn("cadence/designs/", table)
+        self.assertIn("docs/superpowers/plans/", table)
+        self.assertIn("cadence/plans/", table)
+        self.assertIn("优先级高于任何 Skill 正文", kernel)
+
+    def test_kernel_is_v2(self):
+        """ut-kernel-v2：内核标记为 v2。"""
+        kernel = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                  / "agent-routing-kernel.md").read_text()
+        self.assertTrue(kernel.startswith(V2_START))
+        self.assertIn("产物自动提交", kernel)
+
+    def test_openspec_path_preserved_in_kernel(self):
+        """ut-override-no-skill-rewrite：覆盖声明不改写 Skill 路径（openspec 保留）。"""
+        kernel = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                  / "agent-routing-kernel.md").read_text()
+        self.assertIn("openspec/", kernel)
+        self.assertIn("优先级高于任何 Skill 正文", kernel)
+
+
+class TestCanonicalRules(unittest.TestCase):
+    def test_base_rendered_from_canonical_rules(self):
+        """验证关键规则条目存在，且渲染结果无 serena 残留。"""
+        for entry in ("CLAUDE.md", "AGENTS.md"):
+            rendered = rc.render_base_entry(entry, "non-coding", set())
+            self.assertIn("### 1. 语言规则", rendered)
+            self.assertIn("### 7. 代码阅读规则", rendered)
+            self.assertNotIn("serena", rendered.lower())
+
+    def test_rule6_identity_marker(self):
+        """ut-rule6-marker：规则 6 以 cadence/project-rules/ 为身份 marker。"""
+        markers = dict()
+        for m, title, _c, _a in rc.CANONICAL_RULES:
+            markers[title] = m
+        self.assertIn("cadence/project-rules/", markers["项目个性化规则"])
+
+    def test_playwright_conditional(self):
+        """ut-canonical-playwright：playwright.md 存在时清单含第 8 条。"""
+        with_pw = rc._canonical_rules_for({"playwright.md"})
+        without = rc._canonical_rules_for(set())
+        self.assertEqual(len(with_pw), len(without) + 1)
+        self.assertIn("playwright.md", with_pw[-1][0])
+
+    def test_retired_list_seed(self):
+        """ut-retired-seed：退役清单初始含 serena-usage.md。"""
+        self.assertEqual(rc.RETIRED_RULE_FILES, ["serena-usage.md"])
 
 
 class TestMergeMarkdown(unittest.TestCase):
@@ -81,7 +142,7 @@ class TestMergeMarkdown(unittest.TestCase):
         self.assertIn("### 规则", out)
         self.assertIn("old", out)
 
-    def test_mandatory_conflict_template_wins_techstack_preserved(self):
+    def test_mandatory_conflict_template_wins_user_config_preserved(self):
         """ut-merge_markdown-mandatory-override / NC-04"""
         tpl = "## 强制规则\n- 必须使用中文回答 → 详见 `.claude/rules/language.md`\n"
         old = "## 强制规则\n- 旧摘要\n\n## 项目技术栈\n- Python\n"
@@ -177,14 +238,14 @@ class TestMergeMarkdown(unittest.TestCase):
 
 
 class TestL0Block(unittest.TestCase):
-    def test_skip_when_v1_block_matches_source(self):
-        """ut-l0_block-read-source / L0-P1 + L0-P6（v1 标记对且区块与规范源逐字一致）"""
+    def test_skip_when_v2_block_matches_source(self):
+        """ut-l0_block-read-source / L0-P1 + L0-P6（v2 标记对且区块与规范源逐字一致）"""
         text = "# CLAUDE.md\n\n文件说明\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
 
-    def test_drift_when_v1_markers_but_content_differs(self):
-        """ut-l0_block-drift / L0-P7（v1 标记对但区块内容不同）"""
-        text = V1_START + "\n本地修改内容\n" + V1_END + "\n"
+    def test_drift_when_v2_markers_but_content_differs(self):
+        """ut-l0_block-drift / L0-P7（v2 标记对但区块内容不同）"""
+        text = V2_START + "\n本地修改内容\n" + V2_END + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "drift")
 
     def test_insert_when_no_markers(self):
@@ -192,25 +253,27 @@ class TestL0Block(unittest.TestCase):
         self.assertEqual(rc.l0_block("# 入口\n无标记内容\n", L0_SOURCE), "insert")
 
     def test_insert_position_two_branches(self):
-        """ut-l0_block-insert-position / L0-P8（有/无 `## 强制规则` 两分支均判 insert，落点由调用方保证）"""
+        """ut-l0_block-insert-position / L0-P8（有/无 `## 强制规则` 均判 insert；无章节时插在 H1 简介之后）"""
         with_rules = "# 入口\n文件说明\n\n## 强制规则\n- x\n"
         without_rules = "# 入口\n文件说明\n"
         self.assertEqual(rc.l0_block(with_rules, L0_SOURCE), "insert")
         self.assertEqual(rc.l0_block(without_rules, L0_SOURCE), "insert")
+        out = rc._insert_l0_block(without_rules, L0_SOURCE)
+        self.assertEqual(out, "# 入口\n文件说明\n\n" + L0_SOURCE)
 
-    def test_upgrade_when_old_version_markers(self):
-        """ut-l0_block-upgrade / L0-P9（成对受支持旧版本标记）"""
+    def test_upgrade_when_v0_old_version_markers(self):
+        """ut-l0_block-upgrade / L0-P9（v0 无真实规范源，成对标记维持 upgrade）。"""
         text = V0_START + "\n旧版区块内容\n" + V0_END + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "upgrade")
 
     def test_broken_when_single_side_marker(self):
-        """ut-l0_block-broken / L0-P10（单侧标记）"""
-        self.assertEqual(rc.l0_block(V1_START + "\n内容\n", L0_SOURCE), "broken")
-        self.assertEqual(rc.l0_block("内容\n" + V1_END + "\n", L0_SOURCE), "broken")
+        """ut-l0_block-broken / L0-P10（当前版本单侧标记）"""
+        self.assertEqual(rc.l0_block(V2_START + "\n内容\n", L0_SOURCE), "broken")
+        self.assertEqual(rc.l0_block("内容\n" + V2_END + "\n", L0_SOURCE), "broken")
 
     def test_broken_when_markers_out_of_order(self):
-        """ut-l0_block-broken / L0-P10（标记顺序错误）"""
-        text = V1_END + "\n内容\n" + V1_START + "\n"
+        """ut-l0_block-broken / L0-P10（当前版本标记顺序错误）"""
+        text = V2_END + "\n内容\n" + V2_START + "\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "broken")
 
     def test_skip_requires_verbatim_match_no_strip(self):
@@ -219,9 +282,141 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V1_START + " " + L0_SOURCE[len(V1_START):]
+        source_with_leading_space = V2_START + " " + L0_SOURCE[len(V2_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
+
+
+class TestL0V2Migration(unittest.TestCase):
+    def test_v1_history_source_loaded(self):
+        """ut-l0-v2-history-source：脚本加载冻结 v1 内核全文用于升级前比对。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v1"], L0_V1_SOURCE)
+
+    def test_v1_pair_is_upgrade(self):
+        """ut-l0-v2-upgrade：完整 v1 规范块对 v2 源判 upgrade（非 drift）。"""
+        self.assertEqual(rc.l0_block(L0_V1_SOURCE, L0_SOURCE), "upgrade")
+
+    def test_v1_pair_with_drift_is_drift(self):
+        """ut-l0-v2-v1-drift：v1 成对但正文漂移必须判 drift。"""
+        v1_drift = V1_START + "\n旧路由内容\n" + V1_END + "\n"
+        self.assertEqual(rc.l0_block(v1_drift, L0_SOURCE), "drift")
+
+    def test_upgrade_yields_single_v2_block(self):
+        """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
+        v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
+        out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+        self.assertNotIn("旧路由", out)
+
+    def test_broken_nested_begin_preserves_user_section(self):
+        """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
+        broken = (
+            V2_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + V2_START + "\nfull\n" + V2_END
+        )
+        out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+        self.assertIn("x", out)
+        self.assertNotIn("full", out)
+
+    def test_upgrade_orphan_between_v1_pairs_preserves_user_section(self):
+        """ut-l0-v2-upgrade-orphan：旧版孤儿 begin 不得跨块吞掉用户章节。"""
+        upgrade = (
+            L0_V1_SOURCE + "\n\n" + V1_START
+            + "\n## 用户章节\nx\n\n" + L0_V1_SOURCE
+        )
+        self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
+        out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertIn("## 用户章节", out)
+        self.assertIn("x", out)
+
+    def test_overlapping_orphan_end_preserves_all_user_content(self):
+        """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
+        overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
+        out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        for user_text in ("A", "X", "Y", "B"):
+            self.assertIn(user_text, out)
+
+    def test_orphan_current_marker_emits_l0_dedup(self):
+        """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
+        current_with_orphan = L0_SOURCE + "\n\n" + V2_START + "\n残留用户内容\n"
+        out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
+        warning = next(w for w in warns if w["code"] == "L0_DEDUP")
+        self.assertEqual(warning["detail"]["orphan_markers"], 1)
+        self.assertIn("残留用户内容", out)
+
+    def test_mixed_markers_not_broken_residue(self):
+        """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V2_START + "\n残留单侧\n"
+        out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+
+    def test_current_pair_with_old_residue_is_not_skip(self):
+        """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
+        current_with_old_residue = L0_SOURCE + "\n" + V1_START + "\n旧残留\n"
+        self.assertEqual(rc.l0_block(current_with_old_residue, L0_SOURCE), "broken")
+
+    def test_duplicate_current_blocks_deduped(self):
+        """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
+        first = V2_START + "\n首个当前块\n" + V2_END
+        second = V2_START + "\n重复当前块\n" + V2_END
+        dup = first + "\n\n## 中间\n\n" + second
+        out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
+        self.assertEqual(out.count(V2_START), 1)
+        self.assertEqual(out.count(V2_END), 1)
+        self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
+        self.assertIn("首个当前块", out)
+        self.assertNotIn("重复当前块", out)
+        self.assertIn("## 中间", out)
+
+    def test_duplicate_current_blocks_classified_for_normalization(self):
+        """ut-l0-v2-dedup-state：重复 v2 成对块走确定性 dedup，不可误判 skip/drift。"""
+        dup = L0_SOURCE + "\n\n" + L0_SOURCE
+        self.assertEqual(rc.l0_block(dup, L0_SOURCE), "dedup")
+
+    def test_v2_skip_idempotent(self):
+        """ut-l0-v2-skip：v2 与源一致判 skip。"""
+        self.assertEqual(rc.l0_block(L0_SOURCE, L0_SOURCE), "skip")
+
+
+class TestL0InsertPosition(unittest.TestCase):
+    def test_insert_after_intro_when_no_section(self):
+        """ut-l0-pos：无 ## 强制规则 时 L0 位于 H1+简介之后、用户内容之前。"""
+        text = "# KB\n\n项目简介段落。\n\n## NOTES\n\n- 用户内容\n"
+        out = rc._insert_l0_block(text, L0_SOURCE)
+        idx_l0 = out.index("<!-- cadence-managed")
+        idx_notes = out.index("## NOTES")
+        idx_intro = out.index("项目简介段落。")
+        self.assertLess(idx_intro, idx_l0)
+        self.assertLess(idx_l0, idx_notes)  # 不再追加到文件末尾
+
+    def test_insert_at_start_without_h1(self):
+        """无 H1 时防御性地将 L0 插入文首。"""
+        out = rc._insert_l0_block("用户内容\n", L0_SOURCE)
+        self.assertTrue(out.startswith(L0_SOURCE))
+
+    def test_global_order_end_to_end(self):
+        """ut-global-order：H1/说明 → L0 → 强制规则 → 用户内容。"""
+        import tempfile, subprocess
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "AGENTS.md").write_text("# KB\n\n简介。\n\n## NOTES\n\n- 用户内容\n")
+            subprocess.run(["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
+                            "--report", str(Path(td).parent / "r.json"), "--no-interrupt"], check=True)
+            out = (root / "AGENTS.md").read_text()
+            i1, i2, i3 = out.index("<!-- cadence-managed"), out.index("## 强制规则"), out.index("## NOTES")
+            self.assertLess(i1, i2)
+            self.assertLess(i2, i3)
 
 
 class TestMergeYaml(unittest.TestCase):
@@ -787,7 +982,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v1",
+            "cadence-managed:openspec-superpowers-routing:v2",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -819,6 +1014,7 @@ class TestDetectProject(unittest.TestCase):
         self.assertEqual(result["project_type"], "coding")
         self.assertIsInstance(result["evidence"], str)
         self.assertTrue(result["evidence"])  # 非空证据
+        self.assertNotIn("tech_stack", result)
 
     # --- ut-detect_project-noncoding / DF-01（无源码无主配置 → 非 Coding）---
     def test_empty_project_is_noncoding(self):
@@ -877,224 +1073,6 @@ class TestDetectProject(unittest.TestCase):
             self.assertEqual(result["project_type"], "coding")
             self.assertIsNone(result.get("conflict"))
 
-    # --- ut-detect_project-techstack / S4-01（package.json scripts + pytest 检测 + 默认覆盖率 80%）---
-    def test_techstack_extracted_from_package_json_and_pytest(self):
-        """ut-detect_project-techstack / S4-01（package.json scripts 提取 test/lint/format；requirements.txt 检测 pytest；coverage 默认 80%）"""
-        import json as _json
-        (self.root / "package.json").write_text(_json.dumps({
-            "name": "demo",
-            "scripts": {"test": "vitest", "lint": "eslint .", "format": "prettier --write ."},
-        }), encoding="utf-8")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "vitest")
-        self.assertEqual(ts["lint"], "eslint .")
-        self.assertEqual(ts["format"], "prettier --write .")
-        self.assertEqual(ts["coverage"], "80%")
-
-    def test_techstack_pytest_detected_from_requirements(self):
-        """ut-detect_project-techstack / S4-01（requirements.txt 含 pytest → test 字段为 pytest）"""
-        (self.root / "requirements.txt").write_text("pytest\nrequests\n", encoding="utf-8")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "pytest")
-        # lint/format 未检出 → 未检测到
-        self.assertEqual(ts["lint"], "未检测到")
-        self.assertEqual(ts["format"], "未检测到")
-
-    def test_techstack_undetected_defaults(self):
-        """ut-detect_project-techstack / S4-03（无任何可检测配置 → 各命令写「未检测到」不阻塞）"""
-        (self.root / "README.md").write_text("docs\n")
-        result = rc.detect_project(self.root, _intents())
-        ts = result["tech_stack"]
-        self.assertEqual(ts["test"], "未检测到")
-        self.assertEqual(ts["lint"], "未检测到")
-        self.assertEqual(ts["format"], "未检测到")
-        # coverage 默认仍为 80%
-        self.assertEqual(ts["coverage"], "80%")
-
-
-class TestTechstackPlaceholder(unittest.TestCase):
-    """技术栈已有区块逐项收敛：占位替换、用户值保留、差异入报告。"""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name) / "proj"
-        (self.root / ".claude" / "rules").mkdir(parents=True)
-        self.rules_root = Path(self.tmp.name) / "tpl"
-        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
-        self.rules_root.mkdir(parents=True)
-        for template in real_tpl.iterdir():
-            if template.is_file():
-                (self.rules_root / template.name).write_bytes(template.read_bytes())
-        self.openspec_yaml = (
-            Path(__file__).resolve().parents[1]
-            / "references" / "openspec" / "config.yaml"
-        )
-
-    def test_missing_block_appends_all_detected_fields_and_fixed_coverage(self):
-        """技术栈区块完全缺失时追加五个检测字段和固定 80% 阈值。"""
-        tech_stack = {
-            "language": "Python",
-            "pkg_manager": "uv",
-            "test": "pytest",
-            "lint": "ruff check .",
-            "format": "ruff format .",
-            "coverage": "99%",
-        }
-        result, diffs = rc._ensure_techstack_block(
-            "# CLAUDE.md\n\n项目说明\n", tech_stack
-        )
-        self.assertEqual(diffs, [])
-        self.assertIn("## 项目配置", result)
-        self.assertIn("### 项目技术栈", result)
-        self.assertIn("- **语言**：Python", result)
-        self.assertIn("- **包管理器**：uv", result)
-        self.assertIn("- **测试命令**：pytest", result)
-        self.assertIn("- **检查命令**：ruff check .", result)
-        self.assertIn("- **格式化命令**：ruff format .", result)
-        self.assertIn("- **覆盖率阈值**：80%", result)
-        self.assertNotIn("99%", result)
-
-    def test_empty_field_value_is_replaced_by_detected_value(self):
-        """字段冒号后为空字符串时按占位值处理并替换为检测值。"""
-        text = (
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：\n"
-            "- **包管理器**：待确认\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：待确认\n"
-            "- **覆盖率阈值**：80%\n"
-        )
-        result, diffs = rc._ensure_techstack_block(
-            text,
-            {
-                "language": "Go",
-                "pkg_manager": "go modules",
-                "test": "go test ./...",
-                "lint": "golangci-lint run",
-                "format": "gofmt -w .",
-            },
-        )
-        self.assertEqual(diffs, [])
-        self.assertIn("- **语言**：Go", result)
-        self.assertNotIn("- **语言**：\n", result)
-
-    def test_placeholder_replaced_user_value_kept_diff_reported(self):
-        """占位值收敛到检测值；用户真实值保留，冲突差异写入 S4 actions。"""
-        (self.root / "package.json").write_text(
-            '{"scripts":{"test":"jest","lint":"eslint ."}}',
-            encoding="utf-8",
-        )
-        claude = self.root / "CLAUDE.md"
-        claude.write_text(
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：待确认\n"
-            "- **包管理器**：yarn\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：未检测到\n"
-            "- **覆盖率阈值**：80%\n",
-            encoding="utf-8",
-        )
-        report = rc.build_report("no-interrupt", self.root)
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ), mock.patch.object(
-            rc.subprocess,
-            "run",
-            return_value=mock.Mock(returncode=0),
-        ):
-            result = rc.run_apply(
-                self.root, _intents(no_interrupt=True), report
-            )
-        self.assertEqual(result, 0, report.get("failure"))
-
-        section = claude.read_text(encoding="utf-8")
-        self.assertIn("**语言**：JavaScript/TypeScript", section)
-        self.assertIn("**测试命令**：jest", section)
-        self.assertIn("**检查命令**：eslint .", section)
-        self.assertIn("**包管理器**：yarn", section)
-        self.assertIn("**格式化命令**：未检测到", section)
-        s4 = next(
-            step for step in report["steps"]
-            if step["name"] == rc.STEP_ENTRY_FILES
-        )
-        diff_actions = [
-            action for action in s4.get("actions", [])
-            if action.get("path") == "CLAUDE.md"
-            and action.get("action") == "techstack-diff"
-        ]
-        self.assertEqual(len(diff_actions), 1)
-        self.assertEqual(diff_actions[0]["diffs"], [{
-            "field": "包管理器",
-            "user_value": "yarn",
-            "detected_value": "pnpm",
-        }])
-        json.dumps(report, ensure_ascii=False)
-
-    def test_placeholder_replacement_is_idempotent_and_diff_not_duplicated(self):
-        """第二次运行不重复追加区块；已替换字段不再变化，差异每次仅报告一条。"""
-        (self.root / "package.json").write_text(
-            '{"scripts":{"test":"jest","lint":"eslint ."}}',
-            encoding="utf-8",
-        )
-        claude = self.root / "CLAUDE.md"
-        claude.write_text(
-            "# CLAUDE.md\n\n## 项目配置\n\n### 项目技术栈\n"
-            "- **语言**：待确认\n"
-            "- **包管理器**：yarn\n"
-            "- **测试命令**：待确认\n"
-            "- **检查命令**：待确认\n"
-            "- **格式化命令**：未检测到\n"
-            "- **覆盖率阈值**：80%\n",
-            encoding="utf-8",
-        )
-
-        reports = []
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ), mock.patch.object(
-            rc.subprocess,
-            "run",
-            return_value=mock.Mock(returncode=0),
-        ):
-            for _ in range(2):
-                report = rc.build_report("no-interrupt", self.root)
-                result = rc.run_apply(
-                    self.root, _intents(no_interrupt=True), report
-                )
-                self.assertEqual(result, 0, report.get("failure"))
-                reports.append(report)
-                if len(reports) == 1:
-                    first_content = claude.read_text(encoding="utf-8")
-
-        second_content = claude.read_text(encoding="utf-8")
-        self.assertEqual(second_content, first_content)
-        self.assertEqual(second_content.count("### 项目技术栈"), 1)
-        self.assertEqual(second_content.count("**覆盖率阈值**：80%"), 1)
-        for report in reports:
-            s4 = next(
-                step for step in report["steps"]
-                if step["name"] == rc.STEP_ENTRY_FILES
-            )
-            diff_actions = [
-                action for action in s4.get("actions", [])
-                if action.get("path") == "CLAUDE.md"
-                and action.get("action") == "techstack-diff"
-            ]
-            self.assertEqual(len(diff_actions), 1)
-            self.assertEqual(diff_actions[0]["diffs"], [{
-                "field": "包管理器",
-                "user_value": "yarn",
-                "detected_value": "pnpm",
-            }])
 
 
 class TestLocateTemplates(unittest.TestCase):
@@ -1405,6 +1383,154 @@ class TestStepS3RulesFiles(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), self.language_tpl)
 
 
+class TestCommitToggle(unittest.TestCase):
+    def test_default_written_when_missing(self):
+        """ut-toggle-default：缺失时写默认值 关闭。"""
+        out, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
+        self.assertIn("- **产物自动提交（design/plan）**：关闭", out)
+        self.assertIn("## 项目配置", out)
+        self.assertGreater(out.index("## 项目配置"), out.index("# x"))
+        self.assertTrue(out.endswith(rc.TOGGLE_PREFIX + "关闭\n"))
+
+    def test_user_value_preserved(self):
+        """ut-toggle-keep：用户值 开启 保留。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("：开启", out)
+        self.assertEqual(warns, [])
+
+    def test_invalid_value_kept_with_warning(self):
+        """ut-toggle-invalid：非法值保留原文 + INVALID_TOGGLE。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：也许\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("：也许", out)
+        self.assertTrue(any(w["code"] == "INVALID_TOGGLE" for w in warns))
+
+    def test_orphan_toggle_is_merged_into_config_section(self):
+        """ut-toggle-orphan：章节外合法开关归并到项目配置并保留值。"""
+        text = "# x\n\n" + rc.TOGGLE_PREFIX + "开启\n\n## 项目配置\n\n内容\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        section = out.split("## 项目配置", 1)[1]
+        self.assertIn("内容", section)
+        self.assertIn(rc.TOGGLE_PREFIX + "开启", section)
+        self.assertEqual(warns, [])
+
+    def test_orphan_and_section_same_value_are_deduped(self):
+        """ut-toggle-orphan-same：章节外与章节内同值归并为一行。"""
+        text = (
+            rc.TOGGLE_PREFIX + "开启\n\n"
+            "## 项目配置\n\n"
+            + rc.TOGGLE_PREFIX + "开启\n"
+        )
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn(rc.TOGGLE_PREFIX + "开启", out)
+        self.assertEqual(warns, [])
+
+    def test_orphan_and_section_conflict_defaults_closed(self):
+        """ut-toggle-orphan-conflict：孤儿与章节值冲突时关闭并告警。"""
+        text = (
+            rc.TOGGLE_PREFIX + "开启\n\n"
+            "## 项目配置\n\n"
+            + rc.TOGGLE_PREFIX + "关闭\n"
+        )
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn(rc.TOGGLE_PREFIX + "关闭", out)
+        warning = next(w for w in warns if w["code"] == "INVALID_TOGGLE")
+        self.assertIn("冲突", warning["detail"]["reason"])
+
+    def test_orphan_toggle_merge_is_idempotent(self):
+        """ut-toggle-orphan-idempotent：孤儿开关归并后二次运行逐字不变。"""
+        text = rc.TOGGLE_PREFIX + "开启\n\n## 项目配置\n\n内容\n"
+        once, _ = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        twice, warns = rc._ensure_commit_toggle(once, "CLAUDE.md")
+        self.assertEqual(once, twice)
+        self.assertEqual(warns, [])
+
+    def test_toggle_after_techstack_block(self):
+        """ut-toggle-position：落点在 ### 项目技术栈 块之后、章节末尾。"""
+        text = ("## 项目配置\n\n### 项目技术栈\n- **语言**：Java\n\n## 其他\n")
+        out, _ = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertLess(out.index("### 项目技术栈"), out.index(rc.TOGGLE_PREFIX))
+        self.assertLess(out.index(rc.TOGGLE_PREFIX), out.index("## 其他"))
+
+    def test_duplicate_toggle_deduped(self):
+        """ut-toggle-dup：重复开关行保留首个。"""
+        text = ("## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+                "- **产物自动提交（design/plan）**：关闭\n")
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
+        self.assertIn("：开启", out)
+
+    def test_multiple_project_config_sections(self):
+        """ut-toggle-multi-section：多个 ## 项目配置 仅处理首个 + DUPLICATE_H2。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n\n## 项目配置\n\nx\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
+        self.assertIn("：开启", out)
+        self.assertIn("## 项目配置\n\nx\n", out)
+
+    def test_idempotent(self):
+        """ut-toggle-idempotent：幂等。"""
+        once, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
+        twice, _ = rc._ensure_commit_toggle(once, "CLAUDE.md")
+        self.assertEqual(once, twice)
+
+
+class TestComposeEntryWarnings(unittest.TestCase):
+    def test_existing_techstack_content_is_preserved(self):
+        """入口已有用户技术栈章节时逐字保留，且开关仍落位。"""
+        user_config = (
+            "### 项目技术栈\n- 用户自定义技术栈\n\n"
+            "### 包管理器规则\n- 用户指定 pnpm\n"
+        )
+        text = "# CLAUDE.md\n\n## 项目配置\n\n" + user_config
+        out, warns = rc._compose_entry(
+            text, rc._load_kernel_source(), state="skip",
+            project_type="non-coding", entry_name="CLAUDE.md",
+            existing_rule_files=set())
+        self.assertIn(user_config, out)
+        self.assertIn(rc.TOGGLE_PREFIX + "关闭", out)
+        self.assertEqual(warns, [])
+
+    def test_no_techstack_block_is_script_generated(self):
+        """无技术栈块入口处理后不得出现脚本生成的技术栈字段。"""
+        out, _warns = rc._compose_entry(
+            "# CLAUDE.md\n", rc._load_kernel_source(), state="create",
+            project_type="non-coding", entry_name="CLAUDE.md",
+            existing_rule_files=set())
+        self.assertNotIn("### 项目技术栈", out)
+        self.assertNotIn("### 包管理器规则", out)
+        self.assertNotIn("覆盖率阈值", out)
+
+    def test_compose_returns_warnings(self):
+        """ut-compose-warnings：_compose_entry 返回 (text, warnings)。"""
+        text, warns = rc._compose_entry(
+            "## 笔记\n\n遵循 TDD 和代码规范 保留我\n", rc._load_kernel_source(),
+            state="insert", project_type="non-coding",
+            entry_name="CLAUDE.md", existing_rule_files=set())
+        self.assertIsInstance(warns, list)
+        self.assertIn("遵循 TDD 和代码规范 保留我", text)  # 章节外不被全文替换
+
+    def test_step_s4_aggregates_warnings_to_report(self):
+        """ut-s4-warnings：S4 执行后 report['warnings'] 汇总入口类 warning。"""
+        # 用 Task 1 的临时项目方式跑 apply，断言 report JSON 含 warnings 数组
+        import tempfile, subprocess, json
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "AGENTS.md").write_text("## 强制规则\n\n- 我的行 `.claude/rules/my-x.md`\n")
+            report_path = Path(td).parent / "r.json"
+            subprocess.run(["python3", str(SCRIPT_PATH), "apply", "--project-root", str(root),
+                            "--report", str(report_path), "--no-interrupt"], check=True)
+            rep = json.loads(report_path.read_text())
+            self.assertIn("warnings", rep)
+            self.assertTrue(any(w["code"] == "USER_LINES_KEPT" for w in rep["warnings"]))
+            self.assertEqual(rep["overall"], "ok")  # warning 不影响 overall
+
+
 class TestStepS4EntryFiles(unittest.TestCase):
     """step_s4_entry_files 集成断言：双入口合成、幂等、漂移修复。"""
 
@@ -1443,18 +1569,13 @@ class TestStepS4EntryFiles(unittest.TestCase):
         self.assertIn("## 强制规则", text)
 
     def test_skip_state_idempotent_no_change(self):
-        """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要/技术栈已收敛 → 幂等零写入）"""
+        """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要已收敛 → 幂等零写入）"""
         entry = self.root / "CLAUDE.md"
-        # 构造收敛态入口（L0=规范源 + 全部摘要行 + 技术栈块）：skip 状态零写入
-        tech = {
-            "language": "Python", "pkg_manager": "uv", "test": "pytest",
-            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
-        }
-        converged, diffs = rc._compose_entry(
+        # 构造收敛态入口（L0=规范源 + 全部摘要行）：skip 状态零写入
+        converged, _warnings = rc._compose_entry(
             rc.BASE_CLAUDE_MD, self.kernel, state="create",
-            project_type="non-coding", tech_stack=tech, entry_name="CLAUDE.md",
+            project_type="non-coding", entry_name="CLAUDE.md",
         )
-        self.assertEqual(diffs, [])
         entry.write_text(converged, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -1466,15 +1587,17 @@ class TestStepS4EntryFiles(unittest.TestCase):
             }
         })
         rc.step_s4_entry_files(
-            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
+            self.root, _intents(no_interrupt=True), plan, {},
         )
         self.assertEqual(entry.read_text(encoding="utf-8"), converged)
 
-    def test_skip_state_backfills_missing_summary_and_techstack(self):
-        """ut-step_s4-skip-backfill / codex 终审 I2 + SM-02
-        （L0 skip 但缺摘要/技术栈 → 补齐；L0 区块与用户内容不动）"""
+    def test_skip_state_backfills_missing_summary(self):
+        """ut-step_s4-skip-backfill：skip 状态仍补齐缺失摘要，不生成技术栈。"""
         entry = self.root / "CLAUDE.md"
-        base = "# CLAUDE.md\n\n说明\n\n" + self.kernel + "\n## 强制规则\n\n- 用户自定义规则\n"
+        base = (
+            "# CLAUDE.md\n\n说明\n\n" + self.kernel
+            + "\n## 强制规则\n\n- 用户自定义规则\n"
+        )
         entry.write_text(base, encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_ENTRY_FILES: {
@@ -1485,20 +1608,14 @@ class TestStepS4EntryFiles(unittest.TestCase):
                 }],
             }
         })
-        tech = {
-            "language": "Python", "pkg_manager": "uv", "test": "pytest",
-            "lint": "未检测到", "format": "未检测到", "coverage": "80%",
-        }
-        rc.step_s4_entry_files(
-            self.root, _intents(no_interrupt=True), plan, {"tech_stack": tech},
-        )
+        rc.step_s4_entry_files(self.root, _intents(no_interrupt=True), plan, {})
         result = entry.read_text(encoding="utf-8")
-        # 缺失摘要补齐（SM-02）与技术栈块写入（S4 单次完成）
-        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
-        self.assertIn("### 项目技术栈", result)
-        self.assertIn("**覆盖率阈值**：80%", result)
-        # 用户内容保留；L0 区块逐字不变
+        self.assertIn(
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+            result,
+        )
         self.assertIn("- 用户自定义规则", result)
+        self.assertNotIn("### 项目技术栈", result)
         begin = result.index(rc.L0_BEGIN)
         end = result.index(rc.L0_END, begin) + len(rc.L0_END)
         self.assertEqual(result[begin:end].strip(), self.kernel.strip())
@@ -1725,7 +1842,8 @@ class TestSummaryDedup(unittest.TestCase):
         real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
         self.rules_root.mkdir(parents=True)
         for f in real_tpl.iterdir():
-            (self.rules_root / f.name).write_bytes(f.read_bytes())
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
         self.openspec_yaml = (
             Path(__file__).resolve().parents[1]
             / "references"
@@ -1759,8 +1877,8 @@ class TestSummaryDedup(unittest.TestCase):
         self.assertEqual(
             section.count(".claude/rules/document-storage.md"), 1
         )
-        self.assertIn(custom_line, section.splitlines())
-        self.assertNotIn(standard_line, section.splitlines())
+        self.assertIn(standard_line, section.splitlines())
+        self.assertNotIn(custom_line, section.splitlines())
 
     def test_duplicate_ref_deduped(self):
         claude = self.root / "CLAUDE.md"
@@ -1780,12 +1898,13 @@ class TestSummaryDedup(unittest.TestCase):
             rc.run_apply(self.root, _intents(no_interrupt=True), report)
         section = claude.read_text(encoding="utf-8")
         self.assertEqual(section.count("language.md"), 1)
-        self.assertIn(first_line, section.splitlines())
+        self.assertNotIn(first_line, section.splitlines())
+        self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", section.splitlines())
         self.assertNotIn(duplicate_line, section.splitlines())
 
 
-class TestEnsureSummaryLines(unittest.TestCase):
-    """_ensure_summary_lines 覆盖 7 类摘要（评审 Important 1）：缺失规则 2/6 能补回。"""
+class TestNormalizeMandatoryRulesLegacy(unittest.TestCase):
+    """迁移自 _ensure_summary_lines 的规则 2/6 回归断言。"""
 
     def _base_rules_section(self, drop_lines=()):
         """构造一个含规则 1/3/4/5/7 但缺规则 2/6 的 ## 强制规则 章节（CLAUDE.md 风格）。"""
@@ -1819,46 +1938,62 @@ class TestEnsureSummaryLines(unittest.TestCase):
     def test_missing_rule2_and_rule6_are_added_claude_noncoding(self):
         """ut-ensure_summary-missing-rule2-rule6 / Important 1（CLAUDE.md 非 Coding：补回规则 2 非必要 + 规则 6 块）"""
         text = self._base_rules_section()
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
         # 规则 2（非 Coding 文本）被补回
         self.assertIn(rc.RULE2_TEXT_NONCODING, out)
         self.assertNotIn(rc.RULE2_TEXT_CODING, out)
         # 规则 6 多行块被补回（至少首行 + 末行）
-        self.assertIn("### 6. 项目个性化规则（强制规则）", out)
+        self.assertIn("### 6. 项目个性化规则", out)
         self.assertIn("- 详见 `cadence/project-rules/README.md`", out)
+
+    def test_rule6_restored_when_only_standard_reference_block_remains(self):
+        """回归：标准引用块的 cadence/project-rules/ 路径不应伪装成规则 6 正文。"""
+        text = (
+            "# CLAUDE.md\n\n## 强制规则\n\n"
+            "> **🔴 必须遵守 - 无例外**\n"
+            "> 详细规则见 `.claude/rules/` 目录下的各规则文件。\n"
+            "> 用户自定义规则见 `cadence/project-rules/` 目录。\n\n"
+            "### 1. 语言规则\n"
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+            "### 2. 代码使用规则\n" + rc.RULE2_TEXT_NONCODING + "\n\n"
+            "### 3. 文档存储规则\n"
+            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`\n\n"
+            "### 4. Markdown 格式规则\n"
+            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`\n\n"
+            "### 5. MCP Server 使用规则\n"
+            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`\n\n"
+            "### 7. 代码阅读规则\n"
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
+        )
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
+        self.assertIn("### 6. 项目个性化规则", out)
 
     def test_missing_rule2_coding_variant_added_for_coding_project(self):
         """ut-ensure_summary-rule2-coding / Important 1（Coding 项目补回规则 2 = 遵循 TDD）"""
         text = self._base_rules_section()
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "coding", set())[0]
         self.assertIn(rc.RULE2_TEXT_CODING, out)
         self.assertNotIn(rc.RULE2_TEXT_NONCODING, out)
 
     def test_complete_section_unchanged(self):
         """ut-ensure_summary-complete-unchanged / Important 1（7 类摘要齐全则不动）"""
         # BASE_CLAUDE_MD 本身含 7 条摘要 → 不应改动
-        out = rc._ensure_summary_lines(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(rc.BASE_CLAUDE_MD, "CLAUDE.md", "non-coding", set())[0]
         self.assertEqual(out, rc.BASE_CLAUDE_MD)
 
-    def test_rule6_first_line_marker_prevents_block_reappend(self):
-        """CLAUDE/AGENTS 对应首行 marker 已存在时，均不重复追加规则 6 块。"""
-        cases = (
-            ("CLAUDE.md", rc.BASE_CLAUDE_MD, rc.RULE6_BLOCK_CLAUDE),
-            ("AGENTS.md", rc.BASE_AGENTS_MD, rc.RULE6_BLOCK_AGENTS),
-        )
-        for entry_name, base, block in cases:
+    def test_rule6_heading_is_canonical_for_both_entries(self):
+        """规则 6 标题由权威清单统一渲染，入口差异仅保留在正文。"""
+        for entry_name, base in (("CLAUDE.md", rc.BASE_CLAUDE_MD), ("AGENTS.md", rc.BASE_AGENTS_MD)):
             with self.subTest(entry_name=entry_name):
-                first_line = block.splitlines()[0]
-                text = base.replace(block, first_line)
-                out = rc._ensure_summary_lines(text, entry_name, "non-coding")
-                self.assertEqual(out, text)
-                self.assertEqual(out.count(first_line), 1)
+                out, _ = rc._normalize_mandatory_rules(base, entry_name, "non-coding", set())
+                self.assertEqual(out.count("### 6. 项目个性化规则"), 1)
+                self.assertNotIn("### 6. 项目个性化规则（强制规则）", out)
 
     def test_multi_marker_dedup_recomputes_missing_from_result(self):
         """删除含重复 marker 的多引用行后，补回该行承载的唯一规则引用。"""
         combined_line = "- **组合引用** language.md + code-usage.md"
         text = rc.BASE_CLAUDE_MD.replace(rc.RULE2_TEXT_NONCODING, combined_line)
-        out = rc._ensure_summary_lines(text, "CLAUDE.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
         self.assertNotIn(combined_line, out.splitlines())
         self.assertIn(rc.RULE2_TEXT_NONCODING, out.splitlines())
         self.assertEqual(out.count("code-usage.md"), 1)
@@ -1875,9 +2010,144 @@ class TestEnsureSummaryLines(unittest.TestCase):
             "### 5. MCP Server 使用规则\n- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`\n\n"
             "### 7. 代码阅读规则\n- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n"
         )
-        out = rc._ensure_summary_lines(text, "AGENTS.md", "non-coding")
+        out = rc._normalize_mandatory_rules(text, "AGENTS.md", "non-coding", set())[0]
         self.assertIn("### 6. 项目个性化规则\n", out)
         self.assertIn("- 禁止在 `.claude/rules/` 目录中添加用户自定义规则", out)
+
+
+KB_AGENTS = "# KB\n\nEnglish knowledge base content.\n\n## NOTES\n\n- keep me\n"
+
+
+class TestNormalizeMandatoryRules(unittest.TestCase):
+    def _norm(self, text, entry="AGENTS.md", ptype="non-coding", files=set()):
+        return rc._normalize_mandatory_rules(text, entry, ptype, files)
+
+    def test_create_section_when_missing(self):
+        """ut-norm-create：无章节时创建（全局顺序在 Task 5 集成验证）。"""
+        out, warns = self._norm(KB_AGENTS)
+        self.assertIn("## 强制规则", out)
+        self.assertIn("### 1. 语言规则", out)
+        self.assertIn("### 7. 代码阅读规则", out)
+        self.assertIn("English knowledge base content.", out)
+
+    def test_serena_removed(self):
+        """ut-norm-retired：退役清单命中删除。"""
+        text = "## 强制规则\n\n### 5. Serena 使用规则\n- **禁止分析 .git 目录** → 详见 `.claude/rules/serena-usage.md`\n"
+        out, _ = self._norm(text, "CLAUDE.md")
+        self.assertNotIn("serena-usage.md", out)
+        self.assertNotIn("Serena", out)
+
+    def test_forward_reference_kept(self):
+        """ut-norm-forward-ref：未在退役清单的不存在文件引用按用户内容保留。"""
+        text = "## 强制规则\n\n### 9. 自定义规则\n- **我的规则** → 详见 `.claude/rules/my-future.md`\n"
+        out, warns = self._norm(text)
+        self.assertIn("my-future.md", out)
+        self.assertTrue(any(w["code"] == "USER_LINES_KEPT" for w in warns))
+
+    def test_renumber_1_to_9(self):
+        """ut-norm-renumber：1-9 错乱重排为权威 1-7。"""
+        text = ("## 强制规则\n\n### 5. Serena 使用规则\n- x `.claude/rules/serena-usage.md`\n"
+                "### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n")
+        out, _ = self._norm(text, "CLAUDE.md", "coding", set())
+        self.assertIn("### 1. 语言规则", out)
+        self.assertIn("### 2. 代码使用规则", out)
+        self.assertIn("遵循 TDD", out)
+        self.assertNotIn("### 8.", out)
+
+    def test_dedup_same_ref(self):
+        """ut-norm-dedup：同规则文件多引用保留首个。"""
+        text = ("## 强制规则\n\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
+                "- 重复行 `.claude/rules/language.md`\n")
+        out, _ = self._norm(text)
+        self.assertEqual(out.count("language.md"), 1)
+
+    def test_idempotent(self):
+        """ut-norm-idempotent：二次运行逐字不变。"""
+        once, _ = self._norm(KB_AGENTS)
+        twice, warns2 = self._norm(once)
+        self.assertEqual(once, twice)
+
+    def test_idempotent_preserves_user_line_adjacent_to_canonical_h3(self):
+        """ut-norm-idempotent-adjacent：权威 H3 尾部用户行不可在第二次收敛时丢失。"""
+        text = (
+            "## 强制规则\n\n"
+            "### 7. 代码阅读规则\n"
+            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`\n\n"
+            "> **必须遵守 - 无例外**\n"
+            "### 7. Playwright CLI 使用规则\n"
+            "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`\n"
+        )
+        once, _ = self._norm(text)
+        twice, _ = self._norm(once)
+        self.assertEqual(once, twice)
+        self.assertIn("> **必须遵守 - 无例外**", twice)
+
+    def test_rule2_coding_switch(self):
+        """ut-norm-rule2：规则 2 按 project_type 选文案。"""
+        text = "## 强制规则\n\n- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`\n"
+        out, _ = self._norm(text, "CLAUDE.md", "coding", set())
+        self.assertIn("遵循 TDD", out)
+        self.assertNotIn("非必要不编写代码", out)
+
+    def test_playwright_included_when_file_exists(self):
+        """ut-norm-playwright：条件项。"""
+        out, _ = self._norm(KB_AGENTS, files={"playwright.md"})
+        self.assertIn("Playwright", out)
+        out2, _ = self._norm(KB_AGENTS)
+        self.assertNotIn("Playwright", out2)
+
+    def test_user_h3_block_moved_as_whole(self):
+        """ut-norm-user-h3：用户 H3 小节整体平移到权威条目之后。"""
+        text = ("## 强制规则\n\n### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
+                "### 我的自定义小节\n正文第一行\n正文第二行\n")
+        out, warns = self._norm(text)
+        idx_custom = out.index("### 我的自定义小节")
+        idx_rule7 = out.index("### 7. 代码阅读规则")
+        self.assertGreater(idx_custom, idx_rule7)
+        self.assertIn("正文第一行\n正文第二行", out)
+
+    def test_orphan_rule6_outside_section_warns(self):
+        """ut-norm-orphan-rule6：章节外孤立规则 6 H2 保留 + ORPHAN_RULE6。"""
+        text = ("## 强制规则\n\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+                "## 项目个性化规则（强制规则）\n\n- 旧文案\n")
+        out, warns = self._norm(text)
+        self.assertIn("## 项目个性化规则（强制规则）", out)
+        self.assertTrue(any(w["code"] == "ORPHAN_RULE6" for w in warns))
+
+    def test_duplicate_h2_only_first_normalized(self):
+        """ut-norm-dup-h2：多个 ## 强制规则 仅规范化首个 + DUPLICATE_H2。"""
+        text = "## 强制规则\n\n- x `.claude/rules/language.md`\n\n## 强制规则\n\n- 旧 `.claude/rules/serena-usage.md`\n"
+        out, warns = self._norm(text)
+        self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
+        self.assertEqual(out.count("## 强制规则"), 2)
+        self.assertIn("serena-usage.md", out.split("## 强制规则")[2])
+
+    def test_rule6_old_wording_replaced(self):
+        """ut-norm-rule6-old：旧 CLAUDE/AGENTS 规则 6 文案识别并替换为权威块。"""
+        old = "## 强制规则\n\n### 6. 项目个性化规则（强制规则）\n- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n- 禁止在 `rules/` 目录中添加用户自定义规则\n- 详见 `cadence/project-rules/README.md`\n"
+        out, _ = self._norm(old, "CLAUDE.md")
+        self.assertIn("### 6. 项目个性化规则", out)
+        self.assertNotIn("（强制规则）", out.split("## 强制规则")[1])
+
+    def test_rule2_text_outside_section_untouched(self):
+        """ut-norm-outside-rule2：章节外规则 2 旧文案不被修改。"""
+        text = "## 强制规则\n\n- x `.claude/rules/language.md`\n\n## 笔记\n\n遵循 TDD 和代码规范 是我的座右铭\n"
+        out, _ = self._norm(text, "CLAUDE.md", "non-coding", set())
+        self.assertIn("遵循 TDD 和代码规范 是我的座右铭", out)
+
+    def test_empty_retired_list_no_deletion(self):
+        """ut-norm-retired-empty：退役清单为空时无删除。"""
+        with mock.patch.object(rc, "RETIRED_RULE_FILES", []):
+            text = "## 强制规则\n\n- x `.claude/rules/serena-usage.md`\n"
+            out, _ = self._norm(text)
+            self.assertIn("serena-usage.md", out)
+
+    def test_claude_agents_wording_differs(self):
+        """ut-norm-wording：MCP/规则 6 双入口文案差异。"""
+        out_c, _ = self._norm(KB_AGENTS, "CLAUDE.md")
+        out_a, _ = self._norm(KB_AGENTS, "AGENTS.md")
+        self.assertIn("各 MCP 工具的使用规范", out_c)
+        self.assertIn("各 MCP 工具及相关自动化工具的使用必须遵循项目规范", out_a)
 
 
 class TestEnsureGitignoreLine(unittest.TestCase):
@@ -1963,7 +2233,7 @@ class TestComputePlanFinalReview(unittest.TestCase):
         (rules_dir / "language.md").write_text("本地漂移\n", encoding="utf-8")
         (rules_dir / rc.L1_RULE_FILENAME).write_text("L1 本地漂移\n", encoding="utf-8")
         (self.root / "CLAUDE.md").write_text(
-            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+            "# CLAUDE.md\n\n" + V2_START + "\n漂移\n" + V2_END + "\n", encoding="utf-8"
         )
         (self.root / "AGENTS.md").write_text("# AGENTS.md\n无标记\n", encoding="utf-8")
         (self.root / "openspec").mkdir()
@@ -2024,11 +2294,26 @@ class TestComputePlanFinalReview(unittest.TestCase):
         self.assertEqual(assets["CLAUDE.md"]["backup_needed"], True)
         self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
 
+    def test_duplicate_current_blocks_are_deterministic_not_conflicts(self):
+        """ut-compute-plan-l0-dedup：重复 v2 块必须直接归并，普通模式不要求决策。"""
+        duplicate = L0_SOURCE + "\n\n## 用户章节\nx\n\n" + L0_SOURCE
+        (self.root / "CLAUDE.md").write_text(duplicate, encoding="utf-8")
+        plan = rc.compute_plan(self.root, _intents())
+        conflicts = self._conflicts_by_id(plan)
+        self.assertNotIn("s4:CLAUDE.md", conflicts)
+        asset = next(
+            a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
+            if a["path"] == "CLAUDE.md"
+        )
+        self.assertEqual(asset["action"], "dedup")
+        self.assertTrue(asset["backup_needed"])
+        self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
+
     def test_drift_still_conflict_with_allowed_decisions(self):
         """ut-compute_plan-l0-drift-conflict / 终审 I-2 边界
         （drift/broken 仍产 decision 冲突，allowed_decisions=['replace','keep']）"""
         (self.root / "CLAUDE.md").write_text(
-            "# CLAUDE.md\n\n" + V1_START + "\n漂移\n" + V1_END + "\n", encoding="utf-8"
+            "# CLAUDE.md\n\n" + V2_START + "\n漂移\n" + V2_END + "\n", encoding="utf-8"
         )
         plan = rc.compute_plan(self.root, _intents())
         conflicts = self._conflicts_by_id(plan)
@@ -2861,6 +3146,141 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
         self.assertEqual(result, template)
         self.assertIn("CodeGraph", result)
         self.assertNotIn("仅 ast-grep", result)
+
+
+class TestEndToEndRegression(unittest.TestCase):
+    """ut-e2e-entry-kb / ut-e2e-entry-claude：问题入口文件端到端回归。
+
+    fixture 来源于初始化问题现场的 /tmp/AGENTS.md 与 /tmp/CLAUDE.md；报告路径
+    特意放在项目根外，覆盖真实 CLI ``apply --no-interrupt`` 而非仅调用内部函数。
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+    def _run(self):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        root = Path(td.name)
+        (root / "package.json").write_text(
+            '{"scripts":{"test":"vitest","lint":"oxlint src"}}',
+            encoding="utf-8",
+        )
+        (root / "AGENTS.md").write_text(
+            (self.FIXTURES / "entry-kb-agents.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (root / "CLAUDE.md").write_text(
+            (self.FIXTURES / "entry-drift-claude.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        report_fd, report_name = tempfile.mkstemp(
+            prefix="rule-config-entry-e2e-", suffix=".json"
+        )
+        os.close(report_fd)
+        report = Path(report_name)
+        self.addCleanup(lambda: report.unlink(missing_ok=True))
+        self.assertNotIn(root, report.parents)
+        subprocess.run(
+            [
+                "python3",
+                str(SCRIPT_PATH),
+                "apply",
+                "--project-root",
+                str(root),
+                "--report",
+                str(report),
+                "--no-interrupt",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(result["overall"], "ok")
+        return root, result
+
+    def test_kb_agents_gets_full_section(self):
+        """ut-e2e-kb：KB 型 AGENTS.md 获得完整强制规则且用户内容保留。"""
+        root, _report = self._run()
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        for number, title in (
+            (1, "语言规则"),
+            (2, "代码使用规则"),
+            (3, "文档存储规则"),
+            (4, "Markdown 格式规则"),
+            (5, "MCP Server 使用规则"),
+            (6, "项目个性化规则"),
+            (7, "代码阅读规则"),
+        ):
+            self.assertIn(f"### {number}. {title}", agents)
+        self.assertIn(V2_START, agents)
+        self.assertIn(V2_END, agents)
+        self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
+        self.assertIn("产物自动提交（design/plan）**：关闭", agents)
+        self.assertNotIn("serena-usage.md", agents)
+
+    def test_dry_run_warnings_match_apply(self):
+        """ut-e2e-warnings：dry-run 与无中断 apply 的 planned warnings 完全一致。"""
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        root = Path(td.name)
+        (root / "package.json").write_text(
+            '{"scripts":{"test":"vitest","lint":"oxlint src"}}',
+            encoding="utf-8",
+        )
+        # 构造会触发纯函数 warnings 的入口：重复强制规则 H2、孤立规则 6，
+        # 并保留正常用户内容以覆盖 warnings 的 code/file 字段。
+        (root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n"
+            "## 强制规则\n\n"
+            "### 1. 语言规则\n"
+            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n\n"
+            "## 强制规则\n\n"
+            "- 用户自定义说明\n\n"
+            "## 项目个性化规则（强制规则）\n\n"
+            "- 孤立说明\n",
+            encoding="utf-8",
+        )
+        dry_fd, dry_name = tempfile.mkstemp(prefix="rule-config-dry-", suffix=".json")
+        apply_fd, apply_name = tempfile.mkstemp(prefix="rule-config-apply-", suffix=".json")
+        os.close(dry_fd); os.close(apply_fd)
+        dry_report = Path(dry_name); apply_report = Path(apply_name)
+        self.addCleanup(lambda: dry_report.unlink(missing_ok=True))
+        self.addCleanup(lambda: apply_report.unlink(missing_ok=True))
+        common = [
+            "python3", str(SCRIPT_PATH), "--project-root", str(root),
+        ]
+        subprocess.run(
+            common[:2] + ["dry-run"] + common[2:] + ["--report", str(dry_report)],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            common[:2] + ["apply"] + common[2:] + [
+                "--report", str(apply_report), "--no-interrupt",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        dry_warnings = json.loads(dry_report.read_text(encoding="utf-8"))["warnings"]
+        apply_warnings = json.loads(apply_report.read_text(encoding="utf-8"))["warnings"]
+        self.assertEqual(dry_warnings, apply_warnings)
+        self.assertTrue(dry_warnings)
+        self.assertEqual(
+            {(item["code"], item["file"]) for item in dry_warnings},
+            {(item["code"], item["file"]) for item in apply_warnings},
+        )
+
+    def test_claude_serena_removed_and_renumbered(self):
+        """ut-e2e-claude：CLAUDE.md Serena 清理与规则重排。"""
+        root, _report = self._run()
+        claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertNotIn("Serena", claude)
+        self.assertNotIn("serena-usage.md", claude)
+        self.assertIn("### 1. 语言规则", claude)
+        self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
+        self.assertNotIn("playwright.md", claude)
+        self.assertIn(V2_START, claude)
+        self.assertIn(V2_END, claude)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):

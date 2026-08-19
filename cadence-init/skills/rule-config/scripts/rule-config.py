@@ -104,9 +104,21 @@ STEP_ORDER = (
 
 # L0 受管区块标记：版本化注释对，用于在入口文件中圈定 cadence-managed 内容。
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
-# 锁定 L0_SOURCE 全文）。版本号固定为 v1（当前版本）。
-L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
-L0_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
+# 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
+# 漏检历史区块。
+L0_CURRENT_VERSION = "v2"
+L0_OLD_VERSIONS = ["v1", "v0"]
+L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
+L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
+
+# Skill 默认产物路径在本项目中的强制覆盖表。该文本是单一事实源，必须与
+# references/rules/agent-routing-kernel.md 和 document-storage.md 中的表逐字一致。
+ARTIFACT_PATH_OVERRIDE_TABLE = (
+    "| Skill 默认路径 | 本项目强制路径 |\n"
+    "|---|---|\n"
+    "| `docs/superpowers/specs/`（design/spec） | `cadence/designs/` |\n"
+    "| `docs/superpowers/plans/`（plan） | `cadence/plans/` |"
+)
 
 # L1 规则文件版本标记（单行注释，位于文件首行）。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
@@ -237,95 +249,26 @@ try:
 except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模块导入
     KNOWN_L1_VERSIONS["v1"] = ""
 
+# L0 v1 历史规范源：只有与该文本逐字一致的完整 v1 区块才可确定性升级。
+# v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
+L0_OLD_SOURCES = {
+    "v1": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v1.md"),
+}
+
 
 # ---------------------------------------------------------------------------
 # BASE 入口文本常量（Task 6）：入口不存在时创建的基础文本（含文件说明 + ## 强制规则 骨架）
 # 模板来源：现行 SKILL.md 的 CLAUDE.md / AGENTS.md 模板章节（见 SKILL.md 行 205+、256+）。
-# L0 受管区块由 step_s4_entry_files 在首个 ## 强制规则 前插入；技术栈/包管理器/覆盖率 80%
-# 块按检测结果追加；规则 2 摘要行按项目类型选择文本。
+# L0 受管区块由 step_s4_entry_files 在首个 ## 强制规则 前插入；项目配置仅维护
+# 产物自动提交开关；规则 2 摘要行按项目类型选择文本。
 # ---------------------------------------------------------------------------
-
-BASE_CLAUDE_MD = """# CLAUDE.md
-
-本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 使用规则
-- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则（强制规则）
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
-"""
-
-BASE_AGENTS_MD = """# AGENTS.md
-
-本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
-
-## 默认角色
-
-- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按指令完成实现、验证与结果汇报。
-- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。
-
-## 强制规则
-
-> **🔴 必须遵守 - 无例外**
-> 详细规则见 `.claude/rules/` 目录下的各规则文件。
-> 用户自定义规则见 `cadence/project-rules/` 目录。
-
-### 1. 语言规则
-- **必须使用中文回答** → 详见 `.claude/rules/language.md`
-
-### 2. 代码使用规则
-- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`
-
-### 3. 文档存储规则
-- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`
-
-### 4. Markdown 格式规则
-- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`
-
-### 5. MCP Server 与工具使用规则
-- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`
-
-### 6. 项目个性化规则
-- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `.claude/rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
-- 详见 `cadence/project-rules/README.md`
-
-### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
-"""
 
 # 规则 2（代码使用规则）摘要行：按项目类型选择文本（Coding → 遵循 TDD；非 Coding → 非必要不编写）。
 RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/code-usage.md`"
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
 
 # 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
-# _ensure_summary_lines 按各入口块的首行 marker 判断规则 6 是否已存在。
+# 规则 6 正文按入口选择；规范化阶段通过 CANONICAL_RULES 的路径 marker 识别。
 RULE6_BLOCK_CLAUDE = (
     "### 6. 项目个性化规则（强制规则）\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
@@ -340,6 +283,96 @@ RULE6_BLOCK_AGENTS = (
     "- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件\n"
     "- 详见 `cadence/project-rules/README.md`"
 )
+RULE6_BLOCK_CLAUDE_BODY = "\n".join(RULE6_BLOCK_CLAUDE.splitlines()[1:])
+RULE6_BLOCK_AGENTS_BODY = "\n".join(RULE6_BLOCK_AGENTS.splitlines()[1:])
+
+RETIRED_RULE_FILES: list[str] = ["serena-usage.md"]
+
+# 权威规则清单。每项依次为身份 marker、标题、CLAUDE.md 正文和 AGENTS.md 正文。
+# 规则 2 的占位符在渲染时按 project_type 替换；规则 6 的正文复用既有块。
+CANONICAL_RULES: list[tuple[tuple[str, ...], str, str, str]] = [
+    (("language.md",), "语言规则",
+     "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
+     "- **必须使用中文回答** → 详见 `.claude/rules/language.md`"),
+    (("code-usage.md",), "代码使用规则", "{RULE2}", "{RULE2}"),
+    (("document-storage.md",), "文档存储规则",
+     "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
+     "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`"),
+    (("markdown-format.md",), "Markdown 格式规则",
+     "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
+     "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`"),
+    (("mcp-servers.md",), "MCP Server 使用规则",
+     "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`",
+     "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`"),
+    (("cadence/project-rules/",), "项目个性化规则",
+     RULE6_BLOCK_CLAUDE_BODY, RULE6_BLOCK_AGENTS_BODY),
+    (("code-reading.md",), "代码阅读规则",
+     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
+     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`"),
+]
+
+CANONICAL_RULE_PLAYWRIGHT = (
+    ("playwright.md",), "Playwright CLI 使用规则",
+    "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`",
+    "- **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`",
+)
+
+
+def _canonical_rules_for(existing_rule_files: set[str]) -> list:
+    """返回目标项目适用的有序权威规则清单。"""
+    rules = list(CANONICAL_RULES)
+    if "playwright.md" in existing_rule_files:
+        rules.append(CANONICAL_RULE_PLAYWRIGHT)
+    return rules
+
+
+def render_mandatory_section(entry_name: str, project_type: str,
+                            existing_rule_files: set[str]) -> str:
+    """根据权威清单渲染入口文件的 ``## 强制规则`` 章节。"""
+    lines = [
+        "## 强制规则",
+        "",
+        "> **🔴 必须遵守 - 无例外**",
+        "> 详细规则见 `.claude/rules/` 目录下的各规则文件。",
+        "> 用户自定义规则见 `cadence/project-rules/` 目录。",
+        "",
+    ]
+    for number, (_markers, title, claude_text, agents_text) in enumerate(
+        _canonical_rules_for(existing_rule_files), 1
+    ):
+        body = claude_text if entry_name == "CLAUDE.md" else agents_text
+        if body == "{RULE2}":
+            body = RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+        # 规则标题由 CANONICAL_RULES 统一提供；入口差异只体现在正文。
+        lines.extend([f"### {number}. {title}", *body.splitlines(), ""])
+    return "\n".join(lines)
+
+
+_CLAUDE_HEADER = """# CLAUDE.md
+
+本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。"""
+_AGENTS_HEADER = """# AGENTS.md
+
+本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
+
+## 默认角色
+
+- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按指令完成实现、验证与结果汇报。
+- **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。"""
+
+
+def render_base_entry(entry_name: str, project_type: str,
+                      existing_rule_files: set[str]) -> str:
+    """渲染入口不存在时使用的基础文本。"""
+    header = _CLAUDE_HEADER if entry_name == "CLAUDE.md" else _AGENTS_HEADER
+    return header + "\n\n" + render_mandatory_section(
+        entry_name, project_type, existing_rule_files
+    )
+
+
+# 兼容既有引用点：默认非 Coding、无条件规则文件时的 BASE 文本。
+BASE_CLAUDE_MD = render_base_entry("CLAUDE.md", "non-coding", set())
+BASE_AGENTS_MD = render_base_entry("AGENTS.md", "non-coding", set())
 
 # 决策枚举：规则文件/L0/L1 冲突 replace|keep；OpenSpec rules.apply 冲突 remove_apply|keep。
 DECISION_REPLACE = "replace"
@@ -469,6 +502,7 @@ def build_report(mode: str, project_root: Path) -> dict:
         "budget_seconds_excluding_codegraph": None,
         "steps": [],
         "conflicts": [],
+        "warnings": [],
         "backups": [],
         "hints": {"next": "mcp-configuration"},
         "failure": None,
@@ -872,67 +906,105 @@ def merge_markdown(template: str, existing: Optional[str]) -> Optional[str]:
     return render_sections(merged)
 
 
+def _l0_markers(version: str) -> tuple[str, str]:
+    """返回指定 L0 版本的 begin/end 标记。"""
+    prefix = "<!-- cadence-managed:openspec-superpowers-routing:"
+    return (
+        f"{prefix}{version}:start -->",
+        f"{prefix}{version}:end -->",
+    )
+
+
+def _analyze_l0_markers(text: str) -> tuple[list[tuple[dict, dict]], list[dict]]:
+    """安全识别 L0 完整对与孤立标记。
+
+    一个 begin 只有在下一个 begin 出现前遇到同版本 end 时才构成完整对；
+    任意版本的嵌套/后续 begin 都会使先前 begin 成为孤儿。这样不会将孤儿
+    begin 跨越用户内容贪心配到远处的 end。
+    """
+    events: list[dict] = []
+    for version in [L0_CURRENT_VERSION] + L0_OLD_VERSIONS:
+        begin_marker, end_marker = _l0_markers(version)
+        for marker, kind in ((begin_marker, "begin"), (end_marker, "end")):
+            cursor = 0
+            while True:
+                index = text.find(marker, cursor)
+                if index == -1:
+                    break
+                events.append({
+                    "version": version,
+                    "kind": kind,
+                    "start": index,
+                    "end": index + len(marker),
+                })
+                cursor = index + len(marker)
+    events.sort(key=lambda event: event["start"])
+
+    pairs: list[tuple[dict, dict]] = []
+    orphans: list[dict] = []
+    pending_begin: dict | None = None
+    for event in events:
+        if event["kind"] == "begin":
+            if pending_begin is not None:
+                # 任意版本的新 begin 使此前 begin 不再可合法配对。
+                orphans.append(pending_begin)
+            pending_begin = event
+        elif pending_begin is not None and pending_begin["version"] == event["version"]:
+            pairs.append((pending_begin, event))
+            pending_begin = None
+        else:
+            # 没有同版本 pending begin 的 end 也只能剥离标记行。
+            orphans.append(event)
+    if pending_begin is not None:
+        orphans.append(pending_begin)
+    return pairs, orphans
+
+
 def l0_block(text: str, source: str) -> str:
     """判定 L0 受管区块状态（L0-P6~P10）。
 
-    返回五态之一：
-      * skip：当前 v1 标记对且区块与规范源逐字一致；
-      * drift：v1 标记对但区块内容不同；
-      * insert：两个标记都不存在（需插入）；
-      * upgrade：成对受支持旧版本标记（v0 等，不在当前 v1/source 中）；
-      * broken：单侧标记或标记顺序错误。
+    返回六态之一：
+      * skip：唯一当前版本完整对且区块与规范源逐字一致；
+      * dedup：多个当前版本完整对，确定性归并且记录 warning；
+      * drift：当前版本内容不同，或有内容漂移的 v1 完整对；
+      * insert：没有 L0 标记；
+      * upgrade：可验证 v1 规范对，或无真实规范源的合法 v0 对；
+      * broken：孤立标记、顺序错误或混合残留。
     """
-    begin_idx = text.find(L0_BEGIN)
-    end_idx = text.find(L0_END)
-    has_begin = begin_idx != -1
-    has_end = end_idx != -1
+    pairs, orphans = _analyze_l0_markers(text)
+    current_pairs = [pair for pair in pairs if pair[0]["version"] == L0_CURRENT_VERSION]
+    current_orphans = [event for event in orphans if event["version"] == L0_CURRENT_VERSION]
+    old_pairs = [pair for pair in pairs if pair[0]["version"] in L0_OLD_VERSIONS]
+    old_events_present = any(
+        event["version"] in L0_OLD_VERSIONS
+        for pair in pairs for event in pair
+    ) or any(event["version"] in L0_OLD_VERSIONS for event in orphans)
 
-    if has_begin and has_end:
-        # 两个 v1 标记都在：顺序必须正确（begin 在 end 之前），否则 broken。
-        if begin_idx > end_idx:
+    if len(current_pairs) > 1:
+        # 不是 drift 决策：重复当前版本区块必须在两种模式均确定性归并。
+        return "dedup"
+    if len(current_pairs) == 1:
+        if current_orphans or old_events_present:
             return "broken"
-        block_start = begin_idx
-        block_end = end_idx + len(L0_END)
-        block = text[block_start:block_end]
-        # 重要（评审 Important 5）：逐字比对区块内容，不 strip() 整个区块
-        # （避免吞掉首部/内部空白差异）。仅对尾随换行做 rstrip，以容忍
-        # 规范源文件末尾的换行符与入口切片之间的尾随换行差异（文件系统层面，
-        # 非区块内容差异）。首部/内部任何字符差异均判 drift。
+        begin, end = current_pairs[0]
+        block = text[begin["start"]:end["end"]]
+        # 逐字比对；仅容忍文件末尾换行差异。
         return "skip" if block.rstrip("\n") == source.rstrip("\n") else "drift"
 
-    # 恰有一个 v1 标记 → 先看是否成对旧版标记（upgrade），否则单侧 broken。
-    if has_begin or has_end:
-        for ver in ("v0",):
-            old_begin_marker = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-            )
-            old_end_marker = (
-                "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-            )
-            ob = text.find(old_begin_marker)
-            oe = text.find(old_end_marker)
-            if ob != -1 and oe != -1 and ob < oe:
-                return "upgrade"
-        # 单侧 v1 标记且无成对旧版标记 → broken。
+    if old_pairs:
+        for begin, end in old_pairs:
+            version = begin["version"]
+            expected = L0_OLD_SOURCES.get(version)
+            if expected:
+                block = text[begin["start"]:end["end"]]
+                if block.rstrip("\n") != expected.rstrip("\n"):
+                    # 有真实历史源的版本必须匹配全文；漂移仍走冲突路径。
+                    return "drift"
+            # v0 无真实规范源，合法成对标记按历史兼容策略允许 upgrade。
+        return "upgrade"
+
+    if current_orphans or old_events_present:
         return "broken"
-
-    # 两个 v1 标记都不在：检查是否成对旧版标记（upgrade）。
-    for ver in ("v0",):
-        old_begin_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-        )
-        old_end_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-        )
-        ob = text.find(old_begin_marker)
-        oe = text.find(old_end_marker)
-        if ob != -1 and oe != -1 and ob < oe:
-            return "upgrade"
-        if ob != -1 or oe != -1:
-            # 旧版单侧标记 → broken。
-            return "broken"
-
-    # 两标记都不存在 → 需插入。
     return "insert"
 
 
@@ -1294,7 +1366,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "backup_needs": [],
     }
 
-    # --- S1 detect：项目类型 + 技术栈 ---
+    # --- S1 detect：项目类型 ---
     # codex 五轮重构：detect 只返回检测结果；最终 project_type 由两模式规则计算
     # （no-interrupt 以检测为准、普通模式 CLI 仅提升）。s1:project-type-conflict
     # 冲突机制已删除——任意检测+CLI 组合都有唯⼀确定结果，不再产冲突。
@@ -1305,7 +1377,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         detect_result["project_type"], intents
     )
     plan["project_type"] = final_project_type
-    plan["tech_stack"] = detect_result["tech_stack"]
     s1["status"] = "ok"
     s1["note"] = (
         f"project_type={final_project_type}; "
@@ -1320,7 +1391,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         "detected_type": detect_result["project_type"],
         "project_type": final_project_type,
         "evidence": detect_result["evidence"],
-        "tech_stack": detect_result["tech_stack"],
     }]
     s1["elapsed_ms"] = int((time.monotonic() - t_s1) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_DETECT] = s1
@@ -1499,6 +1569,9 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "action": "create",
                 "conflict": None,
                 "backup_needed": False,
+                "existing_rule_files": sorted(
+                    p.name for p in rules_dir.glob("*.md")
+                ),
             })
             continue
         # 文件存在 → 检测 L0 区块状态（骨架：存在即视为可能漂移 → conflict）
@@ -1515,18 +1588,19 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "conflict": None,
                 "backup_needed": False,
             })
-        # I-2 修复：insert/upgrade 为「两模式同动作」确定性动作
-        # （merge-semantics L0-05：无标记→直接插入；L0-04：旧版标记成对→备份后
-        # 自动升级），不产 decision 冲突；allowed_decisions 仅用于 drift/broken。
-        elif state in ("insert", "upgrade"):
+        # insert/upgrade/dedup 为「两模式同动作」确定性动作：无标记直接插入；
+        # 合法旧版升级和重复当前版本归并均经备份屏障后执行，不产 decision 冲突。
+        # 只有 drift/broken 需要显式 replace/keep 决策。
+        elif state in ("insert", "upgrade", "dedup"):
             s4["assets"].append({
                 "path": entry_name,
-                "action": state,  # "insert" 直接插入 / "upgrade" 屏障后备份升级
+                "action": state,
                 "conflict": state,
-                # L0-05 insert 不改原内容无需备份；L0-04 upgrade 纳入备份屏障。
-                "backup_needed": state == "upgrade",
+                # insert 不改原内容无需备份；upgrade/dedup 确定性重写现有入口，
+                # 均纳入全局备份屏障。
+                "backup_needed": state in ("upgrade", "dedup"),
             })
-            if state == "upgrade":
+            if state in ("upgrade", "dedup"):
                 _append_backup_need(plan, entry_path)
         else:
             # drift/broken → 需要决策的冲突（普通模式；C-1 修复：推荐保守 keep）。
@@ -1752,17 +1826,7 @@ _FALLBACK_GLOB_PATTERN = "**/cadence-init/skills/rule-config/references/rules/la
 
 
 def detect_project(root: Path, intents: Intents) -> dict:
-    """S1 项目类型与技术栈检测（codex 五轮重构：只返回检测结果）。
-
-    返回 dict：
-      {
-        "project_type": "coding"|"non-coding",   # 等同 detected_type（检测结果）
-        "evidence": str,            # 检测证据（相对路径 / 主配置名 / "none"）
-        "tech_stack": {             # 五类技术栈检测（未检出写「未检测到」）
-          "language": str, "pkg_manager": str,
-          "test": str, "lint": str, "format": str, "coverage": "80%",
-        },
-      }
+    """S1 项目类型检测（仅返回项目类型与检测证据）。
 
     用户裁决的项目类型规则（删除 s1:project-type-conflict 后）：detect 只负责自动检测，
     **完全不读取 intents**（既不应用 CLI --project-type，也不产生任何冲突）。最终
@@ -1785,13 +1849,9 @@ def detect_project(root: Path, intents: Intents) -> dict:
             detected_type = "coding"
             evidence = f"main config: {main_cfg}"
 
-    # 2) 技术栈检测（不受 project_type 影响，始终扫描配置文件）。
-    tech_stack = _detect_tech_stack(root)
-
     return {
         "project_type": detected_type,
         "evidence": evidence,
-        "tech_stack": tech_stack,
     }
 
 
@@ -1812,55 +1872,6 @@ def _detect_main_config(root: Path) -> Optional[str]:
         if (root / name).is_file():
             return name
     return None
-
-
-def _detect_tech_stack(root: Path) -> dict:
-    """S4 技术栈检测五类（DF-02 / S4-01~03）。
-
-    返回 dict(language, pkg_manager, test, lint, format, coverage)。
-    未检出的字段写「未检测到」（不阻塞初始化）；coverage 默认 80%。
-    """
-    ts = {
-        "language": "未检测到",
-        "pkg_manager": "未检测到",
-        "test": "未检测到",
-        "lint": "未检测到",
-        "format": "未检测到",
-        "coverage": "80%",
-    }
-    package_json = root / "package.json"
-    if package_json.is_file():
-        ts["language"] = "JavaScript/TypeScript"
-        ts["pkg_manager"] = "pnpm"
-        try:
-            data = json.loads(package_json.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            data = {}
-        scripts = data.get("scripts") if isinstance(data, dict) else None
-        if isinstance(scripts, dict):
-            for key in ("test", "lint", "format"):
-                val = scripts.get(key)
-                if isinstance(val, str) and val:
-                    ts[key] = val
-
-    requirements = root / "requirements.txt"
-    pyproject = root / "pyproject.toml"
-    has_python_cfg = requirements.is_file() or pyproject.is_file()
-    if has_python_cfg:
-        if ts["language"] == "未检测到":
-            ts["language"] = "Python"
-        ts["pkg_manager"] = "uv"
-        # 检测 pytest（requirements.txt 或 pyproject.toml 任一含 pytest）
-        py_text = ""
-        for p in (requirements, pyproject):
-            if p.is_file():
-                try:
-                    py_text += "\n" + p.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    pass
-        if "pytest" in py_text:
-            ts["test"] = "pytest"
-    return ts
 
 
 def locate_templates() -> tuple:
@@ -2021,16 +2032,13 @@ def _load_kernel_source() -> str:
 
 
 def step_s1_detect(root: Path, intents: Intents, plan: dict, report: dict) -> None:
-    """S1 执行（Task 5 实现）：回填 project_type/tech_stack 到报告。
+    """S1 执行（Task 5 实现）：回填 project_type 与检测证据到报告。
 
-    codex 五轮重构：project_type 已在 compute_plan 阶段按两模式规则计算为最终值
-    （plan["project_type"]）；detect_project 在此只用于补全 tech_stack/evidence。
+    codex 五轮重构：project_type 已在 compute_plan 阶段按两模式规则计算为最终值。
     s1 决策消费机制已删除（无 s1 冲突）。
     """
     detect_result = detect_project(root, intents)
     report["project_type"] = plan.get("project_type") or detect_result["project_type"]
-    # tech_stack 写入报告（供后续 S4 入口文件技术栈章节使用）。
-    report["tech_stack"] = detect_result["tech_stack"]
     report["evidence"] = detect_result["evidence"]
 
 
@@ -2167,7 +2175,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
-    # 文件与摘要不重写。摘要缺失时由 S4 摘要补全（SM-02）处理。
+    # 文件与摘要不重写。摘要缺失时由 S4 规则章节规范化（SM-02）处理。
     optional_rules = [CODEGRAPH_RULE_FILE]
     if intents.enable_playwright:
         optional_rules.append(PLAYWRIGHT_RULE_FILE)
@@ -2188,7 +2196,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             "result": "ok" if summary_present else "summary-missing",
             "detail": (
                 "规则文件与摘要均已存在（视为已启用）"
-                if summary_present else "摘要缺失（S4 摘要补全将处理）"
+                if summary_present else "摘要缺失（S4 规则章节规范化将处理）"
             ),
         })
 
@@ -2259,45 +2267,45 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
       1. 各入口在内存合成最终文本（入口不存在 → BASE 文本为基线）；
       2. L0 插入位置 = 首个 `## 强制规则` 前；无则文件说明后；
       3. drift/upgrade/broken → 替换/修复 L0 区块为规范源，区块外内容逐字保留；
-      4. 缺失摘要行追加；技术栈/包管理器/覆盖率 80% 块追加；规则 2 按项目类型选文本；
-      5. 摘要编号冲突 → 保留原文追加缺失并在 detail 说明；
+      4. 强制规则章节按规范化语义收敛；项目配置开关按规范落位；
+      5. 规范化产生的 warnings 汇总到顶层报告，不影响 overall；
       6. 各一次 atomic_write（全局备份屏障已由 run_apply 完成）。
     """
     kernel_source = _load_kernel_source()
     if not kernel_source:
         return
     project_type = plan.get("project_type", "non-coding")
-    tech_stack = report.get("tech_stack") or {}
     s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
     assets = s4_step.get("assets", []) or []
     decisions_map = plan.get("decisions_map", {}) or {}
     actions_log: list = []
+    existing_rule_files = {
+        p.name for p in (root / ".claude/rules").glob("*.md")
+    }
 
     for asset in assets:
         entry_name = asset["path"]
         entry_path = root / entry_name
         state = asset.get("conflict")  # None=skip/create, 或 insert/drift/upgrade/broken
         action = asset.get("action")
-        base_text = BASE_CLAUDE_MD if entry_name == "CLAUDE.md" else BASE_AGENTS_MD
+        base_text = render_base_entry(
+            entry_name, project_type, existing_rule_files
+        )
 
         if action == "skip" or (state is None and action != "create"):
-            # codex 终审 I2：L0 skip 状态也执行摘要补全与技术栈写入（SM-02/03、
-            # S4「单次完成 L0、摘要、技术栈」；L0 区块处理与摘要/技术栈是独立动作）。
+            # codex 终审 I2：L0 skip 状态也执行章节规范化（SM-02/03、
+            # S4 单次完成 L0 与规则章节；L0 区块处理与规则章节是独立动作）。
             # 内容无变化时不写盘（保持幂等，L0-02/SM-01）。
             existing = _safe_read(entry_path)
             if existing is None:
                 actions_log.append({"path": entry_name, "action": "skipped", "branch": "skip-unreadable"})
                 continue
-            composed, diffs = _compose_entry(
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state="skip",
-                project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                project_type=project_type,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
+            report.setdefault("warnings", []).extend(warnings)
             if composed != existing:
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
@@ -2307,68 +2315,51 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
         # 入口不存在 → 以 BASE 为基线，状态视为 create。
         if action == "create" and not entry_path.exists():
-            composed, diffs = _compose_entry(
+            composed, warnings = _compose_entry(
                 base_text, kernel_source, state="create",
-                project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                project_type=project_type,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
+            report.setdefault("warnings", []).extend(warnings)
             ensure_parent(entry_path)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "created", "branch": "base-created"})
             continue
 
-        # 入口存在且状态为 insert/upgrade/drift/broken。
+        # 入口存在且状态为 insert/upgrade/dedup/drift/broken。
         conflict_id = f"s4:{entry_name}"
         existing = _safe_read(entry_path) or ""
-        # I-2 修复：insert/upgrade 为确定性动作（merge-semantics L0-05/L0-04
-        # 「两模式同动作」），不走 decisions：insert 直接插入当前 v1；
-        # upgrade 在全局备份屏障通过后升级为当前 v1。
-        if action in ("insert", "upgrade"):
-            composed, diffs = _compose_entry(
+        # insert/upgrade/dedup 为确定性动作，不走 decisions：insert 直接插入；
+        # upgrade 和 dedup 在全局备份屏障通过后分别升级/归并为当前版本。
+        if action in ("insert", "upgrade", "dedup"):
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state=state or action,
-                project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                project_type=project_type,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
+            report.setdefault("warnings", []).extend(warnings)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
         # drift/broken → 按模式/决策处理。
         decision = decisions_map.get(conflict_id)
         if intents.no_interrupt:
-            composed, diffs = _compose_entry(
+            composed, warnings = _compose_entry(
                 existing, kernel_source, state=state or "insert",
-                project_type=project_type, tech_stack=tech_stack,
-                entry_name=entry_name,
+                project_type=project_type,
+                entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
-            if diffs:
-                actions_log.append({
-                    "path": entry_name, "action": "techstack-diff",
-                    "diffs": diffs,
-                })
+            report.setdefault("warnings", []).extend(warnings)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
         else:
             if decision == DECISION_REPLACE:
-                composed, diffs = _compose_entry(
+                composed, warnings = _compose_entry(
                     existing, kernel_source, state=state or "insert",
-                    project_type=project_type, tech_stack=tech_stack,
-                    entry_name=entry_name,
+                    project_type=project_type,
+                    entry_name=entry_name, existing_rule_files=existing_rule_files,
                 )
-                if diffs:
-                    actions_log.append({
-                        "path": entry_name, "action": "techstack-diff",
-                        "diffs": diffs,
-                    })
+                report.setdefault("warnings", []).extend(warnings)
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": f"replace-{state}"})
             else:
@@ -2378,63 +2369,58 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
 
 
 def _compose_entry(existing: str, l0_source: str, *, state: str,
-                   project_type: str, tech_stack: dict,
-                   entry_name: str) -> tuple:
-    """合成入口文件最终文本，返回 ``(text, techstack_diffs)``。
+                   project_type: str,
+                   entry_name: str,
+                   existing_rule_files: set[str] | None = None) -> tuple:
+    """合成入口文件最终文本，返回 ``(text, warnings)``。
 
-    按状态区分 L0 区块处理（保证幂等与区块外保留）：
-      * skip：L0 区块不动；
-      * create（入口不存在，基线=BASE 文本）：插入 L0；
-      * insert（入口存在但无 L0 标记）：插入 L0；
-      * drift/upgrade：移除旧区块对后重新插入规范 L0；
-      * broken：只移除孤立标记行后插入规范 L0。
+    L0 处理：skip 保持现有规范块；create 直接插入；insert、upgrade、dedup、
+    drift、broken 均统一调用 `_normalize_l0_to_single_block`，安全移除可处理
+    标记并生成唯一当前版本块。dedup 保留首个当前块；若其内容漂移，下一轮
+    会按 drift 再收敛一次（已知两轮收敛风险，按当前契约不改变该行为）。
 
-    codex 终审 I2：无论 L0 状态如何（skip/insert/upgrade/drift/broken/create），
-    均执行规则 2 选文本、缺失摘要行追加（SM-02/03）与技术栈块写入（DF-02/S4
-    「单次完成 L0、摘要、技术栈」）——L0 区块处理与摘要/技术栈是独立动作。
-    摘要补全为幂等追加；技术栈逐项替换占位、保留用户真实值并返回差异，
+    无论 L0 状态如何（skip/insert/upgrade/dedup/drift/broken/create），均执行强制规则
+    章节规范化与产物开关归并；L0 区块处理与规则章节是独立动作。
+    规则章节规范化保留可识别的用户块；
     区块外用户内容保留（L0-B2）。
     """
     text = existing
+    if existing_rule_files is None:
+        existing_rule_files = set()
 
     # --- 步骤 1：规范化 L0 ---
+    l0_warnings: list[dict] = []
     if state == "skip":
         pass
-    elif state == "insert":
-        text = _insert_l0_block(text, l0_source)
-    elif state in ("drift", "upgrade"):
-        # 标记对完整：移除整个旧区块，保留区块外内容，重新插入规范 L0。
-        text = _remove_l0_block_pair(text)
-        text = _insert_l0_block(text, l0_source)
     elif state == "create":
         # BASE 基线本身无 L0 → 插入。
         text = _insert_l0_block(text, l0_source)
-    else:
-        # broken：只移除孤立标记行，保留所有非标记内容。
-        text = _strip_l0_marker_lines_only(text)
-        text = _insert_l0_block(text, l0_source)
-
-    # --- 步骤 2：规则 2 摘要行按项目类型选择（I2：全状态执行）---
-    rule2_text = (
-        RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+    elif state in ("insert", "upgrade", "dedup", "drift", "broken"):
+        # 所有非收敛态统一走确定性归并：移除全部版本的完整区块，剥离
+        # 孤立标记，重新注入单一当前版本区块。drift 的替换语义同样只
+        # 影响受管区块，区块外文本逐字保留。
+        text, l0_warnings = _normalize_l0_to_single_block(text, l0_source)
+        for warning in l0_warnings:
+            warning.setdefault("file", entry_name)
+        # warning 在最终返回值中与强制规则 warning 合并。
+    # --- 步骤 2：强制规则章节规范化（I2：全状态执行）---
+    text, warnings = _normalize_mandatory_rules(
+        text, entry_name, project_type, existing_rule_files
     )
-    for variant in (RULE2_TEXT_CODING, RULE2_TEXT_NONCODING):
-        if variant in text and variant != rule2_text:
-            text = text.replace(variant, rule2_text, 1)
+    warnings = l0_warnings + warnings
 
-    # --- 步骤 3：缺失摘要行追加（I2：全状态执行，SM-02）---
-    text = _ensure_summary_lines(text, entry_name, project_type)
+    # --- 步骤 3：产物自动提交开关（缺失时默认关闭；用户值保留）---
+    text, toggle_warnings = _ensure_commit_toggle(text, entry_name)
+    warnings.extend(toggle_warnings)
 
-    # --- 步骤 4：技术栈逐项占位替换（I2：全状态执行；用户值保留）---
-    text, diffs = _ensure_techstack_block(text, tech_stack)
-
-    return text, diffs
+    return text, warnings
 
 
 def _insert_l0_block(text: str, l0_source: str) -> str:
-    """在首个 `## 强制规则` 前插入 L0 区块；无则在文件说明后插入。
+    """在首个 `## 强制规则` 前插入 L0；无该章节时置于 H1 简介之后。
 
-    L0 区块前后各保留一个空行分隔。幂等：若 L0_BEGIN 已存在则不重复插入。
+    无 H1 时退化为插入文件开头。L0 区块前后各保留一个空行分隔；若
+    L0_BEGIN 已存在则不重复插入。
     """
     if L0_BEGIN in text:
         return text
@@ -2445,13 +2431,20 @@ def _insert_l0_block(text: str, l0_source: str) -> str:
             insert_idx = idx
             break
     if insert_idx is None:
-        # 无 ## 强制规则 → 在文件说明后插入（首个空行分隔处之后）。
-        # 文件说明 = 首个非空段落后。简单策略：在文件末尾追加（保证 BASE 已含说明）。
-        # 但更稳妥：找首个 H1 后的简介段落结束位置。这里采用“首个空行后”启发式。
-        insert_idx = len(lines)
-        # 回溯跳过末尾空行。
-        while insert_idx > 0 and lines[insert_idx - 1].strip() == "":
-            insert_idx -= 1
+        h1_idx = next(
+            (idx for idx, line in enumerate(lines) if line.startswith("# ")), None
+        )
+        if h1_idx is None:
+            insert_idx = 0
+        else:
+            insert_idx = h1_idx + 1
+            while insert_idx < len(lines) and not lines[insert_idx].strip():
+                insert_idx += 1
+            if insert_idx < len(lines) and not lines[insert_idx].lstrip().startswith("#"):
+                while insert_idx < len(lines) and lines[insert_idx].strip():
+                    insert_idx += 1
+                while insert_idx < len(lines) and not lines[insert_idx].strip():
+                    insert_idx += 1
     block_lines = l0_source.splitlines()
     # 组装：[原有前部] + 空行 + L0 区块 + 空行 + [原有后部]
     head = lines[:insert_idx]
@@ -2467,195 +2460,395 @@ def _insert_l0_block(text: str, l0_source: str) -> str:
     return "\n".join(parts)
 
 
-def _remove_l0_block_pair(text: str) -> str:
-    """移除完整的 L0 受管区块对（begin...end 含内部全部内容），保留区块外内容。
+def _remove_l0_ranges(text: str, ranges: list[tuple[int, int, bool]]) -> str:
+    """删除经裁剪的 L0 区间，合并重叠范围后再倒序处理。
 
-    用于 drift/upgrade 状态：标记对完整时，整个旧区块（含漂移内容）移除。
-    支持任意版本（v1/v0 等）的成对标记。若仅有单侧标记则保留不动（由 broken 路径处理）。
+    所有区间索引均基于原文本。先合并同类重叠/相邻区间，确保后续倒序删除
+    不会因前次删除改变后次的索引。完整块压缩边界空行；marker 行仅移除自身。
     """
-    # 收集所有版本的 begin/end 标记对，逐个移除完整的 begin...end 区间。
-    versions = ["v1", "v0"]
+    merged: list[tuple[int, int, bool]] = []
+    for start, end, is_block in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            old_start, old_end, old_is_block = merged[-1]
+            merged[-1] = (
+                old_start,
+                max(old_end, end),
+                old_is_block or is_block,
+            )
+        else:
+            merged.append((start, end, is_block))
+
     result = text
-    for ver in versions:
-        begin_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":start -->"
-        )
-        end_marker = (
-            "<!-- cadence-managed:openspec-superpowers-routing:" + ver + ":end -->"
-        )
-        while True:
-            b_idx = result.find(begin_marker)
-            if b_idx == -1:
-                break
-            e_idx = result.find(end_marker, b_idx)
-            if e_idx == -1:
-                # 单侧 begin 无配对 end → 不处理（broken 路径负责）。
-                break
-            e_end = e_idx + len(end_marker)
-            # 移除区间，同时吸收周围多余空行（避免出现连续多个空行）。
-            before = result[:b_idx]
-            after = result[e_end:]
-            # 合并：去掉 before 尾部与 after 头部的空行，中间保留至多一个空行分隔。
-            before = before.rstrip("\n")
-            after = after.lstrip("\n")
-            if before and after:
-                result = before + "\n\n" + after
-            elif before:
-                result = before + "\n"
-            elif after:
-                result = after
-            else:
-                result = ""
+    for start, end, is_block in reversed(merged):
+        before = result[:start]
+        after = result[end:]
+        if not is_block:
+            result = before + after
+            continue
+        before = before.rstrip("\n")
+        after = after.lstrip("\n")
+        if before and after:
+            result = before + "\n\n" + after
+        elif before:
+            result = before + "\n"
+        elif after:
+            result = after
+        else:
+            result = ""
     return result
 
 
-def _strip_l0_marker_lines_only(text: str) -> str:
-    """仅移除独立的 L0 标记行（整行匹配），保留所有其他内容（含区块内正文）。
+def _l0_marker_line_range(text: str, event: dict) -> tuple[int, int]:
+    """返回孤立 marker 的完整行范围（含换行）；marker 正文不会被保留。"""
+    start = text.rfind("\n", 0, event["start"]) + 1
+    end = text.find("\n", event["end"])
+    return start, len(text) if end == -1 else end + 1
 
-    用于 broken 状态：单侧/乱序标记无法判定区块归属，只移除标记行本身。
+
+def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[dict]]:
+    """将混合版本、重复或残留标记收敛为一个当前版本 L0 区块。
+
+    只移除经安全配对的完整区块；若 begin 之前有另一个任意版本 begin，
+    前者是孤儿，只删除自身标记行，用户正文不被跨区块吞掉。重复当前版本
+    区块保留首个，删除其余块并记录 ``L0_DEDUP``。
     """
-    lines = text.splitlines()
-    kept: list = []
-    for line in lines:
-        stripped = line.strip()
-        if (
-            stripped.startswith("<!-- cadence-managed:openspec-superpowers-routing:")
-            and stripped.endswith("-->")
-        ):
-            continue
-        kept.append(line)
-    return "\n".join(kept)
-
-
-def _ensure_summary_lines(text: str, entry_name: str, project_type: str = "non-coding") -> str:
-    """确保 ## 强制规则 章节含各规则文件引用；同一规则文件的多引用行去重。"""
-    rule2_text = (
-        RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
-    )
-    rule6_block = (
-        RULE6_BLOCK_CLAUDE if entry_name == "CLAUDE.md" else RULE6_BLOCK_AGENTS
-    )
-    rule6_first_line = rule6_block.splitlines()[0]
-    required = [
-        (
-            "language.md",
-            "- **必须使用中文回答** → 详见 `.claude/rules/language.md`",
-        ),
-        ("code-usage.md", rule2_text),
-        (
-            "document-storage.md",
-            "- **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules/` 目录下** → 详见 `.claude/rules/document-storage.md`",
-        ),
-        (
-            "markdown-format.md",
-            "- **代码块嵌套使用 4 反引号/3 反引号** → 详见 `.claude/rules/markdown-format.md`",
-        ),
-        (
-            "mcp-servers.md",
-            "- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`"
-            if entry_name == "CLAUDE.md"
-            else "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`",
-        ),
-        (
-            "code-reading.md",
-            "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
-        ),
+    pairs, orphans = _analyze_l0_markers(text)
+    current_pairs = [
+        pair for pair in pairs if pair[0]["version"] == L0_CURRENT_VERSION
     ]
-
-    lines = text.splitlines()
-    rules_idx = next(
-        (idx for idx, line in enumerate(lines) if line.strip() == "## 强制规则"),
-        None,
+    current_pair_count = len(current_pairs)
+    current_orphan_count = sum(
+        1 for event in orphans if event["version"] == L0_CURRENT_VERSION
     )
-    if rules_idx is None:
-        return text
+    # 合同要求重复当前区块保留首个；其它版本完整块仍全部移除并迁移。
+    # 若完整块内部存在孤儿 marker，该块的边界无法再安全地声明为受管内容：
+    # 只剥离它的首尾 marker 行以保留全部内部用户文本，避免删除范围重叠。
+    kept_pair = current_pairs[0] if current_pair_count > 1 else None
+    pairs_to_remove = [pair for pair in pairs if pair != kept_pair]
+    orphan_ranges = [
+        _l0_marker_line_range(text, event) for event in orphans
+    ]
+    ranges: list[tuple[int, int, bool]] = [
+        (*marker_range, False) for marker_range in orphan_ranges
+    ]
+    for begin, end in pairs_to_remove:
+        pair_range = (begin["start"], end["end"])
+        contaminated = any(
+            marker_start < pair_range[1] and pair_range[0] < marker_end
+            for marker_start, marker_end in orphan_ranges
+        )
+        if contaminated:
+            ranges.extend([
+                (*_l0_marker_line_range(text, begin), False),
+                (*_l0_marker_line_range(text, end), False),
+            ])
+        else:
+            ranges.append((*pair_range, True))
+    normalized = _remove_l0_ranges(text, ranges)
+    normalized = _insert_l0_block(normalized, l0_source)
+    warnings: list[dict] = []
+    if current_pair_count > 1 or current_orphan_count:
+        warnings.append({
+            "code": "L0_DEDUP",
+            "message": "存在重复或孤立的当前版本 L0 标记，已归并为单一区块",
+            "detail": {
+                "count": current_pair_count,
+                "orphan_markers": current_orphan_count,
+            },
+        })
+    return normalized, warnings
 
-    end_idx = len(lines)
-    for idx in range(rules_idx + 1, len(lines)):
-        stripped = lines[idx].strip()
+
+def _split_into_blocks(lines: list[str]) -> list[tuple[str, list[str]]]:
+    """将强制规则章节切为 H3 整块和独立的非标题行。
+
+    H3 标题及其后续内容必须整体移动，避免用户小节在规范化时被拆散。
+    空行只作为 H3 块内部的排版内容保留，章节边界处的连续空行忽略。
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    heading_block: list[str] | None = None
+    after_heading_blank = False
+
+    def flush_heading_block() -> None:
+        nonlocal heading_block
+        if heading_block:
+            while heading_block and not heading_block[-1].strip():
+                heading_block.pop()
+            if heading_block:
+                blocks.append(("heading-block", heading_block))
+        heading_block = None
+
+    for line in lines:
+        if line.lstrip().startswith("### "):
+            flush_heading_block()
+            heading_block = [line]
+            after_heading_blank = False
+        elif heading_block is not None:
+            if not line.strip():
+                heading_block.append(line)
+                after_heading_blank = True
+            elif after_heading_blank:
+                # 空行后不是同一 H3 的紧邻正文，视为用户独立内容。否则该
+                # 用户行会被归入权威 H3，在下一次收敛时随框架块一同删除。
+                flush_heading_block()
+                blocks.append(("line", [line]))
+                after_heading_blank = False
+            else:
+                heading_block.append(line)
+        elif line.strip():
+            blocks.append(("line", [line]))
+    flush_heading_block()
+    return blocks
+
+
+def _normalize_mandatory_rules(
+    text: str, entry_name: str, project_type: str,
+    existing_rule_files: set[str],
+) -> tuple[str, list[dict]]:
+    """将首个 ``## 强制规则`` 章节收敛到权威规则清单。
+
+    权威条目总是由渲染器重建，因此编号、标题、入口文案和条件项不会受旧
+    文本影响。无法识别为权威条目的用户块则原样移动到权威条目之后。
+    """
+    warnings_out: list[dict] = []
+    rules = _canonical_rules_for(existing_rule_files)
+    trailing_newline = text.endswith("\n")
+    lines = text.splitlines()
+
+    def finish(result_lines: list[str]) -> str:
+        rendered = "\n".join(result_lines)
+        return rendered + "\n" if trailing_newline else rendered
+    h2_idx = [i for i, line in enumerate(lines) if line.strip() == "## 强制规则"]
+    if not h2_idx:
+        section_lines = render_mandatory_section(
+            entry_name, project_type, existing_rule_files
+        ).splitlines()
+        end_marker_idx = next(
+            (i for i, line in enumerate(lines) if line.strip() == L0_END), None
+        )
+        if end_marker_idx is None:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.extend(section_lines)
+        else:
+            lines[end_marker_idx + 1:end_marker_idx + 1] = [""] + section_lines
+        return finish(lines), warnings_out
+
+    if len(h2_idx) > 1:
+        warnings_out.append({
+            "code": "DUPLICATE_H2", "file": entry_name,
+            "message": "存在多个 ## 强制规则，仅规范化首个",
+            "detail": {"count": len(h2_idx)},
+        })
+    start = h2_idx[0]
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
         if stripped.startswith("## ") or stripped.startswith("# "):
-            end_idx = idx
+            end = i
             break
 
-    section = lines[rules_idx:end_idx]
-    # 按裸文件名识别引用；同一规则文件仅保留首个引用行。
-    # 一行命中多个 marker 时按整行处理：只要其中任一引用已出现，就删除该行；
-    # 否则保留并将该行全部引用标记为已见。
-    rule_files = [marker for marker, _ in required]
-    seen_refs = set()
-    deduped = []
-    for line in section:
-        refs = [name for name in rule_files if name in line]
-        if refs and any(name in seen_refs for name in refs):
+    canonical_rules = {title: markers for markers, title, _c, _a in rules}
+    rebuilt = render_mandatory_section(
+        entry_name, project_type, existing_rule_files
+    ).splitlines()
+    first_rule = next(
+        (i for i, line in enumerate(rebuilt) if line.startswith("### 1.")),
+        len(rebuilt),
+    )
+    standard_preamble = {
+        line for line in rebuilt[1:first_rule] if line.strip()
+    }
+    user_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    for _kind, block in _split_into_blocks(lines[start + 1:end]):
+        block_text = "\n".join(block)
+        if len(block) == 1 and block[0] in standard_preamble:
             continue
-        seen_refs.update(refs)
-        deduped.append(line)
-
-    # 去重可能删除同时承载唯一 marker 的多引用行，必须基于去重结果重算缺失。
-    deduped_text = "\n".join(deduped)
-    missing = [line for marker, line in required if marker not in deduped_text]
-    rule6_missing = rule6_first_line not in deduped_text
-    if not missing and not rule6_missing:
-        if deduped == section:
-            return text
-        return "\n".join(lines[:rules_idx] + deduped + lines[end_idx:])
-
-    insert = list(missing)
-    if rule6_missing:
-        insert.extend(rule6_block.split("\n"))
-    return "\n".join(lines[:rules_idx] + deduped + insert + lines[end_idx:])
-
-
-PLACEHOLDER_VALUES = {"待确认", "未检测到", ""}
-
-
-def _ensure_techstack_block(text: str, tech_stack: dict) -> tuple:
-    """逐项处理技术栈，占位替换为检测值，用户真实值保留并返回差异。
-
-    返回 ``(处理后文本, [{"field", "user_value", "detected_value"}])``。
-    技术栈区块缺失时整体追加；覆盖率阈值固定为 80%，不参与逐项替换。
-    """
-    diffs = []
-    if not tech_stack:
-        return text, diffs
-
-    fields = [
-        ("语言", "language"),
-        ("包管理器", "pkg_manager"),
-        ("测试命令", "test"),
-        ("检查命令", "lint"),
-        ("格式化命令", "format"),
-    ]
-    if "### 项目技术栈" not in text:
-        lines = [
-            f"- **{label}**：{tech_stack.get(key, '未检测到')}"
-            for label, key in fields
-        ]
-        block = (
-            "\n## 项目配置\n\n"
-            "> 以下内容由初始化脚本根据项目环境自动检测生成，非通用规则。\n\n"
-            "### 项目技术栈\n"
-            + "\n".join(lines)
-            + "\n- **覆盖率阈值**：80%\n"
+        if any(retired in block_text for retired in RETIRED_RULE_FILES):
+            continue
+        # Playwright 是唯一按目标项目实际规则文件条件启用的摘要项：目标项目
+        # 未启用 playwright.md 时，旧入口中的失效框架引用必须删除；其余
+        # 不存在的未来规则引用仍按用户内容保留（前瞻引用保护）。
+        if PLAYWRIGHT_RULE_FILE in block_text and PLAYWRIGHT_RULE_FILE not in existing_rule_files:
+            continue
+        owner = next(
+            (title for title, markers in canonical_rules.items()
+             if any(marker in block_text for marker in markers)),
+            None,
         )
-        return text.rstrip("\n") + "\n" + block, diffs
+        if owner is not None:
+            if owner in seen:
+                continue
+            # The canonical renderer supplies the authoritative replacement.
+            seen.add(owner)
+            continue
+        user_blocks.append(block)
 
-    for label, key in fields:
-        detected = tech_stack.get(key, "未检测到")
-        pattern = f"- **{label}**："
-        for line in text.splitlines():
-            if line.startswith(pattern):
-                current = line[len(pattern):]
-                if current in PLACEHOLDER_VALUES:
-                    text = text.replace(line, f"{pattern}{detected}", 1)
-                elif current != detected:
-                    diffs.append({
-                        "field": label,
-                        "user_value": current,
-                        "detected_value": detected,
-                    })
-                break
-    return text, diffs
+    if user_blocks:
+        warnings_out.append({
+            "code": "USER_LINES_KEPT", "file": entry_name,
+            "message": "强制规则章节含非框架条目，已保留在权威条目之后",
+            "detail": {"blocks": len(user_blocks)},
+        })
+    # rebuilt includes its H2; retain the original H2 position and append user
+    # blocks after the final canonical blank line.
+    new_section = rebuilt[1:]
+    if user_blocks:
+        new_section.extend(["", *[line for block in user_blocks for line in block], ""])
+    elif end < len(lines):
+        # Preserve the separator before the following H2/H1 boundary.
+        new_section.append("")
+    result = lines[:start + 1] + new_section + lines[end:]
+
+    outside = result[:start] + result[start + 1 + len(new_section):]
+    if any(
+        line.startswith("## ") and "项目个性化规则" in line
+        for line in outside
+    ):
+        warnings_out.append({
+            "code": "ORPHAN_RULE6", "file": entry_name,
+            "message": "章节外存在孤立的项目个性化规则 H2，请人工确认",
+            "detail": {},
+        })
+    return finish(result), warnings_out
+
+
+TOGGLE_PREFIX = "- **产物自动提交（design/plan）**："
+TOGGLE_DEFAULT = "关闭"
+
+
+def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
+    """确保全文件唯一开关行，并将其归并到首个项目配置章节。
+
+    开关前缀行无论位于章节内外都纳入收敛：章节外孤儿行被删除并在首个
+    ``## 项目配置`` 末尾重建；孤儿与章节值冲突或任一值非法时按“关闭”处理，
+    并报告 ``INVALID_TOGGLE``。没有项目配置章节时沿用原有创建逻辑。
+    """
+    warns: list[dict] = []
+    trailing_newline = text.endswith("\n")
+    lines = text.splitlines()
+    idxs = [i for i, line in enumerate(lines) if line.strip() == "## 项目配置"]
+    all_toggle_idxs = [
+        i for i, line in enumerate(lines) if line.startswith(TOGGLE_PREFIX)
+    ]
+    all_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip() for i in all_toggle_idxs
+    ]
+    valid_values = {"开启", "关闭"}
+
+    def warn_invalid(reason: str, values: list[str]) -> None:
+        warns.append({
+            "code": "INVALID_TOGGLE", "file": entry_name,
+            "message": "产物自动提交开关值冲突或非法，按关闭处理",
+            "detail": {"reason": reason, "values": values},
+        })
+
+    if not idxs:
+        # 没有章节时，所有现有开关行都属于孤儿；提取其值后由创建逻辑
+        # 在新章节内重建唯一行。
+        chosen = TOGGLE_DEFAULT
+        if all_values:
+            if any(value not in valid_values for value in all_values):
+                warn_invalid("存在非法开关值", all_values)
+            elif len(set(all_values)) > 1:
+                warn_invalid("存在多处开关值冲突", all_values)
+            else:
+                chosen = all_values[0]
+        clean_lines = [
+            line for i, line in enumerate(lines) if i not in set(all_toggle_idxs)
+        ]
+        block = [
+            "", "## 项目配置", "",
+            "> 以下配置由初始化脚本维护。", "",
+            TOGGLE_PREFIX + chosen,
+        ]
+        result = "\n".join(clean_lines).rstrip("\n") + "\n" + "\n".join(block) + "\n"
+        return result, warns
+    if len(idxs) > 1:
+        warns.append({
+            "code": "DUPLICATE_H2", "file": entry_name,
+            "message": "存在多个 ## 项目配置，仅处理首个", "detail": {},
+        })
+
+    start = idxs[0]
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            end = i
+            break
+    section_toggle_idxs = [
+        i for i in all_toggle_idxs if start < i < end
+    ]
+    orphan_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip()
+        for i in all_toggle_idxs if i not in section_toggle_idxs
+    ]
+    section_values = [
+        lines[i][len(TOGGLE_PREFIX):].strip()
+        for i in section_toggle_idxs
+    ]
+    values = orphan_values + section_values
+    # 保持既有契约：章节内唯一开关即使非法也保留原文，只记录 warning。
+    # 只有出现孤儿行或多行并存时才进入“归并为一行”的安全默认语义。
+    if not orphan_values and len(section_values) == 1:
+        value = section_values[0]
+        if value not in valid_values:
+            warns.append({
+                "code": "INVALID_TOGGLE", "file": entry_name,
+                "message": f"产物自动提交开关值非法（{value}），按关闭处理",
+                "detail": {},
+            })
+        return text, warns
+
+    chosen = TOGGLE_DEFAULT
+    if not orphan_values and section_values:
+        # 单一章节内开关延续既有“保留原文”语义；多行并存则按归并规则处理。
+        if len(section_values) == 1:
+            chosen = section_values[0]
+            if chosen not in valid_values:
+                warns.append({
+                    "code": "INVALID_TOGGLE", "file": entry_name,
+                    "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
+                    "detail": {},
+                })
+        else:
+            # 章节内重复行保持原有“保留首个”语义，即使后续值不同。
+            chosen = section_values[0]
+            if chosen not in valid_values:
+                warns.append({
+                    "code": "INVALID_TOGGLE", "file": entry_name,
+                    "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
+                    "detail": {},
+                })
+    elif any(value not in valid_values for value in values):
+        warn_invalid("孤儿行归并中存在非法开关值", values)
+    elif len(set(values)) > 1:
+        warn_invalid("孤儿行归并中存在多处开关值冲突", values)
+    elif values:
+        chosen = values[0]
+
+    # 删除全文件原有开关行，再在首个项目配置章节规范位置写回唯一行；
+    # 这样孤儿行、第二章节中的开关行及章节内重复行都不会残留。
+    toggle_set = set(all_toggle_idxs)
+    clean_lines = [line for i, line in enumerate(lines) if i not in toggle_set]
+    clean_idxs = [i for i, line in enumerate(clean_lines) if line.strip() == "## 项目配置"]
+    clean_start = clean_idxs[0]
+    clean_end = len(clean_lines)
+    for i in range(clean_start + 1, len(clean_lines)):
+        stripped = clean_lines[i].strip()
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            clean_end = i
+            break
+    # 在章节边界前追加开关，不吸收既有尾部空行，确保技术栈、包管理器等
+    # 用户项目配置内容逐字保留。
+    insert_at = clean_end
+    clean_lines[insert_at:insert_at] = [TOGGLE_PREFIX + chosen, ""]
+    result = "\n".join(clean_lines)
+    if trailing_newline and not result.endswith("\n"):
+        result += "\n"
+    return result, warns
 
 
 
@@ -3312,8 +3505,8 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action == "upgrade":
-            # 确定性升级（两模式同动作）→ 始终写入
+        if action in ("upgrade", "dedup"):
+            # 确定性升级/重复归并（两模式同动作）→ 始终写入
             return True
         if action == "replace":  # drift/broken
             if intents.no_interrupt:
@@ -3375,8 +3568,49 @@ def _filter_backup_needs(plan: dict, intents: Intents, root: Path) -> list:
 # ---------------------------------------------------------------------------
 
 
+def _planned_entry_warnings(
+    root: Path, intents: Intents, plan: dict, report: dict,
+) -> list[dict]:
+    """只读预演 S4 入口合成，收集 apply 将产生的 warnings。
+
+    预演复用与 apply 相同的 ``_compose_entry`` 纯函数，但只操作内存文本；
+    因而不会创建入口、规则或备份文件。
+    """
+    kernel_source = _load_kernel_source()
+    if not kernel_source:
+        return []
+    project_type = plan.get("project_type", "non-coding")
+    s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
+    existing_rule_files = {
+        p.name for p in (root / ".claude" / "rules").glob("*.md")
+    }
+    # S3 在 S4 前按意图创建 Playwright；预演需反映同一份条件清单。
+    if intents.enable_playwright:
+        existing_rule_files.add(PLAYWRIGHT_RULE_FILE)
+    warnings: list[dict] = []
+    for asset in s4_step.get("assets", []) or []:
+        entry_name = asset["path"]
+        entry_path = root / entry_name
+        existing = _safe_read(entry_path)
+        if existing is None:
+            if asset.get("action") == "create":
+                existing = render_base_entry(entry_name, project_type, existing_rule_files)
+                state = "create"
+            else:
+                continue
+        else:
+            state = asset.get("conflict") or "skip"
+        _composed, entry_warnings = _compose_entry(
+            existing, kernel_source, state=state,
+            project_type=project_type,
+            entry_name=entry_name, existing_rule_files=existing_rule_files,
+        )
+        warnings.extend(entry_warnings)
+    return warnings
+
+
 def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
-    """dry-run：compute_plan + 写报告，零写入。"""
+    """dry-run：compute_plan + 只读预演入口 warnings + 写报告，零写入。"""
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
     # S2 模板定位失败（§11.5：所有候选不完整 → 终止并报告，非零退出）
@@ -3388,6 +3622,7 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
             "recovery": plan["failure"].get("recovery", ""),
         }
         return 1
+    report["warnings"] = _planned_entry_warnings(root, intents, plan, report)
     report["overall"] = "ok"
     return 0
 

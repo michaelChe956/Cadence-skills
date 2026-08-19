@@ -2,7 +2,7 @@
 
 本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
 
-<!-- cadence-managed:openspec-superpowers-routing:v1:start -->
+<!-- cadence-managed:openspec-superpowers-routing:v2:start -->
 ## OpenSpec 与 Superpowers 任务路由（强制）
 
 > 先通过客户端原生机制选择 `using-superpowers` 与当前阶段必调 Skill；首个用户可见段落输出路由回执；Skill 调用完成后才允许读取仓库规则或使用仓库工具。
@@ -22,6 +22,17 @@
 | 实施与验证均完成 | 协作规则 | `using-superpowers` → `requesting-code-review` | 审查通过后勾选工作包并 sync/archive |
 | OpenSpec 已归档 | 协作规则 | `using-superpowers` → `finishing-a-development-branch` | 选择分支集成方式 |
 
+### 产物路径覆盖（强制）
+
+| Skill 默认路径 | 本项目强制路径 |
+|---|---|
+| `docs/superpowers/specs/`（design/spec） | `cadence/designs/` |
+| `docs/superpowers/plans/`（plan） | `cadence/plans/` |
+
+本表优先级高于任何 Skill 正文中的路径指示；OpenSpec 产物仍放 `openspec/` 目录。
+
+产物自动提交开关：调用 `brainstorming`/`writing-plans` 完成文档写入后，必须读取入口文件“产物自动提交（design/plan）”开关；为 `关闭` 时禁止 `git commit`，只汇报产物路径并等待用户确认。开关读取顺序：CLAUDE.md 为准、AGENTS.md 兜底；不一致按 `关闭`。
+
 `knowledge-base-context` 选择前置门禁：仅当只读确认 `cadence/knowledge-base/manifest.yaml` 存在且 `schema_version` 为 `"4.0"` 时才可选择；Manifest 缺失或版本不符时不得选择、调用或读取该 Skill，不输出知识库相关提示，按普通流程继续。
 
 阶段切换必须重新路由：新仓库任务、讨论、分析或只读调查转为创建/修改文件、契约获批、apply 前、resume/clear/compact 后、完工声明前。
@@ -30,7 +41,7 @@
 需要仓库勘察的新功能或行为变化，必须先原生调用 `using-superpowers`、`brainstorming`，再输出回执；回执必须先于 change、Plan、目录或文件勘察，澄清问题不得替代回执。
 Claude/Kimi 的 Skill 参数使用表中不带命名空间的原名；pi 以全文读取对应 SKILL.md 作为 Skill 调用；调用失败必须按客户端已注册清单重试，未成功加载则失败关闭。
 失败关闭本身也属于当前阶段动作，不能用“只判断/只拒绝”豁免 Skill：无 Plan 时先调用 `using-superpowers`、`writing-plans` 再拒绝 apply；即使禁止运行验证命令，也必须先调用 `using-superpowers`、`verification-before-completion` 加载验证纪律，再拒绝无证据完成声明；其他必调 Skill 未加载则停止。
-<!-- cadence-managed:openspec-superpowers-routing:v1:end -->
+<!-- cadence-managed:openspec-superpowers-routing:v2:end -->
 
 ## 强制规则
 

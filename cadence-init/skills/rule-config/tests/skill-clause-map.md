@@ -10,7 +10,7 @@
 - 最小列（逐字）：`SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言`
 - 测试 ID 命名（逐字）：单测 `ut-<函数>-<场景>`，集成 `it-<步骤>-<场景>`，静态 `sc-<条款>`
 - fixture 命名（逐字）：`fx-<场景>`
-- 条款编号：十张表沿用 design D2 行 ID 基线并新增 RF-05（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~05、SM-01~03、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 62 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
+- 条款编号：十张表沿用 design D2 行 ID 基线并新增 RF-05、SM-04、SM-05（NC-01~08、OS-01~08、L1-01~07、L0-01~07、RF-01~05、SM-01~05、OP-01~04、CS-01~08、CG-01~08、HM-01~03，共 64 行）；其余条款由本文档分配唯一编号（PM、FM、NR、NB、NH、DF、IA、CK、NX、S1a、S1b、S1d、L0-P、S3~S10、OS-N、CP 等前缀），编号在"条款摘要"列首标注。
 - 适用模式取值：`普通` / `no-interrupt` / `两模式`。
 - 脚本函数名为 Task 4+ 将实现的目标名（`merge_markdown` / `merge_yaml` / `l0_block` / `classify_l1` / `precheck_openspec_structure` / `backup_file` / `atomic_write` / `sha256_file` / `detect_project` / `locate_templates` / `step_rules_files` / `step_entry_files` / `step_scaffold` / `step_gitignore` / `step_openspec_config` / `step_codegraph`）；静态与 Agent 行为条款记为 `references/merge-semantics.md` 对应节或 `—（静态）`。
 - 故障注入约定（design D6）：原子发布失败以目标目录 `chmod 555` 复现，备份失败以只读父目录复现，对应 fixture 记 `fx-readonly-target` / `fx-readonly-parent`。
@@ -31,7 +31,7 @@
 | 处理流程 S1（1a/1b/1c/1d） | 115-183 | S1a-01~05、S1b-01~04、S1c-01、S1d-01~11 | 21 |
 | 处理流程 S2（L0 处理 12 条 + 两模板 + 注意） | 185-308 | L0-P1~P12、S2-T1~T3 | 15 |
 | 处理流程 S3 包管理器 | 310-333 | S3-01~02 | 2 |
-| 处理流程 S4 技术栈 | 335-375 | S4-01~05 | 5 |
+| 处理流程 S4 项目配置开关 | 335-375 | S4-01~05 | 5 |
 | 处理流程 S5 目录结构 | 377-406 | S5-01~02 | 2 |
 | 处理流程 S6 历史产物迁移（表 HM + 禁止迁移 + 命令/报告） | 408-460 | HM-01~03、S6-01~02 | 5 |
 | 处理流程 S7 gitignore | 462-481 | S7-01~02 | 2 |
@@ -41,8 +41,8 @@
 | 增量运行-规则文件（表 RF） | 606-629 | RF-01~05 | 6 |
 | 增量运行-OpenSpec 配置（13 条 + 表 OS + 备份/报告段） | 631-675 | OS-N1~N13、OS-01~08、OS-B1~B2 | 23 |
 | 增量运行-L1 协作规则（表 L1 + 备份/识别段） | 677-689 | L1-01~07、L1-B1~B2 | 9 |
-| 增量运行-L0 入口（表 L0 + 屏障段） | 691-711 | L0-01~07、L0-B1~B2 | 9 |
-| 增量运行-摘要引用（表 SM） | 713-717 | SM-01~03 | 3 |
+| 增量运行-L0 入口（表 L0 + 屏障段） | 691-711 | L0-01~07、L0-B1~B2（当前 v2；旧版 v0、v1） | 9 |
+| 增量运行-强制规则章节规范化（表 SM） | 713-717 | SM-01~05 | 5 |
 | 增量运行-可选规则（表 OP） | 719-728 | OP-01~04 | 4 |
 | 增量运行-CodeGraph（表 CG） | 730-743 | CG-01~08 | 8 |
 | 建议 | 745-748 | AD-01 | 1 |
@@ -101,7 +101,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 66 | DF-01 检测到源码或主配置→Coding；否则非 Coding | 两模式 | detect_project | fx-coding-project / fx-noncoding-project | ut-detect_project-coding / ut-detect_project-noncoding | 返回类型与预期一致并写入报告 |
-| 67 | DF-02 技术栈自动检测写入；未检出写"未检测到" | 两模式 | detect_project / step_entry_files | fx-techstack-frontend | it-s1-techstack | CLAUDE.md/AGENTS.md 项目技术栈章节含检出值；缺失命令字段为"未检测到" |
+| 67 | DF-02 项目类型检测；技术栈不参与脚本配置 | 两模式 | detect_project | fx-project-type | TestDetectProject | 仅返回 project_type/evidence，不检测或写入技术栈 |
 | 68 | DF-03 历史迁移无冲突自动迁移；目标非空跳过并报告 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-skip | 非空目标目录不动，报告含冲突项 |
 | 69 | DF-04 `cadence/` 默认不加入 `.gitignore` | 两模式 | step_gitignore | fx-empty-project | it-s6-cadence-gitignore-default | `.gitignore` 不含 `cadence/` 行 |
 | 70 | DF-05 代码阅读规则所有项目创建；非 Coding 只跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-all-projects | 非 Coding 项目仍存在 `.claude/rules/code-reading.md` |
@@ -149,18 +149,18 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 189 | L0-P1 读取模板根 `agent-routing-kernel.md` 完整内容作为规范源 | 两模式 | l0_block | fx-empty-project | ut-l0_block-read-source | 区块内容 sha256 与规范源文件一致 |
+| 189 | L0-P1 读取模板根 `agent-routing-kernel.md` 当前 v2 完整内容作为规范源；v1 历史规范源固定为 `references/rules/l0-history/agent-routing-kernel-v1.md` | 两模式 | l0_block | fx-empty-project / fx-l0-old-version | TestL0V2Migration / ut-l0-v2-history-source / ut-l0_block-read-source | v2 区块 sha256 与当前规范源一致；v1 仅以冻结历史源作升级前比对 |
 | 190 | L0-P2 双入口统一预检：标记、版本、完整内容、交互结果、目标动作、全部备份需求 | 两模式 | l0_block / step_entry_files | fx-l0-drift | it-s4-unified-precheck | dry-run 计划同时列出 CLAUDE.md 与 AGENTS.md 各自分支与备份需求 |
 | 191 | L0-P3 写入任一入口前，先把本次全部必要 L0 恢复点复制归档到 `cadence/legacy/<时间戳[-N]>/<相对路径>` | 两模式 | backup_file / step_entry_files | fx-l0-drift | test_l0_second_archive_failure_keeps_both | 第二个入口归档失败时第一个入口也尚未写入；原位双入口内容不变 |
 | 192 | L0-P4 任一必要复制归档失败→立即终止，双入口均不得写入；任一 `atomic_write` 失败→失败入口原文件因 `os.replace` 原子性保持不变 | 两模式 | backup_file / atomic_write | fx-readonly-parent | test_l0_second_archive_failure_keeps_both / test_atomic_write_failure_keeps_original | 归档屏障失败时 CLAUDE.md/AGENTS.md 均不变；原子覆盖失败时目标原文件不变且已建归档保留 |
 | 193 | L0-P5 目标入口不存在→创建基础入口，L0 放在文件说明之后、`## 强制规则` 之前 | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 新建入口含基础模板全文；L0 位置在文件说明与 `## 强制规则` 之间（基础入口文本断言） |
-| 194 | L0-P6 当前 v1 标记成对且区块与规范源完全一致→跳过 | 两模式 | l0_block | fx-entry-idempotent | it-s4-idempotent | 两入口 sha256 不变；报告幂等跳过 |
-| 195 | L0-P7 当前 v1 标记成对但区块不一致→视为本地修改：普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file（标 `default_keep: true`） | fx-l0-drift | it-s4-drift-normal / it-l0-drift-normal-keep-default / it-s4-drift-replaced-outside-preserved | 普通无响应保留并报告 status=0（default_keep）；no-interrupt 备份后区块=规范源 |
+| 194 | L0-P6 当前 v2 标记成对且区块与规范源完全一致→跳过 | 两模式 | l0_block | fx-entry-idempotent | it-s4-idempotent / ut-l0-v2-skip | 两入口 sha256 不变；报告幂等跳过 |
+| 195 | L0-P7 当前 v2 标记成对但区块不一致→视为本地修改：普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6；确认替换纳入备份屏障）；no-interrupt 纳入屏障后替换并报告 | 两模式 | l0_block / backup_file（标 `default_keep: true`） | fx-l0-drift | it-s4-drift-normal / it-l0-drift-normal-keep-default / it-s4-drift-replaced-outside-preserved / ut-l0-v2-v1-drift | 当前标记漂移不得误判 current；普通无响应保留，no-interrupt 备份后区块=规范源 |
 | 196 | L0-P8 两个标记都不存在→在首个 `## 强制规则` 前插入；无该标题则在文件说明后插入 | 两模式 | l0_block | fx-entry-no-markers | ut-l0_block-insert-position | 插入位置符合两分支；原文内容不动 |
-| 197 | L0-P9 成对受支持旧版本标记→纳入备份屏障，屏障通过后升级为当前 v1 并报告 | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade | 备份存在；区块替换为当前 v1；报告记升级 |
-| 198 | L0-P10 单侧标记或顺序错误→普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；no-interrupt 屏障通过后写入单一 L0 区块并报告 | 两模式 | l0_block（标 `default_keep: true`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后 start/end 标记各出现一次；区块外前置/后置/本地内容原样保留 |
-| 199 | L0-P11 区块外项目技术栈、命令、业务规则和用户内容必须原样保留 | 两模式 | l0_block | fx-l0-drift | it-s4-outside-preserved | 区块外内容 sha256 处理前后一致 |
-| 200 | L0-P12 CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义 | 两模式 | step_entry_files | fx-l0-drift | it-s4-dual-entry-consistency | 两入口受管区块 sha256 相同 |
+| 197 | L0-P9 受支持旧版 v0、v1 成对标记→纳入备份屏障，屏障通过后升级为当前 v2；v1 必须与冻结规范源逐字一致，否则为 drift；v0 无规范源，成对即升级 | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade / TestL0V2Migration / ut-l0-v2-upgrade / ut-l0-v2-v1-drift | v1 漂移不升级；v0 无规范源例外记入报告；可升级区块替换为 v2 |
+| 198 | L0-P10 单侧/顺序错误→普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；混合版本或重复区块→两模式确定性安全归并为单一 v2 区块 | 两模式 | l0_block（标 `default_keep: true`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary / TestL0V2Migration / ut-l0-v2-mixed / ut-l0-v2-dedup / ut-l0-v2-nested-broken | 完整安全配对才删区块；孤立标记不吞用户文本；重复 v2 报 `L0_DEDUP` |
+| 199 | L0-P11 区块外项目技术栈、命令、业务规则和用户内容必须原样保留；污染对只剥离边界标记，不吞区块内用户正文 | 两模式 | l0_block | fx-l0-drift | it-s4-outside-preserved / ut-l0-v2-single / ut-l0-v2-overlap | 区块外 sha256 处理前后一致；污染对内部文本保留 |
+| 200 | L0-P12 CLAUDE.md 与 AGENTS.md 必须使用相同 L0 版本和语义 | 两模式 | step_entry_files | fx-l0-drift | it-s4-dual-entry-consistency / TestL0V2Migration | 两入口受管区块 sha256 相同，均为 v2 |
 | 203-241 | S2-T1 CLAUDE.md 基础模板结构（含规则 1~7 摘要、`## 项目信息`、currentDate） | 两模式 | step_entry_files | fx-empty-project | it-s4-entry-template-claude | 新建 CLAUDE.md 含全部必备章节与摘要行 |
 | 245-250 | S2-T2 注意项：规则 5/6 由其他 command 补充；规则 2 摘要按 1a 检测结果选择文本；规则 7 由步骤 8 添加 | 两模式 | step_entry_files | fx-coding-project | it-s4-rule2-text | Coding 项目规则 2 为"遵循 TDD 和代码规范"文本；非 Coding 为"非必要不编写代码"文本 |
 | 252-308 | S2-T3 AGENTS.md 基础模板结构（默认角色、与 CLAUDE.md 关系、Agent 执行要求） | 两模式 | step_entry_files | fx-coding-project | it-s4-entry-template-agents | 新建 AGENTS.md 含默认角色（Coding=谨慎执行者）等必备章节 |
@@ -169,13 +169,13 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 310-333 | S3-01 前端项目包管理器 pnpm、Python 项目 uv；检测后写入 CLAUDE.md 项目配置 | 两模式 | detect_project / step_entry_files | fx-techstack-frontend / fx-techstack-python | it-s1-pkg-manager | 含 `package.json` 项目写入 pnpm 规则；含 `requirements.txt`/`pyproject.toml` 项目写入 uv 规则；禁用项文本保留 |
-| 319-325 | S3-02 禁止使用 npm（前端）、pip（Python）、yarn（前端） | 两模式 | step_entry_files | fx-techstack-frontend | it-s1-pkg-manager-forbidden | 写入文本含三条禁止项 |
-| 335-347 | S4-01 技术栈检测五类：语言、test/lint/format 脚本、覆盖率阈值默认 80% | 两模式 | detect_project | fx-techstack-frontend | ut-detect_project-techstack | 从 `package.json` scripts 提取 test/lint/format；覆盖率默认 80% |
-| 358-362 | S4-02 技术栈区块缺失时追加完整区块；已有区块按字段逐项处理，仅替换 `待确认`/`未检测到`/空字符串占位，真实用户值保留并将差异写入 report | 两模式 | `_ensure_techstack_block` / step_entry_files | fx-techstack-frontend | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported / test_placeholder_replacement_is_idempotent_and_diff_not_duplicated | 占位字段收敛到检测值；非占位真实值不覆盖；`techstack-diff` 含 field/user_value/detected_value；重跑不重复区块或差异 |
-| 362 | S4-03 未检测到的命令写"未检测到"，不阻塞初始化；该值作为占位，未来检测到真实值时可逐项替换 | 两模式 | step_entry_files / `_ensure_techstack_block` | fx-techstack-python | TestTechstackPlaceholder / it-s4-techstack-undetected | 缺失命令字段写"未检测到"；后续运行仅替换检测到的占位项；步骤状态成功 |
-| 364 | S4-04 用户写入的非占位技术栈真实值保留，若与检测值不同则记录 `techstack-diff` action | 两模式 | step_entry_files / `_ensure_techstack_block` | fx-techstack-frontend | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported | 用户值不被检测值覆盖；差异进入可 JSON 序列化的 report |
-| 368-374 | S4-05 项目技术栈完整区块含覆盖率阈值 80%；区块缺失时一次追加完整区块 | 两模式 | step_entry_files / `_ensure_techstack_block` | fx-techstack-frontend | TestTechstackPlaceholder / it-s4-coverage-80 | 完整区块只出现一次；覆盖率阈值为 80%；重跑幂等 |
+| 310-333 | S3-01 项目配置仅维护提交开关；用户既有包管理器内容保留 | 两模式 | step_entry_files / _ensure_commit_toggle | fx-entry-user-config | TestComposeEntryWarnings | 不检测或写入包管理器规则 |
+| 319-325 | S3-02 用户既有项目配置内容逐字保留 | 两模式 | step_entry_files | fx-entry-user-config | TestComposeEntryWarnings | 不生成技术栈/包管理器字段 |
+| 335-347 | S4-01 技术栈检测与写入已删除；入口用户技术栈内容原样保留 | 两模式 | step_s4_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 不生成技术栈区块或字段 |
+| 358-362 | S4-02 项目配置章节仅维护提交开关；已有技术栈/包管理器等用户内容逐字保留 | 两模式 | _ensure_commit_toggle / step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 不检测、不生成、不更新技术栈字段 |
+| 362 | S4-03 技术栈不检测、不写入；用户既有命令字段不变 | 两模式 | step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 缺失技术栈区块不生成字段；步骤成功 |
+| 364 | S4-04 用户写入的技术栈真实值逐字保留，报告不产生技术栈差异动作 | 两模式 | step_entry_files | fx-entry-user-techstack | TestComposeEntryWarnings | 用户值保持不变且无技术栈差异动作 |
+| 368-374 | S4-05 项目配置章节仅维护唯一提交开关；既有用户技术栈块保留 | 两模式 | step_entry_files / _ensure_commit_toggle | fx-entry-user-techstack | TestComposeEntryWarnings / TestCommitToggle | 不生成技术栈块；开关位于项目配置章节内且幂等 |
 | 377-386 | S5-01 创建 `.claude/rules` 与 17 个 `cadence/` 子目录（含 project-rules/examples 与 cache） | 两模式 | step_scaffold | fx-empty-project | it-s5-scaffold-dirs | 17 个子目录全部存在；重复运行幂等 |
 | 388-406 | S5-02 目录用途说明表为文档性条款 | 两模式 | references/merge-semantics.md 目录用途节 | —（仓库内文档） | sc-scaffold-dir-doc | 瘦身后 SKILL 或 references 保留目录用途说明 |
 
@@ -284,27 +284,29 @@
 | 689 | L1-B1 复制归档到 `cadence/legacy/<时间戳[-N]>/.claude/rules/openspec-superpowers-workflow.md`；原位文件不动，同秒冲突后缀位于时间戳目录 | 两模式 | backup_file | fx-l1-old-version | ut-backup_file-legacy-copy / ut-backup_file-l1-naming / ut-backup_file-unique-suffix | 归档路径保留 `.claude/rules/` 相对结构；原 L1 文件仍在，覆盖仅由后续 `atomic_write` 完成 |
 | 689 | L1-B2 标记只用于候选版本定位；最终识别必须比较完整文件内容；不得仅凭标记识别版本；不得把无标记文件当已知框架版本覆盖 | 两模式 | classify_l1 / sha256_file | fx-l1-v1-marker-drift | ut-classify_l1-full-compare | 分类依据为完整内容比较而非标记 |
 
-### 2.19 增量运行：L0 入口（L0-01~07，SKILL 697-705 行表）
+### 2.19 增量运行：L0 入口（L0-01~07，当前版本 v2）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 691-694 | L0-B1 写入前统一预检 + 全部必要 `cadence/legacy` 复制归档屏障；任一归档失败双入口均不得写入；归档完成后各入口仅以 `atomic_write` 发布 | 两模式 | step_entry_files / backup_file / atomic_write | fx-readonly-parent | test_l0_second_archive_failure_keeps_both / test_atomic_write_failure_keeps_original | 第二个归档失败时双入口仍为原内容；原子写失败时失败入口原文件不变 |
-| 699 | L0-01 入口不存在→创建基础入口并插入当前 v1（两模式同动作） | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created | 基础入口文本与 L0 v1 均存在，位置正确 |
-| 700 | L0-02 当前 v1 区块与规范源完整一致→跳过不重复写入（两模式同动作） | 两模式 | l0_block / sha256_file | fx-entry-idempotent | it-s4-idempotent | 双入口 sha256 不变 |
-| 701 | L0-03 当前 v1 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file（标 `default_keep: true`） | fx-l0-drift | it-s4-drift-normal / it-l0-drift-normal-keep-default / it-s4-drift-replaced-outside-preserved | 普通无响应保留并报告 status=0；no-interrupt 备份后替换；区块外内容保留 |
-| 702 | L0-04 受支持旧版本标记成对→备份成功后升级到当前 v1 并报告（两模式同动作） | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade / ut-compute_plan-l0-upgrade-deterministic | 备份存在；区块=当前 v1 |
-| 703 | L0-05 无 L0 标记→插入当前 v1，入口原内容保留（两模式同动作） | 两模式 | l0_block | fx-entry-no-markers | it-s4-insert / ut-compute_plan-l0-insert-deterministic / ut-step_s4-insert-normal-executes | 插入位置正确；原内容 sha256 不变 |
-| 704 | L0-06 单侧标记或顺序错误→普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；no-interrupt 先备份成功后写入单一当前 v1 区块并报告 | 两模式 | l0_block（标 `default_keep: true`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary | 处理后标记成对且唯一；区块外内容保留 |
+| 699 | L0-01 入口不存在→创建基础入口并插入当前 v2（两模式同动作） | 两模式 | l0_block / step_entry_files | fx-empty-project | it-entry-base-created / TestL0V2Migration | 基础入口文本与 L0 v2 均存在，位置正确 |
+| 700 | L0-02 当前 v2 区块与规范源完整一致→跳过不重复写入（两模式同动作） | 两模式 | l0_block / sha256_file | fx-entry-idempotent | it-s4-idempotent / ut-l0-v2-skip | 双入口 sha256 不变 |
+| 701 | L0-03 当前 v2 标记成对但区块不同→视为无法识别的本地修改：普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；no-interrupt 先备份成功后替换并报告 | 两模式 | l0_block / backup_file（标 `default_keep: true`） | fx-l0-drift | it-s4-drift-normal / it-l0-drift-normal-keep-default / it-s4-drift-replaced-outside-preserved / ut-l0-v2-v1-drift | 当前标记漂移不得误判 current；普通无响应保留，no-interrupt 备份后替换 |
+| 702 | L0-04 受支持旧版为 v0、v1：v1 必须逐字匹配冻结 v1 规范源，v0 无规范源而以成对标记为升级例外；满足条件时备份成功后升级到当前 v2（两模式同动作） | 两模式 | l0_block / backup_file | fx-l0-old-version | it-s4-upgrade / ut-compute_plan-l0-upgrade-deterministic / TestL0V2Migration / ut-l0-v2-upgrade | 备份存在；不匹配 v1 判 drift；可升级区块=当前 v2 |
+| 703 | L0-05 无 L0 标记→插入当前 v2，入口原内容保留（两模式同动作） | 两模式 | l0_block | fx-entry-no-markers | it-s4-insert / ut-compute_plan-l0-insert-deterministic / ut-step_s4-insert-normal-executes | 插入位置正确；原内容 sha256 不变 |
+| 704 | L0-06 单侧/顺序错误→普通询问（无响应则默认 keep 保留并报告 status=0，A 类 §11.6）；混合标记或重复区块→两模式安全归并为单一当前 v2 区块 | 两模式 | l0_block（标 `default_keep: true`） | fx-l0-broken-markers | it-s4-broken-markers-preserve-arbitrary / TestL0V2Migration / ut-l0-v2-mixed / ut-l0-v2-dedup / ut-l0-v2-overlap | 仅安全成对区块可整块删除；孤立/污染标记不吞用户内容；重复当前块发出 `L0_DEDUP` |
 | 705 | L0-07 任何 L0 复制归档失败→终止本次 L0 更新，双入口均不得写入（两模式同动作） | 两模式 | backup_file | fx-readonly-parent | test_l0_second_archive_failure_keeps_both | 双入口原位内容保持不变；非零退出；已成功创建的归档保留 |
 | 707 | L0-B2 所有场景必须保持 L0 受管区块外内容原样 | 两模式 | l0_block / sha256_file | fx-l0-drift | it-s4-outside-preserved | 区块外 sha256 处理前后一致 |
 
-### 2.20 增量运行：摘要引用（SM-01~03，SKILL 713-717 行表）
+### 2.20 增量运行：强制规则章节规范化（SM-01~05）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 715 | SM-01 规则文件名引用已存在且唯一→跳过不重复写入 | 两模式 | `_ensure_summary_lines` / step_entry_files | fx-entry-idempotent | TestSummaryDedup / it-s4-idempotent | 以规则文件名引用存在性判定，不要求整行措辞精确一致 |
-| 716 | SM-02 按规则文件名引用存在性判缺失；同一规则文件名多引用时去重并保留首个；规则 6 多行块按首行 marker 判存在 | 两模式 | `_ensure_summary_lines` / step_entry_files | fx-entry-missing-summary | TestSummaryDedup / test_different_wording_same_ref_not_duplicated / test_duplicate_ref_deduped / ut-ensure_summary-missing-rule2-rule6 | 自定义措辞但引用同文件时不追加标准行；重复引用仅保留首个；真正缺失的引用与规则 6 块被补齐 |
-| 717 | SM-03 规则编号与现有内容冲突→不覆盖原内容，按规则文件名补齐缺失引用并报告可能需人工整理编号 | 两模式 | step_entry_files | fx-summary-number-conflict | it-entry-summary-number-conflict / TestSummaryDedup | 原编号行保留；同文件引用不重复；缺失摘要追加 |
+| 715 | SM-01 已收敛的强制规则章节与摘要引用→幂等跳过，不写盘 | 两模式 | `_normalize_mandatory_rules` / step_entry_files | fx-entry-idempotent | TestNormalizeMandatoryRules::test_idempotent / TestStepS4EntryFiles::test_skip_state_idempotent_no_change / it-s4-idempotent | 重跑逐字不变；顶层 warnings 字段仍存在且不改变 overall |
+| 716 | SM-02 `## 强制规则` 缺失或缺少权威摘要→在 L0 后创建章节并补齐 | 两模式 | `_normalize_mandatory_rules` / step_entry_files | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_create_section_when_missing / TestNormalizeMandatoryRulesLegacy / TestStepS4EntryFiles::test_skip_state_idempotent_no_change | 创建完整规范章节；规则 2/6 与项目配置开关不重复创建 H2 |
+| 717 | SM-03 命中 `RETIRED_RULE_FILES` 的引用块→仅删除当前清单中的 `serena-usage.md`，不误删前向引用 | 两模式 | `_normalize_mandatory_rules` | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_serena_removed / TestNormalizeMandatoryRules::test_forward_reference_kept / TestNormalizeMandatoryRules::test_empty_retired_list_no_deletion | 退役引用删除；未退役用户内容保留 |
+| 717 | SM-04 编号、规则 6 两类旧文案或规则 5 标题不符合权威文本→重排重编号，规则 5 统一为 `MCP Server 使用规则` | 两模式 | `CANONICAL_RULES` / `_normalize_mandatory_rules` | fx-entry-missing-summary | TestCanonicalRules / TestNormalizeMandatoryRules::test_renumber_1_to_9 / TestNormalizeMandatoryRules::test_rule6_old_wording_replaced / TestNormalizeMandatoryRules::test_claude_agents_wording_differs | 权威 1~7 顺序稳定，旧文案替换，双入口允许正文差异 |
+| 717 | SM-05 用户 H3/行块、重复 H2、孤立规则 6→保留用户内容，仅规范化首个章节，并记录 warnings | 两模式 | `_normalize_mandatory_rules` / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestNormalizeMandatoryRules::test_user_h3_block_moved_as_whole / TestNormalizeMandatoryRules::test_orphan_rule6_outside_section_warns / TestNormalizeMandatoryRules::test_duplicate_h2_only_first_normalized / TestComposeEntryWarnings | 用户内容放在权威条目后；`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6` 等诊断进入顶层 warnings，不影响 overall |
 
 ### 2.21 增量运行：可选规则（OP-01~04，SKILL 723-728 行表）
 
@@ -347,6 +349,9 @@
 | —（D6） | XC-05 预算计时：空项目 `apply --no-interrupt` 报告 `budget_seconds_excluding_codegraph < 60` | no-interrupt | —（报告计时字段） | fx-empty-project | it-budget | 报告计时字段存在且 < 60；S8 耗时单独列出 |
 | —（D1） | XC-06 PyYAML 缺失以退出码 77 退出且报告照常写出 | 两模式 | merge_yaml | fx-no-pyyaml | ut-merge_yaml-missing-dependency | 退出码恰为 77；stderr 说明；报告含 hints |
 | —（D3） | XC-07 横切原子写 `os.replace()` 与 sha256 工具 | 两模式 | atomic_write / sha256_file | fx-empty-project | ut-atomic_write-replace / ut-sha256_file-basic | 写入经原子替换；sha256 结果与系统工具一致（含 sha256sum/shasum 回退环境） |
+| —（L0 v2） | XC-08 产物路径覆盖表在 kernel v2、`document-storage.md` 与 `ARTIFACT_PATH_OVERRIDE_TABLE` 三源逐字一致；design/spec→`cadence/designs/`、plan→`cadence/plans/`，OpenSpec 仍在 `openspec/` | 两模式 | `ARTIFACT_PATH_OVERRIDE_TABLE` / L0 v2 kernel / document-storage.md | —（三份仓库文档） | TestArtifactPathOverrides | 三份表逐字一致；kernel 为 v2；不改 OpenSpec 路径 |
+| —（S4） | XC-09 顶层 `warnings` 始终为数组且只承载诊断，不影响 `overall`；脚本 code 仅为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP` | 两模式 | build_report / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestComposeEntryWarnings / TestNormalizeMandatoryRules / TestL0V2Migration / TestCommitToggle | dry-run、apply、no-interrupt 均有字段；诊断不把 `overall` 从 ok 降为 fail |
+| —（S4） | XC-10 产物自动提交开关：缺失默认关闭，合法用户值保留，非法值保留原文并报 `INVALID_TOGGLE`；首个既有项目配置章节内唯一 | 两模式 | `_ensure_commit_toggle` | fx-empty-project / fx-entry-user-techstack | TestCommitToggle / TestComposeEntryWarnings | 不创建重复 `## 项目配置`；既有用户内容保留；开关归并后幂等 |
 
 ## 3. 自审覆盖度（Step 3）
 
@@ -357,15 +362,15 @@
 | no-interrupt 权威合并 | 39-48（数据行 41-48） | 8 | NC-01~08 → 2.3 | ✅ 一一对应 |
 | OpenSpec 配置处理 | 664-673（数据行 666-673） | 8 | OS-01~08 → 2.17 | ✅ 一一对应 |
 | L1 协作规则增量 | 679-687（数据行 681-687） | 7 | L1-01~07 → 2.18 | ✅ 一一对应 |
-| L0 入口增量 | 697-705（数据行 699-705） | 7 | L0-01~07 → 2.19 | ✅ 一一对应 |
+| L0 入口增量 | 697-705（数据行 699-705） | 7 | L0-01~07 → 2.19 | ✅ 当前 v2、v0/v1 升级、混合标记安全归并均已对齐 |
 | 规则文件处理 | 610-615（数据行 612-615，新增 RF-05 语义行） | 6 | RF-01~05 → 2.16 | ✅ RF-05 对齐框架权威全覆盖 |
-| 摘要引用增量 | 713-717（数据行 715-717） | 3 | SM-01~03 → 2.20 | ✅ 一一对应 |
+| 强制规则章节规范化 | 713-717（数据行 715-717） | 5 | SM-01~05 → 2.20 | ✅ 创建、退役清理、重排、保留与 warnings 已一一对应 |
 | 可选规则增量 | 723-728（数据行 725-728） | 4 | OP-01~04 → 2.21 | ✅ 一一对应 |
 | CodeGraph 已存在状态 | 558-567（数据行 560-567） | 8 | CS-01~08 → 2.14 | ✅ 一一对应 |
 | CodeGraph 增量 | 734-743（数据行 736-743） | 8 | CG-01~08 → 2.22 | ✅ 一一对应 |
 | 历史目录迁移 | 429-433（数据行 431-433） | 3 | HM-01~03 → 2.11 | ✅ 一一对应 |
 
-合计 62 行，全部映射到测试 ID；Task 7 文档对账以此为准。
+合计 64 行，全部映射到测试 ID；Task 9 文档对账以此为准。
 
 ### 3.2 缺口清单逐条确认
 
@@ -373,7 +378,7 @@
 |---|--------|---------|------|
 | 1 | 历史目录两模式 | it-s5-history-no-interrupt（NH-02）/ it-s5-history-normal（NH-03） | ✅ |
 | 2 | 框架受管规则 drift（普通 keep / replace；no-interrupt 权威全覆盖） | it-s3-normal-keep-decision / it-s3-rules-drift-replace（replace 分支待补）/ ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | ✅ authoritative 覆盖与幂等已覆盖；普通 replace 集成待补 |
-| 3 | 技术栈占位逐项替换、用户真实值保留、差异入 report | TestTechstackPlaceholder / test_placeholder_replaced_user_value_kept_diff_reported / test_placeholder_replacement_is_idempotent_and_diff_not_duplicated | ✅ |
+| 3 | 既有技术栈等项目配置内容逐字保留；脚本不检测或写入技术栈 | TestComposeEntryWarnings | ✅ |
 | 4 | gitignore 两分支 | it-s6-gitignore-default / it-s6-gitignore-ignore（S7-01/02） | ✅ |
 | 5 | Playwright 两分支 | it-s3-playwright-skip / it-s3-playwright-enable（S10-01/02、OP-03） | ✅ |
 | 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ |
@@ -391,6 +396,9 @@
 | 18 | `cadence/legacy` 路径、复制语义、固定 `.gitignore` 与同秒目录后缀 | ut-backup_file-legacy-copy / ut-backup_file-legacy-gitignore / ut-backup_file-unique-suffix | ✅ |
 | 19 | code-usage 项目类型单选、固定落地名与模板来源字段 | TestCodeUsageSingleSource | ✅ |
 | 20 | no-interrupt dry-run 动作字段 | test_dry_run_no_interrupt_action_field | ✅ `authoritative-overwrite` |
+| 21 | L0 v2 迁移、混合标记安全配对、重复归并与污染对内容保留 | TestL0V2Migration | ✅ 当前 v2、受支持 v0/v1、`L0_DEDUP` 与不吞用户正文均覆盖 |
+| 22 | 强制规则章节规范化 SM-01~05、退役 `serena-usage.md`、用户内容与 warnings | TestCanonicalRules / TestNormalizeMandatoryRules / TestComposeEntryWarnings | ✅ 创建/清理/重排/保留及顶层 warnings 均覆盖 |
+| 23 | 产物路径覆盖与自动提交开关 | TestArtifactPathOverrides / TestCommitToggle / TestComposeEntryWarnings | ✅ 三源路径表、默认关闭/用户值保留/非法值告警、既有项目配置落位均覆盖 |
 
 ### 3.3 非表条款覆盖声明
 

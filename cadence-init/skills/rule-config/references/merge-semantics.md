@@ -18,7 +18,7 @@
 7. **报告要求** — 报告中必须出现的字段或清单（见 §11.3）。
 8. **对应测试 ID** — `tests/skill-clause-map.md` 中登记的单测/集成/静态 ID，多个以 `/` 分隔。
 
-行 ID 合计：NC-01~08（8）+ OS-01~08（8）+ L1-01~07（7）+ L0-01~07（7）+ RF-01~05（6）+ SM-01~03（3）+ OP-01~04（4）+ CS-01~08（8）+ CG-01~08（8）+ HM-01~03（3）= **62 行**。
+行 ID 合计：NC-01~08（8）+ OS-01~08（8）+ L1-01~07（7）+ L0-01~07（7）+ RF-01~05（6）+ SM-01~05（5）+ OP-01~04（4）+ CS-01~08（8）+ CG-01~08（8）+ HM-01~03（3）= **64 行**。
 
 > 每表前注来源为现行 SKILL.md 的表头与数据行号区间（以 `tests/skill-clause-map.md` §3.1 为准）。脚本实现与测试不得偏离本表语义；本文件修改必须先与 `skill-clause-map.md` 对账。
 
@@ -110,16 +110,20 @@
 > 来源：现行 `SKILL.md` 第 691-711 行（"CLAUDE.md / AGENTS.md 入口增量处理"节，数据行 699-705；屏障与受管区块外保留条款 L0-B1/L0-B2 在 SKILL 691-694、707 行）。L0-P1~P12 处理流程条款在 SKILL 185-200 行，与本表互证。
 > 适用模式：两模式。
 
+当前 L0 版本为 **v2**，受支持旧版为 **v0、v1**。v1 只有在完整受管区块与规范源 `references/rules/l0-history/agent-routing-kernel-v1.md` 逐字一致时才判定为可升级；标记匹配但正文不一致一律判定 drift。v0 没有规范源，成对标记即执行 upgrade（该无规范源例外须写入报告）。
+
 写入入口文件前必须先完成双入口统一预检，确定两个入口的标记、版本、完整内容、交互结果、目标动作和全部备份需求；在写入任一入口前创建本次所需的全部 L0 备份，仅当全部必要备份成功后才按下表执行各入口动作。任一必要备份失败时 CLAUDE.md 与 AGENTS.md 均不得写入。
+
+L0 迁移不变量：最终只保留一个 v2 区块；混合版本标记仅在安全成对时删除完整区块，孤立标记只删除自身标记行；重复区块归并并报告 `L0_DEDUP`；完整区块含污染对时降级为只剥离边界标记，保留区块内部用户正文，避免重叠删除吞掉内容。dedup/upgrade 在普通与 no-interrupt 模式执行相同动作。
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v1（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v1、插入位置 | `it-entry-base-created` |
-| L0-02 | 入口的 L0 受管区块 | 当前 v1 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` |
-| L0-03 | 同上 | 当前 v1 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，**无响应则保留并报告 status=0**（A 类，§11.6；recommendation=keep 安全默认）；决策 `keep`→保留原区块，`replace`→屏障后替换 | 先备份，成功后替换为规范源当前 v1 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replaced-outside-preserved` |
-| L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v1 并报告 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、升级到 v1 | `it-s4-upgrade` |
-| L0-05 | 同上 | 无 L0 标记 | 插入当前 v1，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
-| L0-06 | 同上 | 单侧标记或标记顺序错误 | 询问；**无响应则保留并报告 status=0**（A 类，§11.6）；决策 `keep`→保留，`replace`→屏障后写入 | 先备份，成功后写入单一当前 v1 区块并报告 | no-interrupt：先成功备份（§11.1）。任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` |
+| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v2（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v2、插入位置 | `it-entry-base-created` |
+| L0-02 | 入口的 L0 受管区块 | 当前 v2 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` / `ut-l0-v2-skip` |
+| L0-03 | 同上 | 当前 v2 标记成对但完整受管区块与规范源不同 | 视为无法识别的本地修改；询问，**无响应则保留并报告 status=0**（A 类，§11.6；recommendation=keep 安全默认）；决策 `keep`→保留原区块，`replace`→屏障后替换 | 先备份，成功后替换为规范源当前 v2 并报告 | no-interrupt：先成功备份（§11.1）；普通确认替换分支：将该入口纳入本次备份屏障。任一必要备份失败双入口均不得写入 | 报告判定"本地修改"；no-interrupt 另报备份路径与替换 | `it-s4-drift-normal` / `it-s4-drift-replaced-outside-preserved` / `ut-l0-v2-v1-drift` |
+| L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v2 并报告；v1 仅规范源逐字一致时可升级，v0 成对标记按无规范源例外升级 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、处理动作与分支 | `it-s4-upgrade` / `ut-l0-v2-upgrade` / `ut-l0-v2-v1-drift` |
+| L0-05 | 同上 | 无 L0 标记 | 插入当前 v2，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
+| L0-06 | 同上 | 单侧/顺序错误，或混合版本、重复区块等需归并的标记状态 | 单侧/顺序错误按普通模式询问（无响应保留并报告 status=0）；混合版本与重复区块按确定性安全归并执行 | 先备份，成功后将可处理标记安全归并为单一当前 v2 区块并报告 | 归并/替换分支按 §11.1、§11.2 全局屏障；任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；重复归并记 `L0_DEDUP`；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` / `ut-l0-v2-mixed` / `ut-l0-v2-dedup` / `ut-l0-v2-nested-broken` |
 | L0-07 | 同上任意需 L0 备份的分支 | 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 同普通模式（两模式同动作） | 备份失败本身即终止条件（全局屏障，见 §11.2） | 报告失败备份路径、失败原因、双入口零写入 | `it-s4-backup-barrier` |
 
 **辅助条款（L0-B1/L0-B2；L0-P1~P12 互证）**：
@@ -144,16 +148,18 @@
 | RF-04 | 历史 CodeGraph 段落条款（框架资产改用 RF-05） | 规则文件已存在但缺少 CodeGraph 段落 | 视为 RF-05 drift：询问 keep/replace；无响应保留并报告，`replace` 时执行屏障归档后以模板覆盖 | 见 RF-05 权威覆盖；不得章节合并或保留项目补充 | 普通模式 `keep` 无归档；`replace` 与 no-interrupt 均纳入 RF-05 全局归档屏障 | 报告统一 drift 冲突与 `authoritative-overwrite`/`unchanged`，旧 no-interrupt 章节合并映射已废弃 | `ut-s3-codegraph-section-unified-drift` / `ut-s3-codegraph-section-unified-merge`（旧测试名保留，断言已改为完整模板覆盖） |
 | RF-05 | `.claude/rules/` 下 7 个框架受管规则文件（`mcp-servers.md`/`code-reading.md`/`document-storage.md`/`language.md`/`markdown-format.md`/`code-usage.md`/`playwright.md`） | 文件存在但内容≠模板 | 询问 keep/replace，replace 时屏障归档+`atomic_write` | 屏障归档+`atomic_write` 模板 | 全局屏障统一归档 | `authoritative-overwrite`/`unchanged` | `ut-s3-authoritative-overwrite`/`ut-s3-authoritative-idempotent` |
 
-## 6. 摘要引用增量（SM-01~03）
+## 6. 强制规则章节与摘要合并语义（SM-01~05）
 
-> 来源：现行 `SKILL.md` 第 713-717 行（"CLAUDE.md / AGENTS.md 入口增量处理"节末"其他规则摘要仍按以下策略增量处理"表，数据行 715-717）。
-> 适用模式：两模式。摘要引用的 L0 受管区块本身按 §4 L0 表处理；本表仅处理摘要行。
+> 来源：前 8 个任务落地后的入口规范化实现；摘要引用、`## 强制规则` 章节规范化与项目配置开关均由 S4 合成流程统一处理。
+> 适用模式：两模式。五行均为两模式同动作，且不需要备份；L0 受管区块本身仍按 §4 L0 表处理。
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| SM-01 | CLAUDE.md / AGENTS.md 的规则摘要引用 | 每个规则文件名已恰好被引用一次 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改文件） | 报告每个规则文件名引用只出现一次；文件其余内容不变 | `it-s4-idempotent` |
-| SM-02 | 同上 | 某规则文件名引用缺失，或同一规则文件名存在多条引用 | 按规则文件名引用存在性判缺失；缺失引用追加到 `## 强制规则` 章节末尾；同一规则文件名多引用去重并保留首个；规则 6 多行块按首行 marker 判存在 | 同普通模式（两模式同动作） | 无（摘要整理；L0 区块本身按 L0 表处理） | 报告追加位置、摘要内容与去重结果 | `TestSummaryDedup::test_different_wording_same_ref_not_duplicated` / `TestSummaryDedup::test_duplicate_ref_deduped` / `it-entry-summary-number-conflict` |
-| SM-03 | 同上 | 规则编号与现有内容冲突 | 不覆盖原内容，追加缺失摘要并在报告中说明可能需要人工整理编号 | 同普通模式（两模式同动作） | 无（不改原编号行） | 报告保留的原编号行、追加的缺失摘要、"可能需人工整理编号"提示 | `it-entry-summary-number-conflict` |
+| SM-01 | CLAUDE.md / AGENTS.md 的入口内容 | 规则章节及摘要引用已收敛，重跑不会产生内容变化 | 幂等跳过，不写盘 | 同普通模式 | 无 | 报告幂等跳过；顶层 `warnings` 仍存在且不改变 `overall` | `TestStepS4EntryFiles::test_skip_state_idempotent_no_change` / `it-s4-idempotent` / `ut-norm-idempotent` |
+| SM-02 | `## 强制规则` 章节 | 章节缺失或摘要引用缺失 | 创建强制规则章节；在 L0 之后（有 L0 时）落位，并按规则文件 marker 补齐缺失摘要 | 同普通模式 | 无 | 报告章节创建/摘要补齐位置；项目配置开关不重复创建 H2 | `TestNormalizeMandatoryRules::test_create_section_when_missing` / `ut-ensure_summary-missing-rule2-rule6` |
+| SM-03 | 强制规则章节中的退役引用 | 命中 `RETIRED_RULE_FILES`（当前为 `serena-usage.md`） | 仅删除该退役规则引用块；仅对 `serena-usage.md` 生效 | 同普通模式 | 无 | 报告正文不再保留退役引用；不得误删未列入退役清单的用户内容 | `TestNormalizeMandatoryRules::test_serena_removed` / `ut-norm-retired` / `ut-norm-retired-empty` |
+| SM-04 | 强制规则章节 | 规则编号、规则 6 两类旧文案或规则 5 标题与权威文本不一致 | 按权威 1~7 顺序重排重编号；替换规则 6 两类旧文案；规则 5 标题统一为 `MCP Server 使用规则` | 同普通模式 | 无 | 报告合成结果；权威条目顺序、编号、标题和入口文案可重复收敛 | `TestCanonicalRules` / `TestNormalizeMandatoryRules::test_renumber_1_to_9` / `ut-norm-rule6-old` / `ut-norm-wording` |
+| SM-05 | 强制规则章节与入口用户内容 | 存在用户自定义 H3/行块、重复 `## 强制规则` 或章节外孤立规则 6 | 保留无法识别的用户内容并置于权威条目之后；只规范化首个章节，报告 warnings | 同普通模式 | 无 | 顶层 `warnings` 契约固定包含脚本实际五个码：`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`；warnings 不影响 `overall`，dry-run/apply/no-interrupt 三态字段一致 | `TestComposeEntryWarnings` / `ut-norm-user-h3` / `ut-norm-orphan-rule6` / `ut-norm-dup-h2` / `ut-compose-warnings` / `ut-s4-warnings` |
 
 ## 7. 可选规则增量（OP-01~04）
 
@@ -248,6 +254,12 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 
 **成功完成报告**（OS-B2，SKILL 675 行）：逐项列出新增 context 完整行、按 artifact 分组的合并规则、无效键处理、所有备份路径、结构冲突字段路径与实际类型、解析或内容冲突、候选结构预检结果、原子发布结果；无新增内容时明确报告"幂等跳过"。（instructions 验证已废止，见 OS-N10；不再报告失败 artifact 或四类 instructions 命令结果。）
 
+**顶层 `warnings` 契约**：报告无论 dry-run、普通 apply 或 no-interrupt apply 都必须有顶层数组 `warnings`；它只承载诊断，不改变 `overall` 的 `ok` / `degraded` / `fail` 判定。脚本实际枚举五个 code：`USER_LINES_KEPT`（用户规则块保留）、`DUPLICATE_H2`（仅处理首个同名 H2）、`ORPHAN_RULE6`（章节外孤立规则 6）、`INVALID_TOGGLE`（非法开关值保留原文）与 `L0_DEDUP`（L0 重复/孤立当前标记归并）。`ENTRY_TOGGLE_MISMATCH` 是 Agent 读取双入口开关时的不一致告警，不由脚本写入此数组。
+
+**产物自动提交开关**：`_ensure_commit_toggle` 在首个既有 `## 项目配置` 章节末尾确保唯一 `- **产物自动提交（design/plan）**：关闭`；没有该章节时创建它。章节仅维护该开关，既有技术栈等用户内容逐字保留且不由脚本检测或写入。合法用户值 `开启` / `关闭` 原样保留，非法值保留原文并发出 `INVALID_TOGGLE`。写入双入口一致的开关。读取行为由 Agent 层执行：CLAUDE.md 优先、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`。
+
+**产物路径覆盖表**：`ARTIFACT_PATH_OVERRIDE_TABLE` 的三份逐字一致副本位于 L0 v2 kernel、`document-storage.md` 与脚本常量：`docs/superpowers/specs/`（design/spec）→ `cadence/designs/`，`docs/superpowers/plans/`（plan）→ `cadence/plans/`。OpenSpec 产物仍位于 `openspec/`。
+
 **决策文件 schema**（design D3 横切契约 XC-03，普通模式 apply 入口）：
 
 - **conflict_id 格式**：`<step>:<资产>[:<分支>]`。`<step>` 为步骤标识（如 `s1`、`s3`、`s4`、`s7`）；`<资产>` 为受冲突的文件或配置块标识；可选 `<分支>` 用于同步骤同资产的多分支冲突。
@@ -313,9 +325,9 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 - OpenSpec `rules.apply`（OS-04）：普通模式询问，**无响应则保留原文件并报告**，`status=0`。
 - OpenSpec 结构/类型不兼容（OS-03）、OpenSpec YAML 无法解析（OS-05）、文件不可读：
   普通模式**保留原文件并报告字段路径与实际类型**，不发布候选，`status=0`。
-- **L0 受管区块 drift/broken（L0-03/L0-06）**：当前 v1 标记成对但受管区块与规范源不同、
+- **L0 受管区块 drift/broken（L0-03/L0-06）**：当前 v2 标记成对但受管区块与规范源不同、
   或单侧标记/标记顺序错误时，普通模式询问用户；**无响应则保留原区块并报告**，`status=0`。
-  no-interrupt 下按权威规则备份后替换为规范源 v1。「保留 drift 区块」是可恢复的安全默认
+  no-interrupt 下按权威规则备份后替换为规范源 v2。「保留 drift 区块」是可恢复的安全默认
   （用户可后续手动修复，全局备份屏障在替换分支已就绪）。
 - **L1 协作规则 drift/unmarked（L1-04/L1-05/L1-06）**：当前 v1 标记存在但完整内容不同、
   仅旧版标记匹配但内容不同、或无标记与已知版本不匹配时，普通模式询问用户；**无响应则保留
