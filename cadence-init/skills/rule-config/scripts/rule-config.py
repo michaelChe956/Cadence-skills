@@ -2954,20 +2954,15 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
       5. atomic_write 发布；失败→终止、原文件不变、report 含失败详情。
 
     冲突处理（合并矩阵）：
-      * rules.apply：
-          - no-interrupt → 备份后移除（候选不含 apply），atomic_write 发布；
-          - 普通 remove_apply 决策 → 同上；
-          - 普通 keep 或无决策（default_keep）→ 保留原文件，报告。
-      * 结构/类型不兼容 / YAML 无法解析 / 文件不可读：
-          - 普通模式 → 保留原文件，报告字段路径与类型（status=0）；
-          - no-interrupt → 备份后终止（raise，status≠0），原文件不变。
+      * rules.apply（action=remove-apply）：两模式统一——归档后移除 apply 并保守合并；
+      * 结构/类型不兼容 / YAML 无法解析 / 文件不可读（action=replace）：
+          两模式统一归档后以模板整体替换。
     全程无临时 change、无 openspec instructions。
     """
     actions_log: list = []
     templates_info = plan.get("templates", {}) or {}
     openspec_yaml_str = templates_info.get("openspec_yaml")
     config_path = root / "openspec" / "config.yaml"
-    decisions_map = plan.get("decisions_map", {}) or {}
     s7_step = (plan.get("steps", {}) or {}).get(STEP_OPENSPEC_CONFIG, {})
     assets = s7_step.get("assets", []) or []
 
@@ -2982,7 +2977,6 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
     for asset in assets:
         rel = asset.get("path", "openspec/config.yaml")
         action = asset.get("action")
-        conflict = asset.get("conflict")
 
         if action == "create":
             # 目标不存在 → 候选=模板的安全输出形式（merge_yaml(tpl, '')），
@@ -3027,78 +3021,46 @@ def step_s7_openspec_config(root: Path, intents: Intents, plan: dict, report: di
             )
             continue
 
-        # action == "keep"（conflict 非空）。
-        kind = conflict.get("kind") if conflict else None
-        if kind == "rules.apply":
-            decision = decisions_map.get("s7:openspec/config.yaml")
-            if intents.no_interrupt or decision == DECISION_REMOVE_APPLY:
-                # 备份后移除：merge_yaml 候选已移除 apply。
-                existing = _safe_read(config_path) or ""
-                candidate, _ = merge_yaml(template_text, existing)
-                if candidate is None:
-                    _s7_abort_unparseable(config_path, report, actions_log, rel)
-                    raise PublishError(
-                        "openspec/config.yaml 不可解析，无法移除 rules.apply"
-                    )
-                _s7_publish_or_abort(
-                    config_path, candidate, report, actions_log, rel,
-                    branch="rules-apply-removed",
-                    removed_key="rules.apply",
+        # action == "remove-apply"：两模式统一——备份后移除 rules.apply 并保守合并
+        #（merge_yaml 候选已剔除 apply；全局屏障已归档）。
+        if action == "remove-apply":
+            existing = _safe_read(config_path) or ""
+            candidate, _ = merge_yaml(template_text, existing)
+            if candidate is None:
+                _s7_abort_unparseable(config_path, report, actions_log, rel)
+                raise PublishError(
+                    "openspec/config.yaml 不可解析，无法移除 rules.apply"
                 )
-            else:
-                # keep 或无决策（default_keep）→ 保留原文件，报告。
-                actions_log.append({
-                    "path": rel, "action": "kept", "branch": "rules-apply-keep",
-                    "detail": "rules.apply 保留（用户未确认移除）",
-                })
-                _record_step_conflicts(report, STEP_OPENSPEC_CONFIG, [{
-                    "conflict_id": "s7:openspec/config.yaml",
-                    "asset": rel, "kind": "rules.apply",
-                    "question": "openspec/config.yaml 含 rules.apply",
-                    # C-1 修复：推荐保守默认 keep（不移除）。
-                    "recommendation": DECISION_KEEP,
-                }])
+            _s7_publish_or_abort(
+                config_path, candidate, report, actions_log, rel,
+                branch="rules-apply-removed",
+                removed_key="rules.apply",
+            )
             continue
 
-        # 结构/解析/不可读冲突。
-        if intents.no_interrupt:
-            # no-interrupt：备份后无法无损规范化→终止，原文件不变。
-            _record_step_conflicts(report, STEP_OPENSPEC_CONFIG, [{
-                "conflict_id": "s7:openspec/config.yaml",
-                "asset": rel, "kind": kind,
-                "fields": conflict.get("fields"),
-                "field_types": conflict.get("field_types"),
-                "question": (
-                    f"openspec/config.yaml {kind}，无法无损规范化"
-                ),
-                "recommendation": "手动修复后重试",
-            }])
-            actions_log.append({
-                "path": rel, "action": "aborted", "branch": f"{kind}-terminate",
-                "detail": f"fields={conflict.get('fields')}",
-            })
-            _record_step_actions(report, STEP_OPENSPEC_CONFIG, actions_log)
-            raise PublishError(
-                f"openspec/config.yaml {kind}，无法无损规范化；已备份，原文件不变"
+        # action == "replace"：structure/unparseable/unreadable——无法无损规范化，
+        # 两模式统一归档后以模板整体替换；候选取模板的安全 dump 形式以保证重跑幂等。
+        if action == "replace":
+            if not template_text:
+                actions_log.append({
+                    "path": rel, "action": "skipped", "reason": "模板缺失",
+                })
+                continue
+            candidate, _ = merge_yaml(template_text, "")
+            if candidate is None:
+                # 模板不可解析（不应发生）→ 兜底用模板原文
+                candidate = template_text
+            _s7_publish_or_abort(
+                config_path, candidate, report, actions_log, rel,
+                branch="template-replace",
             )
-        else:
-            # 普通模式：保留原文件，报告字段路径与类型（status=0）。
-            actions_log.append({
-                "path": rel, "action": "kept", "branch": f"{kind}-preserve",
-                "fields": conflict.get("fields"),
-                "field_types": conflict.get("field_types"),
-            })
-            _record_step_conflicts(report, STEP_OPENSPEC_CONFIG, [{
-                "conflict_id": "s7:openspec/config.yaml",
-                "asset": rel, "kind": kind,
-                "fields": conflict.get("fields"),
-                "field_types": conflict.get("field_types"),
-                "question": (
-                    f"openspec/config.yaml {kind}（字段："
-                    f"{', '.join(conflict.get('fields', []) or [])}）"
-                ),
-                "recommendation": "手动修复后重试",
-            }])
+            continue
+
+        # 未知动作兜底：不写入，仅记录（防御性；compute_plan 不产生其他取值）。
+        actions_log.append({
+            "path": rel, "action": "skipped",
+            "reason": f"未识别动作 {action!r}",
+        })
 
     _record_step_actions(report, STEP_OPENSPEC_CONFIG, actions_log)
 

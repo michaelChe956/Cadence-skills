@@ -1783,7 +1783,7 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
             rc.STEP_OPENSPEC_CONFIG: {
                 "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
                 "assets": [{
-                    "path": "openspec/config.yaml", "action": "keep",
+                    "path": "openspec/config.yaml", "action": "remove-apply",
                     "conflict": {"kind": "rules.apply", "value": ["x"]},
                     "backup_needed": True,
                 }],
@@ -1794,36 +1794,39 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
         self.assertNotIn("apply", doc.get("rules", {}))
         self.assertIn("custom", doc["rules"]["proposal"])
 
-    def test_rules_apply_normal_default_keep_preserved(self):
-        """ut-step_s7-rules-apply-keep / OS 行（普通模式无决策 → 保留原文件）"""
+    def test_rules_apply_normal_removed(self):
+        """ut-step_s7-rules-apply-remove-normal / OS-04（普通模式无决策 → 移除 rules.apply 并保守合并）"""
         cfg = self.root / "openspec" / "config.yaml"
         cfg.parent.mkdir(parents=True)
-        original = "schema: spec-driven\nrules:\n  apply:\n    - x\n"
-        cfg.write_text(original, encoding="utf-8")
+        cfg.write_text(
+            "schema: spec-driven\nrules:\n  proposal:\n    - custom\n  apply:\n    - x\n",
+            encoding="utf-8",
+        )
         plan = self._base_plan(steps={
             rc.STEP_OPENSPEC_CONFIG: {
                 "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
                 "assets": [{
-                    "path": "openspec/config.yaml", "action": "keep",
+                    "path": "openspec/config.yaml", "action": "remove-apply",
                     "conflict": {"kind": "rules.apply", "value": ["x"]},
                     "backup_needed": True,
                 }],
             }
         })
         rc.step_s7_openspec_config(self.root, _intents(), plan, {})
-        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+        doc = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+        self.assertNotIn("apply", doc.get("rules", {}))
+        self.assertIn("custom", doc["rules"]["proposal"])
 
-    def test_structure_conflict_no_interrupt_raises(self):
-        """ut-step_s7-structure-terminate / OS-N9（no-interrupt 结构冲突 → 终止原文件不变）"""
+    def test_structure_conflict_no_interrupt_replaced(self):
+        """ut-step_s7-structure-replace / OS-03/05（no-interrupt 结构冲突 → 归档+模板整体替换）"""
         cfg = self.root / "openspec" / "config.yaml"
         cfg.parent.mkdir(parents=True)
-        original = "schema: spec-driven\nrules:\n  proposal: invalid-string\n"
-        cfg.write_text(original, encoding="utf-8")
+        cfg.write_text("schema: spec-driven\nrules:\n  proposal: invalid-string\n", encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_OPENSPEC_CONFIG: {
                 "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
                 "assets": [{
-                    "path": "openspec/config.yaml", "action": "keep",
+                    "path": "openspec/config.yaml", "action": "replace",
                     "conflict": {
                         "kind": "structure", "fields": ["rules.proposal"],
                         "field_types": {"rules.proposal": "str"},
@@ -1832,23 +1835,20 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
                 }],
             }
         })
-        with self.assertRaises(rc.PublishError):
-            rc.step_s7_openspec_config(
-                self.root, _intents(no_interrupt=True), plan, {}
-            )
-        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
+        rc.step_s7_openspec_config(self.root, _intents(no_interrupt=True), plan, {})
+        expected, _ = rc.merge_yaml(self.tpl, "")
+        self.assertEqual(cfg.read_text(encoding="utf-8"), expected)
 
-    def test_structure_conflict_normal_preserved(self):
-        """ut-step_s7-structure-preserve / OS-N9（普通模式结构冲突 → 保留+报告 status=0）"""
+    def test_structure_conflict_normal_replaced(self):
+        """ut-step_s7-structure-replace-normal / OS-03/05（普通模式结构冲突 → 归档+模板整体替换，不记录冲突）"""
         cfg = self.root / "openspec" / "config.yaml"
         cfg.parent.mkdir(parents=True)
-        original = "schema: spec-driven\nrules:\n  proposal: invalid-string\n"
-        cfg.write_text(original, encoding="utf-8")
+        cfg.write_text("schema: spec-driven\nrules:\n  proposal: invalid-string\n", encoding="utf-8")
         plan = self._base_plan(steps={
             rc.STEP_OPENSPEC_CONFIG: {
                 "name": rc.STEP_OPENSPEC_CONFIG, "status": "ok",
                 "assets": [{
-                    "path": "openspec/config.yaml", "action": "keep",
+                    "path": "openspec/config.yaml", "action": "replace",
                     "conflict": {
                         "kind": "structure", "fields": ["rules.proposal"],
                         "field_types": {"rules.proposal": "str"},
@@ -1859,10 +1859,11 @@ class TestStepS7OpenspecConfig(unittest.TestCase):
         })
         report = {"steps": [rc._step_skeleton(rc.STEP_OPENSPEC_CONFIG)]}
         rc.step_s7_openspec_config(self.root, _intents(), plan, report)
-        self.assertEqual(cfg.read_text(encoding="utf-8"), original)
-        # 报告含结构冲突字段路径
+        expected, _ = rc.merge_yaml(self.tpl, "")
+        self.assertEqual(cfg.read_text(encoding="utf-8"), expected)
+        # 不再记录决策冲突
         s7_conflicts = report["steps"][0].get("conflicts", [])
-        self.assertTrue(any(c.get("kind") == "structure" for c in s7_conflicts))
+        self.assertFalse(any(c.get("kind") == "structure" for c in s7_conflicts))
 
     def test_publish_candidate_precheck_fail_raises(self):
         """ut-s7-publish-or-abort-precheck-fail / OS-N12（候选结构预检失败→终止、原文件不变）

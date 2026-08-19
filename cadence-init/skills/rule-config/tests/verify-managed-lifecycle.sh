@@ -693,38 +693,48 @@ else
   record_result it-s3-l1-backed-up-and-replaced "$RUN_STATUS" "$after_fail" "$after_replace" fail
 fi
 
-# B7. 普通模式 openspec config 无冲突必须保留（it-s7-openspec-normal / OS 行）。
+# B7. 普通模式 rules.apply 归档后移除（it-s7-openspec-normal-apply-removed / OS-04）。
+# 契约：普通模式不再询问，与 no-interrupt 同动作。
 case_root="$TEST_ROOT/fx-openspec-existing"
 mkdir -p "$case_root/openspec"
-printf 'schema: spec-driven\nrules:\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
+printf 'schema: spec-driven\nrules:\n  proposal:\n    - custom-proposal\n  apply:\n    - invalid-artifact\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
-assert_same it-s7-openspec-normal-preserved "$RUN_STATUS" "$before" "$after" 0
+if [ "$RUN_STATUS" -eq 0 ] && ! grep -q '^  apply:' "$case_root/openspec/config.yaml" \
+  && grep -q 'custom-proposal' "$case_root/openspec/config.yaml" \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
+  assert_changed it-s7-openspec-normal-apply-removed "$RUN_STATUS" "$before" "$after"
+else
+  record_result it-s7-openspec-normal-apply-removed "$RUN_STATUS" "$before" "$after" fail
+fi
 
-# B8. 不可解析 YAML 必须先归档后终止、原文件不变（it-s7-openspec-unparseable / OS-N9）。
+# B8. 不可解析/不兼容 YAML 两模式归档后模板替换（it-s7-openspec-invalid-yaml-backed-up-replaced 等 / OS-03/05）。
+# 契约：不再失败关闭；归档成功后以模板整体替换并正常完成，产物可解析且含模板 schema。
 case_root="$TEST_ROOT/fx-openspec-unparseable"
 mkdir -p "$case_root/openspec"
 printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
-  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
-  record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" != "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml' \
+  && python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d.get('schema')=='spec-driven'" "$case_root/openspec/config.yaml"; then
+  assert_changed it-s7-openspec-invalid-yaml-backed-up-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s7-openspec-invalid-yaml-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s7-openspec-invalid-yaml-backed-up-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
-# 类型冲突
+# 类型冲突（普通模式同样替换）
 printf 'schema: spec-driven\nrules:\n  proposal: invalid-string\n' > "$case_root/openspec/config.yaml"
 before=$(sha256_file "$case_root/openspec/config.yaml")
-run_script apply "$case_root" --no-interrupt
+run_script apply "$case_root"
 after=$(sha256_file "$case_root/openspec/config.yaml")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
-  && legacy_archive_exists "$case_root" 'openspec/config.yaml'; then
-  record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] && [ "$before" != "$after" ] \
+  && legacy_archive_exists "$case_root" 'openspec/config.yaml' \
+  && python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert isinstance(d.get('rules',{}).get('proposal',[]),list)" "$case_root/openspec/config.yaml"; then
+  assert_changed it-s7-openspec-yaml-type-conflict-backed-up-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s7-openspec-yaml-type-conflict-backed-up-preserved "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s7-openspec-yaml-type-conflict-backed-up-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # B9. 成功合并必须保留 schema/context/额外规则，四 artifact 分组补齐，且第二次运行幂等（it-s7-openspec-merge / OS-02）。
@@ -1433,8 +1443,12 @@ fi
 # overall 收敛 ok/degraded/fail 三值（不得为 crashed）；failure.file 填实际失败文件。
 case_root="$TEST_ROOT/fx-failure-report-fields"
 mkdir -p "$case_root/openspec"
-printf 'schema: spec-driven\nrules: [\n' > "$case_root/openspec/config.yaml"
+printf 'schema: spec-driven\ncontext: custom\n' > "$case_root/openspec/config.yaml"
+# 不可解析 YAML 已改为归档+模板替换（不再失败）；改用目标目录只读复现发布失败。
+saved_mode_fr="$(stat -c %a "$case_root/openspec" 2>/dev/null || stat -f %Lp "$case_root/openspec")"
+chmod 555 "$case_root/openspec"
 run_script apply "$case_root" --no-interrupt
+chmod "$saved_mode_fr" "$case_root/openspec"
 if [ "$RUN_STATUS" -ne 0 ] && python3 - "$REPORT" <<'PY'
 import json
 import sys
