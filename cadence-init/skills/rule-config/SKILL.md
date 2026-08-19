@@ -41,12 +41,7 @@ disable-model-invocation: true
 
 ## 调用方式
 
-**第一步——定位脚本（与 pre-check 同款约定）**：脚本是本 rule-config skill 的关联脚本。Agent 按以下候选根顺序定位并拼出完整绝对路径，记为 `<RULE_CONFIG_PY>`：
-
-1. plugin 缓存：`<plugin 缓存根>/cadence-init/skills/rule-config/scripts/rule-config.py`。
-2. 仓库安装根：`<skill 安装根>/cadence-init/skills/rule-config/scripts/rule-config.py`。
-
-若候选根下 `scripts/` 缺失，说明命中了不含关联脚本的旧版本缓存；重新安装或刷新 plugin 后重试，不得从其他项目目录复制脚本。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
+**第一步——定位脚本**：脚本是本 rule-config skill 的关联脚本，即本 SKILL 所在目录的 `scripts/rule-config.py`，记为 `<RULE_CONFIG_PY>`（各客户端按其 skill 安装位置定位该目录，如 `<skill 安装根>/cadence-init/skills/rule-config/`）。模板与脚本同包（skill 自包含），由脚本自动解析其 skill 目录下的 `references/`，Agent 不做模板定位。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。若脚本报"skill 安装不完整"，重新安装 skill 后重试，不得从其他项目或安装位置复制模板补齐。
 
 **第二步——确定报告与决策路径**：报告 `<REPORT>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。决策文件 `<DECISIONS_JSON>` 为休眠兜底机制：当前无活跃冲突类型、计划不要求决策文件，仅在恢复逐条提问流程时才需生成（同样必须位于项目根之外）。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
 

@@ -289,17 +289,11 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 - 故障注入（design D6）：原子发布失败以目标目录 `chmod 555` 复现（`fx-readonly-target`）；备份失败以只读父目录复现（`fx-readonly-parent`）。
 - 对应测试：`ut-atomic_write-publish`、`ut-atomic_write-replace`、`ut-atomic_write-fail`、`it-s7-openspec-publish-failure-preserved`。
 
-### 11.5 模板三级定位
+### 11.5 模板定位（skill 自包含）
 
-模板根路径与 OpenSpec 配置模板路径必须**成对定位**并在后续步骤中复用（包括步骤 8 的 `code-reading.md`、步骤 10 的 `playwright.md` 和步骤 11 的 OpenSpec 配置）。
+模板根路径与 OpenSpec 配置模板路径 MUST 以脚本自身所在 skill 目录（`SKILL_DIR`，`Path(__file__).resolve().parent.parent`）为唯一来源：`SKILL_DIR/references/rules/` 与 `SKILL_DIR/references/openspec/config.yaml`。禁止引用 `~/.claude/plugins/` 等客户端目录候选或全局搜索回退；模板定位 MUST NOT 依赖 `HOME` 环境变量。
 
-按以下优先级顺序查找（S1b-01~04，SKILL 138-159 行）：
-
-1. **在线安装路径**：检查 `~/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config/references/rules/` 下是否同时存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md`，并检查同一 `references/` 下的 `openspec/config.yaml`。同时存在则取 `references/rules/` 为模板根路径、`references/openspec/config.yaml` 为 OpenSpec 配置模板路径。
-2. **离线安装路径**：检查 `~/.claude/plugins/marketplaces/cadence-skills-local/cadence-init/skills/rule-config/references/rules/` 下同样三件套与同 `references/` 下的 `openspec/config.yaml`。规则同上。
-3. **回退搜索（开发环境）**：使用 Glob 搜索标识文件 `**/cadence-init/skills/rule-config/references/rules/language.md`，从返回结果提取目录路径（去掉末尾 `language.md`）作为候选；回退路径需额外验证 `document-storage.md` 存在（即四件套：`agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md`、`document-storage.md`），并验证同 `references/` 下 `openspec/config.yaml` 存在。多候选取修改时间最新者。
-
-**成对校验**：任一候选缺少 `references/openspec/config.yaml` 时不得选用该候选；所有候选均不完整时终止并报告缺失模板（对应测试 `ut-locate_templates-all-incomplete` / `it-s2-templates-missing`，非零退出、目标项目零写入）。
+**成对校验**：`references/rules/` 下必须存在 `agent-routing-kernel.md`、`language.md`、`openspec-superpowers-workflow.md`、`document-storage.md` 四件套，且 `references/openspec/config.yaml` 必须存在；缺任一即 `TemplateError` 失败关闭（非零退出、目标项目零写入），报告逐个列出缺失文件名并给出"skill 安装不完整，请重新安装"恢复建议（对应测试 `ut-locate_templates-incomplete`；空 HOME 正常运行为 `it-s2-skill-self-contained`）。
 
 ### 11.6 default_keep 语义（Task 8 裁决区分）
 
@@ -368,3 +362,5 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 `ut-s3-codegraph-section-unified-drift` / `ut-s3-codegraph-section-unified-merge` 覆盖（后者名称保留，断言已改为完整模板覆盖）。
 
 **2026-08-19 权威化对账（change rule-config-authoritative-overwrite）**：RF-05/L1-04~06/L0-03/L0-06/OS-03~05 普通模式列两模式统一为归档+权威处理；§11.6 A 类清单清空；it-s3-normal-keep-decision→it-s3-normal-authoritative-overwrite 等 7 个集成 ID 改名（清单见 skill-clause-map.md）；it-l0-drift-normal-keep-default、it-l1-drift-normal-keep-default、it-decisions-unknown、it-decisions-stale 四个用例随决策编排路径消亡移除。
+
+**2026-08-19 定位自包含化对账（change rule-config-self-contained-templates）**：模板三级定位（在线/离线/glob）删除，改为 skill 目录单源；it-s2-templates-missing 反转为 it-s2-skill-self-contained；TestLocateTemplates 六用例重写为 ut-locate_templates-skill-dir/-incomplete/-no-home/-ignore-stale-marketplace。

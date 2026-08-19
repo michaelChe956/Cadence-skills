@@ -5,6 +5,7 @@
 > 行号基准：SKILL 行号区间基于瘦身前 758 行版本（行号对账基准），新 SKILL.md 已瘦身为编排骨架，语义正文见 references/merge-semantics.md。
 > 用途：Task 2/3 的用例清单来源；Task 10 语义迁移矩阵正文来源。本文档作为测试文件提交，后续任何脚本行为变更必须先与本文档对账。
 > 2026-08-19 对账（change rule-config-authoritative-overwrite）：六类受管冲突转两模式确定性动作；7 个集成 ID 改名，4 个用例移除，新增 ut-validate-decisions-dormant 休眠单测 4 例；SKILL 行号区间不变（语义正文在 references/merge-semantics.md）。
+> 2026-08-19 变更记录（change rule-config-self-contained-templates）：S1b-01~04 由模板三级定位（在线/离线/glob 回退）对账为 skill 目录单源自包含定位（references/merge-semantics.md §11.5 同步重写）；旧用例 ut-locate_templates-online/-offline/-fallback/-pair-check/-mtime-latest/-all-incomplete 与 it-s2-templates-missing 移除，新增 ut-locate_templates-skill-dir/-incomplete/-no-home/-ignore-stale-marketplace 与 it-s2-skill-self-contained；fx-templates-* fixture 删除（改为测试内 inline 构造）；S1b 行号区间改指瘦身版 SKILL「调用方式·第一步」（42-44 行）。
 
 ## 0. 命名与列定义
 
@@ -137,10 +138,10 @@
 | 131/133-135 | S1a-03 有输出或存在主工程配置→Coding；全无→非 Coding；检测结果记入报告 | 两模式 | detect_project | fx-noncoding-project | ut-detect_project-main-config | 仅含 `package.json`/`pyproject.toml` 等主配置即判 Coding；报告记录检测证据 |
 | 136 | S1a-04 项目类型按两模式唯⼀规则确定（`--project-type`：普通模式仅提升 non-coding→coding；no-interrupt 完全忽略；codex 五轮重构，原「用户指定优先」与 s1 冲突已删） | 两模式 | detect_project / compute_plan | fx-noncoding-project / fx-coding-project | ut-detect_project-ignores-cli / ut-final-project-type-* / it-s1-normal-cli-promotes / it-s1-no-interrupt-ignores-cli | 检测结果 + CLI 按两模式规则计算 final `project_type`；detect 不读取 CLI |
 | 133 | S1a-05 无人工交互模式下不等待用户确认 | no-interrupt | detect_project | fx-empty-project | it-s1-no-confirm | no-interrupt 下检测直接落报告，无提问冲突项 |
-| 138-157 | S1b-01 模板目录三级定位：在线安装路径→离线安装路径→开发回退 Glob | 两模式 | locate_templates | fx-templates-online / fx-templates-offline / fx-templates-dev | ut-locate_templates-online / ut-locate_templates-offline / ut-locate_templates-fallback | 各级候选按优先级命中并返回成对路径 |
-| 143/147/156/159 | S1b-02 每候选成对校验 rules 三件套（回退另需 document-storage.md）+ 同级 `references/openspec/config.yaml`；缺 config.yaml 不得选用 | 两模式 | locate_templates | fx-templates-incomplete | ut-locate_templates-pair-check | 缺任一成对文件的候选被跳过 |
-| 157 | S1b-03 回退路径多候选取修改时间最新者 | 两模式 | locate_templates | fx-templates-multi | ut-locate_templates-mtime-latest | 返回 mtime 最新的通过验证候选 |
-| 159 | S1b-04 全部候选不完整时终止并报告缺失模板 | 两模式 | locate_templates | fx-templates-all-incomplete | ut-locate_templates-all-incomplete / it-s2-templates-missing | 非零退出；报告列出各候选缺失项；目标项目零写入 |
+| 42-44 | S1b-01 模板单源定位：脚本以自身 skill 目录（`SKILL_DIR`，`Path(__file__).resolve().parent.parent`）为唯一模板源（`SKILL_DIR/references/rules/` + `SKILL_DIR/references/openspec/config.yaml`）；无客户端目录候选、无全局搜索回退 | 两模式 | locate_templates | —（测试内 inline 构造完整 skill 目录） | ut-locate_templates-skill-dir | 返回 skill 目录下成对路径（rules 根 + openspec config.yaml） |
+| 42-44 | S1b-02 成对校验 rules 四件套（agent-routing-kernel/language/openspec-superpowers-workflow/document-storage）+ 同级 `references/openspec/config.yaml`；缺任一即 `TemplateError` 失败关闭 | 两模式 | locate_templates | —（测试内 inline 缺件构造） | ut-locate_templates-incomplete | 非零退出；错误消息逐个列出缺失文件名并含"重新安装"恢复建议；目标项目零写入 |
+| 42-44 | S1b-03 模板定位不依赖 `HOME` 环境变量 | 两模式 | locate_templates | —（测试内 inline 空 HOME） | ut-locate_templates-no-home / it-s2-skill-self-contained | 空 HOME 下仍命中 skill 目录模板并正常运行 |
+| 42-44 | S1b-04 过期 marketplace 副本存在亦被忽略（naruto 事故回归） | 两模式 | locate_templates | —（测试内 inline 过期副本） | ut-locate_templates-ignore-stale-marketplace | 过期 marketplace 副本内容不同，仍取 skill 目录模板 |
 | 161-165 | S1c-01 创建 `.claude/rules`（幂等） | 两模式 | step_rules_files | fx-empty-project | it-s3-mkdir-idempotent | 重复运行不报错、目录权限不变 |
 | 171-181 | S1d-01 `.claude/rules/` 框架受管清单为 7 个：mcp-servers/code-reading/document-storage/language/markdown-format/code-usage/playwright；Playwright 按启用/已存在条件进入处理，L1 独立于此清单 | 两模式 | step_rules_files | fx-empty-project | ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | 受管落地名不含 agent-routing-kernel；存在 drift 时权威覆盖，内容一致时幂等跳过 |
 | 179-180 | S1d-02 `code-usage-coding.md`/`code-usage-noncoding.md` 按最终项目类型单选来源，始终写入 `.claude/rules/code-usage.md`；历史双文件归档后移除 | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | TestCodeUsageSingleSource / test_coding_project_gets_code_usage_md / test_noncoding_project_gets_noncoding_source_at_fixed_name / test_code_usage_asset_records_selected_template_source | Coding 内容=coding 模板；非 Coding 内容=noncoding 模板；plan 的 `template_source` 与项目类型一致；双来源文件不落地 |

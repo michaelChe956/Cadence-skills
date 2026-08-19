@@ -735,25 +735,6 @@ class TestClassifyL1(unittest.TestCase):
 # 加载方式与 Task 4 一致；测试自建临时 fixture，不依赖仓库实际环境。
 # ---------------------------------------------------------------------------
 
-# locate_templates 成对校验所需的最小文件集（在线/离线路径三件套 + config.yaml）
-_ONLINE_RULES = ("agent-routing-kernel.md", "language.md", "openspec-superpowers-workflow.md")
-# 回退 glob 路径额外需要 document-storage.md（S1b-02）
-_FALLBACK_EXTRA = ("document-storage.md",)
-
-
-def _write_minimal_templates(rules_dir: Path, *, fallback: bool = False) -> None:
-    """在 rules_dir 下创建成对校验所需的最小模板占位文件 + 同级 openspec/config.yaml。"""
-    rules_dir.mkdir(parents=True, exist_ok=True)
-    for name in _ONLINE_RULES:
-        (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
-    if fallback:
-        for name in _FALLBACK_EXTRA:
-            (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
-    openspec_dir = rules_dir.parent / "openspec"
-    openspec_dir.mkdir(parents=True, exist_ok=True)
-    (openspec_dir / "config.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
-
-
 def _intents(**overrides):
     """构造 rc.Intents，默认空意图。"""
     defaults = dict(
@@ -1076,169 +1057,83 @@ class TestDetectProject(unittest.TestCase):
 
 
 class TestLocateTemplates(unittest.TestCase):
+    """ut-locate_templates-* / skill 自包含单源定位契约（S1b 重构）。"""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.home = Path(self.tmp.name) / "fakehome"
-        self.home.mkdir()
-        # 记录原始 HOME，用 addCleanup 恢复
-        self._orig_home = os.environ.get("HOME")
-        os.environ["HOME"] = str(self.home)
-        self.addCleanup(self._restore_home)
+        self.root = Path(self.tmp.name)
 
-    def _restore_home(self):
-        if self._orig_home is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = self._orig_home
+    def _make_skill_dir(self, missing=()):
+        """构造完整 skill 目录 fixture：<root>/skill/，可按 missing 缺件。"""
+        skill = self.root / "skill"
+        rules = skill / "references" / "rules"
+        rules.mkdir(parents=True)
+        for name in ("agent-routing-kernel.md", "language.md",
+                     "openspec-superpowers-workflow.md", "document-storage.md"):
+            if name not in missing:
+                (rules / name).write_text(f"tpl:{name}\n", encoding="utf-8")
+        (skill / "references" / "openspec").mkdir(parents=True)
+        if "config.yaml" not in missing:
+            (skill / "references" / "openspec" / "config.yaml").write_text(
+                "schema: spec-driven\n", encoding="utf-8"
+            )
+        return skill
 
-    # --- ut-locate_templates-online / S1b-01（在线路径优先命中）---
-    def test_online_path_preferred(self):
-        """ut-locate_templates-online / S1b-01（在线 marketplace 路径完整时优先返回）"""
-        online = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
+    def test_skill_dir_templates_preferred(self):
+        """ut-locate_templates-skill-dir / S1b-01（skill 目录完整 → 以其 references 为唯一模板源）"""
+        skill = self._make_skill_dir()
+        with mock.patch.object(rc, "SKILL_DIR", skill):
+            rules_root, openspec_yaml = rc.locate_templates()
+        self.assertEqual(rules_root, skill / "references" / "rules")
+        self.assertEqual(
+            openspec_yaml, skill / "references" / "openspec" / "config.yaml"
         )
-        _write_minimal_templates(online)
-        rules_root, openspec_yaml = rc.locate_templates()
-        self.assertEqual(rules_root, online)
-        self.assertTrue(openspec_yaml.exists())
-        self.assertEqual(openspec_yaml.name, "config.yaml")
 
-    # --- ut-locate_templates-offline / S1b-01（离线路径命中）---
-    def test_offline_path_used_when_online_missing(self):
-        """ut-locate_templates-offline / S1b-01（在线缺失时回退到离线 cadence-skills-local）"""
-        offline = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        _write_minimal_templates(offline)
-        rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, offline)
-
-    # --- ut-locate_templates-fallback / S1b-01（glob 回退；需 document-storage.md）---
-    def test_glob_fallback_when_fixed_paths_missing(self):
-        """ut-locate_templates-fallback / S1b-01（固定路径均缺失时 glob 回退；候选需含 document-storage.md）"""
-        # 在 fakehome 下构造一个 glob 可命中的候选（带 document-storage.md）
-        dev_candidate = (
-            self.home / "workspace" / "proj" / "cadence-init" / "skills"
-            / "rule-config" / "references" / "rules"
-        )
-        _write_minimal_templates(dev_candidate, fallback=True)
-        rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, dev_candidate)
-
-    # --- ut-locate_templates-pair-check / S1b-02（缺成对文件或 config.yaml 的候选被跳过）---
-    def test_incomplete_candidate_skipped(self):
-        """ut-locate_templates-pair-check / S1b-02（在线候选缺 config.yaml → 跳过；落到 glob 回退完整候选）"""
-        # 在线候选缺 config.yaml（不写 openspec/config.yaml）
-        online_rules = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        online_rules.mkdir(parents=True)
-        for name in _ONLINE_RULES:
-            (online_rules / name).write_text("# x\n")
-        # 故意不写 openspec/config.yaml → 该候选不完整
-        # glob 回退候选完整（带 document-storage.md + config.yaml）
-        dev_candidate = (
-            self.home / "workspace" / "proj" / "cadence-init" / "skills"
-            / "rule-config" / "references" / "rules"
-        )
-        _write_minimal_templates(dev_candidate, fallback=True)
-        rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, dev_candidate)
-
-    # --- ut-locate_templates-mtime-latest / S1b-03（多候选取 mtime 最新）---
-    def test_multiple_candidates_pick_latest_mtime(self):
-        """ut-locate_templates-mtime-latest / S1b-03（glob 多候选通过校验后取修改时间最新者）"""
-        old_candidate = (
-            self.home / "workspace" / "old" / "cadence-init" / "skills"
-            / "rule-config" / "references" / "rules"
-        )
-        new_candidate = (
-            self.home / "workspace" / "new" / "cadence-init" / "skills"
-            / "rule-config" / "references" / "rules"
-        )
-        _write_minimal_templates(old_candidate, fallback=True)
-        _write_minimal_templates(new_candidate, fallback=True)
-        # 确保老候选的 openspec_yaml（mtime 比较基准）严格更新
-        import time as _time
-        _time.sleep(0.05)
-        (old_candidate.parent / "openspec" / "config.yaml").touch()
-        # 断言：mtime 主导 → 老候选胜出
-        rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, old_candidate)
-
-    # --- ut-locate_templates-online-preferred-over-offline / S1b-01（双有效场景在线优先）---
-    def test_online_preferred_over_offline_when_both_valid(self):
-        """ut-locate_templates-online-preferred / S1b-01（在线与离线均完整且离线 mtime 更新时仍返回在线）"""
-        online = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        offline = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        _write_minimal_templates(online)
-        _write_minimal_templates(offline)
-        # 让离线 mtime 严格更新，确保“在线优先”是短路优先级而非 mtime 选择
-        import time as _time
-        _time.sleep(0.05)
-        (offline / "language.md").touch()
-        rules_root, _ = rc.locate_templates()
-        self.assertEqual(rules_root, online)
-
-    # --- ut-locate_templates-error-lists-missing / S1b-04（TemplateError 列出每个候选缺失文件名）---
-    def test_template_error_lists_missing_files(self):
-        """ut-locate_templates-error-lists-missing / S1b-04（全不完整时 TemplateError 消息列出缺失文件名）"""
-        # 在线候选：目录存在但缺 openspec/config.yaml（三件套齐全）
-        online_rules = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-marketplace"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        online_rules.mkdir(parents=True)
-        for name in _ONLINE_RULES:
-            (online_rules / name).write_text("# x\n", encoding="utf-8")
-        # 离线候选：目录存在但缺 language.md
-        offline_rules = (
-            self.home / ".claude" / "plugins" / "marketplaces" / "cadence-skills-local"
-            / "cadence-init" / "skills" / "rule-config" / "references" / "rules"
-        )
-        offline_rules.mkdir(parents=True)
-        for name in (_ONLINE_RULES[0], _ONLINE_RULES[2]):  # 仅写 ark + osw，缺 language.md
-            (offline_rules / name).write_text("# x\n", encoding="utf-8")
-        # glob 回退候选：目录存在但缺 document-storage.md（fallback 额外要求）
-        dev_rules = (
-            self.home / "workspace" / "proj" / "cadence-init" / "skills"
-            / "rule-config" / "references" / "rules"
-        )
-        dev_rules.mkdir(parents=True)
-        for name in _ONLINE_RULES:
-            (dev_rules / name).write_text("# x\n", encoding="utf-8")
-        # 故意不写 document-storage.md，并补上 config.yaml 让 language.md 作为 glob 标识可命中
-        openspec_dir = dev_rules.parent / "openspec"
-        openspec_dir.mkdir(parents=True, exist_ok=True)
-        (openspec_dir / "config.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
-        with self.assertRaises(rc.TemplateError) as ctx:
-            rc.locate_templates()
+    def test_missing_files_raise_template_error_with_list(self):
+        """ut-locate_templates-incomplete / S1b-02（缺件 → TemplateError 且列出缺失清单与重装建议）"""
+        skill = self._make_skill_dir(missing=("document-storage.md", "config.yaml"))
+        with mock.patch.object(rc, "SKILL_DIR", skill):
+            with self.assertRaises(rc.TemplateError) as ctx:
+                rc.locate_templates()
         msg = str(ctx.exception)
-        # 断言消息含每个候选具体缺失的文件名
-        self.assertIn("openspec/config.yaml", msg)  # 在线候选缺
-        self.assertIn("language.md", msg)  # 离线候选缺
-        self.assertIn("document-storage.md", msg)  # 回退候选缺
-        self.assertIn("在线候选", msg)
-        self.assertIn("离线候选", msg)
-        self.assertIn("回退候选", msg)
+        self.assertIn("document-storage.md", msg)
+        self.assertIn("config.yaml", msg)
+        self.assertIn("重新安装", msg)
 
-    # --- ut-locate_templates-all-incomplete / S1b-04（全不完整 → TemplateError）---
-    def test_all_incomplete_raises_template_error(self):
-        """ut-locate_templates-all-incomplete / S1b-04（所有候选均不完整 → TemplateError 终止）"""
-        # 不创建任何模板候选；HOME 下无任何 cadence-init/skills/rule-config 路径
-        # glob 也无命中 → TemplateError
-        with self.assertRaises(rc.TemplateError):
-            rc.locate_templates()
+    def test_no_home_dependency(self):
+        """ut-locate_templates-no-home / S1b-03（HOME 为空目录仍命中 skill 目录）"""
+        skill = self._make_skill_dir()
+        empty_home = self.root / "empty-home"
+        empty_home.mkdir()
+        with mock.patch.object(rc, "SKILL_DIR", skill), \
+                mock.patch.dict(os.environ, {"HOME": str(empty_home)}):
+            rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, skill / "references" / "rules")
+
+    def test_stale_marketplace_copy_ignored(self):
+        """ut-locate_templates-ignore-stale-marketplace / 回归（naruto 事故场景）：
+        过期 marketplace 副本存在且内容不同，仍取 skill 目录模板。"""
+        skill = self._make_skill_dir()
+        stale_home = self.root / "home"
+        mkt_rules = (
+            stale_home / ".claude" / "plugins" / "marketplaces"
+            / "cadence-skills-marketplace" / "cadence-init" / "skills"
+            / "rule-config" / "references" / "rules"
+        )
+        mkt_rules.mkdir(parents=True)
+        for name in ("agent-routing-kernel.md", "language.md",
+                     "openspec-superpowers-workflow.md", "document-storage.md"):
+            (mkt_rules / name).write_text("旧模板内容\n", encoding="utf-8")
+        (mkt_rules.parent.parent / "openspec").mkdir(parents=True)
+        (mkt_rules.parent.parent / "openspec" / "config.yaml").write_text(
+            "schema: spec-driven\n", encoding="utf-8"
+        )
+        with mock.patch.object(rc, "SKILL_DIR", skill), \
+                mock.patch.dict(os.environ, {"HOME": str(stale_home)}):
+            rules_root, _ = rc.locate_templates()
+        self.assertEqual(rules_root, skill / "references" / "rules")
+        self.assertNotEqual(str(rules_root), str(mkt_rules))
 
 
 # ---------------------------------------------------------------------------
