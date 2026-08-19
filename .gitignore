@@ -12,3 +12,4 @@ __pycache__/
 
 # pi-subagents 运行时产物（审查/任务临时工件）
 .pi-subagents/
+.superpowers/
