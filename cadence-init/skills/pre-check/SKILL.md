@@ -50,8 +50,8 @@ disable-model-invocation: true
 ### no-interrupt Superpowers 处理
 
 1. 先验证 `~/.agents/superpowers/skills`；有效时按候选源更新逻辑完成四层软链。
-2. 来源目录无效或缺失时，按报告中的代理候选顺序在线浅克隆。
-3. 候选全部失败、来源目录不是 Git 仓库或更新失败时立即报错，终止 `/pre-check`；不得降级为警告或离线来源。
+2. 来源目录缺失时，按报告中的代理候选顺序在线浅克隆。
+3. 候选全部失败、来源目录不是 Git 仓库或更新失败时立即报错，终止 `/pre-check`；不得降级为警告或回退到本地目录。
 4. Superpowers 来源目录或软链目标存在同名非软链内容时，将冲突内容重命名为 `<原名称>.cadence-backup-YYYYMMDDHHMMSS`，再创建正确目录或软链并验证。
 5. 备份、创建或验证任一步失败时立即终止；禁止删除原内容，也禁止跳过冲突项继续。
 
@@ -350,14 +350,14 @@ cd "<PROJECT_ROOT>" && test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -t
 
 ```bash
 # 单条命令自包含：从 <REPORT> 读出候选数组，逐个浅克隆；全部失败时逐项报告错误并终止
-mkdir -p "$HOME/.agents" && _tmp="$(mktemp -d "${TMPDIR:-/tmp}/superpowers-clone.XXXXXX")" && _errors="" && for _candidate in $(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))") ; do _output="$(git clone --depth 1 "$_candidate" "$_tmp/repo" 2>&1)" && mv "$_tmp/repo" "$HOME/.agents/superpowers" && rm -rf "$_tmp" && exit 0; _errors="$_errors$_candidate: $_output\n"; rm -rf "$_tmp/repo"; done; rm -rf "$_tmp"; printf 'Superpowers clone 失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1
+mkdir -p "$HOME/.agents" && if [ -e "$HOME/.agents/superpowers" ] || [ -L "$HOME/.agents/superpowers" ]; then printf 'Superpowers 目标目录已存在，请先处理后重试：%s\n' "$HOME/.agents/superpowers" >&2; exit 1; fi && _tmp="$(mktemp -d "${TMPDIR:-/tmp}/superpowers-clone.XXXXXX")" && _errors="" && for _candidate in $(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))") ; do _output="$(git clone --depth 1 "$_candidate" "$_tmp/repo" 2>&1)" && mv "$_tmp/repo" "$HOME/.agents/superpowers" && rm -rf "$_tmp" && exit 0; _errors="$_errors$_candidate: $_output\n"; rm -rf "$_tmp/repo"; done; rm -rf "$_tmp"; printf 'Superpowers clone 失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1
 ```
 
-Superpowers 远端候选必须从 `<REPORT>` 的 `hints.superpowers_git_candidates` 数组读出；按数组顺序尝试，使用 `--depth 1`，不配置 git 代理、不修改 git 全局配置。clone 全部失败时命令以非零退出并逐项报告错误，不提示或校验离线来源。
+Superpowers 远端候选必须从 `<REPORT>` 的 `hints.superpowers_git_candidates` 数组读出；按数组顺序尝试，使用 `--depth 1`，不配置 git 代理、不修改 git 全局配置。clone 全部失败时命令以非零退出并逐项报告错误，不提示或校验本地回退来源。
 
 **行为（中文输出）**：
 - `~/.agents/superpowers/.git` 存在：按候选更新逻辑执行，然后同步软链。
-- `~/.agents/superpowers` 存在但不是 Git 仓库：报告来源目录无效并终止，不降级为离线安装。
+- `~/.agents/superpowers` 存在但不是 Git 仓库：报告来源目录无效并终止，不降级为本地回退。
 - `~/.agents/superpowers` 不存在：按候选顺序在线浅克隆；全部失败时报告每个候选的错误并终止。
 
 **Git 更新逻辑**：
@@ -396,7 +396,7 @@ test -d "$HOME/.pi/agent/skills"
 **增量要求**：
 - 重新运行 `/pre-check` 时，已有正确软链必须跳过。
 - 只补齐缺失软链或更新指向旧来源的软链。
-- 来源目录必须是有效 Git 仓库；在线 clone 或 Git 更新失败即终止，不提供离线降级。
+- 来源目录必须是有效 Git 仓库；在线 clone 或 Git 更新失败即终止，不提供本地回退。
 
 ### 默认步骤：API Key 占位配置提醒
 
