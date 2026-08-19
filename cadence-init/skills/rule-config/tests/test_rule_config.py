@@ -2224,10 +2224,10 @@ class TestComputePlanFinalReview(unittest.TestCase):
     def _conflicts_by_id(self, plan):
         return {c["conflict_id"]: c for c in plan.get("conflicts", [])}
 
-    def test_recommendations_are_conservative_keep(self):
-        """ut-compute_plan-recommendation-keep / 终审 C-1
-        （s3 普通 drift / s3 L1 / s4 L0 drift / s7 rules.apply 的 recommendation
-        一律为保守 keep，不得推荐覆盖型决策）"""
+    def test_managed_drift_produces_no_conflicts(self):
+        """ut-compute-plan-managed-no-conflict / 契约「当前无活跃冲突类型」
+        （s3 普通 drift / s3 L1 / s4 L0 drift / s7 rules.apply 均不产冲突条目，
+        资产以确定性动作 + 备份需求表达）"""
         rules_dir = self.root / ".claude" / "rules"
         rules_dir.mkdir(parents=True)
         (rules_dir / "language.md").write_text("本地漂移\n", encoding="utf-8")
@@ -2242,25 +2242,26 @@ class TestComputePlanFinalReview(unittest.TestCase):
         )
         plan = rc.compute_plan(self.root, _intents())
         conflicts = self._conflicts_by_id(plan)
-        # s3 普通 drift / s3 L1 / s4 drift / s7 rules.apply 均产冲突且推荐 keep
-        expected = [
-            "s3:.claude/rules/language.md",
-            f"s3:.claude/rules/{rc.L1_RULE_FILENAME}",
-            "s4:CLAUDE.md",
-            "s7:openspec/config.yaml",
-        ]
-        for cid in expected:
-            self.assertIn(cid, conflicts)
-            self.assertEqual(conflicts[cid].get("recommendation"), "keep", cid)
-        # allowed_decisions 枚举不变（推荐保守不等于收窄决策空间）
-        self.assertEqual(
-            conflicts["s3:.claude/rules/language.md"]["allowed_decisions"],
-            ["replace", "keep"],
+        # 四类受管 drift 均不产决策冲突
+        self.assertFalse(
+            any(cid.startswith(("s3:", "s4:", "s7:")) for cid in conflicts),
+            f"不应再有冲突条目: {list(conflicts)}",
         )
+        # 资产以确定性动作 + 备份需求表达
+        s3_assets = {a["path"]: a for a in plan["steps"][rc.STEP_RULES_FILES]["assets"]}
+        self.assertEqual(s3_assets[".claude/rules/language.md"]["action"], "replace")
+        self.assertTrue(s3_assets[".claude/rules/language.md"]["backup_needed"])
         self.assertEqual(
-            conflicts["s7:openspec/config.yaml"]["allowed_decisions"],
-            ["remove_apply", "keep"],
+            s3_assets[f".claude/rules/{rc.L1_RULE_FILENAME}"]["action"], "replace"
         )
+        s4_assets = {a["path"]: a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]}
+        self.assertEqual(s4_assets["CLAUDE.md"]["action"], "replace")
+        self.assertTrue(s4_assets["CLAUDE.md"]["backup_needed"])
+        s7_assets = {
+            a["path"]: a for a in plan["steps"][rc.STEP_OPENSPEC_CONFIG]["assets"]
+        }
+        self.assertEqual(s7_assets["openspec/config.yaml"]["action"], "remove-apply")
+        self.assertTrue(s7_assets["openspec/config.yaml"]["backup_needed"])
 
     def test_insert_is_deterministic_action_not_conflict(self):
         """ut-compute_plan-l0-insert-deterministic / 终审 I-2 + L0-05
@@ -2309,18 +2310,22 @@ class TestComputePlanFinalReview(unittest.TestCase):
         self.assertTrue(asset["backup_needed"])
         self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
 
-    def test_drift_still_conflict_with_allowed_decisions(self):
-        """ut-compute_plan-l0-drift-conflict / 终审 I-2 边界
-        （drift/broken 仍产 decision 冲突，allowed_decisions=['replace','keep']）"""
+    def test_l0_drift_is_deterministic_action_not_conflict(self):
+        """ut-compute_plan-l0-drift-deterministic / 契约「当前无活跃冲突类型」
+        （drift/broken 不产 decision 冲突，以 replace 确定性动作 + 备份屏障表达）"""
         (self.root / "CLAUDE.md").write_text(
             "# CLAUDE.md\n\n" + V2_START + "\n漂移\n" + V2_END + "\n", encoding="utf-8"
         )
         plan = rc.compute_plan(self.root, _intents())
         conflicts = self._conflicts_by_id(plan)
-        self.assertIn("s4:CLAUDE.md", conflicts)
-        self.assertEqual(
-            conflicts["s4:CLAUDE.md"]["allowed_decisions"], ["replace", "keep"]
+        self.assertNotIn("s4:CLAUDE.md", conflicts)
+        asset = next(
+            a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
+            if a["path"] == "CLAUDE.md"
         )
+        self.assertEqual(asset["action"], "replace")
+        self.assertTrue(asset["backup_needed"])
+        self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
 
     def test_step_s4_insert_executes_in_normal_mode_without_decisions(self):
         """ut-step_s4-insert-normal-executes / 终审 I-2 + L0-05
@@ -2508,19 +2513,16 @@ class TestFilterBackupNeeds(unittest.TestCase):
             },
         }
 
-    def test_s3_keep_decision_not_backed_up(self):
-        """ut-filter-backup-s3-keep / codex 终审 I3（keep 决策 → 不生成备份；replace/no-interrupt → 备份）"""
+    def test_s3_drift_always_backed_up(self):
+        """ut-filter-backup-s3-drift / 契约（drift 两模式均写入 → 均备份，与决策无关）"""
         target = self.root / ".claude" / "rules" / "language.md"
         plan = self._plan(
             s3_assets=[{
                 "path": ".claude/rules/language.md", "action": "replace",
                 "conflict": "drift", "backup_needed": True,
             }],
-            decisions={"s3:.claude/rules/language.md": "keep"},
         )
         plan["backup_needs"] = [target]
-        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
-        plan["decisions_map"] = {"s3:.claude/rules/language.md": "replace"}
         self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [target])
         self.assertEqual(
             rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
@@ -2549,48 +2551,43 @@ class TestFilterBackupNeeds(unittest.TestCase):
             [config],
         )
 
-    def test_s7_rules_apply_default_keep_not_backed_up(self):
-        """ut-filter-backup-s7-rules-apply / codex 终审 I3
-        （rules.apply 无决策默认 keep → 不备份；remove_apply/no-interrupt → 备份）"""
+    def test_s7_remove_apply_always_backed_up(self):
+        """ut-filter-backup-s7-remove-apply / 契约（移除禁用键两模式均写入 → 均备份）"""
         config = self.root / "openspec" / "config.yaml"
         config.parent.mkdir(parents=True)
         config.write_text(
             "schema: spec-driven\nrules:\n  apply:\n    - x\n", encoding="utf-8",
         )
         plan = self._plan(s7_assets=[{
-            "path": "openspec/config.yaml", "action": "keep",
+            "path": "openspec/config.yaml", "action": "remove-apply",
             "conflict": {"kind": "rules.apply"}, "backup_needed": True,
         }])
         plan["backup_needs"] = [config]
-        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
-        plan["decisions_map"] = {"s7:openspec/config.yaml": "remove_apply"}
         self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [config])
-        plan["decisions_map"] = {}
         self.assertEqual(
             rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
             [config],
         )
 
-    def test_s7_structure_conflict_normal_not_backed_up_no_interrupt_backed_up(self):
-        """ut-filter-backup-s7-structure / codex 终审 I3
-        （结构冲突：普通保留不备份；no-interrupt 备份后终止仍需备份）"""
+    def test_s7_replace_always_backed_up(self):
+        """ut-filter-backup-s7-replace / 契约（模板整体替换两模式均写入 → 均备份）"""
         config = self.root / "openspec" / "config.yaml"
         config.parent.mkdir(parents=True)
         config.write_text("schema: [1]\n", encoding="utf-8")
         plan = self._plan(s7_assets=[{
-            "path": "openspec/config.yaml", "action": "keep",
+            "path": "openspec/config.yaml", "action": "replace",
             "conflict": {"kind": "structure", "fields": ["schema"]},
             "backup_needed": True,
         }])
         plan["backup_needs"] = [config]
-        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [])
+        self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [config])
         self.assertEqual(
             rc._filter_backup_needs(plan, _intents(no_interrupt=True), self.root),
             [config],
         )
 
-    def test_s4_upgrade_always_backed_up_drift_keep_not(self):
-        """ut-filter-backup-s4-states / codex 终审 I3（upgrade 确定性升级必备份；drift keep 决策不备份）"""
+    def test_s4_upgrade_and_drift_always_backed_up(self):
+        """ut-filter-backup-s4-states / 契约（upgrade/drift 两模式均写入 → 均备份，与决策无关）"""
         entry = self.root / "CLAUDE.md"
         plan = self._plan(s4_assets=[{
             "path": "CLAUDE.md", "action": "upgrade",
@@ -2598,15 +2595,16 @@ class TestFilterBackupNeeds(unittest.TestCase):
         }])
         plan["backup_needs"] = [entry]
         self.assertEqual(rc._filter_backup_needs(plan, _intents(), self.root), [entry])
-        plan2 = self._plan(
-            s4_assets=[{
-                "path": "CLAUDE.md", "action": "replace",
-                "conflict": "drift", "backup_needed": True,
-            }],
-            decisions={"s4:CLAUDE.md": "keep"},
-        )
+        plan2 = self._plan(s4_assets=[{
+            "path": "CLAUDE.md", "action": "replace",
+            "conflict": "drift", "backup_needed": True,
+        }])
         plan2["backup_needs"] = [entry]
-        self.assertEqual(rc._filter_backup_needs(plan2, _intents(), self.root), [])
+        self.assertEqual(rc._filter_backup_needs(plan2, _intents(), self.root), [entry])
+        self.assertEqual(
+            rc._filter_backup_needs(plan2, _intents(no_interrupt=True), self.root),
+            [entry],
+        )
 
     def test_unmatched_target_conservatively_kept(self):
         """ut-filter-backup-unmatched / codex 终审 I3（无法归属的备份需求保守保留，不放宽屏障）"""
@@ -2742,67 +2740,6 @@ class TestReportCompleteness(unittest.TestCase):
             self.assertGreater(step["elapsed_ms"], 0, f"{name} 未真实计时")
 
 
-class TestDriftConflictNoInterruptAction(unittest.TestCase):
-    """P1-1：no-interrupt 下 drift 冲突条目携带真实执行动作字段，避免 recommendation=keep 误导。"""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.refs = Path(__file__).resolve().parents[1] / "references"
-        rules = self.root / ".claude" / "rules"
-        rules.mkdir(parents=True)
-        (rules / "language.md").write_text("# 项目自定义语言规则\n\n与模板不同。\n", encoding="utf-8")
-
-    def _compute(self, **overrides):
-        with mock.patch.object(
-            rc, "locate_templates",
-            return_value=(self.refs / "rules", self.refs / "openspec" / "config.yaml"),
-        ):
-            return rc.compute_plan(self.root, _intents(**overrides))
-
-    def test_no_interrupt_marks_real_action(self):
-        """ut-compute-plan-no-interrupt-action / P1-1（no-interrupt drift 标注 authoritative-overwrite，recommendation 不变）"""
-        plan = self._compute(no_interrupt=True)
-        s3 = plan["steps"][rc.STEP_RULES_FILES]
-        entry = next(c for c in s3["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(entry["no_interrupt_action"], "authoritative-overwrite")
-        self.assertEqual(entry["recommendation"], "keep")
-        top = next(c for c in plan["conflicts"] if str(c.get("asset", "")).endswith("language.md"))
-        self.assertEqual(top["no_interrupt_action"], "authoritative-overwrite")
-
-    def test_normal_mode_omits_field(self):
-        """ut-compute-plan-normal-no-action-field / P1-1（普通模式冲突条目不新增字段）"""
-        plan = self._compute()
-        s3 = plan["steps"][rc.STEP_RULES_FILES]
-        self.assertFalse(any("no_interrupt_action" in c for c in s3["conflicts"]))
-        self.assertFalse(any("no_interrupt_action" in c for c in plan["conflicts"]))
-
-    def test_report_no_interrupt_action(self):
-        """ut-report-no-interrupt-action / P1-1（对外报告转发 no-interrupt 权威覆盖动作）"""
-        plan = self._compute(no_interrupt=True)
-        report: dict = {}
-        rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
-        conflict = next(
-            c for c in report["conflicts"]
-            if str(c.get("asset", "")).endswith("language.md")
-        )
-        self.assertEqual(
-            conflict["no_interrupt_action"], "authoritative-overwrite"
-        )
-
-    def test_report_normal_no_action_field(self):
-        """ut-report-normal-no-action-field / P1-1（普通模式对外报告无 no-interrupt 动作）"""
-        plan = self._compute()
-        report: dict = {}
-        rc._sync_plan_to_report(plan, report, _intents())
-        conflict = next(
-            c for c in report["conflicts"]
-            if str(c.get("asset", "")).endswith("language.md")
-        )
-        self.assertNotIn("no_interrupt_action", conflict)
-
-
 class TestTask6RegressionMatrix(unittest.TestCase):
     """Task 6：dry-run 字段、幂等与跨资产失败关闭回归矩阵。"""
 
@@ -2859,51 +2796,31 @@ class TestTask6RegressionMatrix(unittest.TestCase):
             return set()
         return {str(path) for path in root.rglob("*")}
 
-    def test_dry_run_no_interrupt_action_field(self):
+    def test_dry_run_drift_plan_no_conflict_replace_action(self):
+        """drift 计划：两模式 dry-run 均无冲突条目，资产动作 replace + 备份需求"""
         rules = self.root / ".claude" / "rules"
         rules.mkdir(parents=True)
         (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
-        report = {}
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ):
-            code = rc.run_dry_run(
-                self.root, _intents(no_interrupt=True), report
+        for ni in (False, True):
+            report = {}
+            with mock.patch.object(
+                rc, "locate_templates",
+                return_value=(self.rules_root, self.openspec_yaml),
+            ):
+                code = rc.run_dry_run(
+                    self.root, _intents(no_interrupt=ni), report
+                )
+            self.assertEqual(code, 0)
+            self.assertFalse(
+                any("mcp-servers" in c.get("conflict_id", "")
+                    for c in report.get("conflicts", []))
             )
-        self.assertEqual(code, 0)
-        mcp = [
-            conflict
-            for conflict in report.get("conflicts", [])
-            if "mcp-servers" in conflict.get("conflict_id", "")
-        ]
-        self.assertTrue(mcp)
-        self.assertEqual(
-            mcp[0]["no_interrupt_action"], "authoritative-overwrite"
-        )
-
-    def test_dry_run_normal_mode_no_field(self):
-        rules = self.root / ".claude" / "rules"
-        rules.mkdir(parents=True)
-        (rules / "mcp-servers.md").write_text("drift", encoding="utf-8")
-        report = {}
-        with mock.patch.object(
-            rc,
-            "locate_templates",
-            return_value=(self.rules_root, self.openspec_yaml),
-        ):
-            code = rc.run_dry_run(
-                self.root, _intents(no_interrupt=False), report
+            step = next(
+                s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES
             )
-        self.assertEqual(code, 0)
-        mcp = [
-            conflict
-            for conflict in report.get("conflicts", [])
-            if "mcp-servers" in conflict.get("conflict_id", "")
-        ]
-        self.assertTrue(mcp)
-        self.assertNotIn("no_interrupt_action", mcp[0])
+            asset = next(a for a in step["assets"] if "mcp-servers" in a["path"])
+            self.assertEqual(asset["action"], "replace")
+            self.assertTrue(asset["backup_needed"])
 
     def test_double_apply_idempotent(self):
         (self.root / "package.json").write_text(
@@ -3114,17 +3031,13 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
             return rc.compute_plan(self.root, _intents())
 
     def test_missing_codegraph_section_is_plain_drift(self):
-        """ut-s3-codegraph-section-unified-drift / RF-04（缺 CodeGraph 段落 → 普通 drift 冲突，进 decisions 与备份需求）"""
+        """ut-s3-codegraph-section-unified-drift / RF-04（缺 CodeGraph 段落 → 普通 drift 动作，进备份需求，不产冲突）"""
         plan = self._compute()
         s3 = plan["steps"][rc.STEP_RULES_FILES]
         asset = next(a for a in s3["assets"] if a["path"].endswith("code-reading.md"))
         self.assertEqual(asset["action"], "replace")
         self.assertEqual(asset["conflict"], "drift")
         self.assertTrue(asset["backup_needed"])
-        self.assertTrue(
-            any(str(c.get("asset", "")).endswith("code-reading.md")
-                for c in plan["conflicts"])
-        )
         self.assertTrue(
             any(str(b).endswith("code-reading.md") for b in plan["backup_needs"])
         )

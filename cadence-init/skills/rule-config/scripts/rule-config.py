@@ -1487,30 +1487,8 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "action": "replace", "conflict": state,
                     "backup_needed": True, "is_l1": True,
                 })
-                conflict_id = f"s3:{rel}"
-                # codex 三轮 C3（方案 X）：L1 drift 回归 A 类——recommendation=keep
-                # 是脚本认可的安全默认（保留原状可恢复），普通模式无响应（Agent 写
-                # keep 或决策缺失）时默认保留并报告 status=0，与实现「keep→不写盘」
-                # 一致，不 fail closed。default_keep=True 使 validate_decisions 对该
-                # 冲突缺失决策不记违规。codex 五轮：s1:project-type-conflict 已删除，
-                # 当前系统所有冲突均为 A 类（default_keep 保留兜底），无 B 类触发。
-                s3["conflicts"].append({
-                    "conflict_id": conflict_id, "asset": rel, "state": state,
-                    "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
-                    "question": f"L1 规则文件 {rel} 状态为 {state}",
-                    # C-1 修复：推荐保守默认 keep（不覆盖），与 spec「普通模式
-                    # 无响应 MUST NOT 覆盖」、§11.6 default_keep 语义一致。
-                    "recommendation": DECISION_KEEP,
-                    "default_keep": True,
-                })
-                plan["conflicts"].append({
-                    "conflict_id": conflict_id, "asset": rel, "kind": "l1",
-                    "state": state,
-                    "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
-                    "question": f"L1 规则文件 {rel} 状态为 {state}",
-                    "recommendation": DECISION_KEEP,
-                    "default_keep": True,
-                })
+                # 契约「当前无活跃冲突类型」：L1 upgrade/drift 为两模式确定性动作，
+                # 以资产动作 + 备份需求表达，不产决策冲突条目。
                 _append_backup_need(plan, target)
         else:
             # 普通规则文件：一致 → skipped；冲突 → 冲突（allowed=['replace','keep']）。
@@ -1526,32 +1504,8 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                     "action": "replace", "conflict": "drift",
                     "backup_needed": True, "is_l1": False,
                 })
-                conflict_id = f"s3:{rel}"
-                # codex 三轮 C3（方案 X）：普通规则文件 drift 同 L1/L0 回归 A 类——
-                # recommendation=keep 为安全默认（保留用户内容可恢复），普通模式
-                # 无响应时默认保留并报告 status=0，不 fail closed。
-                s3_conflict = {
-                    "conflict_id": conflict_id, "asset": rel, "state": "drift",
-                    "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
-                    "question": f"规则文件 {rel} 与模板不一致",
-                    "recommendation": DECISION_KEEP,
-                    "default_keep": True,
-                }
-                top_conflict = {
-                    "conflict_id": conflict_id, "asset": rel, "kind": "rules",
-                    "state": "drift",
-                    "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
-                    "question": f"规则文件 {rel} 与模板不一致",
-                    "recommendation": DECISION_KEEP,
-                    "default_keep": True,
-                }
-                if intents.no_interrupt:
-                    # P1-1：no-interrupt 实际执行为框架模板权威全覆盖；显式标注
-                    # 真实动作，避免安全默认 recommendation=keep 误导为“保留原文件不动”。
-                    s3_conflict["no_interrupt_action"] = "authoritative-overwrite"
-                    top_conflict["no_interrupt_action"] = "authoritative-overwrite"
-                s3["conflicts"].append(s3_conflict)
-                plan["conflicts"].append(top_conflict)
+                # 契约「当前无活跃冲突类型」：drift 为两模式确定性动作，
+                # 以资产动作 + 备份需求表达，不产决策冲突条目。
                 _append_backup_need(plan, target)
     s3["status"] = "ok"
     s3["elapsed_ms"] = int((time.monotonic() - t_s3) * 1000)  # codex 终审 I4：真实计时
@@ -1580,7 +1534,6 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         except (OSError, UnicodeDecodeError):
             text = ""
         state = l0_block(text, kernel_source) if kernel_source else "insert"
-        conflict_id = f"s4:{entry_name}"
         if state == "skip":
             s4["assets"].append({
                 "path": entry_name,
@@ -1603,25 +1556,12 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             if state in ("upgrade", "dedup"):
                 _append_backup_need(plan, entry_path)
         else:
-            # drift/broken → 需要决策的冲突（普通模式；C-1 修复：推荐保守 keep）。
+            # drift/broken → 两模式确定性替换/归并（屏障归档后执行），不产决策冲突
             s4["assets"].append({
                 "path": entry_name,
                 "action": "replace",
                 "conflict": state,
                 "backup_needed": True,
-            })
-            plan["conflicts"].append({
-                "conflict_id": conflict_id,
-                "asset": entry_name,
-                "state": state,
-                "allowed_decisions": [DECISION_REPLACE, DECISION_KEEP],
-                "question": f"入口文件 {entry_name} 的 L0 受管区块状态为 {state}",
-                "recommendation": DECISION_KEEP,
-                # codex 三轮 C3（方案 X）：L0 drift/broken 回归 A 类——recommendation=keep
-                # 为安全默认（保留区块原状可恢复），普通模式无响应时默认保留并报告
-                # status=0，不 fail closed。default_keep=True 使 validate_decisions 对该
-                # 冲突缺失决策不记违规。
-                "default_keep": True,
             })
             _append_backup_need(plan, entry_path)
     s4["status"] = "ok"
@@ -1667,10 +1607,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     plan["steps"][STEP_GITIGNORE] = s6
 
     # --- S7 openspec config：探测 openspec/config.yaml（Task 8） ---
-    # 只读探测：存在则解析+结构预检+rules.apply 检测，产出 conflict 条目。
-    #   * rules.apply 冲突：allowed_decisions=['remove_apply','keep']，default_keep=True
-    #     （普通模式无 decisions 时默认 keep 保留，与 SKILL.md 合并矩阵「无响应则保留并报告」一致）
-    #   * 结构/解析冲突：allowed_decisions=['keep']（无决策可修正结构；step 阶段普通保留、no-interrupt 终止）
+    # 只读探测：存在则解析+结构预检+rules.apply 检测，产出确定性动作资产。
     templates_info = plan.get("templates", {}) or {}
     openspec_yaml_str = templates_info.get("openspec_yaml")
     s7 = _step_skeleton(STEP_OPENSPEC_CONFIG)
@@ -1719,48 +1656,17 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "backup_needed": True,
             })
         else:
-            cid = "s7:openspec/config.yaml"
-            if conflict["kind"] == "rules.apply":
-                allowed = [DECISION_REMOVE_APPLY, DECISION_KEEP]
-                # rules.apply 缺省保留（普通模式无 decisions 时默认 keep）
-                default_keep = True
-                question = (
-                    "openspec/config.yaml 含 rules.apply，是否移除？"
-                    "（remove_apply=备份后移除，keep=保留并报告）"
-                )
-                # C-1 修复：推荐保守默认 keep（不移除），与 OS-04「无响应则保留
-                # 并报告」一致。
-                recommendation = DECISION_KEEP
-            else:
-                # 结构/解析冲突：无决策可修正，普通模式保留+报告，no-interrupt 终止
-                allowed = [DECISION_KEEP]
-                default_keep = True
-                kind_label = {
-                    "structure": "结构/类型不兼容",
-                    "unparseable": "YAML 无法解析",
-                    "unreadable": "文件无法读取",
-                }.get(conflict["kind"], conflict["kind"])
-                question = (
-                    f"openspec/config.yaml {kind_label}"
-                    f"（字段：{', '.join(conflict.get('fields', []))}）"
-                )
-                recommendation = DECISION_KEEP
-            conflict_entry = {
-                "conflict_id": cid,
-                "asset": "openspec/config.yaml",
-                "kind": conflict["kind"],
-                "fields": conflict.get("fields"),
-                "field_types": conflict.get("field_types"),
-                "allowed_decisions": allowed,
-                "default_keep": default_keep,
-                "question": question,
-                "recommendation": recommendation,
-            }
-            s7["conflicts"].append(dict(conflict_entry))
-            plan["conflicts"].append(dict(conflict_entry))
+            # 契约「当前无活跃冲突类型」：rules.apply 两模式移除并保守合并；
+            # structure/unparseable/unreadable 两模式归档后以模板整体替换。
+            # 均以资产动作 + 备份需求表达，不产决策冲突条目。
+            action = (
+                "remove-apply"
+                if conflict["kind"] == "rules.apply"
+                else "replace"
+            )
             s7["assets"].append({
                 "path": "openspec/config.yaml",
-                "action": "keep",
+                "action": action,
                 "conflict": conflict,
                 "backup_needed": True,
             })
@@ -3474,16 +3380,13 @@ STEP_FUNCS = {
 def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents) -> bool:
     """判定 target 是否真实需要备份（有实际写入/备份后终止动作）。
 
-    规则（codex 终审 I3）：
-      * S3 冲突资产：no-interrupt 或 decision==replace 才写入；keep 不备份；
-      * S4 upgrade：确定性升级，始终写入 → 备份；drift/broken 同 S3 决策语义；
+    规则（2026-08-19 权威化：两模式同动作即写入即备份）：
+      * S3 规则文件：带冲突状态（drift/upgrade/replace）即写入 → 备份；无冲突跳过不备份；
+      * S4 入口文件：upgrade/dedup/replace 确定性写入 → 备份；其余不写入 → 不备份；
       * S7 merge：候选与现状逐字节不同才写入（幂等 → 不备份）；
-      * S7 rules.apply：no-interrupt 或 decision==remove_apply → 备份；
-        无决策默认 keep → 不备份；
-      * S7 结构/解析/不可读冲突：no-interrupt 备份后终止 → 备份；普通保留 → 不备份；
+      * S7 remove-apply/replace：两模式均写入 → 备份；
       * 无法归属任何资产 → 保守保留（不放宽屏障）。
     """
-    decisions_map = plan.get("decisions_map", {}) or {}
     steps = plan.get("steps", {}) or {}
     key = str(target)
 
@@ -3494,24 +3397,17 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
     for asset in (steps.get(STEP_RULES_FILES, {}) or {}).get("assets", []) or []:
         if not _matches(asset):
             continue
-        if not asset.get("conflict"):
-            return False
-        if intents.no_interrupt:
-            return True
-        return decisions_map.get(f"s3:{asset['path']}") == DECISION_REPLACE
+        # 两模式统一：带冲突状态（drift/upgrade/replace）即写入 → 备份；无冲突跳过不备份
+        return bool(asset.get("conflict"))
 
     # S4 入口文件
     for asset in (steps.get(STEP_ENTRY_FILES, {}) or {}).get("assets", []) or []:
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action in ("upgrade", "dedup"):
-            # 确定性升级/重复归并（两模式同动作）→ 始终写入
+        if action in ("upgrade", "dedup", "replace"):
+            # 确定性升级/归并/漂移替换（两模式同动作）→ 始终写入
             return True
-        if action == "replace":  # drift/broken
-            if intents.no_interrupt:
-                return True
-            return decisions_map.get(f"s4:{asset['path']}") == DECISION_REPLACE
         return False
 
     # S7 OpenSpec 配置
@@ -3519,7 +3415,6 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        conflict = asset.get("conflict")
         if action == "merge":
             # 幂等判定：候选与现状逐字节比较（I3：幂等不进备份需求）
             existing = _safe_read(target)
@@ -3536,15 +3431,9 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
             if candidate is None:
                 return True  # 无法判定 → 保守备份
             return candidate != existing
-        if action == "keep" and isinstance(conflict, dict):
-            kind = conflict.get("kind")
-            if kind == "rules.apply":
-                if intents.no_interrupt:
-                    return True
-                return decisions_map.get("s7:openspec/config.yaml") == DECISION_REMOVE_APPLY
-            # structure/unparseable/unreadable：no-interrupt 备份后终止（OS-03/05）→
-            # 备份；普通模式保留原文件不改 → 不备份
-            return bool(intents.no_interrupt)
+        if action in ("remove-apply", "replace"):
+            # 移除禁用键/模板整体替换（两模式同动作）→ 始终写入
+            return True
         return False
 
     # 未匹配到任何资产（异常路径）→ 保守保留备份需求
