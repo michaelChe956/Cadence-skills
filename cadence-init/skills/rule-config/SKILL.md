@@ -48,7 +48,7 @@ disable-model-invocation: true
 
 若候选根下 `scripts/` 缺失，说明命中了不含关联脚本的旧版本缓存；重新安装或刷新 plugin 后重试，不得从其他项目目录复制脚本。脚本只读，不要 `cd` 进 skill 目录，也不要把脚本复制到别处执行。
 
-**第二步——确定报告与决策路径**：报告 `<REPORT>` 与决策文件 `<DECISIONS_JSON>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
+**第二步——确定报告与决策路径**：报告 `<REPORT>` 是临时中间产物，必须位于项目根之外。用 `mktemp` 在 `/tmp` 生成原子唯一路径（如 `mktemp -t rule-config-report.XXXXXX.json`），记住字面值，后续每条命令直接写出。决策文件 `<DECISIONS_JSON>` 为休眠兜底机制：当前无活跃冲突类型、计划不要求决策文件，仅在恢复逐条提问流程时才需生成（同样必须位于项目根之外）。脚本拒绝项目根内的 `--report` / `--decisions` 路径（退出码 2）。
 
 **第三步——调用脚本**：
 
@@ -56,7 +56,7 @@ disable-model-invocation: true
 # 阶段一：dry-run（零写入，只产出计划、冲突清单与备份需求）
 python3 "<RULE_CONFIG_PY>" dry-run --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--no-interrupt] [意图参数]
 
-# 阶段二：apply（执行发布；普通模式有计划内冲突时必须携带 --decisions）
+# 阶段二：apply（执行发布；当前无活跃冲突类型，不要求决策文件；--decisions 为休眠兜底参数）
 python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPORT>" [--decisions "<DECISIONS_JSON>"] [--no-interrupt] [意图参数]
 ```
 
