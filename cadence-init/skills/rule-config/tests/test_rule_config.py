@@ -735,25 +735,6 @@ class TestClassifyL1(unittest.TestCase):
 # 加载方式与 Task 4 一致；测试自建临时 fixture，不依赖仓库实际环境。
 # ---------------------------------------------------------------------------
 
-# locate_templates 成对校验所需的最小文件集（在线/离线路径三件套 + config.yaml）
-_ONLINE_RULES = ("agent-routing-kernel.md", "language.md", "openspec-superpowers-workflow.md")
-# 回退 glob 路径额外需要 document-storage.md（S1b-02）
-_FALLBACK_EXTRA = ("document-storage.md",)
-
-
-def _write_minimal_templates(rules_dir: Path, *, fallback: bool = False) -> None:
-    """在 rules_dir 下创建成对校验所需的最小模板占位文件 + 同级 openspec/config.yaml。"""
-    rules_dir.mkdir(parents=True, exist_ok=True)
-    for name in _ONLINE_RULES:
-        (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
-    if fallback:
-        for name in _FALLBACK_EXTRA:
-            (rules_dir / name).write_text(f"# placeholder {name}\n", encoding="utf-8")
-    openspec_dir = rules_dir.parent / "openspec"
-    openspec_dir.mkdir(parents=True, exist_ok=True)
-    (openspec_dir / "config.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
-
-
 def _intents(**overrides):
     """构造 rc.Intents，默认空意图。"""
     defaults = dict(
