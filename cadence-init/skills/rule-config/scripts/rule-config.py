@@ -1252,6 +1252,7 @@ def validate_decisions(plan: dict, decisions: list) -> list:
       * 过期：decision 不在该冲突的 allowed_decisions 集合内（含空 decision）。
 
     仅普通模式且 plan 有冲突时调用（no-interrupt 模式按权威规则自动决策）。
+    当前系统无活跃冲突类型，本函数为休眠兜底。
 
     每个 conflict 条目应携带 allowed_decisions（list[str]），由 compute_plan
     按资产类型生成（如规则文件/L0/L1 → ['replace','keep']）。decision 不在
@@ -3602,9 +3603,6 @@ def _sync_plan_to_report(plan: dict, report: dict, intents: Intents) -> None:
             "question": c.get("question"),
             "recommendation": c.get("recommendation"),
         }
-        if intents.no_interrupt:
-            # P1-1：仅 no-interrupt 对外报告暴露实际执行动作；普通模式不写该键。
-            conflict_entry["no_interrupt_action"] = c.get("no_interrupt_action")
         # codex 终审 I4：Agent 需凭 allowed_decisions 提问并生成 decisions
         conflict_entry["allowed_decisions"] = c.get("allowed_decisions")
         # codex 三轮 C3（方案 X）：报告携带 default_keep，明示该冲突具备安全默认

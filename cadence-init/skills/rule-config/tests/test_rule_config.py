@@ -2805,6 +2805,45 @@ class TestReportCompleteness(unittest.TestCase):
             self.assertGreater(step["elapsed_ms"], 0, f"{name} 未真实计时")
 
 
+class TestValidateDecisionsDormant(unittest.TestCase):
+    """决策机制休眠兑底：以合成冲突直接驱动 validate_decisions（当前无活跃冲突类型，
+    机制保留供未来复用；未知/重复/过期仍失败关闭，default_keep 缺失不违规）。"""
+
+    def _plan_with_conflict(self):
+        return {"conflicts": [{
+            "conflict_id": "sX:synthetic", "asset": "synthetic",
+            "allowed_decisions": ["replace", "keep"],
+            "recommendation": "keep", "default_keep": True,
+        }]}
+
+    def test_unknown_conflict_id_rejected(self):
+        violations = rc.validate_decisions(
+            self._plan_with_conflict(),
+            [{"conflict_id": "sX:unknown", "decision": "keep"}],
+        )
+        self.assertTrue(any("未知" in v for v in violations))
+
+    def test_duplicate_conflict_id_rejected(self):
+        violations = rc.validate_decisions(
+            self._plan_with_conflict(),
+            [
+                {"conflict_id": "sX:synthetic", "decision": "keep"},
+                {"conflict_id": "sX:synthetic", "decision": "replace"},
+            ],
+        )
+        self.assertTrue(any("重复" in v for v in violations))
+
+    def test_stale_decision_rejected(self):
+        violations = rc.validate_decisions(
+            self._plan_with_conflict(),
+            [{"conflict_id": "sX:synthetic", "decision": "keep-foreign-value"}],
+        )
+        self.assertTrue(any("过期" in v for v in violations))
+
+    def test_missing_decision_default_keep_passes(self):
+        self.assertEqual(rc.validate_decisions(self._plan_with_conflict(), []), [])
+
+
 class TestTask6RegressionMatrix(unittest.TestCase):
     """Task 6：dry-run 字段、幂等与跨资产失败关闭回归矩阵。"""
 
