@@ -1690,6 +1690,29 @@ class TestStepS4EntryFiles(unittest.TestCase):
         # I2：缺失摘要按 SM-02 补齐（L0 处理与摘要补全是独立动作）
         self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
 
+    def test_drift_replaced_normal_mode_outside_preserved(self):
+        """ut-step_s4-drift-replace-normal / L0-03（普通模式无决策 → 区块=规范源，区块外保留）"""
+        entry = self.root / "CLAUDE.md"
+        drift_block = rc.L0_BEGIN + "\n漂移内容\n" + rc.L0_END
+        original = "# CLAUDE.md\n\n文件说明\n\n" + drift_block + "\n## 强制规则\n\n- 用户规则\n"
+        entry.write_text(original, encoding="utf-8")
+        plan = self._base_plan(steps={
+            rc.STEP_ENTRY_FILES: {
+                "name": rc.STEP_ENTRY_FILES, "status": "ok",
+                "assets": [{
+                    "path": "CLAUDE.md", "action": "replace",
+                    "conflict": "drift", "backup_needed": True,
+                }],
+            }
+        })
+        rc.step_s4_entry_files(self.root, _intents(), plan, {})
+        result = entry.read_text(encoding="utf-8")
+        begin = result.index(rc.L0_BEGIN)
+        end = result.index(rc.L0_END, begin) + len(rc.L0_END)
+        self.assertEqual(result[begin:end].strip(), self.kernel.strip())
+        self.assertNotIn("漂移内容", result)
+        self.assertIn("- 用户规则", result)
+
 
 class TestStepS7OpenspecConfig(unittest.TestCase):
     """step_s7_openspec_config 集成断言：create/merge/rules.apply/结构冲突。"""

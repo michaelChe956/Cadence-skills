@@ -2159,7 +2159,6 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
     project_type = plan.get("project_type", "non-coding")
     s4_step = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {})
     assets = s4_step.get("assets", []) or []
-    decisions_map = plan.get("decisions_map", {}) or {}
     actions_log: list = []
     existing_rule_files = {
         p.name for p in (root / ".claude/rules").glob("*.md")
@@ -2209,7 +2208,6 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             continue
 
         # 入口存在且状态为 insert/upgrade/dedup/drift/broken。
-        conflict_id = f"s4:{entry_name}"
         existing = _safe_read(entry_path) or ""
         # insert/upgrade/dedup 为确定性动作，不走 decisions：insert 直接插入；
         # upgrade 和 dedup 在全局备份屏障通过后分别升级/归并为当前版本。
@@ -2223,29 +2221,16 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
-        # drift/broken → 按模式/决策处理。
-        decision = decisions_map.get(conflict_id)
-        if intents.no_interrupt:
-            composed, warnings = _compose_entry(
-                existing, kernel_source, state=state or "insert",
-                project_type=project_type,
-                entry_name=entry_name, existing_rule_files=existing_rule_files,
-            )
-            report.setdefault("warnings", []).extend(warnings)
-            atomic_write(entry_path, composed)
-            actions_log.append({"path": entry_name, "action": "updated", "branch": f"no-interrupt-{state}"})
-        else:
-            if decision == DECISION_REPLACE:
-                composed, warnings = _compose_entry(
-                    existing, kernel_source, state=state or "insert",
-                    project_type=project_type,
-                    entry_name=entry_name, existing_rule_files=existing_rule_files,
-                )
-                report.setdefault("warnings", []).extend(warnings)
-                atomic_write(entry_path, composed)
-                actions_log.append({"path": entry_name, "action": "updated", "branch": f"replace-{state}"})
-            else:
-                actions_log.append({"path": entry_name, "action": "kept", "branch": f"keep-{state}"})
+        # drift/broken → 两模式统一：屏障归档后以规范源当前版本替换/安全归并，
+        # 不经用户决策；区块外内容逐字保留（L0-B2）。
+        composed, warnings = _compose_entry(
+            existing, kernel_source, state=state or "insert",
+            project_type=project_type,
+            entry_name=entry_name, existing_rule_files=existing_rule_files,
+        )
+        report.setdefault("warnings", []).extend(warnings)
+        atomic_write(entry_path, composed)
+        actions_log.append({"path": entry_name, "action": "updated", "branch": f"authoritative-{state}"})
 
     _record_step_actions(report, STEP_ENTRY_FILES, actions_log)
 

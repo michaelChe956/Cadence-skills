@@ -561,23 +561,28 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 assert_same it-s4-idempotent "$RUN_STATUS" "$before" "$after" 0
 
-# B2. L0 漂移普通模式无响应（Agent 写 keep / 决策缺失）→ 保留并报告 status=0（A 类 default_keep）。
-# codex 三轮 C3（方案 X）：L0 drift 回归 A 类——recommendation=keep 为安全默认，
-# 普通模式无响应时默认保留并报告 status=0，不 fail closed；与实现「keep→不写盘」一致。
-# fixture 预收敛（I2 适配）：先跑 no-interrupt 收敛摘要，再注入 L0 区块内漂移，
-# 使「无响应→文件不变」断言不被 I2 摘要补齐扰动（同 it-s4-drift-replaced-outside-preserved）。
+# B2. L0 漂移普通模式权威替换（it-s4-drift-normal-replaced / L0-03）。
+# 契约：普通模式不再询问 keep/replace，屏障归档后以规范源当前版本替换，区块外逐字保留。
 case_root="$TEST_ROOT/fx-l0-drift-normal"
 mkdir -p "$case_root"
 mk_converged_entries "$case_root"
 replace_first_visible_paragraph "$case_root/CLAUDE.md" '本地漂移段落'
 replace_first_visible_paragraph "$case_root/AGENTS.md" '另一个漂移段落'
+outside_claude_before=$(outside_l0_hash "$case_root/CLAUDE.md")
+outside_agents_before=$(outside_l0_hash "$case_root/AGENTS.md")
 before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root"
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
-if [ "$RUN_STATUS" -eq 0 ] && [ "$before" = "$after" ]; then
-  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] \
+  && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
+  && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ] \
+  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md")" ] \
+  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md")" ] \
+  && legacy_archive_exists "$case_root" 'CLAUDE.md' \
+  && legacy_archive_exists "$case_root" 'AGENTS.md'; then
+  assert_changed it-s4-drift-normal-replaced "$RUN_STATUS" "$before" "$after"
 else
-  record_result it-s4-drift-normal "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s4-drift-normal-replaced "$RUN_STATUS" "$before" "$after" fail
 fi
 
 # B3. no-interrupt 修复漂移时，区块外内容必须逐字保留（it-s4-drift-replace-outside-preserved / L0-P7+L0-B2）。
