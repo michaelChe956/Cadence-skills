@@ -1421,7 +1421,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
         plan["failure"] = {
             "step": STEP_TEMPLATES,
             "reason": str(exc),
-            "recovery": "检查模板安装路径或提供完整模板候选",
+            "recovery": "确认 skill 安装完整（references 必备文件齐全），必要时重新安装 skill",
         }
     s2["elapsed_ms"] = int((time.monotonic() - t_s2) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_TEMPLATES] = s2
