@@ -103,6 +103,8 @@ trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 # 的 references 复制到临时 HOME 的该优先路径，避免读取开发机插件缓存造成 fixture 与
 # 运行时模板版本不一致。仅隔离环境，不改变任何生产模板定位优先级或断言语义。
 TEST_HOME="$TEST_ROOT/home"
+# NOTE(2026-08-19 Task 1 裁决)：marketplace fixture 三行在红态仍需保留——旧实现 glob 回退
+# 仅在 $HOME 下搜索，删 fixture 会连带打红整个套件；删除移交 Task 2（实现合流后）。
 ONLINE_TEMPLATE_SKILL="$TEST_HOME/.claude/plugins/marketplaces/cadence-skills-marketplace/cadence-init/skills/rule-config"
 mkdir -p "$ONLINE_TEMPLATE_SKILL" || exit 1
 cp -R "$TEST_DIR/../references" "$ONLINE_TEMPLATE_SKILL/references" || exit 1
@@ -1468,25 +1470,24 @@ else
   record_result it-apply-failure-report-fields "$RUN_STATUS" present missing fail
 fi
 
-# C16e. 模板全缺 → fail closed 非零退出、目标项目零写入（it-s2-templates-missing / §11.5 S1b-04）。
-# HOME 换为空目录使在线/离线/glob 回退候选全部不完整。
+# C16e. 空 HOME 仍可运行——模板来自 skill 目录，不依赖 HOME（it-s2-skill-self-contained / §11.5）。
+# 2026-08-19 语义反转：旧契约为「候选全缺 → 失败关闭」；新契约（skill 自包含）下 HOME 无关。
+# NOTE：ONLINE_TEMPLATE_SKILL fixture 删除待 Task 2（红态删除会连带打红全套件，见 Task 1 报告）。
 case_root="$TEST_ROOT/fx-templates-missing"
 mkdir -p "$case_root"
 printf '# placeholder\n' > "$case_root/README.md"
 fake_home="$TEST_ROOT/fake-home-empty"
 mkdir -p "$fake_home"
-before=$(tree_hash "$case_root")
 REPORT="$(mktemp /tmp/rule-config-report.XXXXXX)"
 set +e
 HOME="$fake_home" "$(command -v python3)" "$SCRIPT" apply --project-root "$case_root" --report "$REPORT" --no-interrupt >/dev/null 2>&1
 RUN_STATUS=$?
 set -e
-after=$(tree_hash "$case_root")
-if [ "$RUN_STATUS" -ne 0 ] && [ "$before" = "$after" ] \
-  && jqr "['overall']" 2>/dev/null | grep -qix 'fail'; then
-  record_result it-s2-templates-missing "$RUN_STATUS" "$before" "$after" pass
+if [ "$RUN_STATUS" -eq 0 ] \
+  && ! jqr "['overall']" 2>/dev/null | grep -qix 'fail'; then
+  record_result it-s2-skill-self-contained "$RUN_STATUS" "-" "-" pass
 else
-  record_result it-s2-templates-missing "$RUN_STATUS" "$before" "$after" fail
+  record_result it-s2-skill-self-contained "$RUN_STATUS" "-" "-" fail
 fi
 
 # C16f. 空项目创建全套（it-s3-create / NC-01；it-s3-rules-create / RF-01；
