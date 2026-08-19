@@ -2806,7 +2806,7 @@ class TestReportCompleteness(unittest.TestCase):
 
 
 class TestValidateDecisionsDormant(unittest.TestCase):
-    """决策机制休眠兑底：以合成冲突直接驱动 validate_decisions（当前无活跃冲突类型，
+    """决策机制休眠兜底：以合成冲突直接驱动 validate_decisions（当前无活跃冲突类型，
     机制保留供未来复用；未知/重复/过期仍失败关闭，default_keep 缺失不违规）。"""
 
     def _plan_with_conflict(self):
