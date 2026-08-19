@@ -232,10 +232,13 @@ MCPJSON_CODEGRAPH_ENTRY = {
 }
 
 
+# skill 自包含唯一定位基准：脚本自身所在 skill 目录（软链经 resolve 解析到真实仓库）。
+SKILL_DIR = Path(__file__).resolve().parent.parent
+
+
 def _load_reference(name: str) -> str:
     """从 skill 目录下的 references/<name> 加载文本（加载失败返回空串）。"""
-    skill_dir = Path(__file__).resolve().parent.parent
-    target = skill_dir / "references" / name
+    target = SKILL_DIR / "references" / name
     try:
         return target.read_text(encoding="utf-8")
     except OSError:
@@ -413,15 +416,13 @@ SOURCE_EXTS = (
     ".rb", ".swift", ".kt", ".c", ".cpp", ".cs",
 )
 
-# S2 locate_templates 成对校验所需文件清单（与 SKILL.md 步骤 1b 一致）。
-# 在线/离线固定路径校验三件套；glob 回退路径额外校验 document-storage.md。
+# S2 locate_templates 成对校验所需文件清单（rules/ 四件套，与 SKILL.md 步骤 1b 一致）。
 TEMPLATE_REQUIRED = (
     "agent-routing-kernel.md",
     "language.md",
     "openspec-superpowers-workflow.md",
+    "document-storage.md",
 )
-# glob 回退路径额外要求的文件（S1b-02）。
-TEMPLATE_REQUIRED_FALLBACK = ("document-storage.md",)
 
 # 全局 T0：main() 入口第一行记录（budget_seconds_excluding_codegraph 基准）。
 T0: float = time.monotonic()
@@ -1719,19 +1720,6 @@ def _detect_project_type(root: Path, intents: Intents) -> str:
     return detect_project(root, intents)["project_type"]
 
 
-# S2 locate_templates 固定路径的 rules 子目录后缀（相对 $HOME）。
-_ONLINE_RULES_SUBPATH = (
-    ".claude/plugins/marketplaces/cadence-skills-marketplace"
-    "/cadence-init/skills/rule-config/references/rules"
-)
-_OFFLINE_RULES_SUBPATH = (
-    ".claude/plugins/marketplaces/cadence-skills-local"
-    "/cadence-init/skills/rule-config/references/rules"
-)
-# glob 回退标识文件（相对任意搜索根）。
-_FALLBACK_GLOB_PATTERN = "**/cadence-init/skills/rule-config/references/rules/language.md"
-
-
 def detect_project(root: Path, intents: Intents) -> dict:
     """S1 项目类型检测（仅返回项目类型与检测证据）。
 
@@ -1782,133 +1770,28 @@ def _detect_main_config(root: Path) -> Optional[str]:
 
 
 def locate_templates() -> tuple:
-    """S2 三级模板定位（S1b-01~04）。
+    """模板定位：skill 自包含单源（契约「模板与脚本必须同源」）。
 
-    返回 (rules_root: Path, openspec_yaml: Path)。
-
-    固定路径之间按优先级短路（在线优先）：
-      1) 在线 ~/.claude/plugins/marketplaces/cadence-skills-marketplace/... 完整即直接返回；
-      2) 在线不完整 → 离线 ~/.claude/plugins/marketplaces/cadence-skills-local/... 完整即返回；
-      3) 固定路径均不完整 → glob 回退
-         **/cadence-init/skills/rule-config/references/rules/language.md
-         （多候选取 mtime 最新；mtime 比较仅在此阶段用于多候选择优）。
-
-    成对校验（S1b-02）：每候选 rules/ 下须含 TEMPLATE_REQUIRED 三件套
-    （回退路径额外须含 document-storage.md）+ 同级 references/openspec/config.yaml；
-    缺任则该候选不完整。固定路径间不混入统一 mtime 比较，以确保“在线优先”语义。
-    全部候选不完整 → TemplateError 终止并逐个列出每个候选具体缺失的文件名。
+    唯一候选：SKILL_DIR/references/（rules/ 四件套 + openspec/config.yaml）。
+    缺失任一 → TemplateError（列出缺失清单与重装建议）；不降级到任何外部路径。
     """
-    home = Path(os.path.expanduser("~"))
-    # (kind, rules_root, missing_files) 用于失败时构造详细错误
-    failures: list = []
-
-    # 1) 在线固定路径（短路优先：完整即返回，不查离线）
-    online_rules = home / _ONLINE_RULES_SUBPATH
-    online = _check_template_candidate(online_rules, fallback=False)
-    if online is not None:
-        return online[0], online[1]
-    failures.append((
-        "在线",
-        online_rules,
-        _missing_template_files(online_rules, fallback=False),
-    ))
-
-    # 2) 离线固定路径（在线不完整才查；完整即返回）
-    offline_rules = home / _OFFLINE_RULES_SUBPATH
-    offline = _check_template_candidate(offline_rules, fallback=False)
-    if offline is not None:
-        return offline[0], offline[1]
-    failures.append((
-        "离线",
-        offline_rules,
-        _missing_template_files(offline_rules, fallback=False),
-    ))
-
-    # 3) glob 回退：从 home 起搜索标识文件并成对校验；多候选取 mtime 最新
-    fallback_candidates: list = []  # (rules_root, openspec_yaml)
-    seen: set = set()
-    for lang_path in home.glob(_FALLBACK_GLOB_PATTERN):
-        rules_root = lang_path.parent
-        key = str(rules_root.resolve())
-        if key in seen:
-            continue
-        seen.add(key)
-        pair = _check_template_candidate(rules_root, fallback=True)
-        if pair is not None:
-            fallback_candidates.append(pair)
-        else:
-            failures.append((
-                "回退",
-                rules_root,
-                _missing_template_files(rules_root, fallback=True),
-            ))
-
-    if fallback_candidates:
-        # mtime 比较仅用于 glob 回退阶段的多候选择优
-        best = max(fallback_candidates, key=lambda c: _candidate_mtime(c[1]))
-        return best[0], best[1]
-
-    # 全不完整：构造逐候选缺失明细
-    raise TemplateError(_format_template_failures(failures))
-
-
-def _missing_template_files(rules_root: Path, *, fallback: bool) -> list:
-    """返回单一候选缺失的文件名列表（含同级 openspec/config.yaml）。"""
-    missing: list = []
-    required = list(TEMPLATE_REQUIRED)
-    if fallback:
-        required = required + list(TEMPLATE_REQUIRED_FALLBACK)
-    if not rules_root.is_dir():
-        # 目录不存在视为三件套（含回退的 document-storage.md）全缺
-        return list(required) + ["openspec/config.yaml"]
-    for name in required:
-        if not (rules_root / name).is_file():
-            missing.append(name)
-    openspec_yaml = rules_root.parent / "openspec" / "config.yaml"
+    references = SKILL_DIR / "references"
+    rules_root = references / "rules"
+    openspec_yaml = references / "openspec" / "config.yaml"
+    missing = [
+        f"references/rules/{name}"
+        for name in TEMPLATE_REQUIRED
+        if not (rules_root / name).is_file()
+    ]
     if not openspec_yaml.is_file():
-        missing.append("openspec/config.yaml")
-    return missing
-
-
-def _format_template_failures(failures: list) -> str:
-    """格式化全部不完整候选的缺失明细（每候选一行，列出缺失文件名）。"""
-    lines = ["模板定位失败：所有候选均不完整"]
-    for kind, rules_root, missing in failures:
-        if missing:
-            joined = "、".join(missing)
-            lines.append(f"{kind}候选 {rules_root} 缺 {joined}")
-        else:
-            lines.append(f"{kind}候选 {rules_root} 不完整")
-    lines.append("（在线/离线/回退均不完整）")
-    return "；".join(lines)
-
-
-def _check_template_candidate(rules_root: Path, *, fallback: bool):
-    """校验单一候选完整性。返回 (rules_root, openspec_yaml) 或 None。
-
-    在线/离线校验 TEMPLATE_REQUIRED 三件套；回退额外校验 document-storage.md。
-    所有候选还须存在同级 references/openspec/config.yaml。
-    """
-    if not rules_root.is_dir():
-        return None
-    required = list(TEMPLATE_REQUIRED)
-    if fallback:
-        required = required + list(TEMPLATE_REQUIRED_FALLBACK)
-    for name in required:
-        if not (rules_root / name).is_file():
-            return None
-    openspec_yaml = rules_root.parent / "openspec" / "config.yaml"
-    if not openspec_yaml.is_file():
-        return None
+        missing.append("references/openspec/config.yaml")
+    if missing:
+        raise TemplateError(
+            "skill 安装不完整（缺少模板文件）：\n  - "
+            + "\n  - ".join(missing)
+            + "\n请重新安装 skill 后重试。"
+        )
     return rules_root, openspec_yaml
-
-
-def _candidate_mtime(path: Path) -> float:
-    """安全读取文件 mtime（失败返回 0）。"""
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return 0.0
 
 
 def _iter_source_files(root: Path):
@@ -1925,8 +1808,7 @@ def _iter_source_files(root: Path):
 
 def _load_kernel_source() -> str:
     """加载 L0 kernel 规范源（references/rules/agent-routing-kernel.md）。"""
-    skill_dir = Path(__file__).resolve().parent.parent
-    kernel = skill_dir / "references" / "rules" / "agent-routing-kernel.md"
+    kernel = SKILL_DIR / "references" / "rules" / "agent-routing-kernel.md"
     try:
         return kernel.read_text(encoding="utf-8")
     except OSError:
