@@ -446,7 +446,7 @@ class BackupError(OSError):
 
 
 class TemplateError(OSError):
-    """模板定位失败（所有候选均不完整 → 终止并列缺失）。S2 locate_templates 用。"""
+    """模板定位失败（skill 目录必备模板缺失 → 终止并列缺失）。S2 locate_templates 用。"""
 
 
 # ---------------------------------------------------------------------------
@@ -1397,7 +1397,7 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s1["elapsed_ms"] = int((time.monotonic() - t_s1) * 1000)  # codex 终审 I4：真实计时
     plan["steps"][STEP_DETECT] = s1
 
-    # --- S2 locate templates：三级定位 ---
+    # --- S2 locate templates：skill 自包含单源定位 ---
     s2 = _step_skeleton(STEP_TEMPLATES)
     t_s2 = time.monotonic()  # codex 终审 I4：S1-S7 真实计时（起点）
     try:
@@ -3308,7 +3308,7 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
     """dry-run：compute_plan + 只读预演入口 warnings + 写报告，零写入。"""
     plan = compute_plan(root, intents)
     _sync_plan_to_report(plan, report, intents)
-    # S2 模板定位失败（§11.5：所有候选不完整 → 终止并报告，非零退出）
+    # S2 模板定位失败（§11.5：skill 目录模板不完整 → 终止并报告，非零退出）
     if plan.get("failure"):
         report["overall"] = "fail"
         report["failure"] = {
