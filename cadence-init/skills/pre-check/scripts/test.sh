@@ -8,6 +8,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRE_CHECK="$SCRIPT_DIR/pre-check.sh"
+SKILL_MD="$SCRIPT_DIR/../SKILL.md"
 
 # 临时目录：全部冒烟输出写入此目录，退出时自动清理，不在 /tmp 留固定文件
 SMOKE_DIR="$(mktemp -d -t precheck-smoke.XXXXXX)"
@@ -55,15 +56,17 @@ _rc=$?
 python3 -m json.tool "$SMOKE_DIR/cn.json" >/dev/null 2>&1
 assert_true "check(cn) stdout 为合法 JSON（exit=${_rc}）" "$?"
 
-# --- 3. JSON 含 overall/steps/next_actions/hints.superpowers_git ---
+# --- 3. JSON 含 overall/steps/next_actions/hints.superpowers_git_candidates 数组 ---
 _keys="$(python3 -c "
 import json, os
 d = json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))
+hints = d.get('hints', {})
 ok = ('overall' in d and 'steps' in d and 'next_actions' in d
-      and 'hints' in d and 'superpowers_git' in d['hints'])
+      and isinstance(hints.get('superpowers_git_candidates'), list)
+      and 'superpowers_git' not in hints)
 print('yes' if ok else 'no')
 " 2>/dev/null)"
-assert_eq "JSON 含 overall/steps/next_actions/hints.superpowers_git" "yes" "$_keys"
+assert_eq "JSON 含 overall/steps/next_actions/hints.superpowers_git_candidates 数组且无旧字段" "yes" "$_keys"
 
 # --- 4. next_actions 恰为固定四项 ---
 _na="$(python3 -c "
@@ -74,18 +77,22 @@ print(json.dumps(d.get('next_actions')))
 assert_eq "next_actions 恰为固定四项" \
   '["superpowers-sync", "openspec-clients", "playwright-optional", "apikey-placeholder"]' "$_na"
 
-# --- 5. default/cn 镜像 hints.superpowers_git 正确 ---
+# --- 5. default/cn 镜像 hints.superpowers_git_candidates 数组正确 ---
 _git_default="$(python3 -c "
 import json, os
-print(json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))['hints']['superpowers_git'])
+print(json.dumps(json.load(open(os.environ['SMOKE_DIR'] + '/default.json'))['hints']['superpowers_git_candidates'], separators=(',', ':')))
 " 2>/dev/null)"
-assert_eq "default 镜像 hints.superpowers_git" "https://github.com/obra/superpowers" "$_git_default"
+assert_eq "default 镜像候选数组为单个 GitHub 官方地址" '["https://github.com/obra/superpowers"]' "$_git_default"
 
 _git_cn="$(python3 -c "
 import json, os
-print(json.load(open(os.environ['SMOKE_DIR'] + '/cn.json'))['hints']['superpowers_git'])
+print(json.dumps(json.load(open(os.environ['SMOKE_DIR'] + '/cn.json'))['hints']['superpowers_git_candidates'], separators=(',', ':')))
 " 2>/dev/null)"
-assert_eq "cn 镜像 hints.superpowers_git" "https://gitee.com/michaelChe-World/superpowers.git" "$_git_cn"
+assert_eq "cn 镜像候选数组为三个 GitHub 代理" '["https://ghfast.top/https://github.com/obra/superpowers.git","https://gh-proxy.com/https://github.com/obra/superpowers.git","https://mirror.ghproxy.com/https://github.com/obra/superpowers.git"]' "$_git_cn"
+
+# --- 5b. SKILL.md 不保留离线安装节或离线复制降级提示 ---
+_offline="$(grep -cE '离线安装方式|离线复制 Superpowers|检测到 Superpowers 离线' "$SKILL_MD" || true)"
+assert_eq "SKILL.md 无离线安装/复制降级路径" "0" "$_offline"
 
 # --- 6. 未知 mirror 退出码非零 ---
 bash "$PRE_CHECK" check --mirror nonexistent >/dev/null 2>&1
