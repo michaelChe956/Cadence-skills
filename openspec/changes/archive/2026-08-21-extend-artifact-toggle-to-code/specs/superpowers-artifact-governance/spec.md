@@ -1,19 +1,6 @@
-## Purpose
+# superpowers-artifact-governance Delta
 
-治理 Superpowers 工作流产物：以入口文件 L0 受管区块中的显式路径映射覆盖表压制 Skill 正文默认路径，并提供项目级"产物自动提交"开关控制 design/plan 文档写完后的 git commit 行为。
-
-## Requirements
-
-### Requirement: 产物路径映射必须显式覆盖 Skill 默认路径
-系统 MUST 在 L0 路由内核与 `.claude/rules/document-storage.md` 中维护同一张产物路径映射覆盖表：`docs/superpowers/specs/`（design/spec）映射为 `cadence/designs/`，`docs/superpowers/plans/`（plan）映射为 `cadence/plans/`；并 MUST 声明该表优先级高于任何 Skill 正文中的路径指示。OpenSpec 产物 MUST 保持存放于 `openspec/` 目录。映射表 MUST 在脚本内定义单一事实源，L0 内核与 document-storage.md 的内容 MUST 与该事实源逐字一致。系统 MUST NOT 改写全局 Superpowers Skill 本体。
-
-#### Scenario: Skill 默认路径被项目路径覆盖
-- **WHEN** Superpowers 的 brainstorming/writing-plans Skill 正文指示写入 `docs/superpowers/` 下路径
-- **THEN** Agent 必须以覆盖表为准写入 `cadence/designs/` 或 `cadence/plans/`
-
-#### Scenario: 三源映射表逐字一致
-- **WHEN** 校验 L0 内核、document-storage.md 与脚本内映射常量
-- **THEN** 三者的路径映射与优先级声明 MUST 逐字一致
+## MODIFIED Requirements
 
 ### Requirement: 产物自动提交开关必须项目级可控
 

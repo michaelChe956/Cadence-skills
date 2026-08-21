@@ -226,7 +226,6 @@ codegraph serve --mcp
 **使用规则**：
 1. 基于 HTTP 协议的远程服务（基于 zread.ai），无需本地安装运行时
 2. 支持搜索文档、浏览结构、读取代码三种操作
-3. **优先级规则**：当需要进行网络搜索时，**优先使用 MiniMax Token Plan MCP**。只有在 MiniMax 不可用时，才回退到模型自带的 WebSearch 工具或其他联网搜索功能（如智普联网搜索 MCP）
 
 **典型工作流**：
 ```
@@ -263,7 +262,7 @@ codegraph serve --mcp
 **环境变量**：
 
 | 变量 | 说明 | 必需 |
-|------|------|-----|
+|------|------|------|
 | `MINIMAX_API_KEY` | MiniMax API 密钥 | 是 |
 | `MINIMAX_API_HOST` | API 地址，固定为 `https://api.minimaxi.com` | 是 |
 | `MINIMAX_MCP_BASE_PATH` | 本地输出目录路径（需有写入权限） | 否 |
@@ -272,7 +271,6 @@ codegraph serve --mcp
 **使用规则**：
 1. 基于 uvx 运行的本地 MCP 服务
 2. 验证配置：在 Claude Code 或 pi 中输入 `/mcp`（pi 的 `/mcp` 由 pi-mcp-adapter 提供），能看到 `web_search` 和 `understand_image` 说明配置成功
-3. **优先级规则**：当需要进行网络搜索时，**优先使用 MiniMax Token Plan MCP**。只有在 MiniMax 不可用时，才回退到模型自带的 WebSearch 工具或其他联网搜索功能（如智普联网搜索 MCP）
 
 **典型工作流**：
 ```

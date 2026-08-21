@@ -30,7 +30,7 @@ L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "age
 L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v2 为当前版本；v1/v0 为受支持旧版本的合成样本）
+# L0 受管区块标记（v3 为当前版本；v2/v1 为受支持旧版本，v0 为合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
 V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
@@ -58,13 +58,6 @@ class TestArtifactPathOverrides(unittest.TestCase):
         self.assertIn("docs/superpowers/plans/", table)
         self.assertIn("cadence/plans/", table)
         self.assertIn("优先级高于任何 Skill 正文", kernel)
-
-    def test_kernel_is_v2(self):
-        """ut-kernel-v2：内核标记为 v2。"""
-        kernel = (Path(__file__).resolve().parents[1] / "references" / "rules"
-                  / "agent-routing-kernel.md").read_text()
-        self.assertTrue(kernel.startswith(V2_START))
-        self.assertIn("产物自动提交", kernel)
 
     def test_openspec_path_preserved_in_kernel(self):
         """ut-override-no-skill-rewrite：覆盖声明不改写 Skill 路径（openspec 保留）。"""
@@ -282,7 +275,7 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V2_START + " " + L0_SOURCE[len(V2_START):]
+        source_with_leading_space = V3_START + " " + L0_SOURCE[len(V3_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
 
@@ -305,20 +298,20 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
         v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
         out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertNotIn("旧路由", out)
 
     def test_broken_nested_begin_preserves_user_section(self):
         """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
         broken = (
-            V2_START + "\nbroken\n\n## 用户章节\nx\n\n"
-            + V2_START + "\nfull\n" + V2_END
+            V3_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + V3_START + "\nfull\n" + V3_END
         )
         out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
         self.assertNotIn("full", out)
@@ -331,8 +324,8 @@ class TestL0V2Migration(unittest.TestCase):
         )
         self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
         out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
 
@@ -340,14 +333,14 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
         overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
         out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
         for user_text in ("A", "X", "Y", "B"):
             self.assertIn(user_text, out)
 
     def test_orphan_current_marker_emits_l0_dedup(self):
         """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
-        current_with_orphan = L0_SOURCE + "\n\n" + V2_START + "\n残留用户内容\n"
+        current_with_orphan = L0_SOURCE + "\n\n" + V3_START + "\n残留用户内容\n"
         out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
         warning = next(w for w in warns if w["code"] == "L0_DEDUP")
         self.assertEqual(warning["detail"]["orphan_markers"], 1)
@@ -355,10 +348,10 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_mixed_markers_not_broken_residue(self):
         """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
-        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V2_START + "\n残留单侧\n"
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V3_START + "\n残留单侧\n"
         out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
 
     def test_current_pair_with_old_residue_is_not_skip(self):
         """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
@@ -367,12 +360,12 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_duplicate_current_blocks_deduped(self):
         """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
-        first = V2_START + "\n首个当前块\n" + V2_END
-        second = V2_START + "\n重复当前块\n" + V2_END
+        first = V3_START + "\n首个当前块\n" + V3_END
+        second = V3_START + "\n重复当前块\n" + V3_END
         dup = first + "\n\n## 中间\n\n" + second
         out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
-        self.assertEqual(out.count(V2_START), 1)
-        self.assertEqual(out.count(V2_END), 1)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
         self.assertIn("首个当前块", out)
         self.assertNotIn("重复当前块", out)
@@ -386,6 +379,53 @@ class TestL0V2Migration(unittest.TestCase):
     def test_v2_skip_idempotent(self):
         """ut-l0-v2-skip：v2 与源一致判 skip。"""
         self.assertEqual(rc.l0_block(L0_SOURCE, L0_SOURCE), "skip")
+
+
+L0_V2_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "l0-history" / "agent-routing-kernel-v2.md").read_text()
+V3_START = "<!-- cadence-managed:openspec-superpowers-routing:v3:start -->"
+V3_END = "<!-- cadence-managed:openspec-superpowers-routing:v3:end -->"
+
+
+class TestL0V3Migration(unittest.TestCase):
+    def test_v2_history_source_loaded(self):
+        """ut-l0-v3-history-source：脚本加载冻结 v2 内核全文用于升级前比对。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v2"], L0_V2_SOURCE)
+
+    def test_verbatim_v2_pair_is_upgrade(self):
+        """ut-l0-v3-upgrade：完整 v2 规范块对 v3 源判 upgrade（非 drift）。"""
+        self.assertEqual(rc.l0_block(L0_V2_SOURCE, L0_SOURCE), "upgrade")
+
+    def test_drifted_v2_pair_is_drift_and_upgrades_to_v3(self):
+        """ut-l0-v3-v2-drift：v2 成对含手加 KB 门禁行判 drift，归一化后为唯一 v3 块。"""
+        kb_line = "`knowledge-base-context` 前置门禁：项目手加行示例。\n"
+        drifted = L0_V2_SOURCE.replace("<!-- cadence-managed:openspec-superpowers-routing:v2:end -->",
+                                       kb_line + "<!-- cadence-managed:openspec-superpowers-routing:v2:end -->")
+        self.assertNotEqual(drifted, L0_V2_SOURCE)
+        self.assertEqual(rc.l0_block(drifted, L0_SOURCE), "drift")
+        out, _ = rc._normalize_l0_to_single_block("# 头\n\n" + drifted + "\n\n## 用户\nx\n", L0_SOURCE)
+        self.assertEqual(out.count(V3_START), 1)
+        self.assertEqual(out.count(V3_END), 1)
+        self.assertIn("## 用户", out)
+        self.assertNotIn("v2:start", out)
+
+    def test_kernel_is_v3_and_slim(self):
+        """ut-kernel-v3：内核标记为 v3 且体量 ≤2560 字节。"""
+        kernel = L0_SOURCE
+        self.assertTrue(kernel.startswith(V3_START))
+        self.assertLessEqual(len(kernel.encode("utf-8")), 2560)
+        self.assertIn("产物自动提交", kernel)
+        for banned in ("保持静默", "引导句", "事件之间", "重试"):
+            self.assertNotIn(banned, kernel)
+
+    def test_kernel_v3_required_content(self):
+        """ut-kernel-v3-content：四铁律/KB 门禁/客户端短说明/阶段切换齐备。"""
+        for needle in (
+            "无已确认 Plan", "失败测试", "新鲜",
+            "knowledge-base-context", "manifest.yaml",
+            "Claude/Kimi", "重新路由", "优先级高于任何 Skill 正文",
+        ):
+            self.assertIn(needle, L0_SOURCE)
 
 
 class TestL0InsertPosition(unittest.TestCase):
@@ -963,7 +1003,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v2",
+            "cadence-managed:openspec-superpowers-routing:v3",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -1323,21 +1363,21 @@ class TestCommitToggle(unittest.TestCase):
     def test_default_written_when_missing(self):
         """ut-toggle-default：缺失时写默认值 关闭。"""
         out, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
-        self.assertIn("- **产物自动提交（design/plan）**：关闭", out)
+        self.assertIn("- **产物自动提交（design/plan/code）**：关闭", out)
         self.assertIn("## 项目配置", out)
         self.assertGreater(out.index("## 项目配置"), out.index("# x"))
         self.assertTrue(out.endswith(rc.TOGGLE_PREFIX + "关闭\n"))
 
     def test_user_value_preserved(self):
         """ut-toggle-keep：用户值 开启 保留。"""
-        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+        text = "## 项目配置\n\n- **产物自动提交（design/plan/code）**：开启\n"
         out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
         self.assertIn("：开启", out)
         self.assertEqual(warns, [])
 
     def test_invalid_value_kept_with_warning(self):
         """ut-toggle-invalid：非法值保留原文 + INVALID_TOGGLE。"""
-        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：也许\n"
+        text = "## 项目配置\n\n- **产物自动提交（design/plan/code）**：也许\n"
         out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
         self.assertIn("：也许", out)
         self.assertTrue(any(w["code"] == "INVALID_TOGGLE" for w in warns))
@@ -1394,15 +1434,15 @@ class TestCommitToggle(unittest.TestCase):
 
     def test_duplicate_toggle_deduped(self):
         """ut-toggle-dup：重复开关行保留首个。"""
-        text = ("## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
-                "- **产物自动提交（design/plan）**：关闭\n")
+        text = ("## 项目配置\n\n- **产物自动提交（design/plan/code）**：开启\n"
+                "- **产物自动提交（design/plan/code）**：关闭\n")
         out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
         self.assertEqual(out.count(rc.TOGGLE_PREFIX), 1)
         self.assertIn("：开启", out)
 
     def test_multiple_project_config_sections(self):
         """ut-toggle-multi-section：多个 ## 项目配置 仅处理首个 + DUPLICATE_H2。"""
-        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n\n## 项目配置\n\nx\n"
+        text = "## 项目配置\n\n- **产物自动提交（design/plan/code）**：开启\n\n## 项目配置\n\nx\n"
         out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
         self.assertTrue(any(w["code"] == "DUPLICATE_H2" for w in warns))
         self.assertIn("：开启", out)
@@ -1413,6 +1453,41 @@ class TestCommitToggle(unittest.TestCase):
         once, _ = rc._ensure_commit_toggle("# x\n", "CLAUDE.md")
         twice, _ = rc._ensure_commit_toggle(once, "CLAUDE.md")
         self.assertEqual(once, twice)
+
+
+class TestToggleLegacyMigration(unittest.TestCase):
+    def test_legacy_prefix_migrates_and_preserves_on(self):
+        """ut-toggle-migrate-on：旧名开启行迁移为新名并保留 开启。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("- **产物自动提交（design/plan/code）**：开启", out)
+        self.assertNotIn("design/plan）", out.replace("design/plan/code）", ""))
+
+    def test_legacy_prefix_migrates_and_preserves_off(self):
+        """ut-toggle-migrate-off：旧名关闭行迁移为新名并保留 关闭。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：关闭\n"
+        out, _ = rc._ensure_commit_toggle(text, "AGENTS.md")
+        self.assertIn("- **产物自动提交（design/plan/code）**：关闭", out)
+
+    def test_legacy_invalid_value_preserved_with_warning(self):
+        """ut-toggle-migrate-invalid：旧名非法值迁移为新名、保留原文并 warning。"""
+        text = "## 项目配置\n\n- **产物自动提交（design/plan）**：也许\n"
+        out, warns = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertIn("- **产物自动提交（design/plan/code）**：也许", out)
+        self.assertTrue(any(w.get("code") == "INVALID_TOGGLE" for w in warns))
+
+    def test_legacy_and_current_coexist_dedup(self):
+        """ut-toggle-migrate-dedup：旧名+新名并存归并为恰好一行新名，取首个值。"""
+        text = ("## 项目配置\n\n- **产物自动提交（design/plan）**：开启\n"
+                "- **产物自动提交（design/plan/code）**：关闭\n")
+        out, _ = rc._ensure_commit_toggle(text, "CLAUDE.md")
+        self.assertEqual(out.count("产物自动提交"), 1)
+        self.assertIn("- **产物自动提交（design/plan/code）**：开启", out)
+
+    def test_no_toggle_writes_default_off(self):
+        """ut-toggle-migrate-default：无开关行写入默认 关闭（新名）。"""
+        out, _ = rc._ensure_commit_toggle("# X\n", "CLAUDE.md")
+        self.assertIn("- **产物自动提交（design/plan/code）**：关闭", out)
 
 
 class TestComposeEntryWarnings(unittest.TestCase):
@@ -3125,10 +3200,10 @@ class TestEndToEndRegression(unittest.TestCase):
             (7, "代码阅读规则"),
         ):
             self.assertIn(f"### {number}. {title}", agents)
-        self.assertIn(V2_START, agents)
-        self.assertIn(V2_END, agents)
+        self.assertIn(V3_START, agents)
+        self.assertIn(V3_END, agents)
         self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
-        self.assertIn("产物自动提交（design/plan）**：关闭", agents)
+        self.assertIn("产物自动提交（design/plan/code）**：关闭", agents)
         self.assertNotIn("serena-usage.md", agents)
 
     def test_dry_run_warnings_match_apply(self):
@@ -3191,8 +3266,8 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertIn("### 1. 语言规则", claude)
         self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
         self.assertNotIn("playwright.md", claude)
-        self.assertIn(V2_START, claude)
-        self.assertIn(V2_END, claude)
+        self.assertIn(V3_START, claude)
+        self.assertIn(V3_END, claude)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):

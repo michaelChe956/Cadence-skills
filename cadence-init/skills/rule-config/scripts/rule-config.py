@@ -106,8 +106,8 @@ STEP_ORDER = (
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
 # 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
 # 漏检历史区块。
-L0_CURRENT_VERSION = "v2"
-L0_OLD_VERSIONS = ["v1", "v0"]
+L0_CURRENT_VERSION = "v3"
+L0_OLD_VERSIONS = ["v2", "v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
 
@@ -252,9 +252,10 @@ try:
 except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模块导入
     KNOWN_L1_VERSIONS["v1"] = ""
 
-# L0 v1 历史规范源：只有与该文本逐字一致的完整 v1 区块才可确定性升级。
+# L0 v1/v2 历史规范源：只有与该文本逐字一致的完整旧版区块才可确定性升级。
 # v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
 L0_OLD_SOURCES = {
+    "v2": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v2.md"),
     "v1": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v1.md"),
 }
 
@@ -2464,8 +2465,19 @@ def _normalize_mandatory_rules(
     return finish(result), warnings_out
 
 
-TOGGLE_PREFIX = "- **产物自动提交（design/plan）**："
+TOGGLE_PREFIX = "- **产物自动提交（design/plan/code）**："
+TOGGLE_PREFIX_LEGACY = "- **产物自动提交（design/plan）**："
 TOGGLE_DEFAULT = "关闭"
+
+
+def _toggle_matches(line: str) -> bool:
+    """仅精确前缀行命中：新名或旧名开关行。"""
+    return line.startswith(TOGGLE_PREFIX) or line.startswith(TOGGLE_PREFIX_LEGACY)
+
+
+def _toggle_value(line: str) -> str:
+    """按实际命中的前缀截取开关值。"""
+    return line.split("**：", 1)[1].strip()
 
 
 def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
@@ -2480,10 +2492,10 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
     lines = text.splitlines()
     idxs = [i for i, line in enumerate(lines) if line.strip() == "## 项目配置"]
     all_toggle_idxs = [
-        i for i, line in enumerate(lines) if line.startswith(TOGGLE_PREFIX)
+        i for i, line in enumerate(lines) if _toggle_matches(line)
     ]
     all_values = [
-        lines[i][len(TOGGLE_PREFIX):].strip() for i in all_toggle_idxs
+        _toggle_value(lines[i]) for i in all_toggle_idxs
     ]
     valid_values = {"开启", "关闭"}
 
@@ -2532,16 +2544,17 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         i for i in all_toggle_idxs if start < i < end
     ]
     orphan_values = [
-        lines[i][len(TOGGLE_PREFIX):].strip()
+        _toggle_value(lines[i])
         for i in all_toggle_idxs if i not in section_toggle_idxs
     ]
     section_values = [
-        lines[i][len(TOGGLE_PREFIX):].strip()
+        _toggle_value(lines[i])
         for i in section_toggle_idxs
     ]
     values = orphan_values + section_values
     # 保持既有契约：章节内唯一开关即使非法也保留原文，只记录 warning。
     # 只有出现孤儿行或多行并存时才进入“归并为一行”的安全默认语义。
+    # 旧名开关行在此路径中迁移为新名，值逐字保留。
     if not orphan_values and len(section_values) == 1:
         value = section_values[0]
         if value not in valid_values:
@@ -2550,6 +2563,13 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
                 "message": f"产物自动提交开关值非法（{value}），按关闭处理",
                 "detail": {},
             })
+        idx = section_toggle_idxs[0]
+        if lines[idx].startswith(TOGGLE_PREFIX_LEGACY) and not lines[idx].startswith(TOGGLE_PREFIX):
+            lines[idx] = TOGGLE_PREFIX + value
+            result = "\n".join(lines)
+            if trailing_newline and not result.endswith("\n"):
+                result += "\n"
+            return result, warns
         return text, warns
 
     chosen = TOGGLE_DEFAULT

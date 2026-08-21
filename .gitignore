@@ -13,3 +13,6 @@ __pycache__/
 # pi-subagents 运行时产物（审查/任务临时工件）
 .pi-subagents/
 .superpowers/
+
+# 归档（不纳入版本控制）
+cadence/legacy/

@@ -256,7 +256,7 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 
 **顶层 `warnings` 契约**：报告无论 dry-run、普通 apply 或 no-interrupt apply 都必须有顶层数组 `warnings`；它只承载诊断，不改变 `overall` 的 `ok` / `degraded` / `fail` 判定。脚本实际枚举五个 code：`USER_LINES_KEPT`（用户规则块保留）、`DUPLICATE_H2`（仅处理首个同名 H2）、`ORPHAN_RULE6`（章节外孤立规则 6）、`INVALID_TOGGLE`（非法开关值保留原文）与 `L0_DEDUP`（L0 重复/孤立当前标记归并）。`ENTRY_TOGGLE_MISMATCH` 是 Agent 读取双入口开关时的不一致告警，不由脚本写入此数组。
 
-**产物自动提交开关**：`_ensure_commit_toggle` 在首个既有 `## 项目配置` 章节末尾确保唯一 `- **产物自动提交（design/plan）**：关闭`；没有该章节时创建它。章节仅维护该开关，既有技术栈等用户内容逐字保留且不由脚本检测或写入。合法用户值 `开启` / `关闭` 原样保留，非法值保留原文并发出 `INVALID_TOGGLE`。写入双入口一致的开关。读取行为由 Agent 层执行：CLAUDE.md 优先、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`。
+**产物自动提交开关**：`_ensure_commit_toggle` 在首个既有 `## 项目配置` 章节末尾确保唯一 `- **产物自动提交（design/plan/code）**：关闭`；没有该章节时创建它。章节仅维护该开关，既有技术栈等用户内容逐字保留且不由脚本检测或写入。合法用户值 `开启` / `关闭` 原样保留，非法值保留原文并发出 `INVALID_TOGGLE`。写入双入口一致的开关。读取行为由 Agent 层执行：CLAUDE.md 优先、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`。
 
 **产物路径覆盖表**：`ARTIFACT_PATH_OVERRIDE_TABLE` 的三份逐字一致副本位于 L0 v2 kernel、`document-storage.md` 与脚本常量：`docs/superpowers/specs/`（design/spec）→ `cadence/designs/`，`docs/superpowers/plans/`（plan）→ `cadence/plans/`。OpenSpec 产物仍位于 `openspec/`。
 
