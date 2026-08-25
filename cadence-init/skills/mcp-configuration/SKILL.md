@@ -159,7 +159,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 **使用方式**：
 1. 先调用 `mcp__context7__resolve-library-id` 解析库 ID
-2. 再调用 `mcp__context7__query-docs` 获取文档
+2. 再调用 `mcp__context7__get-library-docs` 获取文档
 
 **示例**：
 ```json
@@ -168,7 +168,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 // 返回："/react/react"
 
 // 步骤2：获取文档
-{"libraryId": "/react/react", "query": "hooks"}
+{"context7CompatibleLibraryID": "/react/react", "topic": "hooks"}
 ```
 
 #### Sequential Thinking MCP
@@ -224,8 +224,11 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 **使用规则**：
 1. 图片建议放到本地目录，通过对话指定图片名称或路径来调用
-2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外）
+2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外；pi 经 pi-mcp-adapter 调用时同样需通过本地路径指定图片）
 3. 需要安装最新版本（>= 0.1.2）
+4. 前提：Node.js 版本需 >= 18
+5. `npx` 可能命中旧缓存；排障时可一次性使用 `@z_ai/mcp-server@latest` 或清理 npx 缓存，配置中的 args 保持不变
+6. `Z_AI_MODE` 可选 `ZHIPU` 或 `ZAI`，本模板固定为 `ZHIPU`
 
 **典型工作流**：
 ```
@@ -407,10 +410,11 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 ```
 ⚠️ API Key 安全提醒：
-1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 Claude Code
+1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 AI 客户端（Claude Code、Codex、pi、Kimi 等）
 2. 配置文件中使用占位符（如 your_zhipu_api_key），用户需自行替换为真实密钥
 3. .mcp.json 已在 .gitignore 中排除，不会提交到版本控制
 4. 建议使用环境变量管理密钥，避免明文存储
+5. 团队版 Coding Plan Key 与智谱平台其他 API Key 不通用；使用团队额度必须使用团队套餐 Key，个人/团队 Key 获取入口不同。
 
 智普 API Key 获取地址：https://open.bigmodel.cn/usercenter/apikeys
 MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-plan
@@ -478,6 +482,8 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 #### 智普 MCP 配置（默认添加占位）
 
 > 将以下配置合并到 `.mcp.json` 的 `mcpServers` 中，`your_zhipu_api_key` 需用户自行替换
+
+> 默认保持远程服务的 `type: "http"`。SSE 仅作 HTTP 端点不可用时的手动回退，不写入默认模板，因为密钥出现在 URL 中会落入日志与 shell 历史；`zai-mcp-server` 的 args 保持 `["-y", "@z_ai/mcp-server"]`，不加 `@latest`，避免触发同名 server 参数冲突合并。
 
 ```json
 {
