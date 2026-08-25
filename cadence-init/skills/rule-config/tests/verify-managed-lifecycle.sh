@@ -1939,14 +1939,31 @@ else
   record_result sc-l1-source-copy-sync 1 same diff fail
 fi
 
-# D7. 仓库根 openspec/config.yaml 不得含 rules.apply（sc-no-rules-apply）
+# D7. 框架规则权威模板与仓库根副本同步（sc-framework-rule-source-copy-sync）
+framework_rules_sync_status=0
+for f in language.md document-storage.md markdown-format.md mcp-servers.md code-reading.md playwright.md; do
+  if ! diff -q "$SKILL_DIR/references/rules/$f" "$REPO_ROOT/.claude/rules/$f" >/dev/null 2>&1; then
+    framework_rules_sync_status=1
+  fi
+done
+if ! diff -q "$SKILL_DIR/references/rules/code-usage-noncoding.md" \
+           "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
+  framework_rules_sync_status=1
+fi
+if [ "$framework_rules_sync_status" -eq 0 ]; then
+  record_result sc-framework-rule-source-copy-sync 0 same same pass
+else
+  record_result sc-framework-rule-source-copy-sync 1 same diff fail
+fi
+
+# D8. 仓库根 openspec/config.yaml 不得含 rules.apply（sc-no-rules-apply）
 if python3 -c "import yaml;d=yaml.safe_load(open('$REPO_ROOT/openspec/config.yaml'));assert 'apply' not in (d.get('rules') or {})" 2>/dev/null; then
   record_result sc-no-rules-apply 0 absent absent pass
 else
   record_result sc-no-rules-apply 1 absent present fail
 fi
 
-# D8. L0 引用的规则文件存在性（sc-l0-rule-refs-exist）：提取 CLAUDE.md L0 区块内 .claude/rules/*.md 引用逐一 test -f
+# D9. L0 引用的规则文件存在性（sc-l0-rule-refs-exist）：提取 CLAUDE.md L0 区块内 .claude/rules/*.md 引用逐一 test -f
 if python3 - "$REPO_ROOT/CLAUDE.md" <<'EOF'
 import re,sys,os
 text=open(sys.argv[1]).read()
@@ -1960,14 +1977,14 @@ else
   record_result sc-l0-rule-refs-exist 1 none missing fail
 fi
 
-# D9. 瘦身 SKILL 不得含直接读写目标项目文件的操作指令（sc-no-direct-target-writes）
+# D10. 瘦身 SKILL 不得含直接读写目标项目文件的操作指令（sc-no-direct-target-writes）
 if ! grep -qE '读取内容，写入项目的|将以下文件从.*写入' "$SKILL_MD"; then
   record_result sc-no-direct-target-writes 0 absent absent pass
 else
   record_result sc-no-direct-target-writes 1 absent present fail
 fi
 
-# D10. 脚本 PRUNE_DIRS 与 SKILL.md find 剪枝清单一致（sc-prune-dirs-contract）。
+# D11. 脚本 PRUNE_DIRS 与 SKILL.md find 剪枝清单一致（sc-prune-dirs-contract）。
 # codex 终审 I6：修复 map() 误用导致的检查恒失败，且失败计入 fail（不再假绿）。
 if assert_bounded_source_scan_contract; then
   record_result sc-prune-dirs-contract 0 consistent consistent pass

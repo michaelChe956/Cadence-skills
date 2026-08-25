@@ -126,6 +126,9 @@ codegraph serve --mcp
 1. 图片建议放到本地目录，通过对话指定图片名称或路径来调用
 2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外；pi 经 pi-mcp-adapter 调用时同样需通过本地路径指定图片）
 3. 需要安装最新版本（>= 0.1.2）
+4. 前提：Node.js 版本需 >= 18
+5. `npx` 可能命中旧缓存；排障时可一次性使用 `@z_ai/mcp-server@latest` 或清理 npx 缓存，配置中的 args 保持不变
+6. `Z_AI_MODE` 可选 `ZHIPU` 或 `ZAI`，本模板固定为 `ZHIPU`
 
 **典型工作流**：
 ```
@@ -192,6 +195,7 @@ codegraph serve --mcp
 **使用规则**：
 1. 基于 HTTP 协议的远程服务，无需本地安装运行时
 2. 返回结构化数据，包含标题、正文、元数据等
+3. 目标站点有反爬或登录墙时可能抓取失败，属预期结果，不要反复重试
 
 **典型工作流**：
 ```
@@ -226,6 +230,7 @@ codegraph serve --mcp
 **使用规则**：
 1. 基于 HTTP 协议的远程服务（基于 zread.ai），无需本地安装运行时
 2. 支持搜索文档、浏览结构、读取代码三种操作
+3. 仅支持公开 GitHub 仓库，且需已被 zread.ai 收录；未收录仓库查询失败属预期
 
 **典型工作流**：
 ```
@@ -241,6 +246,11 @@ codegraph serve --mcp
 # 排查 Issue
 > 搜索 prisma/prisma 仓库中关于连接池超时的 Issue
 ```
+
+### 智普 MCP 通用说明（可选）
+
+1. SSE 备用端点为 `https://open.bigmodel.cn/api/mcp/<name>/sse?Authorization=<KEY>`（`web_search_prime`、`web_reader`、`zread`），仅在 HTTP 端点不可用时临时排障使用；密钥出现在 URL 中会落入日志与 shell 历史，不得写入默认配置。
+2. Claude Code + GLM Coding Plan 场景下，服务端已内置联网搜索、网页读取和 `image_analysis`，可能与本地四个 server 的工具重复，可按需禁用；Codex、pi、Kimi 无内置能力，默认仍需这四个 server。
 
 ### MiniMax Token Plan MCP（可选）
 
@@ -284,9 +294,10 @@ codegraph serve --mcp
 ### 智普/MiniMax API Key 安全提醒
 
 > **安全警告**
-> 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 AI 客户端（Claude Code、Codex、pi 等）
+> 1. 请自行前往对应平台获取 API Key，不要将真实密钥告诉 AI 客户端（Claude Code、Codex、pi、Kimi 等）
 > 2. 配置文件中使用占位符，用户需自行替换为真实密钥
 > 3. `.mcp.json` 已在 `.gitignore` 中排除，不会提交到版本控制
+> 4. 团队版 Coding Plan Key 与智谱平台其他 API Key 不通用；使用团队额度必须使用团队套餐 Key，个人/团队 Key 获取入口不同。
 >
 > - 智普 API Key 获取地址：https://open.bigmodel.cn/usercenter/apikeys
 > - MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-plan
