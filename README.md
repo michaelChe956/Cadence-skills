@@ -217,7 +217,7 @@ git pull
 | `/pre-check` | 一键检查并补齐六个基础工具 `npx`、`uvx`、`ast-grep`、`codegraph`、OpenSpec、pi-mcp-adapter（pi 存在时）：已装的工具秒级跳过，缺什么装什么，装完自动复验；支持**大陆镜像加速**与**一键升级已装工具**（见下方“大陆镜像与工具升级”）；OpenSpec 检查范围为 CLI 与 `claude,codex,pi,kimi` 四客户端指令产物，按缺失客户端精确补齐（缺哪个 init 哪个）；`openspec/config.yaml` 由 `/rule-config` 创建与合并，缺失时仅提示不影响判定；Superpowers 软链同步到 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 四层；支持 Superpowers 离线目录 `~/.agents/superpowers`；默认只写 API Key 占位提醒，不收集真实密钥 | Playwright 安装 |
 | `/project-analysis` | 分析项目结构、技术栈和依赖，生成项目初始化分析摘要文档 | — |
 | `/rule-config` | 自动检测项目类型；创建 `.claude/rules/`、`CLAUDE.md`、`AGENTS.md`、`cadence/` 目录；创建或保守合并 `openspec/config.yaml`（含 Cadence 协作上下文）；生成并升级 OpenSpec × Superpowers L0/L1/L2 协作规则；Coding 项目默认启用代码阅读规则和 CodeGraph 初始化；普通规则已有文件不覆盖 | Playwright 规则；将 `cadence/` 加入 `.gitignore` |
-| `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio MCP 到 `.codex/config.toml`；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
+| `/mcp-configuration` | 默认写入基础 MCP、CodeGraph MCP、智普 MCP 占位配置、MiniMax MCP 占位配置；默认同步 stdio 与 HTTP（streamable_http）MCP 到 `.codex/config.toml`（要求 codex-cli >= 0.44）；pi 无原生 MCP，经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置；Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置；真实 API Key 由用户后续自行替换 | 禁用默认 MCP 或处理同名冲突 |
 | `/project-rules-examples` | 创建 `cadence/project-rules/` 个性化规则模板，补齐 CLAUDE.md / AGENTS.md 引用；已有模板不覆盖 | 覆盖已有模板或深度定制项目事实 |
 
 ### KnowledgeBase Skills
@@ -484,7 +484,7 @@ OpenSpec 管契约，Superpowers 管行为。规则模板同时定义 Claude/Kim
 - ✅ 创建 `.mcp.json` 配置文件
 - ✅ 配置 MCP 使用规则
 - ✅ 默认写入智普/MiniMax API Key 占位配置
-- ✅ 默认同步 stdio MCP 到 `.codex/config.toml`（Codex 不支持 HTTP 类型 MCP）
+- ✅ 默认同步 stdio 与 HTTP（streamable_http）MCP 到 `.codex/config.toml`（要求 codex-cli >= 0.44，旧版本会忽略 HTTP 块）
 - ✅ pi 经 pi-mcp-adapter 直接复用 `.mcp.json`（含 HTTP 类型 server），不维护第二份配置
 - ✅ Kimi Code 原生复用根目录 `.mcp.json`（含 HTTP server），不维护第二份配置
 - ✅ 默认将 `.worktrees/`、`.mcp.json`、`.codex/` 加入 `.gitignore`

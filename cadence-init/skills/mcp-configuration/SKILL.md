@@ -45,7 +45,7 @@ disable-model-invocation: true
 | 项目独有 `env`、`headers`、`http_headers` 或扩展字段 | 按键保留并合并 |
 | 内容完全重复 | 只保留一份 |
 
-Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json` 按 `mcpServers` 子项合并；`.codex/config.toml` 按 `[mcp_servers.<name>]` 配置块合并。Codex 仍然只同步有 `command` 字段的 stdio Server，不同步 HTTP Server。
+Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json` 按 `mcpServers` 子项合并；`.codex/config.toml` 按 `[mcp_servers.<name>]` 配置块合并。Codex 同步 stdio Server（有 `command` 字段，写 `command`/`args`/`env`）与 HTTP Server（有 `url` 字段，写 `url` + `http_headers`，即 streamable_http 传输；要求 codex-cli >= 0.44，旧版本会忽略 HTTP 块）。
 
 ### no-interrupt 占位符与私密值
 
@@ -75,7 +75,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 | CodeGraph MCP | **仅 Coding 项目**：如果缺失，按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml`；非 Coding 项目跳过 |
 | 智普 MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
 | MiniMax MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
-| Codex 同步 | 默认启用，只同步 stdio MCP |
+| Codex 同步 | 默认启用，同步 stdio 与 HTTP（streamable_http）MCP |
 | 已存在配置 | 不覆盖整文件，只补缺失 server 配置块；冲突配置跳过并报告 |
 | `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` |
 
@@ -106,7 +106,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
-5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，仅同步 stdio MCP
+5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，stdio 与 HTTP（streamable_http）MCP 均同步
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
 7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
 8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore（Kimi 复用 `.mcp.json`，无需新增条目）
@@ -403,7 +403,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 **无交互行为**：
 - 默认将智普/MiniMax 相关规则**追加到 `.claude/rules/mcp-servers.md` 文件末尾**。
 - 默认将智普/MiniMax 配置块写入 `.mcp.json`，使用 `your_zhipu_api_key` 与 `your_minimax_api_key` 占位。
-- Codex 同步时只同步 stdio MCP：智普仅同步 `zai-mcp-server`，不同步 HTTP 类型的 `web-search-prime`、`web-reader`、`zread`。
+- Codex 同步时同步 stdio 与 HTTP MCP：智普的 `zai-mcp-server`（stdio）与 `web-search-prime`、`web-reader`、`zread`（HTTP，写为 `url` + `http_headers`）均同步到 `.codex/config.toml`。
 - 已存在对应规则段落时跳过，不重复追加。
 
 **API Key 安全提醒**（必须展示）：
@@ -564,7 +564,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 - 所有选中的 TOML 配置块合并写入同一个 `.codex/config.toml` 文件
 - `[mcp_servers]` 表头只写一次，放在文件开头（或追加内容的最前面）
 - 写入顺序：基础配置 → CodeGraph 配置（仅 Coding 项目） → 智普配置（默认占位）→ MiniMax 配置（默认占位）
-- **Codex 不支持 HTTP 类型 MCP** — 同步时必须排除所有 `"type": "http"` 的 MCP servers，仅同步 stdio 类型（有 `command` 字段）的服务
+- **Codex HTTP MCP 同步规则** — stdio 类型（有 `command` 字段）写 `command`/`args`/`env`；HTTP 类型（有 `url` 字段）写 `url` + `http_headers`（`.mcp.json` 的 `headers` 映射为 `http_headers`）。Codex 走 streamable_http 传输，要求 codex-cli >= 0.44；旧版 Codex 会忽略 HTTP 块，建议先执行 `codex --version` 确认。
 
 **Claude Code、Codex、pi 与 Kimi Code 格式差异**：
 
@@ -572,7 +572,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 |------|--------------------------|------------------------------|----------------------|-------------------|
 | 格式 | JSON | TOML | 复用 `.mcp.json`（JSON），无第二份配置 | 复用根目录 `.mcp.json`（JSON），无第二份配置 |
 | 服务器定义 | `"mcpServers": { "name": {...} }` | `[mcp_servers.name]` | 同 `.mcp.json` | 同 `.mcp.json` |
-| 传输类型 | `"type": "stdio"` / `"type": "http"` | 仅 stdio（有 `command`），**HTTP 类型不支持** | stdio 与 HTTP 均支持 | stdio / HTTP / SSE 均支持 |
+| 传输类型 | `"type": "stdio"` / `"type": "http"` | stdio（有 `command`）与 streamable_http（有 `url`）均支持 | stdio 与 HTTP 均支持 | stdio / HTTP / SSE 均支持 |
 | 环境变量 | `"env": { "KEY": "value" }` | `env = { "KEY" = "value" }` | 同 `.mcp.json` | 同 `.mcp.json` |
 | HTTP 头 | `"headers": { "Authorization": "..." }` | `http_headers = { "Authorization" = "..." }` | 同 `.mcp.json` | 同 `.mcp.json` |
 | type 字段 | 必须显式声明 | 不需要（自动推断） | 同 `.mcp.json` | 不需要（按 `command`/`url` 自动推断） |
@@ -616,13 +616,31 @@ args = ["serve", "--mcp"]
 
 > 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换
 
-> **⚠️ Codex 不支持 HTTP 类型的 MCP servers** — 智普的 `web-search-prime`、`web-reader`、`zread` 为 HTTP 类型，不会同步到 Codex。仅同步 stdio 类型的 `zai-mcp-server`。
+> Codex 0.44+ 支持 streamable_http 传输的远程 MCP。将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换。
 
 ````toml
 [mcp_servers.zai-mcp-server]
 command = "npx"
 args = ["-y", "@z_ai/mcp-server"]
 env = { "Z_AI_API_KEY" = "your_zhipu_api_key", "Z_AI_MODE" = "ZHIPU" }
+````
+
+#### 智普远程 MCP 配置（默认添加占位）
+
+> 将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中，`your_zhipu_api_key` 需用户自行替换。`.mcp.json` 中的 `headers` 在 TOML 中对应 `http_headers`。
+
+````toml
+[mcp_servers.web-search-prime]
+url = "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
+
+[mcp_servers.web-reader]
+url = "https://open.bigmodel.cn/api/mcp/web_reader/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
+
+[mcp_servers.zread]
+url = "https://open.bigmodel.cn/api/mcp/zread/mcp"
+http_headers = { "Authorization" = "Bearer your_zhipu_api_key" }
 ````
 
 #### MiniMax MCP 配置（默认添加占位）
