@@ -132,14 +132,13 @@ KNOWN_L1_VERSIONS: dict = {}
 # L1 规则文件名（走独立分支，**不**进入 merge_markdown 章节合并）。
 L1_RULE_FILENAME = "openspec-superpowers-workflow.md"
 
-# S3 普通规则文件清单（5 个，不含 L1_RULE_FILENAME、L0 kernel、
-# code-usage 双来源模板与可选 Playwright）。
+# S3 普通规则文件清单（4 个，不含 L1_RULE_FILENAME、L0 kernel、
+# code-usage/code-reading 双来源模板与可选 Playwright）。
 ORDINARY_RULE_FILES = (
     "language.md",
     "document-storage.md",
     "markdown-format.md",
     "mcp-servers.md",
-    "code-reading.md",
 )
 # code-usage 按最终项目类型单选规范源，但项目落地名始终固定为 code-usage.md。
 CODE_USAGE_SOURCE_MAP = {
@@ -151,8 +150,12 @@ CODE_USAGE_LEGACY_FILES = ("code-usage-coding.md", "code-usage-noncoding.md")
 # Playwright 规则文件（显式启用或目标已存在时处理）。
 PLAYWRIGHT_RULE_FILE = "playwright.md"
 
-# OP-01：可选规则完整性检查使用的 CodeGraph 规则文件。
-CODEGRAPH_RULE_FILE = "code-reading.md"
+# code-reading 按最终项目类型单选规范源，但项目落地名始终固定为 code-reading.md。
+CODE_READING_SOURCE_MAP = {
+    "coding": "code-reading-coding.md",
+    "non-coding": "code-reading-noncoding.md",
+}
+CODE_READING_TARGET = "code-reading.md"
 
 # NC-03 项目补充标记：合并协议保留字。注入与项目独有行过滤共用此常量；
 # 重跑时过滤必须排除标记行自身，保证 merge(t, merge(t, x)) == merge(t, x)（重跑幂等）。
@@ -270,6 +273,8 @@ L0_OLD_SOURCES = {
 # 规则 2（代码使用规则）摘要行：按项目类型选择文本（Coding → 遵循 TDD；非 Coding → 非必要不编写）。
 RULE2_TEXT_CODING = "- **遵循 TDD 和代码规范** → 详见 `.claude/rules/code-usage.md`"
 RULE2_TEXT_NONCODING = "- **非必要不编写代码** → 详见 `.claude/rules/code-usage.md`"
+RULE7_TEXT_CODING = "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`"
+RULE7_TEXT_NONCODING = "- **文档阅读遵循结构化定向原则** → 详见 `.claude/rules/code-reading.md`"
 
 # 规则 6（项目个性化规则）摘要多行块：CLAUDE.md 与 AGENTS.md 文本略有不同，按入口选择。
 # 规则 6 正文按入口选择；规范化阶段通过 CANONICAL_RULES 的路径 marker 识别。
@@ -310,9 +315,9 @@ CANONICAL_RULES: list[tuple[tuple[str, ...], str, str, str]] = [
      "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`"),
     (("cadence/project-rules/",), "项目个性化规则",
      RULE6_BLOCK_CLAUDE_BODY, RULE6_BLOCK_AGENTS_BODY),
-    (("code-reading.md",), "代码阅读规则",
-     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`",
-     "- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`"),
+    ((CODE_READING_TARGET,), "代码阅读规则",
+     "{RULE7}",
+     "{RULE7}"),
 ]
 
 CANONICAL_RULE_PLAYWRIGHT = (
@@ -347,6 +352,8 @@ def render_mandatory_section(entry_name: str, project_type: str,
         body = claude_text if entry_name == "CLAUDE.md" else agents_text
         if body == "{RULE2}":
             body = RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+        elif body == "{RULE7}":
+            body = RULE7_TEXT_CODING if project_type == "coding" else RULE7_TEXT_NONCODING
         # 规则标题由 CANONICAL_RULES 统一提供；入口差异只体现在正文。
         lines.extend([f"### {number}. {title}", *body.splitlines(), ""])
     return "\n".join(lines)
@@ -417,12 +424,14 @@ SOURCE_EXTS = (
     ".rb", ".swift", ".kt", ".c", ".cpp", ".cs",
 )
 
-# S2 locate_templates 成对校验所需文件清单（rules/ 四件套，与 SKILL.md 步骤 1b 一致）。
+# S2 locate_templates 完备校验所需文件清单（rules/ 六件套与 openspec 配置）。
 TEMPLATE_REQUIRED = (
     "agent-routing-kernel.md",
     "language.md",
     "openspec-superpowers-workflow.md",
     "document-storage.md",
+    "code-reading-coding.md",
+    "code-reading-noncoding.md",
 )
 
 # 全局 T0：main() 入口第一行记录（budget_seconds_excluding_codegraph 基准）。
@@ -1436,9 +1445,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     rules_dir = root / ".claude" / "rules"
     project_type = plan.get("project_type", "non-coding")
     code_usage_source = CODE_USAGE_SOURCE_MAP[project_type]
-    # (项目落地名, 模板来源名, 是否 L1)；code-usage 双模板只能单选一个来源。
+    code_reading_source = CODE_READING_SOURCE_MAP[project_type]
+    # (项目落地名, 模板来源名, 是否 L1)；双模板规则只能单选一个来源。
     s3_targets = [(fname, fname, False) for fname in ORDINARY_RULE_FILES]
     s3_targets.append((CODE_USAGE_TARGET, code_usage_source, False))
+    s3_targets.append((CODE_READING_TARGET, code_reading_source, False))
     # 已存在的 Playwright 即视为启用，进入与普通规则相同的 drift 分类。
     if intents.enable_playwright or (rules_dir / PLAYWRIGHT_RULE_FILE).exists():
         s3_targets.append((PLAYWRIGHT_RULE_FILE, PLAYWRIGHT_RULE_FILE, False))
@@ -1773,7 +1784,7 @@ def _detect_main_config(root: Path) -> Optional[str]:
 def locate_templates() -> tuple:
     """模板定位：skill 自包含单源（契约「模板与脚本必须同源」）。
 
-    唯一候选：SKILL_DIR/references/（rules/ 四件套 + openspec/config.yaml）。
+    唯一候选：SKILL_DIR/references/（rules/ 六件套 + openspec/config.yaml）。
     缺失任一 → TemplateError（列出缺失清单与重装建议）；不降级到任何外部路径。
     """
     references = SKILL_DIR / "references"
@@ -1942,7 +1953,7 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
     # 文件与摘要不重写。摘要缺失时由 S4 规则章节规范化（SM-02）处理。
-    optional_rules = [CODEGRAPH_RULE_FILE]
+    optional_rules = [CODE_READING_TARGET]
     if intents.enable_playwright:
         optional_rules.append(PLAYWRIGHT_RULE_FILE)
     for opt in optional_rules:

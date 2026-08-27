@@ -16,3 +16,6 @@ __pycache__/
 
 # 归档（不纳入版本控制）
 cadence/legacy/
+
+# MCP 图片识别可用性状态缓存（运行时产物，禁止入库）
+cadence/cache/mcp-availability/

@@ -76,8 +76,8 @@
 - 需要回答“某功能从入口到落点如何流转”
 
 **使用规则**：
-1. 项目必须先执行 `codegraph init`，存在 `.codegraph/` 后 CodeGraph MCP 才提供工具。
-2. 大范围检索优先使用 CodeGraph。
+1. CodeGraph 仅适用于 Coding 项目：仅当最终 `project_type=coding`，或用户明确启用 `--enable-codegraph` 时，才允许在项目根目录执行 `codegraph init`（存在 `.codegraph/` 后 CodeGraph MCP 才提供工具）。`project_type=non-coding` 默认跳过安装、初始化与配置，且该开关不改变项目类型与规则模板选择。
+2. Coding 项目在 CodeGraph 已启用且可用时，大范围检索优先使用 CodeGraph。
 3. 精确结构阅读优先使用 `ast-grep outline`。
 4. `ast-grep outline` 与 CodeGraph 结果冲突时，以 `ast-grep outline` 为准。
 
@@ -95,7 +95,24 @@ codegraph serve --mcp
 > 使用 CodeGraph 分析修改 UserService 会影响哪些模块
 ```
 
+### 图片识别路由与 MCP 可用性状态
+
+**模型能力判定**：图片任务必须将当前模型能力划分为 `multimodal`、`text-only` 或 `unknown`。判断只依据当前客户端是否实际将目标图片暴露给模型，不得根据模型或产品品牌推断；无法确认时为 `unknown`。
+
+**路由规则**：
+1. `multimodal` 且模型可直接访问图片时，必须使用模型自身能力处理图片；不得仅为识图调用或探测 MCP。
+2. `text-only`、`unknown` 或图片不可达时，才进入 MCP 图片识别路径。
+3. 智普与 MiniMax 没有固定服务优先级；两者都可用时按任务适配性或用户指定任选其一，一个不可用时可改用另一个，全部不可用时必须如实报告识图未完成及原因，不得伪装成功或输出未经识别的猜测内容。
+
+**可用性探测与任务范围缓存**：
+1. 进入 MCP 路径后，调用图片工具前必须确认客户端能发现对应 server、其图片工具可见并完成最小能力确认。首次对智普（`zai-mcp-server`）和 MiniMax 各探测一次；同一 `task-scope-id` 内每个 provider 至多探测一次。探测结论分别写入 `cadence/cache/mcp-availability/<task-scope-id>.json`；scope id 必须在任务开始时生成并在任务内复用。
+2. 每个 provider 分别独立记录，禁止合并为单一总布尔值。`status` 仅限 `unknown`、`available`、`unavailable` 三态：`available` 直接调用，`unavailable` 跳过且不得在同一 scope 内无限重试，`unknown` 允许按首次流程探测；本次调用失败后也不得在同一 scope 内对该 provider 反复重试。
+3. 缓存文件损坏、schema 版本不识别或 scope 不匹配时，相关状态一律视为 `unknown` 并允许重新探测；MCP 配置变更、客户端重连或用户显式要求重检时，既有记录同样失效。
+4. 状态记录仅可包含固定白名单字段：scope 标识、生成时间、provider 名称、status、探测时间、探测方式与原因。不得记录 API Key、Authorization 凭据、原始错误响应正文、图片内容、MCP 返回正文或敏感 URL。项目 `.gitignore` 必须精确包含一行 `cadence/cache/mcp-availability/`，以排除该目录而非整个 `cadence/cache/`。
+
 ### 智普视觉理解 MCP（可选）
+
+图片任务必须先遵循《图片识别路由与 MCP 可用性状态》小节；本节排列顺序不代表服务优先级。
 
 **用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断
 
@@ -253,6 +270,8 @@ codegraph serve --mcp
 2. Claude Code + GLM Coding Plan 场景下，服务端已内置联网搜索、网页读取和 `image_analysis`，可能与本地四个 server 的工具重复，可按需禁用；Codex、pi、Kimi 无内置能力，默认仍需这四个 server。
 
 ### MiniMax Token Plan MCP（可选）
+
+图片任务必须先遵循《图片识别路由与 MCP 可用性状态》小节；本节排列顺序不代表服务优先级。
 
 **用途**：网络搜索和图片理解
 
