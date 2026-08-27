@@ -1,6 +1,6 @@
 ---
 name: mcp-configuration
-description: "配置 MCP：创建 .mcp.json 配置文件和 MCP 使用规则"
+description: "配置 MCP：创建 .mcp.json 配置文件并交接 Codex 与 .gitignore 配置"
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并添加 MCP 使用规则到 CLAUDE.md。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并引导查阅由 rule-config 生成的 `.claude/rules/mcp-servers.md` 受管规则。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 
 ## 参数模式
 
@@ -63,7 +63,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 5. 无法安全识别项目补充配置时立即报错，不覆盖原文件；备份仅用于恢复，不代表初始化成功。
 6. 合并完成后重新解析目标文件；验证失败时恢复备份并报错终止。
 
-`no-interrupt` 模式下 `.gitignore` 使用集合合并，确保 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 生效并去重。如果存在对应的精确反向规则 `!.worktrees/`、`!.mcp.json` 或 `!.codex/config.toml`，移除该反向规则；其他项目忽略规则保持不变。
+`no-interrupt` 模式下 `.gitignore` 使用集合合并，确保 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 生效并去重。对缓存目录只允许精确添加 `cadence/cache/mcp-availability/` 一行；已存在时不得重复追加，也不得改为忽略整个 `cadence/cache/`。如果存在对应的精确反向规则 `!.worktrees/`、`!.mcp.json`、`!.codex/config.toml` 或 `!cadence/cache/mcp-availability/`，移除该反向规则；其他项目忽略规则保持不变。
 
 ## 无交互默认策略
 
@@ -77,7 +77,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 | MiniMax MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
 | Codex 同步 | 默认启用，同步 stdio 与 HTTP（streamable_http）MCP |
 | 已存在配置 | 不覆盖整文件，只补缺失 server 配置块；冲突配置跳过并报告 |
-| `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` |
+| `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/`（精确一行、已存在不重复追加） |
 
 ## 人工交互策略
 
@@ -102,33 +102,24 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 你必须为以下每个项目创建任务并按顺序完成：
 
-1. **添加 MCP 使用规则** — 添加各 MCP server 的使用规则到 CLAUDE.md
+1. **查阅受管 MCP 规则** — 引导用户阅读落地后的 `.claude/rules/mcp-servers.md`，不创建或修改该受管文件
 2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
 5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，stdio 与 HTTP（streamable_http）MCP 均同步
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
 7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
-8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json` 和 `.codex/config.toml` 到 .gitignore（Kimi 复用 `.mcp.json`，无需新增条目）
+8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 到 .gitignore；缓存条目精确一行且已存在时不重复追加
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
 ## 处理流程
 
-### 1. MCP 使用规则配置
+### 1. 受管 MCP 规则引用
 
-**创建 `.claude/rules/mcp-servers.md` 规则文件**：
+`.claude/rules/mcp-servers.md` 是由 `rule-config` 权威模板统一生成的受管文件。本技能不得创建、写入、追加、拼接或修改该文件；仅引导用户阅读落地后的 canonical 规则文件。
 
-从 `rule-config` skill 的模板目录 `cadence-init/skills/rule-config/references/rules/mcp-servers.md` 读取模板内容（该文件也可通过 `rule-config` 步骤 1b 定位的模板根路径获取），写入项目的 `.claude/rules/mcp-servers.md` 文件。
-
-**在 CLAUDE.md 中添加摘要引用行**：
-
-```markdown
-### 6. MCP Server 使用规则
-- **各 MCP 工具的使用规范** → 详见 `.claude/rules/mcp-servers.md`
-```
-
-> 以下为各 MCP 的配置说明，供配置时参考。详细使用规则见 `.claude/rules/mcp-servers.md`。
+> 以下为各 MCP 的配置说明，供创建 `.mcp.json` 与 `.codex/config.toml` 时参考。详细使用规则见 `.claude/rules/mcp-servers.md`。
 
 #### Time MCP
 
@@ -195,55 +186,15 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 #### 智普视觉理解 MCP
 
-> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key
+> **默认配置占位符** — 需要用户后续将 `your_zhipu_api_key` 替换为真实智普 GLM Coding Plan API Key。
 
-**用途**：图像分析、视频理解、UI 截图转代码、OCR 文字提取、错误截图诊断
+| 配置项 | `.mcp.json` / Codex 配置值 |
+|--------|----------------------------|
+| API Key | `Z_AI_API_KEY` / `your_zhipu_api_key` |
+| 模式 | `Z_AI_MODE=ZHIPU` |
+| 典型配置块 | 使用下文的 `zai-mcp-server` stdio 配置；智普远程 MCP 的 HTTP 端点保留在相应 `.mcp.json` 与 Codex 配置块中 |
 
-**触发场景**：
-- 需要分析本地图片或截图内容
-- UI 截图转换为前端代码
-- 从截图中提取文字（OCR）
-- 分析错误弹窗、堆栈截图
-- 解读架构图、流程图、UML 图
-- 分析数据可视化图表
-- 对比两张 UI 截图差异
-- 视频内容理解
-
-**工具列表**：
-
-| 工具名 | 功能 |
-|--------|------|
-| `ui_to_artifact` | 将 UI 截图转换为代码、提示词、设计规范 |
-| `extract_text_from_screenshot` | OCR 提取截图中的文字 |
-| `diagnose_error_screenshot` | 解析错误弹窗/堆栈截图，给出修复建议 |
-| `understand_technical_diagram` | 解读架构图、流程图、UML、ER 图 |
-| `analyze_data_visualization` | 分析仪表盘、统计图表 |
-| `ui_diff_check` | 对比两张 UI 截图差异 |
-| `image_analysis` | 通用图像理解 |
-| `video_analysis` | 视频场景解析（MP4/MOV/M4V，本地最大 8M） |
-
-**使用规则**：
-1. 图片建议放到本地目录，通过对话指定图片名称或路径来调用
-2. 直接在客户端粘贴图片无法调用此 MCP（Claude Code 除外；pi 经 pi-mcp-adapter 调用时同样需通过本地路径指定图片）
-3. 需要安装最新版本（>= 0.1.2）
-4. 前提：Node.js 版本需 >= 18
-5. `npx` 可能命中旧缓存；排障时可一次性使用 `@z_ai/mcp-server@latest` 或清理 npx 缓存，配置中的 args 保持不变
-6. `Z_AI_MODE` 可选 `ZHIPU` 或 `ZAI`，本模板固定为 `ZHIPU`
-
-**典型工作流**：
-```
-# 分析本地截图
-> 请分析 screenshot.png 的内容
-
-# UI 截图转代码
-> 请将 design.png 转换为 React 组件代码
-
-# OCR 提取文字
-> 提取 error-log.png 中的错误信息
-
-# 视频分析
-> 分析 demo.mp4 中的操作流程
-```
+识图决策以 `.claude/rules/mcp-servers.md` 的《图片识别路由与 MCP 可用性状态》小节为准。
 
 #### 智普联网搜索 MCP
 
@@ -353,58 +304,34 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 #### MiniMax Token Plan MCP
 
-> **默认配置占位符** — 需要用户后续将 `your_minimax_api_key` 替换为真实 MiniMax Token Plan API Key
-
-**用途**：网络搜索和图片理解
-
-**触发场景**：
-- 需要网络搜索获取实时信息
-- 需要理解和分析图片内容
-
-**前置条件**：需要 `uvx`（pre-check 已包含检查）
-
-**工具列表**：
-
-| 工具名 | 功能 |
-|--------|------|
-| `web_search` | 网络搜索，获取实时信息 |
-| `understand_image` | 图片理解和分析 |
-
-**环境变量**：
+> **默认配置占位符** — 需要用户后续将 `your_minimax_api_key` 替换为真实 MiniMax Token Plan API Key。
 
 | 变量 | 说明 | 必需 |
 |------|------|------|
-| `MINIMAX_API_KEY` | MiniMax API 密钥 | 是 |
-| `MINIMAX_API_HOST` | API 地址，固定为 `https://api.minimaxi.com` | 是 |
+| `MINIMAX_API_KEY` | MiniMax API 密钥（配置值为 `your_minimax_api_key`） | 是 |
+| `MINIMAX_API_HOST` | API 端点，固定为 `https://api.minimaxi.com` | 是 |
 | `MINIMAX_MCP_BASE_PATH` | 本地输出目录路径（需有写入权限） | 否 |
 | `MINIMAX_API_RESOURCE_MODE` | 资源提供方式：`url` 或 `local`，默认 `url` | 否 |
 
-**使用规则**：
-1. 基于 uvx 运行的本地 MCP 服务
-2. 验证配置：进入 Claude Code 后输入 `/mcp`，能看到 `web_search` 和 `understand_image` 说明配置成功
+典型 `.mcp.json` 与 Codex 配置块保留在下文；服务以 `uvx minimax-coding-plan-mcp -y` 启动。识图决策以 `.claude/rules/mcp-servers.md` 的《图片识别路由与 MCP 可用性状态》小节为准。
 
-**典型工作流**：
-```
-# 网络搜索
-> 搜索 Python 3.12 的新特性有哪些
+### 4. 智普/MiniMax MCP 配置交接
 
-# 图片理解
-> 分析 architecture.png 中的系统架构设计
-```
+> **默认配置占位符** — 不需要用户提供真实 API Key，不阻塞初始化。
 
-### 4. 智普/MiniMax MCP 规则追加
+**受管 MCP 规则必须保持单一来源**：`.claude/rules/mcp-servers.md` 的内容唯一由 `rule-config` 权威模板统一生成。本技能 **MUST NOT** 向该受管文件追加、拼接或修改任何规则内容。
 
-> **默认添加规则说明与配置占位符** — 不需要用户提供真实 API Key，不阻塞初始化
+本技能职责仅限以下三点：
 
-**检测条件**：
-- 默认启用智普 MCP 占位配置，用于图像分析、视频理解、UI 截图转代码、联网搜索、网页读取和开源仓库读取。
-- 默认启用 MiniMax MCP 占位配置，用于网络搜索和图片理解。
+1. 创建并交接 `.mcp.json` 与 Codex `.codex/config.toml` 配置；
+2. 幂等地向 `.gitignore` 添加 `cadence/cache/mcp-availability/` 精确一行（已存在时不重复追加）；
+3. 引导用户阅读落地后的 `.claude/rules/mcp-servers.md` canonical 规则文件。
+
+图片识别路由语义以落地后的 `.claude/rules/mcp-servers.md` 为准。
 
 **无交互行为**：
-- 默认将智普/MiniMax 相关规则**追加到 `.claude/rules/mcp-servers.md` 文件末尾**。
-- 默认将智普/MiniMax 配置块写入 `.mcp.json`，使用 `your_zhipu_api_key` 与 `your_minimax_api_key` 占位。
-- Codex 同步时同步 stdio 与 HTTP MCP：智普的 `zai-mcp-server`（stdio）与 `web-search-prime`、`web-reader`、`zread`（HTTP，写为 `url` + `http_headers`）均同步到 `.codex/config.toml`。
-- 已存在对应规则段落时跳过，不重复追加。
+- 默认写入智普与 MiniMax 配置块，分别使用 `your_zhipu_api_key` 与 `your_minimax_api_key` 占位；
+- Codex 同步 stdio 与 HTTP MCP：智普的 `zai-mcp-server`（stdio）与 `web-search-prime`、`web-reader`、`zread`（HTTP，写为 `url` + `http_headers`）均同步到 `.codex/config.toml`。
 
 **API Key 安全提醒**（必须展示）：
 
@@ -557,7 +484,7 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 | 场景 | 处理方式 |
 |------|---------|
 | `.codex/` 目录和 `config.toml` 均不存在 | 创建目录和文件，写入完整 TOML 内容 |
-| `.codex/config.toml` 已存在但不含 `[mcp_servers` | 保留原有内容，在文件末尾追加 MCP 配置 |
+| `.codex/config.toml` 已存在但不含 `[mcp_servers` | 保留原有内容，在原有内容之后追加 MCP 配置 |
 | `.codex/config.toml` 已存在且含 `[mcp_servers` | 只追加缺失的 server 配置块；同名不同配置跳过并报告 |
 
 **TOML 写入规则**：
@@ -678,7 +605,7 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 
 ### 8. 配置 .gitignore
 
-**目的**：将 Cadence 工作目录和本地配置添加到 .gitignore，避免将临时文件、本地 MCP 配置和 Codex 项目配置提交到版本控制。无人工交互模式下默认执行。
+**目的**：将 Cadence 工作目录、本地配置与 MCP 可用性缓存添加到 .gitignore，避免将临时文件、本地 MCP 配置、Codex 项目配置和运行时缓存提交到版本控制。无人工交互模式下默认执行。
 
 **操作步骤**：
 
@@ -690,13 +617,14 @@ ls -la .gitignore
 
 **2. 添加 Cadence 相关配置**
 
-如果 `.gitignore` 已存在，在文件末尾添加以下内容：
+如果 `.gitignore` 已存在，以集合合并方式添加以下缺失条目；每个条目只保留一行，`cadence/cache/mcp-availability/` 已存在时不得重复追加：
 
 ```gitignore
 # Cadence 工作目录
 .worktrees/
 .mcp.json
 .codex/config.toml
+cadence/cache/mcp-availability/
 ```
 
 如果 `.gitignore` 不存在，创建文件并添加内容：
@@ -707,6 +635,7 @@ cat > .gitignore << 'EOF'
 .worktrees/
 .mcp.json
 .codex/config.toml
+cadence/cache/mcp-availability/
 EOF
 ```
 
@@ -717,6 +646,7 @@ EOF
 | `.worktrees/` | Git worktrees 隔离开发环境 | 包含临时的隔离开发环境，不应提交 |
 | `.mcp.json` | MCP 配置文件 | 包含本地 MCP 路径配置，不应提交到版本控制 |
 | `.codex/config.toml` | Codex CLI 项目级 MCP 配置 | 包含本地 MCP 路径和 API Key 占位符，不应提交 |
+| `cadence/cache/mcp-availability/` | MCP provider 可用性状态缓存 | 运行时缓存；仅添加该精确目录，不忽略整个 `cadence/cache/` |
 
 > pi 复用 `.mcp.json`（pi-mcp-adapter 直读），`.gitignore` 无需为 pi 新增条目。
 
@@ -729,7 +659,7 @@ git status
 
 **错误处理**：
 - 如果项目不是 Git 仓库，提示用户稍后手动添加
-- 如果配置已存在，跳过重复添加
+- 如果条目已存在，跳过重复添加；`cadence/cache/mcp-availability/` 必须保持精确一行
 
 ## 核心原则
 

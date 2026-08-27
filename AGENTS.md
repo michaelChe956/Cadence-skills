@@ -64,7 +64,7 @@ Skill 调用：Claude/Kimi 原生调用；Codex/pi 清单选择后将用途并�
 - 详见 `cadence/project-rules/README.md`
 
 ### 7. 代码阅读规则
-- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
+- **文档阅读遵循结构化定向原则** → 详见 `.claude/rules/code-reading.md`
 
 ### 8. Playwright CLI 使用规则
 - **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`

@@ -6,6 +6,7 @@
 > 用途：Task 2/3 的用例清单来源；Task 10 语义迁移矩阵正文来源。本文档作为测试文件提交，后续任何脚本行为变更必须先与本文档对账。
 > 2026-08-19 对账（change rule-config-authoritative-overwrite）：六类受管冲突转两模式确定性动作；7 个集成 ID 改名，4 个用例移除，新增 ut-validate-decisions-dormant 休眠单测 4 例；SKILL 行号区间不变（语义正文在 references/merge-semantics.md）。
 > 2026-08-19 变更记录（change rule-config-self-contained-templates）：S1b-01~04 由模板三级定位（在线/离线/glob 回退）对账为 skill 目录单源自包含定位（references/merge-semantics.md §11.5 同步重写）；旧用例 ut-locate_templates-online/-offline/-fallback/-pair-check/-mtime-latest/-all-incomplete 与 it-s2-templates-missing 移除，新增 ut-locate_templates-skill-dir/-incomplete/-no-home/-ignore-stale-marketplace 与 it-s2-skill-self-contained；fx-templates-* fixture 删除（改为测试内 inline 构造）；S1b 行号区间改指瘦身版 SKILL「调用方式·第一步」（42-44 行）。
+> 2026-08-27 对账（change `2026-08-27-mcp-image-route-and-codegraph-typed-source`）：`code-reading.md` 改为固定落地名、按最终 `project_type` 从 `code-reading-coding.md` / `code-reading-noncoding.md` 单选来源；新增集成断言 `it-s8-codegraph-explicit-enable-source-stable`、`it-s1-no-interrupt-ignores-cli-typed-code-reading`、`it-s1-no-interrupt-detect-coding-typed-code-reading`、`it-s1-normal-cli-promotes-typed-code-reading`、`it-s1-normal-detect-coding-typed-code-reading`。原有 `it-s8-codegraph-explicit-enable`、`it-s1-*` ID 保留，断言范围扩展而非更名。
 
 ## 0. 命名与列定义
 
@@ -106,17 +107,17 @@
 | 67 | DF-02 项目类型检测；技术栈不参与脚本配置 | 两模式 | detect_project | fx-project-type | TestDetectProject | 仅返回 project_type/evidence，不检测或写入技术栈 |
 | 68 | DF-03 历史迁移无冲突自动迁移；目标非空跳过并报告 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-skip | 非空目标目录不动，报告含冲突项 |
 | 69 | DF-04 `cadence/` 默认不加入 `.gitignore` | 两模式 | step_gitignore | fx-empty-project | it-s6-cadence-gitignore-default | `.gitignore` 不含 `cadence/` 行 |
-| 70 | DF-05 代码阅读规则所有项目创建；非 Coding 只跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-all-projects | 非 Coding 项目仍存在 `.claude/rules/code-reading.md` |
+| 70 | DF-05 `code-reading.md` 所有项目均创建，固定落地名按最终 `project_type` 从 `code-reading-coding.md` / `code-reading-noncoding.md` 单选来源；非 Coding 只跳过默认 CodeGraph 初始化，`--enable-codegraph` 不改变来源 | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | TestCodeReadingSingleSource / it-s8-codegraph-explicit-enable-source-stable | Coding、非 Coding 分别逐字等于所选来源；显式 CodeGraph 启用后仍为 noncoding 来源 |
 | 71 | DF-06 CodeGraph 初始化 Coding 默认启用、非 Coding 默认跳过 | 两模式 | step_codegraph | fx-noncoding-project | it-s8-codegraph-skip-noncoding | 非 Coding 项目不生成 `.codegraph/`，报告记录跳过原因 |
 | 72 | DF-07 Playwright 规则默认跳过，仅用户明确要求时启用 | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip | 默认不产生 `.claude/rules/playwright.md` 与摘要 |
-| 73 | DF-08 框架受管规则文件内容一致时幂等跳过；缺失文件/摘要/配置块按各表补齐；框架规则 drift 按 RF-05 处理（两模式统一屏障归档+模板权威覆盖；2026-08-19 权威化后无活跃冲突类型，见 merge-semantics §11.6） | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | 内容一致文件不写盘、不归档并报告 `unchanged`/跳过；框架 drift 不走章节合并、不经用户决策，两模式权威覆盖结果逐字等于所选模板 |
+| 73 | DF-08 框架受管规则文件内容一致时幂等跳过；缺失文件/摘要/配置块按各表补齐；框架规则 drift 按 RF-05 处理（两模式统一屏障归档+模板权威覆盖；2026-08-19 权威化后无活跃冲突类型，见 merge-semantics §11.6） | 两模式 | step_rules_files / step_entry_files / step_openspec_config | fx-existing-rules | ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent / TestCodeReadingSingleSource | 内容一致文件不写盘、不归档并报告 `unchanged`/跳过；框架 drift 不走章节合并、不经用户决策，两模式权威覆盖结果逐字等于所选模板；`code-reading.md` 的模板以最终类型单选 |
 
 ### 2.6 人工交互策略表（IA-01~05）与提问规则（IA-R1~R4）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 83 | IA-01（2026-08-19 权威化后休眠）原「框架受管规则 drift 先询问、无响应默认 keep 保留」分支已废止：RF-05 drift 两模式统一为屏障归档后以模板权威覆盖，不再产生交互冲突；当前系统无活跃冲突类型，default_keep/validate_decisions 机制保留为休眠兜底 | 两模式 | step_rules_files（决策机制休眠，见 merge-semantics §11.6） | fx-existing-rules | it-s3-normal-authoritative-overwrite / ut-validate-decisions-dormant | 普通模式 drift 不再出现在 plan conflicts、不询问；普通与 no-interrupt 均归档后逐字覆盖为模板；休眠机制对未知/重复/过期决策仍 fail-closed |
-| 84 | IA-02 项目类型判定两模式规则（codex 五轮重构）：no-interrupt 以检测结果为准（CLI 完全忽略）；普通模式 CLI `--project-type coding` 仅能把 non-coding 提升为 coding，检测为 coding 时无论 CLI 取何值均为 coding；任一组合唯⼀确定，不产生冲突 | 两模式 | detect_project / compute_plan | fx-s1-no-interrupt-ignores-cli / fx-s1-no-interrupt-detect-coding / fx-s1-normal-cli-promotes / fx-s1-normal-detect-coding / fx-s1-normal-no-cli-noncoding | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding | 五用例覆盖两模式行表；final `project_type` 与 S8 启用/跳过与预期一致 |
+| 84 | IA-02 项目类型判定两模式规则（codex 五轮重构）：no-interrupt 以检测结果为准（CLI 完全忽略）；普通模式 CLI `--project-type coding` 仅能把 non-coding 提升为 coding，检测为 coding 时无论 CLI 取何值均为 coding；任一组合唯⼀确定，不产生冲突 | 两模式 | detect_project / compute_plan / step_rules_files / step_entry_files | fx-s1-no-interrupt-ignores-cli / fx-s1-no-interrupt-detect-coding / fx-s1-normal-cli-promotes / fx-s1-normal-detect-coding / fx-s1-normal-no-cli-noncoding | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding；it-s1-no-interrupt-ignores-cli-typed-code-reading / it-s1-no-interrupt-detect-coding-typed-code-reading / it-s1-normal-cli-promotes-typed-code-reading / it-s1-normal-detect-coding-typed-code-reading | 五用例覆盖两模式行表；同一 final `project_type` 同时决定 S8 启用/跳过、`code-reading.md` 所选来源与入口第 7 条文案 |
 | 85 | IA-03 用户明确要求启用默认跳过项但缺少必要信息→问最少必要信息；无响应跳过该可选项 | 普通 | —（Agent 提问，design D3） | fx-empty-project | sc-ia-optional-ask | SKILL.md 保留"最少必要信息/无响应跳过"文本 |
 | 86 | IA-04 迁移旧目录目标非空→不询问、不合并，直接跳过并报告冲突 | 普通 | step_scaffold | fx-history-target-nonempty | it-s5-history-conflict-no-ask | dry-run/apply 计划不生成该目录的提问冲突项，报告直接记冲突跳过 |
 | 87 | IA-05 需要真实密钥→不询问真实密钥，只写占位符并提示替换 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-ia-secrets-placeholder | 全文无索取真实密钥的指令文本；占位符约定保留 |
@@ -144,7 +145,7 @@
 | 42-44 | S1b-04 过期 marketplace 副本存在亦被忽略（naruto 事故回归） | 两模式 | locate_templates | —（测试内 inline 过期副本） | ut-locate_templates-ignore-stale-marketplace | 过期 marketplace 副本内容不同，仍取 skill 目录模板 |
 | 161-165 | S1c-01 创建 `.claude/rules`（幂等） | 两模式 | step_rules_files | fx-empty-project | it-s3-mkdir-idempotent | 重复运行不报错、目录权限不变 |
 | 171-181 | S1d-01 `.claude/rules/` 框架受管清单为 7 个：mcp-servers/code-reading/document-storage/language/markdown-format/code-usage/playwright；Playwright 按启用/已存在条件进入处理，L1 独立于此清单 | 两模式 | step_rules_files | fx-empty-project | ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | 受管落地名不含 agent-routing-kernel；存在 drift 时权威覆盖，内容一致时幂等跳过 |
-| 179-180 | S1d-02 `code-usage-coding.md`/`code-usage-noncoding.md` 按最终项目类型单选来源，始终写入 `.claude/rules/code-usage.md`；历史双文件归档后移除 | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | TestCodeUsageSingleSource / test_coding_project_gets_code_usage_md / test_noncoding_project_gets_noncoding_source_at_fixed_name / test_code_usage_asset_records_selected_template_source | Coding 内容=coding 模板；非 Coding 内容=noncoding 模板；plan 的 `template_source` 与项目类型一致；双来源文件不落地 |
+| 179-180 | S1d-02 `code-usage-coding.md`/`code-usage-noncoding.md` 与 `code-reading-coding.md`/`code-reading-noncoding.md` 均按最终项目类型单选来源，始终分别写入固定名 `.claude/rules/code-usage.md` / `.claude/rules/code-reading.md`；双来源模板文件不落地 | 两模式 | step_rules_files | fx-coding-project / fx-noncoding-project | TestCodeUsageSingleSource / TestCodeReadingSingleSource / test_coding_project_gets_code_usage_md / test_noncoding_project_gets_noncoding_source_at_fixed_name / test_code_usage_asset_records_selected_template_source | 两个固定落地文件均随 final type 逐字等于所选来源；plan 的 `template_source` 与项目类型一致；任一 `*-coding.md` / `*-noncoding.md` 不落地 |
 | 183 | S1d-03 L1 独立分支：`openspec-superpowers-workflow.md` 按版本升级特例处理；7 个框架受管规则文件按 RF-05 权威全覆盖 | 两模式 | step_rules_files / classify_l1 | fx-existing-rules | it-s3-l1-independent / ut-s3-authoritative-overwrite | L1 走版本化分类且不调 `merge_markdown`；框架规则 drift 逐字覆盖为模板 |
 
 ### 2.9 处理流程 S2：入口文件与 L0 受管区块（L0-P1~P12）
@@ -202,16 +203,16 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 485-491 | S8-01 从模板根复制 `code-reading.md` 并在双入口添加摘要 | 两模式 | step_rules_files / step_entry_files | fx-empty-project | it-s3-code-reading-add | 规则文件与双入口摘要均存在 |
-| 493-497 | S8-02 无交互：所有项目创建规则并补齐摘要，避免 L0 悬空引用；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files / step_entry_files | fx-noncoding-project | it-s3-code-reading-no-dangling | 摘要引用与规则文件成对存在 |
-| 497 | S8-03 已存在规则文件不覆盖；缺摘要只追加摘要 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-code-reading-no-overwrite | 已有规则文件 sha256 不变；缺失摘要被追加 |
+| 485-491 | S8-01 固定写入 `code-reading.md`，按最终 `project_type` 从 coding/noncoding 两份来源单选，并在双入口添加同源第 7 条摘要 | 两模式 | step_rules_files / step_entry_files | fx-coding-project / fx-noncoding-project | TestCodeReadingSingleSource / it-s3-code-reading-backfill | 固定落地文件逐字等于所选来源；第 7 条摘要与同一来源类型一致 |
+| 493-497 | S8-02 无交互：所有项目创建规则并补齐摘要，避免 L0 悬空引用；非 Coding 选 noncoding 来源且仅跳过默认 CodeGraph 初始化 | 两模式 | step_rules_files / step_entry_files | fx-noncoding-project | it-s3-code-reading-backfill / it-s8-codegraph-explicit-enable-source-stable | 摘要引用与规则文件成对存在；`--enable-codegraph` 执行 S8 但不改变 noncoding 规则来源或第 7 条 |
+| 497 | S8-03 已存在规则按当前 final type 的所选来源判定；一致时幂等，drift 按 RF-05 权威覆盖；缺摘要只追加同源摘要 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | TestCodeReadingSingleSource / ut-s3-authoritative-idempotent | 内容一致时 sha256 不变；类型切换或本地 drift 后逐字收敛为所选来源，入口第 7 条同步渲染 |
 
 ### 2.14 处理流程 S9：CodeGraph（CS-01~08，SKILL 558-567 行表）
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 501-503 | S9-01 检测条件：Coding 项目默认启用、非 Coding 默认跳过 | 两模式 | step_codegraph | fx-coding-project | it-s8-codegraph-default-coding | Coding 项目执行 install+init 流程 |
-| 513-517 | S9-02 用户明确要求时即使未检测到源码也允许执行（`--enable-codegraph`，只控 S8 不改项目类型连带语义） | 两模式 | step_codegraph | fx-noncoding-project | it-s8-codegraph-explicit-enable | 非 Coding + `--enable-codegraph` 执行 S8；规则 2 文本与默认角色仍按非 Coding |
+| 513-517 | S9-02 用户明确要求时即使未检测到源码也允许执行（`--enable-codegraph`，只控 S8 不改项目类型连带语义） | 两模式 | step_codegraph / step_rules_files / step_entry_files | fx-noncoding-project | it-s8-codegraph-explicit-enable / it-s8-codegraph-explicit-enable-source-stable | 非 Coding + `--enable-codegraph` 执行 S8；规则 2、`code-reading.md` 所选来源和入口第 7 条仍按 non-coding |
 | 519-539 | S9-03 安装后强制核验 `.mcp.json` 与 `.codex/config.toml` 双配置，缺一按参照补齐 | 两模式 | step_codegraph | fx-mcp-partial | it-s8-codegraph-reverify | install 成功后仍逐文件核验并补齐缺失方 |
 | 550-554 | S9-04 配置范围：`--location=local` 只写项目级；`.codegraph/` 入 gitignore；`codegraph.json` 不入 gitignore | 两模式 | step_codegraph / step_gitignore | fx-empty-project | it-s8-codegraph-scope | 不写全局配置；gitignore 含 `.codegraph/` 不含 `codegraph.json` |
 | 560 | CS-01 `.codegraph/` 不存在→Coding 默认执行 install 与 init | 两模式 | step_codegraph | fx-coding-project | it-s8-codegraph-fresh | `.codegraph/` 生成；两配置文件含 CodeGraph MCP |
@@ -240,9 +241,9 @@
 | 612 | RF-01 非框架资产文件不存在→从模板根路径读取并创建；框架资产创建后续由 RF-05 统一治理 | 两模式 | step_rules_files | fx-empty-project | it-s3-rules-create | 缺失文件按所选模板创建 |
 | 613 | RF-02 非框架资产内容与模板一致→幂等跳过；框架资产一致状态归 RF-05 `unchanged` | 两模式 | step_rules_files | fx-existing-rules | ut-s3-authoritative-idempotent / ut-step_s3-ordinary-unchanged | 内容一致时不调用 `atomic_write`、不新增 `cadence/legacy` 归档，报告 unchanged/跳过 |
 | 613 | RF-02b 非框架历史条款；框架资产改用 RF-05。drift 两模式统一权威覆盖（归档+模板替换），不再章节合并、不再普通模式 keep | 两模式 | step_rules_files | fx-existing-rules | 已由 RF-05 `authoritative-overwrite` 取代旧 no-interrupt `markdown-merge` 映射 | 框架受管规则文件不得调用 `merge_markdown`，不得生成项目补充；普通模式不经用户决策 |
-| 614 | RF-03 `code-reading.md` 老项目补齐后即进入 RF-05 受管清单；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-existing-rules | it-s3-code-reading-backfill / ut-s3-authoritative-idempotent | 缺失时补齐模板；后续一致则幂等跳过，drift 则 RF-05 权威覆盖 |
-| 615 | RF-04 缺 CodeGraph 段落视为框架规则 drift：两模式统一权威覆盖（归档+完整模板替换），不产生独立冲突类型 | 两模式 | step_rules_files / backup_file / atomic_write | fx-rules-missing-codegraph-section | ut-s3-codegraph-section-unified-drift / ut-s3-codegraph-section-unified-merge（旧名称保留，旧 `markdown-merge` 语义已由 `authoritative-overwrite` 取代） | 普通模式产出统一 drift 动作并入备份需求、不产冲突；两模式结果均逐字等于完整模板，不保留项目补充 |
-| 615+ | RF-05 `.claude/rules/` 下 7 个框架受管规则文件存在且内容≠所选模板→两模式统一：全局屏障归档+`atomic_write` 模板（`authoritative-overwrite`，2026-08-19 起普通模式不再询问 keep/replace）；内容一致则 `unchanged` | 两模式 | step_rules_files / backup_file / atomic_write | fx-existing-rules | it-s3-normal-authoritative-overwrite / ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent | drift 覆盖后内容==模板，且无“项目补充”/“原项目补充”；归档存在；一致时零写入零归档；报告 `authoritative-overwrite`/`unchanged`；plan conflicts 不再出现 s3 drift 条目 |
+| 614 | RF-03 `code-reading.md` 老项目补齐后即进入 RF-05 受管清单；固定落地名按最终项目类型单选 coding/noncoding 来源，非 Coding 仅跳过默认 CodeGraph 初始化 | 两模式 | step_rules_files | fx-existing-rules | it-s3-code-reading-backfill / TestCodeReadingSingleSource / ut-s3-authoritative-idempotent | 缺失时从所选来源补齐；后续与所选来源一致则幂等跳过，drift 则 RF-05 权威覆盖 |
+| 615 | RF-04 缺 CodeGraph 段落视为框架规则 drift：两模式统一权威覆盖（归档+完整模板替换），不产生独立冲突类型 | 两模式 | step_rules_files / backup_file / atomic_write | fx-rules-missing-codegraph-section | ut-s3-codegraph-section-unified-drift / ut-s3-codegraph-section-unified-merge（旧名称保留，旧 `markdown-merge` 语义已由 `authoritative-overwrite` 取代） | 普通模式产出统一 drift 动作并入备份需求、不产冲突；`code-reading.md` 两模式结果均逐字等于 final type 所选来源，不保留项目补充 |
+| 615+ | RF-05 `.claude/rules/` 下 7 个框架受管规则文件存在且内容≠所选模板→两模式统一：全局屏障归档+`atomic_write` 模板（`authoritative-overwrite`，2026-08-19 起普通模式不再询问 keep/replace）；内容一致则 `unchanged` | 两模式 | step_rules_files / backup_file / atomic_write | fx-existing-rules | it-s3-normal-authoritative-overwrite / ut-s3-authoritative-overwrite / ut-s3-authoritative-idempotent / TestCodeReadingSingleSource | drift 覆盖后内容==模板，且无“项目补充”/“原项目补充”；`code-reading.md` 的模板由 final type 单选；归档存在；一致时零写入零归档；报告 `authoritative-overwrite`/`unchanged`；plan conflicts 不再出现 s3 drift 条目 |
 
 ### 2.17 增量运行：OpenSpec 配置（OS-N1~N13 编号条款 + OS-01~08，SKILL 664-673 行表）
 
@@ -315,7 +316,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 725 | OP-01 规则文件和摘要均已存在→视为已启用，仅检查完整性 | 两模式 | step_rules_files / step_entry_files | fx-existing-rules | it-s3-optional-complete（待补） | 文件与摘要不重写；报告完整性结果 |
-| 726 | OP-02 代码阅读规则缺失→所有项目默认新增；非 Coding 仅跳过 CodeGraph 初始化 | 两模式 | step_rules_files | fx-noncoding-project | it-s3-code-reading-backfill | 规则文件补齐；CodeGraph 不初始化 |
+| 726 | OP-02 `code-reading.md` 缺失→所有项目默认以固定落地名新增，按最终项目类型单选 coding/noncoding 来源；非 Coding 仅跳过默认 CodeGraph 初始化 | 两模式 | step_rules_files / step_entry_files | fx-coding-project / fx-noncoding-project | TestCodeReadingSingleSource / it-s3-code-reading-backfill | 规则文件补齐且逐字等于所选来源；入口第 7 条同源渲染；non-coding 默认不初始化 CodeGraph |
 | 727 | OP-03 Playwright 规则缺失→默认跳过，用户明确要求时新增 | 两模式 | step_rules_files | fx-empty-project | it-s3-playwright-skip / it-s3-playwright-enable | 两分支动作符合表义 |
 | 728 | OP-04 无法判断历史选择→按默认值处理，不询问 | 两模式 | step_rules_files | fx-existing-rules | it-s3-playwright-skip（默认跳过不询问分支） | 不生成提问冲突项；按默认值执行并报告 |
 
@@ -383,10 +384,10 @@
 | 3 | 既有技术栈等项目配置内容逐字保留；脚本不检测或写入技术栈 | TestComposeEntryWarnings | ✅ |
 | 4 | gitignore 两分支 | it-s6-gitignore-default / it-s6-gitignore-ignore（S7-01/02） | ✅ |
 | 5 | Playwright 两分支 | it-s3-playwright-skip / it-s3-playwright-enable（S10-01/02、OP-03） | ✅ |
-| 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ |
+| 6 | CodeGraph 显式启用与增量矩阵 | it-s8-codegraph-explicit-enable / it-s8-codegraph-explicit-enable-source-stable（S9-02）；CS-01~08、CG-01~08 全矩阵 → 2.14/2.22 | ✅ S8 显式启用不改变 noncoding `code-reading.md` 来源或入口第 7 条 |
 | 7 | Markdown 不可解析回退 | ut-merge_markdown-unparseable-fallback（NC-08） | ✅ |
 | 8 | 摘要引用存在性与同文件多引用去重 | TestSummaryDedup / test_different_wording_same_ref_not_duplicated / test_duplicate_ref_deduped / it-entry-summary-number-conflict | ✅ |
-| 9 | 项目类型判定两模式规则（codex 五轮重构，原「检测矛盾」已删） | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding | ✅ |
+| 9 | 项目类型判定两模式规则（codex 五轮重构，原「检测矛盾」已删） | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding；四个 `*-typed-code-reading` 下游一致性用例 | ✅ final `project_type` 同时决定 S8 与 code-reading 来源和规则 7 摘要 |
 | 10 | 意图参数透传 | it-intent-params（XC-02，四参数） | ✅ |
 | 11 | 裸 token | sc-bare-token（PM-01） | ✅ |
 | 12 | disable-model-invocation | sc-disable-model-invocation（FM-01） | ✅ |

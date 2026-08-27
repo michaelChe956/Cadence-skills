@@ -40,6 +40,12 @@ REPO_ROOT=$(CDPATH= cd -- "$TEST_DIR/../../../.." && pwd)
 KERNEL="$TEST_DIR/../references/rules/agent-routing-kernel.md"
 L1_SOURCE="$TEST_DIR/../references/rules/openspec-superpowers-workflow.md"
 CONFIG_TEMPLATE="$TEST_DIR/../references/openspec/config.yaml"
+CODE_USAGE_SOURCE_CODING="$TEST_DIR/../references/rules/code-usage-coding.md"
+CODE_USAGE_SOURCE_NONCODING="$TEST_DIR/../references/rules/code-usage-noncoding.md"
+CODE_READING_SOURCE_CODING="$TEST_DIR/../references/rules/code-reading-coding.md"
+CODE_READING_SOURCE_NONCODING="$TEST_DIR/../references/rules/code-reading-noncoding.md"
+RULE7_TEXT_CODING='- **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`'
+RULE7_TEXT_NONCODING='- **文档阅读遵循结构化定向原则** → 详见 `.claude/rules/code-reading.md`'
 
 # 静态契约：脚本 PRUNE_DIRS 常量必须与 SKILL.md 的 find 剪枝清单一致。
 # 脚本尚不存在时（RED）该检查 fail，属预期。
@@ -306,20 +312,26 @@ legacy_archive_path() {  # legacy_archive_path <root> <relative-path>
   find "$root/cadence/legacy" -type f -path "*/$relative_path" -print -quit 2>/dev/null
 }
 
-# 预置当前权威规则收敛态：5 个普通规则 + L1 + 单一 code-usage.md。
-# agent-routing-kernel.md 仅作为 L0 规范源，不落地到 .claude/rules/。
+# 预置当前权威规则收敛态：4 个普通规则 + L1，以及按最终项目类型单选来源、
+# 固定落地名的 code-usage.md / code-reading.md。agent-routing-kernel.md 仅作为 L0
+# 规范源，不落地到 .claude/rules/。
 mk_converged_rules() {  # mk_converged_rules <target-root> [coding]
   local target=$1
   local kind=${2-}
   local rules="$target/.claude/rules"
-  local source_name=code-usage-noncoding.md
+  local code_usage_source="$CODE_USAGE_SOURCE_NONCODING"
+  local code_reading_source="$CODE_READING_SOURCE_NONCODING"
   mkdir -p "$rules"
   for f in language.md document-storage.md markdown-format.md mcp-servers.md \
-           code-reading.md openspec-superpowers-workflow.md; do
+           openspec-superpowers-workflow.md; do
     cp "$TEST_DIR/../references/rules/$f" "$rules/$f"
   done
-  [ "$kind" = coding ] && source_name=code-usage-coding.md
-  cp "$TEST_DIR/../references/rules/$source_name" "$rules/code-usage.md"
+  if [ "$kind" = coding ]; then
+    code_usage_source="$CODE_USAGE_SOURCE_CODING"
+    code_reading_source="$CODE_READING_SOURCE_CODING"
+  fi
+  cp "$code_usage_source" "$rules/code-usage.md"
+  cp "$code_reading_source" "$rules/code-reading.md"
 }
 
 # fixture：从仓库真实入口复制（带漂移注入）。
@@ -355,6 +367,34 @@ mk_converged_entries() {  # mk_converged_entries <target_root> [coding]：向目
   REPORT="$saved_report"
   cp "$scratch/CLAUDE.md" "$target/CLAUDE.md"
   cp "$scratch/AGENTS.md" "$target/AGENTS.md"
+}
+
+# 代码阅读规则与入口第 7 条必须消费同一 final project_type。--enable-codegraph
+# 仅决定 S8 是否执行，不能改变这里选择的来源模板或摘要文案。
+assert_code_reading_and_rule7_for_kind() {  # <project-root> coding|non-coding
+  local root="$1"
+  local kind="$2"
+  local source
+  local summary
+
+  case "$kind" in
+    coding)
+      source="$CODE_READING_SOURCE_CODING"
+      summary="$RULE7_TEXT_CODING"
+      ;;
+    non-coding)
+      source="$CODE_READING_SOURCE_NONCODING"
+      summary="$RULE7_TEXT_NONCODING"
+      ;;
+    *)
+      printf '未知项目类型：%s\n' "$kind" >&2
+      return 2
+      ;;
+  esac
+
+  cmp -s "$root/.claude/rules/code-reading.md" "$source" \
+    && grep -Fqx -- "$summary" "$root/CLAUDE.md" \
+    && grep -Fqx -- "$summary" "$root/AGENTS.md"
 }
 
 # OpenSpec config 合并结果逐字段比对：以模板与旧值合并，断言字段集合。
@@ -1207,7 +1247,8 @@ else
   record_result it-s8-codegraph-write-config-zero "$RUN_STATUS" absent absent fail
 fi
 
-# C10f. 非 Coding + --enable-codegraph 仍执行 S8（it-s8-codegraph-explicit-enable / S9-02）
+# C10f. 非 Coding + --enable-codegraph 仍执行 S8（it-s8-codegraph-explicit-enable / S9-02）。
+# 显式开关只允许执行 S8，不能改变 final project_type，故规则来源和入口第 7 条仍须为 non-coding。
 case_root="$TEST_ROOT/fx-noncoding-enable-codegraph"
 mkdir -p "$case_root"
 printf 'docs only\n' > "$case_root/README.md"
@@ -1221,6 +1262,12 @@ if [ "$RUN_STATUS" -eq 0 ] \
   record_result it-s8-codegraph-explicit-enable "$RUN_STATUS" absent present pass
 else
   record_result it-s8-codegraph-explicit-enable "$RUN_STATUS" absent absent fail
+fi
+if [ "$RUN_STATUS" -eq 0 ] \
+  && assert_code_reading_and_rule7_for_kind "$case_root" non-coding; then
+  record_result it-s8-codegraph-explicit-enable-source-stable "$RUN_STATUS" noncoding-source noncoding-source pass
+else
+  record_result it-s8-codegraph-explicit-enable-source-stable "$RUN_STATUS" noncoding-source mismatch fail
 fi
 
 # C11. 项目类型判定两模式规则（it-s1-* / IA-02 重构，codex 五轮）
@@ -1247,6 +1294,12 @@ if [ "$RUN_STATUS" -eq 0 ] \
 else
   record_result it-s1-no-interrupt-ignores-cli "$RUN_STATUS" present present fail
 fi
+if [ "$RUN_STATUS" -eq 0 ] \
+  && assert_code_reading_and_rule7_for_kind "$case_root" non-coding; then
+  record_result it-s1-no-interrupt-ignores-cli-typed-code-reading "$RUN_STATUS" noncoding-source noncoding-source pass
+else
+  record_result it-s1-no-interrupt-ignores-cli-typed-code-reading "$RUN_STATUS" noncoding-source mismatch fail
+fi
 
 # C11b. no-interrupt + 检测 coding → coding + S8 启用（CLI 忽略）
 case_root="$(mk_coding_fixture fx-s1-no-interrupt-detect-coding)"
@@ -1261,6 +1314,12 @@ if [ "$RUN_STATUS" -eq 0 ] \
   record_result it-s1-no-interrupt-detect-coding "$RUN_STATUS" present present pass
 else
   record_result it-s1-no-interrupt-detect-coding "$RUN_STATUS" present missing fail
+fi
+if [ "$RUN_STATUS" -eq 0 ] \
+  && assert_code_reading_and_rule7_for_kind "$case_root" coding; then
+  record_result it-s1-no-interrupt-detect-coding-typed-code-reading "$RUN_STATUS" coding-source coding-source pass
+else
+  record_result it-s1-no-interrupt-detect-coding-typed-code-reading "$RUN_STATUS" coding-source mismatch fail
 fi
 
 # C11c. 普通模式 + 检测 non-coding + CLI coding → coding（CLI 提升）+ S8 启用
@@ -1279,6 +1338,12 @@ if [ "$RUN_STATUS" -eq 0 ] \
 else
   record_result it-s1-normal-cli-promotes "$RUN_STATUS" present missing fail
 fi
+if [ "$RUN_STATUS" -eq 0 ] \
+  && assert_code_reading_and_rule7_for_kind "$case_root" coding; then
+  record_result it-s1-normal-cli-promotes-typed-code-reading "$RUN_STATUS" coding-source coding-source pass
+else
+  record_result it-s1-normal-cli-promotes-typed-code-reading "$RUN_STATUS" coding-source mismatch fail
+fi
 
 # C11d. 普通模式 + 检测 coding → coding（CLI non-coding 被忽略，检测优先）
 case_root="$(mk_coding_fixture fx-s1-normal-detect-coding)"
@@ -1291,6 +1356,12 @@ if [ "$RUN_STATUS" -eq 0 ] \
   record_result it-s1-normal-detect-coding "$RUN_STATUS" present present pass
 else
   record_result it-s1-normal-detect-coding "$RUN_STATUS" present missing fail
+fi
+if [ "$RUN_STATUS" -eq 0 ] \
+  && assert_code_reading_and_rule7_for_kind "$case_root" coding; then
+  record_result it-s1-normal-detect-coding-typed-code-reading "$RUN_STATUS" coding-source coding-source pass
+else
+  record_result it-s1-normal-detect-coding-typed-code-reading "$RUN_STATUS" coding-source mismatch fail
 fi
 
 # C11e. 普通模式 + 检测 non-coding + 无 CLI → non-coding
@@ -1503,14 +1574,16 @@ done
 [ ! -f "$case_root/.claude/rules/agent-routing-kernel.md" ] || rules_all_present=0
 [ ! -f "$case_root/.claude/rules/code-usage-coding.md" ] || rules_all_present=0
 [ ! -f "$case_root/.claude/rules/code-usage-noncoding.md" ] || rules_all_present=0
+[ ! -f "$case_root/.claude/rules/code-reading-coding.md" ] || rules_all_present=0
+[ ! -f "$case_root/.claude/rules/code-reading-noncoding.md" ] || rules_all_present=0
 if [ "$RUN_STATUS" -eq 0 ] && [ "$rules_all_present" -eq 1 ] \
-  && cmp -s "$case_root/.claude/rules/code-usage.md" "$TEST_DIR/../references/rules/code-usage-noncoding.md"; then
+  && cmp -s "$case_root/.claude/rules/code-usage.md" "$CODE_USAGE_SOURCE_NONCODING"; then
   record_result it-s3-rules-create "$RUN_STATUS" absent present pass
 else
   record_result it-s3-rules-create "$RUN_STATUS" absent missing fail
 fi
 if [ "$RUN_STATUS" -eq 0 ] && [ -f "$case_root/.claude/rules/code-reading.md" ] \
-  && cmp -s "$case_root/.claude/rules/code-reading.md" "$TEST_DIR/../references/rules/code-reading.md"; then
+  && cmp -s "$case_root/.claude/rules/code-reading.md" "$CODE_READING_SOURCE_NONCODING"; then
   record_result it-s3-code-reading-backfill "$RUN_STATUS" absent present pass
 else
   record_result it-s3-code-reading-backfill "$RUN_STATUS" absent missing fail
@@ -1866,8 +1939,7 @@ run_script apply "$case_root" --no-interrupt
 after=$(sha256_file "$case_root/.claude/rules/code-reading.md")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$before" != "$after" ] \
-  && cmp -s "$case_root/.claude/rules/code-reading.md" "$TEST_DIR/../references/rules/code-reading.md" \
-  && ! grep -q '仅 ast-grep，无其他内容。' "$case_root/.claude/rules/code-reading.md" \
+  && cmp -s "$case_root/.claude/rules/code-reading.md" "$CODE_READING_SOURCE_NONCODING" \
   && legacy_archive_exists "$case_root" '.claude/rules/code-reading.md'; then
   record_result it-s3-codegraph-section-unified-merge "$RUN_STATUS" "$before" "$after" pass
 else
@@ -1939,14 +2011,20 @@ else
   record_result sc-l1-source-copy-sync 1 same diff fail
 fi
 
-# D7. 框架规则权威模板与仓库根副本同步（sc-framework-rule-source-copy-sync）
+# D7. 框架规则权威模板与仓库根副本同步（sc-framework-rule-source-copy-sync）。
+# code-reading 固定落地名但按最终 project_type 选模板；本仓库是 non-coding，根副本
+# 必须与 noncoding 来源同步。其余同名规则仍按同名来源比较，code-usage 同理取 noncoding 来源。
 framework_rules_sync_status=0
-for f in language.md document-storage.md markdown-format.md mcp-servers.md code-reading.md playwright.md; do
+for f in language.md document-storage.md markdown-format.md mcp-servers.md playwright.md; do
   if ! diff -q "$SKILL_DIR/references/rules/$f" "$REPO_ROOT/.claude/rules/$f" >/dev/null 2>&1; then
     framework_rules_sync_status=1
   fi
 done
-if ! diff -q "$SKILL_DIR/references/rules/code-usage-noncoding.md" \
+if ! diff -q "$CODE_READING_SOURCE_NONCODING" \
+           "$REPO_ROOT/.claude/rules/code-reading.md" >/dev/null 2>&1; then
+  framework_rules_sync_status=1
+fi
+if ! diff -q "$CODE_USAGE_SOURCE_NONCODING" \
            "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
   framework_rules_sync_status=1
 fi

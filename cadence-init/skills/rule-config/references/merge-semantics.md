@@ -139,6 +139,8 @@ L0 迁移不变量：最终只保留一个 v2 区块；混合版本标记仅在�
 
 框架受管清单固定为：`mcp-servers.md`、`code-reading.md`、`document-storage.md`、`language.md`、`markdown-format.md`、`code-usage.md`、`playwright.md`。其中缺失文件从所选模板创建，内容与模板一致时幂等跳过；存在 drift 时执行 RF-05。`code-usage.md` 按项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源。
 
+**`code-reading.md` 双来源语义**：`code-reading.md` 是固定落地名，不把 `code-reading-coding.md` 或 `code-reading-noncoding.md` 直接写入项目；脚本依据同一次计算得到的最终 `project_type`，在 coding 与 non-coding 来源模板中单选其一。目标文件的 drift 判断、归档后权威覆盖和幂等判断均以本次所选来源为准；显式 `--enable-codegraph` 只控制 S8 CodeGraph 步骤是否执行，不改变 `project_type`、来源选择或落地名。入口 `## 强制规则` 的第 7 条摘要也消费同一最终类型和同一来源选择：coding 使用 CodeGraph 检索文案，non-coding 使用结构化文档阅读文案。
+
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | RF-01 | 非框架普通规则资产（框架资产改用 RF-05） | 文件不存在 | 从模板根路径读取并创建 | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与来源模板 | `it-s3-rules-create` |

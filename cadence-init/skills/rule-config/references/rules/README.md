@@ -17,7 +17,9 @@
 | `document-storage.md` | 文档存储规则（目录、命名、路径映射）；受管落地名 `document-storage.md` |
 | `markdown-format.md` | Markdown 格式规则（代码块嵌套）；受管落地名 `markdown-format.md` |
 | `mcp-servers.md` | MCP Server 使用规则（所有 MCP 工具）；受管落地名 `mcp-servers.md` |
-| `code-reading.md` | 代码阅读规则（CodeGraph 与 ast-grep outline 使用规范）；受管落地名 `code-reading.md` |
+| `code-reading-coding.md` | 代码阅读规则来源模板（coding 项目阅读工作流，落地名为 `code-reading.md`） |
+| `code-reading-noncoding.md` | 代码阅读规则来源模板（non-coding 项目文档结构化阅读指引，落地名为 `code-reading.md`） |
+| `code-reading.md`（落地名） | 受管落地名；本模板目录不预存同名源文件，按项目类型从 coding/noncoding 来源模板单选生成 |
 | `playwright.md` | Playwright CLI 使用规则；启用或已存在时受管落地名 `playwright.md` |
 
 ## `.claude/rules/` 受管清单

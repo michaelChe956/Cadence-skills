@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import re
 from pathlib import Path
 
 import yaml
@@ -93,6 +94,27 @@ class TestCanonicalRules(unittest.TestCase):
     def test_retired_list_seed(self):
         """ut-retired-seed：退役清单初始含 serena-usage.md。"""
         self.assertEqual(rc.RETIRED_RULE_FILES, ["serena-usage.md"])
+
+    def test_mcp_servers_authoritative_image_route_wording(self):
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        text = (refs / "mcp-servers.md").read_text(encoding="utf-8")
+        self.assertIn("图片识别路由与 MCP 可用性状态", text)
+        self.assertNotIn("项目必须先执行", text)
+
+    def test_mcp_configuration_delegates_canonical_route_and_cache(self):
+        skill = Path(__file__).resolve().parents[2] / "mcp-configuration" / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        self.assertFalse(
+            "追加到" in text
+            and ".claude/rules/mcp-servers.md" in text
+            and "文件末尾" in text
+        )
+        self.assertNotIn("已有段落则跳过", text)
+        self.assertIn(
+            "`.claude/rules/mcp-servers.md` 的内容唯一由 `rule-config` 权威模板统一生成",
+            text,
+        )
+        self.assertIn("cadence/cache/mcp-availability/", text)
 
 
 class TestMergeMarkdown(unittest.TestCase):
@@ -1020,6 +1042,152 @@ class TestCodeUsageSingleSource(unittest.TestCase):
         self.assertEqual(asset["template_source"], "playwright.md")
 
 
+class TestCodeReadingSingleSource(unittest.TestCase):
+    """code-reading 按最终项目类型单选来源，固定落地到 code-reading.md。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for template in real_tpl.iterdir():
+            if template.is_file():
+                (self.rules_root / template.name).write_bytes(template.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+
+    def _apply(self, **overrides):
+        report = rc.build_report(
+            "no-interrupt" if overrides.get("no_interrupt") else "normal",
+            self.root,
+        )
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(**overrides), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def _compute(self, **overrides):
+        with mock.patch.object(
+            rc,
+            "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            return rc.compute_plan(self.root, _intents(**overrides))
+
+    def _asset(self, report):
+        s3 = next(s for s in report["steps"] if s["name"] == rc.STEP_RULES_FILES)
+        return next(a for a in s3["assets"] if a["path"].endswith("/code-reading.md"))
+
+    def test_coding_project_gets_coding_source(self):
+        self.root.mkdir(parents=True)
+        (self.root / "main.py").write_text("print('x')\n", encoding="utf-8")
+        report = self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-reading.md"
+        source = self.rules_root / "code-reading-coding.md"
+        self.assertEqual(target.read_text(encoding="utf-8"), source.read_text(encoding="utf-8"))
+        self.assertEqual(self._asset(report)["template_source"], "code-reading-coding.md")
+        self.assertFalse((target.parent / "code-reading-coding.md").exists())
+        self.assertFalse((target.parent / "code-reading-noncoding.md").exists())
+
+    def test_noncoding_project_gets_noncoding_source(self):
+        self.root.mkdir(parents=True)
+        report = self._apply(no_interrupt=True)
+        target = self.root / ".claude" / "rules" / "code-reading.md"
+        source = self.rules_root / "code-reading-noncoding.md"
+        content = target.read_text(encoding="utf-8")
+        self.assertEqual(content, source.read_text(encoding="utf-8"))
+        self.assertEqual(self._asset(report)["template_source"], "code-reading-noncoding.md")
+        positive_requirements = re.compile(
+            r"^- \*\*(全新 worktree 必须先初始化 CodeGraph|大范围检索优先使用 CodeGraph)"
+        )
+        self.assertEqual(
+            [line for line in content.splitlines() if positive_requirements.search(line)],
+            [],
+        )
+        codegraph_init_lines = [
+            line for line in content.splitlines() if "codegraph init" in line.lower()
+        ]
+        self.assertTrue(all(
+            re.search(r"不得执行|不应|MUST NOT|默认不得|不存在", line)
+            for line in codegraph_init_lines
+        ))
+
+    def test_source_template_not_landed(self):
+        self.root.mkdir(parents=True)
+        self._apply(no_interrupt=True)
+        rules_dir = self.root / ".claude" / "rules"
+        self.assertEqual(
+            {p.name for p in rules_dir.glob("code-reading-*.md")}, set()
+        )
+
+    def test_drift_compared_against_selected_source(self):
+        self.root.mkdir(parents=True)
+        rules_dir = self.root / ".claude" / "rules"
+        rules_dir.mkdir(parents=True)
+        target = rules_dir / "code-reading.md"
+        target.write_text(
+            (self.rules_root / "code-reading-coding.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        plan = self._compute(no_interrupt=True)
+        asset = next(
+            a for a in plan["steps"][rc.STEP_RULES_FILES]["assets"]
+            if a["path"].endswith("/code-reading.md")
+        )
+        self.assertEqual(asset["template_source"], "code-reading-noncoding.md")
+        self.assertEqual(asset["action"], "replace")
+        self.assertEqual(asset["conflict"], "drift")
+        self.assertTrue(asset["backup_needed"])
+        report = {"steps": [], "overall": "ok"}
+        rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
+        rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
+        self.assertEqual(
+            target.read_text(encoding="utf-8"),
+            (self.rules_root / "code-reading-noncoding.md").read_text(encoding="utf-8"),
+        )
+
+    def test_noncoding_explicit_codegraph_keeps_noncoding_source(self):
+        self.root.mkdir(parents=True)
+        report = self._apply(no_interrupt=True, enable_codegraph=True)
+        target = self.root / ".claude" / "rules" / "code-reading.md"
+        self.assertEqual(
+            target.read_text(encoding="utf-8"),
+            (self.rules_root / "code-reading-noncoding.md").read_text(encoding="utf-8"),
+        )
+        s8 = next(s for s in report["steps"] if s["name"] == rc.STEP_CODEGRAPH)
+        self.assertTrue(any(a.get("action") == "install" for a in s8["actions"]))
+        self.assertEqual(self._asset(report)["template_source"], "code-reading-noncoding.md")
+
+
+class TestCodeReadingSummaryDualText(unittest.TestCase):
+    """入口第 7 条摘要随最终 project_type 选择对应文案。"""
+
+    def test_coding_summary_uses_codegraph_wording(self):
+        rendered = rc.render_mandatory_section("CLAUDE.md", "coding", set())
+        self.assertIn(rc.RULE7_TEXT_CODING, rendered)
+        self.assertNotIn(rc.RULE7_TEXT_NONCODING, rendered)
+        self.assertIn("大范围检索使用 CodeGraph", rendered)
+
+    def test_noncoding_summary_uses_document_wording(self):
+        rendered = rc.render_mandatory_section("CLAUDE.md", "non-coding", set())
+        self.assertIn(rc.RULE7_TEXT_NONCODING, rendered)
+        self.assertNotIn(rc.RULE7_TEXT_CODING, rendered)
+        self.assertNotIn("CodeGraph", rendered)
+        self.assertIn("文档阅读遵循结构化定向原则", rendered)
+
+
 class TestDetectProject(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1110,7 +1278,8 @@ class TestLocateTemplates(unittest.TestCase):
         rules = skill / "references" / "rules"
         rules.mkdir(parents=True)
         for name in ("agent-routing-kernel.md", "language.md",
-                     "openspec-superpowers-workflow.md", "document-storage.md"):
+                     "openspec-superpowers-workflow.md", "document-storage.md",
+                     "code-reading-coding.md", "code-reading-noncoding.md"):
             if name not in missing:
                 (rules / name).write_text(f"tpl:{name}\n", encoding="utf-8")
         (skill / "references" / "openspec").mkdir(parents=True)
@@ -1132,12 +1301,17 @@ class TestLocateTemplates(unittest.TestCase):
 
     def test_missing_files_raise_template_error_with_list(self):
         """ut-locate_templates-incomplete / S1b-02（缺件 → TemplateError 且列出缺失清单与重装建议）"""
-        skill = self._make_skill_dir(missing=("document-storage.md", "config.yaml"))
+        skill = self._make_skill_dir(missing=(
+            "document-storage.md", "code-reading-coding.md",
+            "code-reading-noncoding.md", "config.yaml",
+        ))
         with mock.patch.object(rc, "SKILL_DIR", skill):
             with self.assertRaises(rc.TemplateError) as ctx:
                 rc.locate_templates()
         msg = str(ctx.exception)
         self.assertIn("document-storage.md", msg)
+        self.assertIn("code-reading-coding.md", msg)
+        self.assertIn("code-reading-noncoding.md", msg)
         self.assertIn("config.yaml", msg)
         self.assertIn("重新安装", msg)
 
@@ -3129,9 +3303,8 @@ class TestCodegraphSectionUnifiedMerge(unittest.TestCase):
         rc._sync_plan_to_report(plan, report, _intents(no_interrupt=True))
         rc.step_s3_rules_files(self.root, _intents(no_interrupt=True), plan, report)
         result = (self.root / ".claude" / "rules" / "code-reading.md").read_text(encoding="utf-8")
-        template = (self.refs / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        template = (self.refs / "rules" / "code-reading-noncoding.md").read_text(encoding="utf-8")
         self.assertEqual(result, template)
-        self.assertIn("CodeGraph", result)
         self.assertNotIn("仅 ast-grep", result)
 
 
@@ -3280,7 +3453,7 @@ class TestOptionalRuleIntegrity(unittest.TestCase):
         self.refs = Path(__file__).resolve().parents[1] / "references"
         rules = self.root / ".claude" / "rules"
         rules.mkdir(parents=True)
-        self.template = (self.refs / "rules" / "code-reading.md").read_text(encoding="utf-8")
+        self.template = (self.refs / "rules" / "code-reading-noncoding.md").read_text(encoding="utf-8")
         (rules / "code-reading.md").write_text(self.template, encoding="utf-8")
 
     def _plan(self):
@@ -3308,7 +3481,7 @@ class TestOptionalRuleIntegrity(unittest.TestCase):
         """ut-s3-optional-integrity-ok / OP-01 + codex 终审 I5
         （规则文件+摘要均存在 → 报告完整性检查 ok，文件与摘要不重写）"""
         (self.root / "CLAUDE.md").write_text(
-            "# CLAUDE.md\n\n- **大范围检索使用 CodeGraph** → 详见 `.claude/rules/code-reading.md`\n",
+            "# CLAUDE.md\n\n" + rc.RULE7_TEXT_NONCODING + "\n",
             encoding="utf-8",
         )
         rule_path = self.root / ".claude" / "rules" / "code-reading.md"
