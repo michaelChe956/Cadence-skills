@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ShellCheck、隔离集成测试与 14×3 链接矩阵
+    runs-on: ubuntu-latest
+    # 本工作流只验证脚本与链接 fixture，不启动真实四客户端 CLI job。
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 ShellCheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes shellcheck
+          shellcheck --version
+
+      - name: ShellCheck
+        run: shellcheck --shell=bash --severity=warning install.sh tests/test-install.sh
+
+      - name: 隔离 HOME 集成测试
+        run: |
+          set -euo pipefail
+          test_home="$(mktemp -d)"
+          trap 'rm -rf -- "$test_home"' EXIT
+          HOME="$test_home" bash tests/test-install.sh
+
+      - name: 14×3 链接解析 fixture 矩阵
+        run: |
+          set -euo pipefail
+          matrix_home="$(mktemp -d)"
+          trap 'rm -rf -- "$matrix_home"' EXIT
+          export HOME="$matrix_home"
+
+          shared_root="$HOME/.agents/skills"
+          claude_root="$HOME/.claude/skills"
+          codex_root="$HOME/.codex/skills/skills"
+          mkdir -p "$shared_root" "$claude_root" "$codex_root"
+
+          mapfile -t skills < <(
+            find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
+              -printf '%h\n' | sed 's#^.*/##' | sort -u
+          )
+          test "${#skills[@]}" -eq 14
+
+          for skill in "${skills[@]}"; do
+            source_skill="$GITHUB_WORKSPACE/cadence-init/skills/$skill"
+            test -f "$source_skill/SKILL.md"
+            ln -s "$source_skill" "$shared_root/$skill"
+            ln -s "$shared_root/$skill" "$claude_root/$skill"
+            ln -s "$shared_root/$skill" "$codex_root/$skill"
+          done
+
+          # 第三方形状链：共享层不是 Cadence 源，两个客户端层仅投影共享层。
+          third_party_name=third-party-shape
+          third_party_skill="$HOME/.agents/superpowers/skills/$third_party_name"
+          mkdir -p "$third_party_skill"
+          printf 'third-party fixture\n' > "$third_party_skill/SKILL.md"
+          ln -s "$third_party_skill" "$shared_root/$third_party_name"
+          ln -s "$shared_root/$third_party_name" "$claude_root/$third_party_name"
+          ln -s "$shared_root/$third_party_name" "$codex_root/$third_party_name"
+
+          # 用户普通目录必须保持为普通目录，不被链接矩阵误判为受管链。
+          ordinary_name=user-owned-directory
+          ordinary_dir="$shared_root/$ordinary_name"
+          mkdir -p "$ordinary_dir"
+          printf 'keep\n' > "$ordinary_dir/keep"
+
+          # dangling 链必须仍是链接并保持 dangling，不能因无法证明所有权而删除。
+          dangling_name=dangling-shape
+          dangling_target="$HOME/not-created/$dangling_name"
+          ln -s "$dangling_target" "$shared_root/$dangling_name"
+          ln -s "$shared_root/$dangling_name" "$claude_root/$dangling_name"
+          ln -s "$shared_root/$dangling_name" "$codex_root/$dangling_name"
+
+          link_checks=0
+          for skill in "${skills[@]}"; do
+            test -L "$shared_root/$skill"
+            test -L "$claude_root/$skill"
+            test -L "$codex_root/$skill"
+            test -f "$shared_root/$skill/SKILL.md"
+            test -f "$claude_root/$skill/SKILL.md"
+            test -f "$codex_root/$skill/SKILL.md"
+            link_checks=$((link_checks + 3))
+          done
+          test "$link_checks" -eq $((14 * 3))
+
+          test -L "$shared_root/$third_party_name"
+          test -L "$claude_root/$third_party_name"
+          test -L "$codex_root/$third_party_name"
+          test -f "$shared_root/$third_party_name/SKILL.md"
+          test -f "$claude_root/$third_party_name/SKILL.md"
+          test -f "$codex_root/$third_party_name/SKILL.md"
+          test -d "$ordinary_dir"
+          test ! -L "$ordinary_dir"
+          test -f "$ordinary_dir/keep"
+          test -L "$shared_root/$dangling_name"
+          test -L "$claude_root/$dangling_name"
+          test -L "$codex_root/$dangling_name"
+          test ! -e "$shared_root/$dangling_name"
+          test ! -e "$claude_root/$dangling_name"
+          test ! -e "$codex_root/$dangling_name"
+          printf '14×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
