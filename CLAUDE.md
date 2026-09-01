@@ -69,6 +69,9 @@ Skill 调用：Claude/Kimi 原生调用；Codex/pi 清单选择后将用途并�
 ### 8. Playwright CLI 使用规则
 - **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`
 
+### 9. 真机实测门禁
+- **改动安装脚本的删除/清理/所有权判定/卸载逻辑、软链层结构或新增 agent 层时，必须按五步流程真机实测；skill 内容与文档改动 CI 即可** → 详见 `cadence/project-rules/real-machine-gating.md`
+
 ## 项目信息
 
 - 本仓库是一个以 Markdown、YAML、JSON 等文档和配置为主要工作对象的 Skills 项目。
