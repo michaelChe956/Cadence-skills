@@ -77,6 +77,11 @@
 `knowledge-base-context` Skill 的选择前置门禁：Manifest 缺失或 Schema 非 4.0 时
 不得选择该 Skill；并说明 Skill 异常处理的正确解读。
 
+### real-machine-gating.md
+真机实测门禁：判断改动需要真机实测还是 CI 通过即可。凡改动 `install.sh` 的删除/
+清理/所有权判定/卸载逻辑、软链层结构或新增 agent 层，必须走五步真机流程
+（快照 → dry-run → 实装 → diff → 四 agent 留档）；skill 内容与文档改动 CI 即可。
+
 ## 💡 提示
 
 - 只创建您需要的规则文档，不必全部创建
