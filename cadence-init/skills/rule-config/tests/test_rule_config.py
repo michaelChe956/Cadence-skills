@@ -4259,7 +4259,8 @@ class TestSubagentMcpAccessibilityDocs(unittest.TestCase):
         self.assertIn("默认全量继承", text)        # Codex
         self.assertIn("子代理 MCP 可见性验证探针", text)
         self.assertIn("仅告警不阻断", text)
-        self.assertIn("MCP 依赖任务留在主会话", text)  # pi 规避策略
+        self.assertIn("不继承父会话临时挂载", text)  # pi 机制（2026-09-02 实测修正）
+        self.assertIn("随子会话自动加载", text)  # 项目 .mcp.json 经 adapter 加载
 
     def test_mcp_servers_template_contains_fallback_chain(self):
         """ut-wp5-accessibility-fallback：同一文档护栏覆盖 mcp-servers 兜底链。"""

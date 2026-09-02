@@ -5,7 +5,7 @@
 ## 1. WP3：L0 v4 可见版本行（managed-rule-lifecycle）
 
 - [x] 1.1 模板升级 v4：`agent-routing-kernel.md` 首行加可见文本版本行，v3 归档进 `l0-history/`，`L0_CURRENT_VERSION=v4`（TDD：v3→v4 确定性升级用例）
-- [ ] 1.2 Claude Code 可见性验收：探针确认四端均能从上下文读出版本号
+- [x] 1.2 Claude Code 可见性验收：探针确认四端均能从上下文读出版本号（2026-09-02 四端实测均自报 v4，证据 cadence/analysis-docs/2026-09-02_p1验收探针证据/）
 
 ## 2. WP2：规则元数据 + 权限投影（permission-gate-projection）
 
@@ -29,7 +29,7 @@
 
 - [x] 5.1 mcp-configuration SKILL.md 增补四端矩阵、各端坑位、验证探针步骤（仅告警不阻断）
 - [x] 5.2 mcp-servers 规则模板增补子代理兜底链条款
-- [ ] 5.3 探针验收：业务项目四端子代理可见性实测（Claude Code/Codex/Kimi 继承、pi 报已知限制）
+- [x] 5.3 探针验收：业务项目四端子代理可见性实测（2026-09-02 naruto 实测：Claude/Codex/Kimi 继承；pi 经项目 .mcp.json 随子会话加载全量 MCP——修正了"pi 已知限制"表述，见 7.6）
 
 ## 6. 收尾
 

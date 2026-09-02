@@ -613,7 +613,7 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 | Claude Code | ✅ 默认继承 `.mcp.json` | 项目级 `.mcp.json` 曾有子代理不可见 bug（anthropics/claude-code#13898）、通配写法曾报错（#53865）——配置后必须执行下方验证探针；可选 `mcpServers` frontmatter 字符串引用 |
 | Codex | ✅ 默认全量继承 | 无需动作；需收窄时用 `[agents.<name>]` + agent TOML `mcp_servers = [...]` |
 | Kimi | ✅ 默认保留全部工具 | 自定义 agent 写 `tools` 时必须含 `mcp__<server>__*` 形式的 glob（裸 server 名匹配不到任何工具）；不写 `tools` 即全保留 |
-| pi | ❌ 不继承（已知限制） | MCP 依赖任务留在主会话执行；子代理按 mcp-servers 规则的"子代理兜底链"退化报告 |
+| pi | ⚠️ 不继承父会话临时挂载的 server；项目 `.mcp.json` 经全局 pi-mcp-adapter 随子会话自动加载（2026-09-02 naruto 实测子代理可用全部项目 MCP） | 无 `.mcp.json` 的仓库子代理无 MCP（已知限制），MCP 依赖任务留主会话或先配 `.mcp.json` |
 
 **子代理 MCP 可见性验证探针**（检查清单第 9 步）：向四端各派一个子代理执行"列出你的 MCP 工具名"。探针失败仅告警不阻断，按对应端坑位排查：Claude Code 子代理报 0 个工具 → 改用用户级配置或 `mcpServers` frontmatter 引用后重试；Kimi 报 0 个 → 检查 `tools` 是否漏写 `mcp__<server>__*` glob；pi 报 0 个 → 已知限制，按兜底链把任务交回主会话。当前运行时无法派发到某端时，按探针失败告警并继续。
 
