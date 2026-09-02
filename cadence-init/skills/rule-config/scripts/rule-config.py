@@ -3,7 +3,7 @@
 """rule-config — 受管生命周期配置脚本（骨架，Task 4）。
 
 本文件实现 CLI 两阶段（dry-run / apply）、报告 schema、备份、原子写、
-decisions 校验与全局备份屏障。S1-S8 的实际发布逻辑（merge/replace/create）
+decisions 校验与全局备份屏障。S1-S10 的实际发布逻辑（merge/replace/create）
 由后续 Task（5-9）逐步填充；当前 compute_plan 只做只读探测，step_* 执行
 函数为桩（pass / raise NotImplementedError），但保证：
 
@@ -85,6 +85,8 @@ STEP_SCAFFOLD = "s5_scaffold"
 STEP_GITIGNORE = "s6_gitignore"
 STEP_OPENSPEC_CONFIG = "s7_openspec_config"
 STEP_CODEGRAPH = "s8_codegraph"
+STEP_PERMISSION_GATE = "s9_permission_gate"
+STEP_CODEX_INLINE = "s10_codex_inline"
 
 # 所有步骤的固定顺序（compute_plan 与执行阶段共用）。
 STEP_ORDER = (
@@ -96,6 +98,8 @@ STEP_ORDER = (
     STEP_GITIGNORE,
     STEP_OPENSPEC_CONFIG,
     STEP_CODEGRAPH,
+    STEP_PERMISSION_GATE,
+    STEP_CODEX_INLINE,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,8 +110,8 @@ STEP_ORDER = (
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
 # 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
 # 漏检历史区块。
-L0_CURRENT_VERSION = "v3"
-L0_OLD_VERSIONS = ["v2", "v1", "v0"]
+L0_CURRENT_VERSION = "v4"
+L0_OLD_VERSIONS = ["v3", "v2", "v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
 
@@ -258,6 +262,7 @@ except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模
 # L0 v1/v2 历史规范源：只有与该文本逐字一致的完整旧版区块才可确定性升级。
 # v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
 L0_OLD_SOURCES = {
+    "v3": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v3.md"),
     "v2": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v2.md"),
     "v1": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v1.md"),
 }
@@ -727,11 +732,439 @@ def has_codegraph_mcp_codex(root: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 规则工具元数据（permission-gate-projection / D1：受管注释区三字段）
+# ---------------------------------------------------------------------------
+
+TOOL_METADATA_BEGIN = "<!-- cadence-tools:start -->"
+TOOL_METADATA_END = "<!-- cadence-tools:end -->"
+
+
+def parse_tool_metadata(text: str) -> list:
+    """解析规则模板受管注释区的工具元数据（preferred/fallback/when）。
+
+    元数据与规则人话正文同源同义；返回条目字典列表；无标记区、YAML 不可
+    解析或结构不符时返回 []（保守：不产生任何拦截，no-interrupt 同语义）。
+    """
+    begin = text.find(TOOL_METADATA_BEGIN)
+    end = text.find(TOOL_METADATA_END)
+    if begin == -1 or end == -1 or end < begin:
+        return []
+    inner = text[begin + len(TOOL_METADATA_BEGIN):end]
+    try:
+        doc = yaml.safe_load(inner)
+    except yaml.YAMLError:
+        return []
+    if not isinstance(doc, dict):
+        return []
+    entries = doc.get("cadence-tools")
+    if not isinstance(entries, list):
+        return []
+    result: list = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        preferred = entry.get("preferred")
+        fallback = entry.get("fallback")
+        when = entry.get("when")
+        if (not isinstance(preferred, list) or not preferred
+                or not isinstance(fallback, list) or not fallback
+                or not isinstance(when, str) or not when.strip()):
+            continue
+        result.append({
+            "preferred": [str(item) for item in preferred],
+            "fallback": [str(item) for item in fallback],
+            "when": when.strip(),
+        })
+    return result
+
+
+# ---------------------------------------------------------------------------
+# when 条件评估与项目上下文（Task 4）
+# ---------------------------------------------------------------------------
+
+
+def has_context7_mcp(root: Path) -> bool:
+    """判定 root 是否已配置 Context7 MCP。
+
+    .mcp.json 顶层 mcpServers 含 context7 键，或 .codex/config.toml 含
+    [mcp_servers.context7] 区块头，即视为已配置（与 codegraph 双探测同构）。
+    """
+    raw = _safe_read(root / ".mcp.json")
+    if raw:
+        try:
+            doc = json.loads(raw)
+        except (ValueError, TypeError):
+            doc = None
+        if (isinstance(doc, dict)
+                and isinstance(doc.get("mcpServers"), dict)
+                and "context7" in doc["mcpServers"]):
+            return True
+    toml_raw = _safe_read(root / ".codex" / "config.toml")
+    return bool(toml_raw and "[mcp_servers.context7]" in toml_raw)
+
+
+def build_gate_context(root: Path, project_type: str) -> dict:
+    """构建 when 条件求值上下文（apply 预览与 verify 重算共用，保证同源）。"""
+    return {
+        "project_type": project_type,
+        "codegraph_enabled": (
+            (root / ".codegraph").is_dir()
+            or has_codegraph_mcp_mcpjson(root)
+            or has_codegraph_mcp_codex(root)
+        ),
+        "context7_configured": has_context7_mcp(root),
+    }
+
+
+def evaluate_when(condition: str, ctx: dict) -> bool:
+    """评估元数据 when 条件：原子以 AND 连接；未知原子保守判 False。
+
+    原子集：project_type=coding、project_type=non-coding、codegraph_enabled、
+    context7_configured。新增原子必须同步扩展本函数（本期仅这四个）。
+    """
+    if not condition or not condition.strip():
+        return False
+    for atom in re.split(r"\s+AND\s+|\s+and\s+", condition.strip()):
+        atom = atom.strip()
+        if not atom:
+            return False
+        if atom == "project_type=coding":
+            ok = ctx.get("project_type") == "coding"
+        elif atom == "project_type=non-coding":
+            ok = ctx.get("project_type") == "non-coding"
+        elif atom == "codegraph_enabled":
+            ok = bool(ctx.get("codegraph_enabled"))
+        elif atom == "context7_configured":
+            ok = bool(ctx.get("context7_configured"))
+        else:
+            ok = False  # 未知原子：保守不成立，不产生拦截
+        if not ok:
+            return False
+    return True
+
+
+def _bare_tool_name(rule: str) -> str:
+    """提取权限规则的裸工具名：`Bash(grep:*)` → `Bash`；`Grep` → `Grep`。"""
+    return rule.split("(", 1)[0].strip()
+
+
+def render_deny_reason(source_name: str, entry: dict) -> str:
+    """从元数据条目渲染优先级链文本（D3：与拦截集合同源，规则改→链文本同步变）。
+
+    单行文本；按全角序号列出 preferred（首选→次选），给出兜底出口与
+    逃逸提示结尾（Bash 域即 CADENCE_BYPASS=1 前缀绕开；裸工具域全量
+    放行属切片 2，本期机制不读环境变量）。链文本常驻两处：deny 区块
+    惰性条目（/permissions 面板可读）与规则正文（.claude/rules/ 正文 +
+    AGENTS.md 内联链行）——deny 拦截本身是 Claude Code 通用文案，模型
+    从上下文查链改道；不含 ASCII 圆括号（惰性条目安全性）。
+    """
+    preferred = entry.get("preferred") or []
+    fallback = entry.get("fallback") or []
+    blocked = "、".join(_bare_tool_name(str(f)) for f in fallback) or "若干工具"
+    steps = "；".join(
+        f"{idx}）{tool}" for idx, tool in enumerate(preferred, start=1)
+    ) or "1）参见规则正文"
+    return (
+        f"❌ {blocked} 被规则限制（规则源：{source_name}）。"
+        f"规则优先级链：{steps}；请按此顺序重试，勿再调用受限工具。"
+        f"确需例外：运行 rule-config --remove-permission-gate 撤销拦截，"
+        f"或 Bash 域以 CADENCE_BYPASS=1 前缀绕开。"
+    )
+
+# ---------------------------------------------------------------------------
+# settings.json 权限投影（D4：区块级受管，绝不整文件覆盖）
+# ---------------------------------------------------------------------------
+
+PERMISSION_GATE_VERSION = "v1"
+PERMISSION_GATE_BEGIN = (
+    f"@@cadence-managed:permission-gate:{PERMISSION_GATE_VERSION}:start@@"
+)
+PERMISSION_GATE_END = (
+    f"@@cadence-managed:permission-gate:{PERMISSION_GATE_VERSION}:end@@"
+)
+
+# ---------------------------------------------------------------------------
+# AGENTS.md codex-rules-inline 受管区块（D5 生成器模式 / D6 60 行硬上限）
+# ---------------------------------------------------------------------------
+
+CODEX_INLINE_VERSION = "v1"
+CODEX_INLINE_BEGIN = (
+    f"<!-- cadence-managed:codex-rules-inline:{CODEX_INLINE_VERSION}:start -->"
+)
+CODEX_INLINE_END = (
+    f"<!-- cadence-managed:codex-rules-inline:{CODEX_INLINE_VERSION}:end -->"
+)
+CODEX_INLINE_BUDGET = 60
+
+# 摘要清单：无固定清单——枚举 rules_dir 落地结果（全部 *.md 按名排序逐条
+# 一行摘要）。与 CANONICAL_RULES 及 S3 落地结果联动：S3 落了什么、新增了
+# 什么 *.md 就渲染什么，新规则文件零源码改动进区块；缺失文件自然无摘要行。
+
+
+def _strip_managed_deny_region(deny: list) -> list:
+    """移除 deny 数组中受管标记区（含标记）内的全部条目，区外条目原样保留。"""
+    result: list = []
+    inside = False
+    for item in deny:
+        if item == PERMISSION_GATE_BEGIN:
+            inside = True
+            continue
+        if item == PERMISSION_GATE_END:
+            inside = False
+            continue
+        if not inside:
+            result.append(item)
+    return result
+
+
+def _allow_conflicts(entry: str, allow_entries: set) -> bool:
+    """判定受管 deny 条目是否覆盖用户显式 allow 的调用集（作用域感知）。
+
+    规则：裸工具名任一侧即整工具级——整工具 deny 会杀死用户全部 scoped
+    allow，整工具 allow 会被 scoped deny 部分覆盖，均判冲突（保守跳过）；
+    两侧均为 scoped 且规则完全相同判冲突；scoped 与 scoped 但作用域不相交
+    （如 deny `Bash(grep:*)` vs allow `Bash(npm test:*)`）不判冲突。字符串级
+    不判包含关系，属既定取舍。
+    """
+    bare = _bare_tool_name(entry)
+    if not any(_bare_tool_name(a) == bare for a in allow_entries):
+        return False
+    if entry in allow_entries:
+        return True
+    entry_is_bare = "(" not in entry
+    for a in allow_entries:
+        if _bare_tool_name(a) != bare:
+            continue
+        if entry_is_bare or "(" not in a:
+            return True
+    return False
+
+
+def merge_permission_gate(settings_text, managed_entries):
+    """将受管条目合并进 settings.json 的 permissions.deny（区块级受管）。
+
+    返回 (new_text_or_None, skipped)：
+      * settings_text 为 None（文件不存在）→ 新建仅含受管区的文档；
+      * JSON 不可解析/结构非预期 → (None, [{"kind": ...}])，调用方保守跳过
+        整个权限写入并在报告标明（no-interrupt 保守语义）；
+      * 用户显式 allow 的工具不降级为 deny：作用域感知判定
+        `_allow_conflicts` 命中的受管 deny 条目保守跳过并记录
+        {"kind": "allow-conflict", ...}；
+      * 区块外用户条目逐字保留、顺序不变；受管区整体重写为当前重算结果；
+      * 无任何可应用拦截条目时不生成受管区（含清除旧残留区）。
+    """
+    skipped: list = []
+    if settings_text is None:
+        doc: dict = {}
+    else:
+        try:
+            doc = json.loads(settings_text)
+        except (ValueError, TypeError):
+            return None, [{"kind": "unparseable",
+                           "detail": "settings.json 不是合法 JSON"}]
+        if not isinstance(doc, dict):
+            return None, [{"kind": "not-object",
+                           "detail": "settings.json 顶层不是 JSON 对象"}]
+    perms = doc.setdefault("permissions", {})
+    if not isinstance(perms, dict):
+        return None, [{"kind": "permissions-not-object",
+                       "detail": "permissions 不是对象"}]
+    deny = perms.get("deny")
+    deny_was_absent = deny is None
+    if deny is None:
+        deny = []
+    if not isinstance(deny, list):
+        return None, [{"kind": "deny-not-list",
+                       "detail": "permissions.deny 不是数组"}]
+    user_allow = perms.get("allow")
+    allow_entries = (
+        {a for a in user_allow if isinstance(a, str)}
+        if isinstance(user_allow, list) else set()
+    )
+    user_deny = _strip_managed_deny_region(deny)
+    applied: list = []
+    for item in managed_entries:
+        if item in (PERMISSION_GATE_BEGIN, PERMISSION_GATE_END):
+            continue
+        if item.startswith("❌"):
+            applied.append(item)  # 理由条目不参与 allow 冲突判定
+            continue
+        if _allow_conflicts(item, allow_entries):
+            skipped.append({
+                "kind": "allow-conflict",
+                "entry": item,
+                "tool": _bare_tool_name(item),
+                "detail": "用户已显式 allow，保守跳过该 deny 写入",
+            })
+            continue
+        if item not in applied:
+            applied.append(item)
+    deny_entries = [i for i in applied if not i.startswith("❌")]
+    if deny_entries:
+        perms["deny"] = (user_deny + [PERMISSION_GATE_BEGIN] + applied
+                         + [PERMISSION_GATE_END])
+    else:
+        if deny_was_absent and not user_deny:
+            perms.pop("deny", None)
+            if not perms:
+                doc.pop("permissions", None)
+            if not doc and settings_text is None:
+                return None, skipped  # 无可写内容，不新建文件
+        else:
+            perms["deny"] = user_deny
+    return json.dumps(doc, ensure_ascii=False, indent=2) + "\n", skipped
+
+
+def remove_permission_gate(settings_text):
+    """整体移除受管权限区块；返回 (new_text_or_None, removed)。
+
+    文件不存在 → (None, False)；无受管区 → 原文返回、removed=False；
+    JSON 不可解析/结构非预期 → (None, None)（调用方 fail 报告、不动文件）。
+    """
+    if settings_text is None:
+        return None, False
+    try:
+        doc = json.loads(settings_text)
+    except (ValueError, TypeError):
+        return None, None
+    if not isinstance(doc, dict):
+        return None, None
+    perms = doc.get("permissions")
+    if not isinstance(perms, dict):
+        return settings_text, False
+    deny = perms.get("deny")
+    if not isinstance(deny, list):
+        return settings_text, False
+    stripped = _strip_managed_deny_region(deny)
+    if stripped == deny:
+        return settings_text, False
+    perms["deny"] = stripped
+    return json.dumps(doc, ensure_ascii=False, indent=2) + "\n", True
+
+def collect_permission_gate_entries(rules_root: Path, project_type: str,
+                                     gate_ctx: dict) -> list:
+    """从模板元数据收集 when 成立的受管 deny+理由条目（apply/verify 同源重算）。
+
+    code-reading 元数据挂 coding 源模板（落地名 code-reading.md）；
+    mcp-servers 元数据全项目类型适用；重复条目去重保序。
+    """
+    sources = [
+        (CODE_READING_SOURCE_MAP[project_type], CODE_READING_TARGET),
+        ("mcp-servers.md", "mcp-servers.md"),
+    ]
+    entries: list = []
+    for src_name, landed_name in sources:
+        try:
+            text = (rules_root / src_name).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for meta in parse_tool_metadata(text):
+            if not evaluate_when(meta["when"], gate_ctx):
+                continue
+            for tool in meta["fallback"]:
+                if tool not in entries:
+                    entries.append(tool)
+            reason = render_deny_reason(landed_name, meta)
+            if reason not in entries:
+                entries.append(reason)
+    return entries
+
+
+def render_codex_inline(rules_dir: Path,
+                        code_reading_name: str = CODE_READING_TARGET,
+                        budget: int = CODEX_INLINE_BUDGET) -> str:
+    """从规则源目录渲染 codex-rules-inline 压缩区块（确定性，漂移检测基准）。
+
+    rules_dir 为落地规则目录（code_reading_name 默认落地名 code-reading.md）；
+    预览/重算模板目录时可传 coding/noncoding 源名。行序固定：标题行 →
+    元数据优先级链行 → 摘要清单行 → 铁律行；链行与摘要行均枚举 rules_dir
+    全部 *.md（按名排序，与 CANONICAL_RULES/S3 落地结果联动：S3 落了什么、
+    新增了什么 *.md 就渲染什么，零源码改动进区块）；总行数（含首尾标记）
+    ≤ budget，超出时按优先级截断（链行最前，承优先保留）并在末尾标注
+    省略行数——新增规则文件足够多时 60 行截断路径真实可触发。
+    """
+
+    def _first_heading(text: str, fallback: str) -> str:
+        for ln in text.splitlines():
+            if ln.startswith("# ") or ln.startswith("## "):
+                return ln.lstrip("#").strip()
+        return fallback
+
+    lines: list = [
+        "## Cadence 规则内联投影（源 .claude/rules/，rule-config 生成，勿手改）"
+    ]
+    names = (sorted(p.name for p in rules_dir.glob("*.md"))
+             if rules_dir.is_dir() else [])
+    for name in names:
+        text = _safe_read(rules_dir / name)
+        if not text:
+            continue
+        # 链行展示名固定用落地名（模型视角只认落地文件；预览时
+        # coding/noncoding 双源名映射回落地名）
+        display = (CODE_READING_TARGET
+                   if name == code_reading_name
+                   or name in CODE_READING_SOURCE_MAP.values()
+                   else name)
+        for entry in parse_tool_metadata(text):
+            chain = " → ".join(entry["preferred"])
+            fallback = "、".join(
+                _bare_tool_name(str(f)) for f in entry["fallback"]
+            )
+            lines.append(
+                f"- {display} 工具优先级：{chain}；"
+                f"{fallback} 受限（条件：{entry['when']}）"
+            )
+    for name in names:
+        text = _safe_read(rules_dir / name)
+        if not text:
+            continue
+        lines.append(f"- {name}：{_first_heading(text, name)}")
+    kernel = _load_kernel_source()
+    for ln in kernel.splitlines():
+        if ln.startswith("铁律"):
+            lines.append(ln.strip())
+            break
+    block_lines = [CODEX_INLINE_BEGIN] + lines + [CODEX_INLINE_END]
+    omitted = len(block_lines) - budget
+    if omitted > 0:
+        keep = max(0, budget - 3)  # BEGIN + 省略标注 + END
+        # 截断前先保留标题与链行，再按原顺序保留后续内容。
+        block_lines = (
+            [CODEX_INLINE_BEGIN] + lines[:keep]
+            + [f"…（超 {budget} 行预算，按优先级截断，省略 {omitted} 行；"
+               f"全文见 .claude/rules/）", CODEX_INLINE_END]
+        )
+    return "\n".join(block_lines) + "\n"
+
+
+def replace_managed_region(text: str, begin_marker: str, end_marker: str,
+                           block: str) -> tuple:
+    """受管区块替换：标记对存在→整块替换；缺失→文末追加。
+
+    返回 (new_text, changed)；区块外内容逐字保留；block 为含首尾标记的
+    完整区块文本，与旧区块逐字一致时幂等返回原文本。
+    """
+    b = text.find(begin_marker)
+    e = text.find(end_marker)
+    normalized_block = block.rstrip("\n")
+    if b != -1 and e != -1 and e > b:
+        old_block = text[b:e + len(end_marker)]
+        if old_block == normalized_block:
+            return text, False
+        return (text[:b] + normalized_block
+                + text[e + len(end_marker):], True)
+    if text == "":
+        return block if block.endswith("\n") else block + "\n", True
+    if text.endswith("\n"):
+        return text + "\n" + normalized_block + "\n", True
+    return text + "\n\n" + normalized_block + "\n", True
+
+
+# ---------------------------------------------------------------------------
 # 纯函数：merge / classify（Task 6 完整实现）
 # ---------------------------------------------------------------------------
 # merge_markdown / parse_sections / render_sections / l0_block / classify_l1
 # 的完整语义由 Task 2 单测锁定（NC-01~08、L0-P6~P10、L1-02~06）。
-
 
 # Markdown ATX 标题正则：`#{1,6}` 后接空白与标题文本。
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -1326,7 +1759,7 @@ def validate_decisions(plan: dict, decisions: list) -> list:
 
 
 # ---------------------------------------------------------------------------
-# compute_plan：只读探测，填充 steps/conflicts/backup_needs（S1-S8 骨架）
+# compute_plan：只读探测，填充 steps/conflicts/backup_needs（S1-S10 骨架）
 # ---------------------------------------------------------------------------
 
 
@@ -1693,6 +2126,94 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s8["elapsed_ms"] = 0
     s8["status"] = "ok"
     plan["steps"][STEP_CODEGRAPH] = s8
+
+    # --- S9 permission gate：规则元数据 → settings.json deny 投影（新增） ---
+    s9 = _step_skeleton(STEP_PERMISSION_GATE)
+    t_s9 = time.monotonic()
+    s9["status"] = "ok"
+    gate_ctx = build_gate_context(root, plan.get("project_type", "non-coding"))
+    plan["gate_context"] = gate_ctx
+    gate_entries: list = []
+    if rules_root is not None:
+        gate_entries = collect_permission_gate_entries(
+            rules_root, plan.get("project_type", "non-coding"), gate_ctx
+        )
+    plan["permission_gate_entries"] = gate_entries
+    settings_path = root / ".claude" / "settings.json"
+    existing_settings = _safe_read(settings_path)
+    if gate_entries:
+        new_settings, gate_skipped = merge_permission_gate(
+            existing_settings, gate_entries
+        )
+        if new_settings is None:
+            s9["assets"].append({
+                "path": ".claude/settings.json",
+                "action": "skip-conservative",
+                "conflict": {"kind": "settings-unsafe", "detail": gate_skipped},
+                "backup_needed": False,
+            })
+        else:
+            action = "merge" if existing_settings is not None else "create"
+            s9["assets"].append({
+                "path": ".claude/settings.json",
+                "action": action,
+                "conflict": None,
+                "backup_needed": (existing_settings is not None
+                                  and new_settings != existing_settings),
+                "entries": gate_entries,
+                "preview": [PERMISSION_GATE_BEGIN] + gate_entries
+                           + [PERMISSION_GATE_END],
+                "skipped": gate_skipped,
+            })
+            if existing_settings is not None and new_settings != existing_settings:
+                _append_backup_need(plan, settings_path)
+    elif (existing_settings is not None
+          and PERMISSION_GATE_BEGIN in existing_settings):
+        # when 均不成立但存在旧受管区：清除残留（元数据/条件变更后同步）
+        s9["assets"].append({
+            "path": ".claude/settings.json",
+            "action": "merge",
+            "conflict": None,
+            "backup_needed": True,
+            "entries": [],
+            "preview": [],
+            "skipped": [],
+        })
+        _append_backup_need(plan, settings_path)
+    else:
+        s9["assets"].append({
+            "path": ".claude/settings.json",
+            "action": "skip",
+            "conflict": None,
+            "backup_needed": False,
+            "detail": "when 条件均不成立，无权限条目生成",
+        })
+    s9["elapsed_ms"] = int((time.monotonic() - t_s9) * 1000)
+    plan["steps"][STEP_PERMISSION_GATE] = s9
+
+    # --- S10 codex inline：AGENTS.md 规则内联投影（新增） ---
+    s10 = _step_skeleton(STEP_CODEX_INLINE)
+    t_s10 = time.monotonic()
+    s10["status"] = "ok"
+    agents_path = root / "AGENTS.md"
+    inline_block = render_codex_inline(
+        rules_dir,
+        code_reading_name=(CODE_READING_SOURCE_MAP[
+            plan.get("project_type", "non-coding")
+        ] if not (rules_dir / CODE_READING_TARGET).is_file()
+          else CODE_READING_TARGET),
+        budget=CODEX_INLINE_BUDGET,
+    )
+    s10["assets"].append({
+        "path": "AGENTS.md",
+        "action": "update" if agents_path.exists() else "create",
+        "conflict": None,
+        # 备份由 step 内写前自带（见 step_s10_codex_inline），不进屏障清单
+        "backup_needed": False,
+        "preview": inline_block,
+    })
+    s10["elapsed_ms"] = int((time.monotonic() - t_s10) * 1000)
+    plan["steps"][STEP_CODEX_INLINE] = s10
 
     return plan
 
@@ -3193,7 +3714,188 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
                 step["reason"] = (existing_reason + "; " + note_text).strip("; ") \
                     if existing_reason else note_text
                 break
+def step_s9_permission_gate(root: Path, intents: Intents, plan: dict,
+                            report: dict) -> None:
+    """S9 执行：把 S8 完成后重算的受管 deny 区写入 settings.json。
 
+    两模式同动作（确定性，不经 decisions）；S8 可能在同一 run 内刚补齐
+    CodeGraph MCP，因此这里按当前落地状态重算 gate context，保证首轮 apply
+    即完成 S8→S9 闭环。写入走 atomic_write；无法安全合并时保守跳过。
+    """
+    project_type = plan.get("project_type", "non-coding")
+    gate_ctx = build_gate_context(root, project_type)
+    plan["gate_context"] = gate_ctx
+    templates_info = plan.get("templates", {}) or {}
+    rules_root_str = templates_info.get("rules_root")
+    rules_root = Path(rules_root_str) if rules_root_str else None
+    gate_entries: list = []
+    if rules_root is not None:
+        gate_entries = collect_permission_gate_entries(
+            rules_root, project_type, gate_ctx
+        )
+    plan["permission_gate_entries"] = gate_entries
+
+    s9_step = (plan.get("steps", {}) or {}).get(STEP_PERMISSION_GATE, {})
+    settings_path = root / ".claude" / "settings.json"
+    existing = _safe_read(settings_path)
+    asset = None
+    candidate = None
+    skipped: list = []
+    if gate_entries:
+        candidate, skipped = merge_permission_gate(existing, gate_entries)
+        if candidate is None:
+            asset = {
+                "path": ".claude/settings.json",
+                "action": "skip-conservative",
+                "conflict": {"kind": "settings-unsafe", "detail": skipped},
+                "backup_needed": False,
+            }
+        else:
+            action = "merge" if existing is not None else "create"
+            asset = {
+                "path": ".claude/settings.json",
+                "action": action,
+                "conflict": None,
+                "backup_needed": (existing is not None and candidate != existing),
+                "entries": gate_entries,
+                "preview": [PERMISSION_GATE_BEGIN] + gate_entries
+                           + [PERMISSION_GATE_END],
+                "skipped": skipped,
+            }
+    elif (existing is not None and PERMISSION_GATE_BEGIN in existing):
+        candidate, skipped = merge_permission_gate(existing, [])
+        asset = {
+            "path": ".claude/settings.json",
+            "action": "merge",
+            "conflict": None,
+            "backup_needed": candidate is not None and candidate != existing,
+            "entries": [],
+            "preview": [],
+            "skipped": skipped,
+        }
+    else:
+        asset = {
+            "path": ".claude/settings.json",
+            "action": "skip",
+            "conflict": None,
+            "backup_needed": False,
+            "detail": "when 条件均不成立，无权限条目生成",
+        }
+    s9_step["assets"] = [asset]
+    for report_step in report.get("steps", []):
+        if report_step.get("name") == STEP_PERMISSION_GATE:
+            report_step["assets"] = [asset]
+            break
+
+    actions_log: list = []
+    action = asset.get("action")
+    if action == "skip":
+        actions_log.append({"path": asset["path"], "action": "skipped",
+                            "reason": asset.get("detail", "")})
+        _record_step_actions(report, STEP_PERMISSION_GATE, actions_log)
+        return
+    if action == "skip-conservative":
+        detail = (asset.get("conflict") or {}).get("detail") or []
+        report.setdefault("warnings", []).append({
+            "code": "s9-settings-unsafe",
+            "file": ".claude/settings.json",
+            "detail": f"settings.json 无法安全合并，保守跳过权限写入：{detail}",
+        })
+        actions_log.append({"path": asset["path"],
+                            "action": "skipped-conservative"})
+        _record_step_actions(report, STEP_PERMISSION_GATE, actions_log)
+        return
+
+    if candidate is None:
+        candidate, skipped = merge_permission_gate(existing, asset.get("entries") or [])
+    if candidate is None:
+        report.setdefault("warnings", []).append({
+            "code": "s9-settings-unsafe",
+            "file": ".claude/settings.json",
+            "detail": "settings.json 无法安全合并，保守跳过权限写入",
+        })
+        actions_log.append({"path": asset["path"],
+                            "action": "skipped-conservative"})
+        _record_step_actions(report, STEP_PERMISSION_GATE, actions_log)
+        return
+    for item in skipped:
+        report.setdefault("warnings", []).append({
+            "code": "s9-allow-conflict",
+            "file": ".claude/settings.json",
+            "detail": item.get("detail", ""),
+            "entry": item.get("entry"),
+        })
+    if candidate == existing:
+        actions_log.append({"path": asset["path"], "action": "unchanged"})
+        _record_step_actions(report, STEP_PERMISSION_GATE, actions_log)
+        return
+
+    # 首轮 S8→S9 闭环中，旧 settings 可能未进入计划期备份清单；写前即时补档。
+    if existing is not None:
+        already_backed_up = any(
+            b.get("file") == str(settings_path)
+            for b in report.get("backups", [])
+        )
+        if not already_backed_up:
+            try:
+                backup_path = backup_file(settings_path, root)
+            except BackupError as exc:
+                raise PublishError(f"settings.json 重写前备份失败：{exc}") from exc
+            report.setdefault("backups", []).append({
+                "file": str(settings_path), "backup": str(backup_path),
+            })
+    ensure_parent(settings_path)
+    atomic_write(settings_path, candidate)
+    actions_log.append({"path": asset["path"], "action": action})
+    _record_step_actions(report, STEP_PERMISSION_GATE, actions_log)
+
+
+def step_s10_codex_inline(root: Path, intents: Intents, plan: dict,
+                          report: dict) -> None:
+    """S10 执行：AGENTS.md codex-rules-inline 受管区块生成/增量更新（D5）。
+
+    源 = 落地后的 .claude/rules/*.md + 元数据（S3 已刷新，两模式同动作）；
+    区块外内容逐字保留；写前若屏障未归档过 AGENTS.md 则先 backup_file，
+    BackupError 向上传播，写入走 atomic_write。
+    """
+    rules_dir = root / ".claude" / "rules"
+    block = render_codex_inline(rules_dir, budget=CODEX_INLINE_BUDGET)
+    agents_path = root / "AGENTS.md"
+    existing = _safe_read(agents_path)
+    actions_log: list = []
+    if existing is None:
+        ensure_parent(agents_path)
+        atomic_write(agents_path, block)
+        actions_log.append({"path": "AGENTS.md", "action": "created",
+                            "branch": "codex-inline-create"})
+    else:
+        new_text, changed = replace_managed_region(
+            existing, CODEX_INLINE_BEGIN, CODEX_INLINE_END, block
+        )
+        if changed:
+            already_backed = any(
+                b.get("file") == str(agents_path)
+                for b in report.get("backups", [])
+            )
+            s4_created = any(
+                action.get("path") == "AGENTS.md"
+                and action.get("action") == "created"
+                for step in report.get("steps", [])
+                if step.get("name") == STEP_ENTRY_FILES
+                for action in (step.get("actions") or [])
+            )
+            if not already_backed and not s4_created:
+                backup_path = backup_file(agents_path, root)
+                report.setdefault("backups", []).append({
+                    "file": str(agents_path), "backup": str(backup_path),
+                })
+            atomic_write(agents_path, new_text)
+            actions_log.append({"path": "AGENTS.md", "action": "updated",
+                                "branch": "codex-inline-update"})
+        else:
+            actions_log.append({"path": "AGENTS.md", "action": "unchanged",
+                                "branch": "codex-inline-idempotent"})
+    _record_step_actions(report, STEP_CODEX_INLINE, actions_log)
 
 
 # 步骤名 → 执行函数映射
@@ -3206,6 +3908,8 @@ STEP_FUNCS = {
     STEP_GITIGNORE: step_s6_gitignore,
     STEP_OPENSPEC_CONFIG: step_s7_openspec_config,
     STEP_CODEGRAPH: step_s8_codegraph,
+    STEP_PERMISSION_GATE: step_s9_permission_gate,
+    STEP_CODEX_INLINE: step_s10_codex_inline,
 }
 
 
@@ -3270,6 +3974,22 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
             return candidate != existing
         if action in ("remove-apply", "replace"):
             # 移除禁用键/模板整体替换（两模式同动作）→ 始终写入
+            return True
+        return False
+
+    # S9 权限投影（新增）
+    for asset in (steps.get(STEP_PERMISSION_GATE, {}) or {}).get("assets", []) or []:
+        if not _matches(asset):
+            continue
+        if asset.get("action") == "merge":
+            existing = _safe_read(target)
+            if existing is None:
+                return True
+            candidate, _ = merge_permission_gate(
+                existing, asset.get("entries") or []
+            )
+            return candidate is not None and candidate != existing
+        if asset.get("action") == "create":
             return True
         return False
 
@@ -3354,7 +4074,7 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
 
 
 def run_apply(root: Path, intents: Intents, report: dict) -> int:
-    """apply：compute_plan → decisions 校验 → 全局备份屏障 → S1-S8 执行。
+    """apply：compute_plan → decisions 校验 → 全局备份屏障 → S1-S10 执行。
 
     执行顺序冻结（简报 Step 2）：
       1. compute_plan；
@@ -3362,7 +4082,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
          违规 → failed 报告 + 退出 1 + 零写入；
       3. 全局备份屏障：汇总 plan 全部 backup_needs 逐一 backup_file，
          任一失败 → 终止零发布（已建备份列入 report.backups）；
-      4. 屏障通过后按 S1-S8 执行发布；
+      4. 屏障通过后按 S1-S10 执行发布；
       5. S7 完成时计算 budget_seconds_excluding_codegraph = time.monotonic() - T0；
       6. 异常兜底 → overall=fail + 写报告 + 退出 1。
     """
@@ -3446,7 +4166,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
             }
             return 1
 
-    # 4. 屏障通过后按 S1-S8 执行发布
+    # 4. 屏障通过后按 S1-S10 执行发布
     try:
         for step_name in STEP_ORDER:
             step_func = STEP_FUNCS[step_name]
@@ -3467,7 +4187,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
         if report.get("budget_seconds_excluding_codegraph") is None:
             report["budget_seconds_excluding_codegraph"] = time.monotonic() - T0
     except NotImplementedError:
-        # S1-S8 桩未实现：标记 degraded 但不 crash（骨架阶段允许）
+        # S1-S10 桩未实现：标记 degraded 但不 crash（骨架阶段允许）
         report["overall"] = "degraded"
         return 0
     except Exception as exc:  # noqa: BLE001 — 异常兜底（简报 Step 2.6）
@@ -3483,6 +4203,229 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
 
     if report["overall"] == "ok":
         report["overall"] = "ok"
+    return 0
+
+
+def run_verify(root: Path, report: dict) -> int:
+    """--verify 只读自检：五项检查，退出码 0=全部健康、1=存在漂移/过时项。
+
+    纯只读（compute_plan 本身零写入；报告文件由 CLI 写在项目根之外）；
+    ③④ 对从未生成过投影区块的项目报 not-generated（提示 apply）而不报
+    漂移（D7：区分未生成与漂移）；⑤ 未安装层报 not-installed 不计退出码。
+    S10 对 S4 已新建 AGENTS.md 的备份跳过语义属于预期行为，不作为漂移。
+    """
+    checks: list = []
+    verify_intents = Intents(no_interrupt=True, project_type=None,
+                             ignore_cadence=False, enable_playwright=False,
+                             enable_codegraph=False, decisions=None)
+    plan = compute_plan(root, verify_intents)
+    templates_info = plan.get("templates", {}) or {}
+    rules_root_str = templates_info.get("rules_root")
+    rules_root = Path(rules_root_str) if rules_root_str else None
+
+    # ① L0 版本（CLAUDE.md / AGENTS.md）
+    kernel_source = _load_kernel_source()
+    l0_items: list = []
+    l0_drift = False
+    for entry_name in ("CLAUDE.md", "AGENTS.md"):
+        text = _safe_read(root / entry_name)
+        if text is None:
+            l0_items.append({"file": entry_name, "status": "missing",
+                             "detail": "入口文件不存在，请先运行 rule-config apply"})
+            l0_drift = True
+            continue
+        state = l0_block(text, kernel_source) if kernel_source else "insert"
+        if state == "skip":
+            l0_items.append({"file": entry_name, "status": "latest",
+                             "detail": f"L0 版本 {L0_CURRENT_VERSION}（最新）"})
+        elif state == "upgrade":
+            pairs, _ = _analyze_l0_markers(text)
+            old_ver = next((p[0]["version"] for p in pairs
+                            if p[0]["version"] in L0_OLD_VERSIONS), "未知")
+            l0_items.append({"file": entry_name, "status": "outdated",
+                             "detail": f"L0 版本过时（当前 {old_ver}，"
+                                       f"最新 {L0_CURRENT_VERSION}）"})
+            l0_drift = True
+        else:
+            l0_items.append({"file": entry_name, "status": "abnormal",
+                             "detail": f"L0 区块状态异常（{state}），"
+                                       f"请运行 rule-config apply"})
+            l0_drift = True
+    checks.append({"name": "l0_version",
+                   "status": "drift" if l0_drift else "ok", "items": l0_items})
+
+    # ② 受管规则文件与模板哈希比对（S3 资产：skip=一致/create=缺失/replace=漂移）
+    s3_assets = ((plan.get("steps", {}).get(STEP_RULES_FILES, {}) or {})
+                 .get("assets", []) or [])
+    rules_items: list = []
+    rules_drift = False
+    for asset in s3_assets:
+        rel = asset.get("path")
+        action = asset.get("action")
+        if action == "skip":
+            rules_items.append({"file": rel, "status": "ok",
+                                "detail": "与模板一致"})
+        elif action == "create":
+            rules_items.append({"file": rel, "status": "missing",
+                                "detail": "规则文件缺失，请运行 rule-config apply"})
+            rules_drift = True
+        else:
+            detail = "与模板不一致（漂移）"
+            if rules_root is not None and (root / rel).exists():
+                try:
+                    tpl_name = asset.get("template_source", Path(rel).name)
+                    detail = ("与模板不一致（漂移）："
+                              f"landed={sha256_file(root / rel)[:12]} "
+                              f"template={sha256_file(rules_root / tpl_name)[:12]}")
+                except OSError:
+                    pass
+            rules_items.append({"file": rel, "status": "drift", "detail": detail})
+            rules_drift = True
+    checks.append({"name": "rules_hash",
+                   "status": "drift" if rules_drift else "ok", "items": rules_items})
+
+    # ③ 权限投影区块 vs 元数据重算结果（期望值来自模板，apply 后两者一致）
+    gate_items: list = []
+    gate_drift = False
+    settings_text = _safe_read(root / ".claude" / "settings.json")
+    gate_ctx = plan.get("gate_context") or build_gate_context(
+        root, plan.get("project_type", "non-coding"))
+    expected_entries = plan.get("permission_gate_entries") or (
+        collect_permission_gate_entries(
+            rules_root, plan.get("project_type", "non-coding"), gate_ctx
+        ) if rules_root is not None else []
+    )
+    if settings_text is None or PERMISSION_GATE_BEGIN not in settings_text:
+        gate_items.append({"status": "not-generated",
+                           "detail": "从未生成过权限投影区块，请运行 rule-config apply"})
+    else:
+        try:
+            doc = json.loads(settings_text)
+            deny = ((doc or {}).get("permissions") or {}).get("deny") \
+                if isinstance(doc, dict) else None
+        except (ValueError, TypeError):
+            deny = None
+        if isinstance(deny, list):
+            begin_idx = end_idx = None
+            for idx, item in enumerate(deny):
+                if item == PERMISSION_GATE_BEGIN:
+                    begin_idx = idx
+                elif item == PERMISSION_GATE_END and begin_idx is not None:
+                    end_idx = idx
+                    break
+            actual = (deny[begin_idx + 1:end_idx]
+                      if begin_idx is not None and end_idx is not None else None)
+            if actual == expected_entries:
+                gate_items.append({"status": "ok",
+                                   "detail": "与元数据重算结果一致"})
+            else:
+                gate_items.append({"status": "drift",
+                                   "detail": "权限投影区块与元数据重算结果不一致，"
+                                             "请重新运行 rule-config apply"})
+                gate_drift = True
+        else:
+            gate_items.append({"status": "drift",
+                               "detail": "settings.json 结构异常（permissions.deny 不可读）"})
+            gate_drift = True
+    checks.append({"name": "permission_gate",
+                   "status": "drift" if gate_drift else "ok", "items": gate_items})
+
+    # ④ codex-rules-inline 区块 vs 源重算结果（源=落地规则目录）
+    inline_items: list = []
+    inline_drift = False
+    agents_text = _safe_read(root / "AGENTS.md")
+    expected_block = render_codex_inline(root / ".claude" / "rules")
+    if agents_text is None or CODEX_INLINE_BEGIN not in agents_text:
+        inline_items.append({"status": "not-generated",
+                             "detail": "从未生成过 codex-rules-inline 区块，"
+                                       "请运行 rule-config apply"})
+    else:
+        b = agents_text.find(CODEX_INLINE_BEGIN)
+        e = agents_text.find(CODEX_INLINE_END)
+        actual_block = (agents_text[b:e + len(CODEX_INLINE_END)]
+                        if (b != -1 and e > b) else "")
+        if actual_block.rstrip("\n") == expected_block.rstrip("\n"):
+            line_count = len(actual_block.rstrip("\n").split("\n"))
+            if line_count > CODEX_INLINE_BUDGET:
+                inline_items.append({"status": "drift",
+                                     "detail": f"区块 {line_count} 行超出 "
+                                               f"{CODEX_INLINE_BUDGET} 行预算"})
+                inline_drift = True
+            else:
+                inline_items.append({"status": "ok",
+                                     "detail": f"与源重算结果一致（{line_count} 行）"})
+        else:
+            inline_items.append({"status": "drift",
+                                 "detail": "codex-rules-inline 区块与源重算结果"
+                                           "不一致，请重新运行 rule-config apply"})
+            inline_drift = True
+    checks.append({"name": "codex_inline",
+                   "status": "drift" if inline_drift else "ok", "items": inline_items})
+
+    # ⑤ 三层软链解析（shared / claude / codex；未安装不计退出码）
+    link_items: list = []
+    link_drift = False
+    home = Path.home()
+    for layer_name, layer_path in (
+        ("shared", home / ".agents" / "skills" / "rule-config"),
+        ("claude", home / ".claude" / "skills" / "rule-config"),
+        ("codex", home / ".codex" / "skills" / "skills" / "rule-config"),
+    ):
+        if not layer_path.exists() and not layer_path.is_symlink():
+            link_items.append({"layer": layer_name, "status": "not-installed",
+                               "detail": "该客户端层未安装（不计入退出码）"})
+        elif layer_path.is_symlink() and (layer_path / "SKILL.md").is_file():
+            link_items.append({"layer": layer_name, "status": "ok",
+                               "detail": f"→ {layer_path.resolve()}"})
+        else:
+            link_items.append({"layer": layer_name, "status": "broken",
+                               "detail": "软链缺失或未指向 Cadence 源，"
+                                         "请重新运行 install.sh"})
+            link_drift = True
+    checks.append({"name": "symlink_resolution",
+                   "status": "drift" if link_drift else "ok", "items": link_items})
+
+    exit_code = 1 if any(c["status"] == "drift" for c in checks) else 0
+    report["overall"] = "drift" if exit_code == 1 else "healthy"
+    report["checks"] = checks
+    report["exit_code"] = exit_code
+    return exit_code
+
+
+def run_remove_permission_gate(root: Path, report: dict) -> int:
+    """--remove-permission-gate：整体移除受管权限区块（单文件写入）。
+
+    备份→atomic_write；不可解析→fail 退出 1 且不动文件；无受管区→告警退出 0。
+    """
+    settings_path = root / ".claude" / "settings.json"
+    existing = _safe_read(settings_path)
+    new_text, removed = remove_permission_gate(existing)
+    if removed is None:
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": ".claude/settings.json",
+            "reason": "settings.json 无法解析，拒绝不安全改写",
+            "recovery": "手工修复 JSON 后重试",
+        }
+        return 1
+    if not removed:
+        report["warnings"].append(
+            "未发现 cadence-managed 权限区块，无需移除")
+        return 0
+    try:
+        backup_path = backup_file(settings_path, root)
+    except BackupError as exc:
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": ".claude/settings.json",
+            "reason": f"备份失败：{exc}",
+            "recovery": "检查目标目录写权限后重试",
+        }
+        return 1
+    atomic_write(settings_path, new_text)
+    report["backups"] = [{"file": str(settings_path),
+                          "backup": str(backup_path)}]
+    report["hints"] = {"next": "如需恢复拦截，重新运行 rule-config apply"}
     return 0
 
 
@@ -3537,8 +4480,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "mode",
-        choices=("dry-run", "apply"),
-        help="dry-run 只探测写报告零写入；apply 执行发布",
+        nargs="?",
+        default=None,
+        choices=("dry-run", "apply", "verify"),
+        help="dry-run 只探测写报告零写入；apply 执行发布；verify 只读自检",
     )
     parser.add_argument("--project-root", required=True, help="目标项目根目录")
     parser.add_argument("--report", required=True, help="报告 JSON 输出路径")
@@ -3572,6 +4517,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="非 Coding 项目也执行 S8 CodeGraph 配置",
     )
     parser.add_argument(
+        "--remove-permission-gate",
+        action="store_true",
+        help="独立模式：整体移除 .claude/settings.json 中的 cadence-managed 权限区块后退出",
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="只读自检：L0 版本/规则哈希/权限投影/内联漂移/软链解析五项，"
+             "退出码 0=健康 1=漂移",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="--verify 时向 stdout 仅输出完整 JSON 报告（CI 断言可消费）",
+    )
+    parser.add_argument(
         "--decisions",
         default=None,
         help="决策 JSON 文件（普通模式有冲突时必需）",
@@ -3591,6 +4552,24 @@ def main(argv: Optional[list] = None) -> int:
         # argparse 解析失败 → 退出码 2（usage）
         code = exc.code if isinstance(exc.code, int) else 2
         return code if code != 0 else 2
+
+    if args.remove_permission_gate and args.mode is not None:
+        sys.stderr.write(
+            "rule-config: --remove-permission-gate 为独立模式，不能与 dry-run/apply 并用\n")
+        return 2
+    if args.verify and args.remove_permission_gate:
+        sys.stderr.write("rule-config: --verify 与 --remove-permission-gate 互斥\n")
+        return 2
+    if args.verify and args.mode not in (None, "verify"):
+        sys.stderr.write(
+            "rule-config: --verify 为独立模式，不能与 dry-run/apply 并用\n")
+        return 2
+    if (args.mode is None and not args.remove_permission_gate
+            and not args.verify):
+        sys.stderr.write(
+            "rule-config: 缺少模式（dry-run / apply / verify）"
+            "或 --verify / --remove-permission-gate\n")
+        return 2
 
     # 构造 intents
     root = Path(args.project_root).resolve()
@@ -3631,10 +4610,23 @@ def main(argv: Optional[list] = None) -> int:
     )
 
     mode = "no-interrupt" if args.no_interrupt else "normal"
-    report = build_report(mode, root)
+    if args.verify or args.mode == "verify":
+        report = {
+            "overall": "healthy",
+            "mode": "verify",
+            "project_root": str(root),
+            "checks": [],
+            "exit_code": None,
+        }
+    else:
+        report = build_report(mode, root)
 
     try:
-        if args.mode == "dry-run":
+        if args.remove_permission_gate:
+            exit_code = run_remove_permission_gate(root, report)
+        elif args.verify or args.mode == "verify":
+            exit_code = run_verify(root, report)
+        elif args.mode == "dry-run":
             exit_code = run_dry_run(root, intents, report)
         else:
             exit_code = run_apply(root, intents, report)
@@ -3654,6 +4646,16 @@ def main(argv: Optional[list] = None) -> int:
     except OSError:
         # 报告写失败不影响已确定的退出码语义，但记录到 stderr
         sys.stderr.write(f"rule-config: 无法写出报告到 {report_path}\n")
+
+    if (args.verify or args.mode == "verify") and not args.json:
+        for check in report.get("checks", []):
+            for item in check.get("items", []):
+                label = item.get("file") or item.get("layer") or ""
+                sys.stdout.write(
+                    f"[{check['status']}] {check['name']} {label}: "
+                    f"{item.get('detail', '')}\n")
+    if args.json and (args.verify or args.mode == "verify"):
+        sys.stdout.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
     return exit_code
 

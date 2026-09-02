@@ -31,7 +31,7 @@ L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "age
 L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v3 为当前版本；v2/v1 为受支持旧版本，v0 为合成样本）
+# L0 受管区块标记（v4 为当前版本；v3/v2/v1 为受支持旧版本，v0 为合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
 V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
@@ -297,7 +297,7 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V3_START + " " + L0_SOURCE[len(V3_START):]
+        source_with_leading_space = V4_START + " " + L0_SOURCE[len(V4_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
 
@@ -320,20 +320,20 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
         v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
         out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertNotIn("旧路由", out)
 
     def test_broken_nested_begin_preserves_user_section(self):
         """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
         broken = (
-            V3_START + "\nbroken\n\n## 用户章节\nx\n\n"
-            + V3_START + "\nfull\n" + V3_END
+            V4_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + V4_START + "\nfull\n" + V4_END
         )
         out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
         self.assertNotIn("full", out)
@@ -346,8 +346,8 @@ class TestL0V2Migration(unittest.TestCase):
         )
         self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
         out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
 
@@ -355,14 +355,14 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
         overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
         out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         for user_text in ("A", "X", "Y", "B"):
             self.assertIn(user_text, out)
 
     def test_orphan_current_marker_emits_l0_dedup(self):
         """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
-        current_with_orphan = L0_SOURCE + "\n\n" + V3_START + "\n残留用户内容\n"
+        current_with_orphan = L0_SOURCE + "\n\n" + V4_START + "\n残留用户内容\n"
         out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
         warning = next(w for w in warns if w["code"] == "L0_DEDUP")
         self.assertEqual(warning["detail"]["orphan_markers"], 1)
@@ -370,10 +370,10 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_mixed_markers_not_broken_residue(self):
         """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
-        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V3_START + "\n残留单侧\n"
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V4_START + "\n残留单侧\n"
         out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
 
     def test_current_pair_with_old_residue_is_not_skip(self):
         """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
@@ -382,12 +382,12 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_duplicate_current_blocks_deduped(self):
         """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
-        first = V3_START + "\n首个当前块\n" + V3_END
-        second = V3_START + "\n重复当前块\n" + V3_END
+        first = V4_START + "\n首个当前块\n" + V4_END
+        second = V4_START + "\n重复当前块\n" + V4_END
         dup = first + "\n\n## 中间\n\n" + second
         out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
         self.assertIn("首个当前块", out)
         self.assertNotIn("重复当前块", out)
@@ -407,6 +407,10 @@ L0_V2_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
                 / "l0-history" / "agent-routing-kernel-v2.md").read_text()
 V3_START = "<!-- cadence-managed:openspec-superpowers-routing:v3:start -->"
 V3_END = "<!-- cadence-managed:openspec-superpowers-routing:v3:end -->"
+L0_V3_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "l0-history" / "agent-routing-kernel-v3.md").read_text()
+V4_START = "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->"
+V4_END = "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->"
 
 
 class TestL0V3Migration(unittest.TestCase):
@@ -426,19 +430,10 @@ class TestL0V3Migration(unittest.TestCase):
         self.assertNotEqual(drifted, L0_V2_SOURCE)
         self.assertEqual(rc.l0_block(drifted, L0_SOURCE), "drift")
         out, _ = rc._normalize_l0_to_single_block("# 头\n\n" + drifted + "\n\n## 用户\nx\n", L0_SOURCE)
-        self.assertEqual(out.count(V3_START), 1)
-        self.assertEqual(out.count(V3_END), 1)
+        self.assertEqual(out.count(V4_START), 1)
+        self.assertEqual(out.count(V4_END), 1)
         self.assertIn("## 用户", out)
         self.assertNotIn("v2:start", out)
-
-    def test_kernel_is_v3_and_slim(self):
-        """ut-kernel-v3：内核标记为 v3 且体量 ≤2560 字节。"""
-        kernel = L0_SOURCE
-        self.assertTrue(kernel.startswith(V3_START))
-        self.assertLessEqual(len(kernel.encode("utf-8")), 2560)
-        self.assertIn("产物自动提交", kernel)
-        for banned in ("保持静默", "引导句", "事件之间", "重试"):
-            self.assertNotIn(banned, kernel)
 
     def test_kernel_v3_required_content(self):
         """ut-kernel-v3-content：四铁律/KB 门禁/客户端短说明/阶段切换齐备。"""
@@ -448,6 +443,45 @@ class TestL0V3Migration(unittest.TestCase):
             "Claude/Kimi", "重新路由", "优先级高于任何 Skill 正文",
         ):
             self.assertIn(needle, L0_SOURCE)
+
+
+class TestL0V4Migration(unittest.TestCase):
+    def test_v3_history_source_loaded(self):
+        """ut-l0-v4-history-source：脚本加载冻结 v3 内核全文用于升级前比对。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v3"], L0_V3_SOURCE)
+
+    def test_current_version_is_v4(self):
+        """ut-l0-v4-current：当前版本升为 v4，v3 进入可升级旧版本清单。"""
+        self.assertEqual(rc.L0_CURRENT_VERSION, "v4")
+        self.assertEqual(rc.L0_OLD_VERSIONS, ["v3", "v2", "v1", "v0"])
+
+    def test_verbatim_v3_pair_is_upgrade(self):
+        """ut-l0-v4-upgrade：完整 v3 规范块对 v4 源判 upgrade（非 drift），两模式同动作。"""
+        self.assertEqual(rc.l0_block(L0_V3_SOURCE, L0_SOURCE), "upgrade")
+
+    def test_kernel_is_v4_with_visible_version_line(self):
+        """ut-l0-v4-visible-line：内核标记为 v4，标记后首行为可见文本版本行。
+
+        Claude Code 注入上下文时剥离 HTML 注释（2026-09-02 实验），版本必须
+        以可见文本存在，回执才能自报版本。
+        """
+        kernel = L0_SOURCE
+        self.assertTrue(kernel.startswith(V4_START))
+        self.assertTrue(kernel.rstrip("\n").endswith(V4_END))
+        lines = kernel.splitlines()
+        self.assertEqual(lines[1], "Cadence L0 路由内核 v4")
+        self.assertNotIn("v3:start", kernel)
+        self.assertNotIn("v3:end", kernel)
+        self.assertLessEqual(len(kernel.encode("utf-8")), 2688)
+
+    def test_kernel_is_v4_and_slim(self):
+        """ut-kernel-v4：内核标记为 v4 且体量 ≤2688 字节（v3 上限 2560 + 可见版本行余量）。"""
+        kernel = L0_SOURCE
+        self.assertTrue(kernel.startswith(V4_START))
+        self.assertLessEqual(len(kernel.encode("utf-8")), 2688)
+        self.assertIn("产物自动提交", kernel)
+        for banned in ("保持静默", "引导句", "事件之间", "重试"):
+            self.assertNotIn(banned, kernel)
 
 
 class TestL0InsertPosition(unittest.TestCase):
@@ -1025,7 +1059,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v3",
+            "cadence-managed:openspec-superpowers-routing:v4",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -3373,8 +3407,8 @@ class TestEndToEndRegression(unittest.TestCase):
             (7, "代码阅读规则"),
         ):
             self.assertIn(f"### {number}. {title}", agents)
-        self.assertIn(V3_START, agents)
-        self.assertIn(V3_END, agents)
+        self.assertIn(V4_START, agents)
+        self.assertIn(V4_END, agents)
         self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
         self.assertIn("产物自动提交（design/plan/code）**：关闭", agents)
         self.assertNotIn("serena-usage.md", agents)
@@ -3439,8 +3473,8 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertIn("### 1. 语言规则", claude)
         self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
         self.assertNotIn("playwright.md", claude)
-        self.assertIn(V3_START, claude)
-        self.assertIn(V3_END, claude)
+        self.assertIn(V4_START, claude)
+        self.assertIn(V4_END, claude)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
@@ -3500,6 +3534,764 @@ class TestOptionalRuleIntegrity(unittest.TestCase):
         integrity = self._run()
         self.assertTrue(integrity)
         self.assertEqual(integrity[0]["result"], "summary-missing")
+
+
+
+
+class TestToolMetadata(unittest.TestCase):
+    def test_code_reading_template_has_metadata(self):
+        """ut-meta-code-reading：coding 检索规则模板携带三字段元数据。"""
+        text = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "code-reading-coding.md").read_text(encoding="utf-8")
+        entries = rc.parse_tool_metadata(text)
+        self.assertEqual(len(entries), 1)
+        self.assertIn("codegraph", entries[0]["preferred"])
+        self.assertIn("ast-grep outline", entries[0]["preferred"])
+        self.assertIn("Grep", entries[0]["fallback"])
+        self.assertIn("Bash(rg:*)", entries[0]["fallback"])
+        self.assertIn("project_type=coding", entries[0]["when"])
+        self.assertIn("codegraph_enabled", entries[0]["when"])
+
+    def test_mcp_servers_template_has_metadata(self):
+        """ut-meta-mcp-servers：MCP 规则模板携带 Context7 优先元数据。"""
+        text = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "mcp-servers.md").read_text(encoding="utf-8")
+        entries = rc.parse_tool_metadata(text)
+        self.assertEqual(len(entries), 1)
+        self.assertIn("Context7", entries[0]["preferred"])
+        self.assertIn("WebSearch", entries[0]["fallback"])
+        self.assertIn("WebFetch", entries[0]["fallback"])
+        self.assertEqual(entries[0]["when"], "context7_configured")
+
+    def test_no_markers_returns_empty(self):
+        """ut-meta-absent：无标记区返回空（保守：不产生拦截）。"""
+        self.assertEqual(rc.parse_tool_metadata("# 无元数据\n正文\n"), [])
+
+    def test_unparseable_yaml_returns_empty(self):
+        """ut-meta-broken：YAML 残缺返回空，不抛异常。"""
+        text = (rc.TOOL_METADATA_BEGIN + "\ncadence-tools:\n  - preferred: [broken\n"
+                + rc.TOOL_METADATA_END)
+        self.assertEqual(rc.parse_tool_metadata(text), [])
+
+    def test_malformed_entry_skipped(self):
+        """ut-meta-malformed：缺字段/类型不对的条目被剔除，不阻断其余条目。"""
+        inner = ("cadence-tools:\n"
+                 "  - preferred: [codegraph]\n"
+                 "    fallback: [Grep]\n"
+                 "  - preferred: 42\n"
+                 "    fallback: [Grep]\n"
+                 "    when: context7_configured\n")
+        text = rc.TOOL_METADATA_BEGIN + "\n" + inner + rc.TOOL_METADATA_END
+        self.assertEqual(rc.parse_tool_metadata(text), [])
+
+
+class TestGateContext(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.root.mkdir()
+
+    def test_evaluate_when_and_semantics(self):
+        """ut-when-and：AND 大小写均接受；任一原子不成立则整体不成立。"""
+        ctx = {"project_type": "coding", "codegraph_enabled": True,
+               "context7_configured": False}
+        self.assertTrue(rc.evaluate_when("project_type=coding AND codegraph_enabled", ctx))
+        self.assertTrue(rc.evaluate_when("project_type=coding and codegraph_enabled", ctx))
+        self.assertFalse(rc.evaluate_when("codegraph_enabled AND context7_configured", ctx))
+        self.assertTrue(rc.evaluate_when("context7_configured",
+                                         {"context7_configured": True}))
+
+    def test_evaluate_when_unknown_atom_conservative_false(self):
+        """ut-when-unknown：未知原子/空条件保守判 False（不产生拦截）。"""
+        self.assertFalse(rc.evaluate_when("something_new", {"project_type": "coding"}))
+        self.assertFalse(rc.evaluate_when("", {}))
+        self.assertFalse(rc.evaluate_when("   ", {}))
+
+    def test_context7_detected_from_mcpjson(self):
+        """ut-ctx-context7：.mcp.json 注册 context7 即视为已配置。"""
+        (self.root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"context7": {}}}), encoding="utf-8")
+        ctx = rc.build_gate_context(self.root, "non-coding")
+        self.assertTrue(ctx["context7_configured"])
+        self.assertFalse(ctx["codegraph_enabled"])
+        self.assertEqual(ctx["project_type"], "non-coding")
+
+    def test_context7_detected_from_codex_toml(self):
+        """ut-ctx-context7-codex：codex toml 区块头也计入已配置。"""
+        (self.root / ".codex").mkdir()
+        (self.root / ".codex" / "config.toml").write_text(
+            "[mcp_servers.context7]\ncommand = \"npx\"\n", encoding="utf-8")
+        ctx = rc.build_gate_context(self.root, "non-coding")
+        self.assertTrue(ctx["context7_configured"])
+
+    def test_codegraph_enabled_via_mcpjson_or_dir(self):
+        """ut-ctx-codegraph：.codegraph 目录或任一 MCP 注册部计为启用。"""
+        (self.root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"codegraph": {}}}), encoding="utf-8")
+        self.assertTrue(rc.build_gate_context(self.root, "coding")["codegraph_enabled"])
+        other = Path(self.tmp.name) / "proj2"
+        (other / ".codegraph").mkdir(parents=True)
+        self.assertTrue(rc.build_gate_context(other, "coding")["codegraph_enabled"])
+
+    def test_codegraph_disabled_by_default(self):
+        """ut-ctx-codegraph-off：无任何 codegraph 痕迹时为 False。"""
+        ctx = rc.build_gate_context(self.root, "coding")
+        self.assertFalse(ctx["codegraph_enabled"])
+        self.assertFalse(ctx["context7_configured"])
+
+
+class TestDenyReason(unittest.TestCase):
+    def test_reason_contains_chain_and_bypass_tail(self):
+        """ut-reason-chain：按全角序号列出 preferred，以 CADENCE_BYPASS=1 提示结尾。"""
+        entry = {"preferred": ["codegraph", "ast-grep outline"],
+                 "fallback": ["Grep", "Glob", "Bash(grep:*)"],
+                 "when": "project_type=coding AND codegraph_enabled"}
+        reason = rc.render_deny_reason("code-reading.md", entry)
+        self.assertIn("1）codegraph", reason)
+        self.assertIn("2）ast-grep outline", reason)
+        self.assertIn("Grep", reason)
+        self.assertIn("code-reading.md", reason)
+        self.assertTrue(reason.endswith("CADENCE_BYPASS=1 前缀绕开。"))
+
+    def test_reason_no_ascii_parens(self):
+        """ut-reason-inert：理由不含 ASCII 圆括号（deny 数组惰性条目安全性）。"""
+        entry = {"preferred": ["Context7"],
+                 "fallback": ["WebSearch", "WebFetch"],
+                 "when": "context7_configured"}
+        reason = rc.render_deny_reason("mcp-servers.md", entry)
+        self.assertNotIn("(", reason)
+        self.assertNotIn(")", reason)
+        self.assertIn("Context7", reason)
+
+    def test_reason_empty_preferred_safe(self):
+        """ut-reason-empty：preferred 为空时不抛异常，仍给出兜底出口。"""
+        entry = {"preferred": [], "fallback": ["WebSearch"], "when": "x"}
+        reason = rc.render_deny_reason("mcp-servers.md", entry)
+        self.assertIn("WebSearch", reason)
+        self.assertTrue(reason.endswith("CADENCE_BYPASS=1 前缀绕开。"))
+
+
+class TestPermissionGateMerge(unittest.TestCase):
+    def _entries(self):
+        return ["Grep", "Glob", "Bash(grep:*)",
+                "❌ Grep、Glob、Bash 被规则限制（规则源：code-reading.md）。"
+                "规则优先级链：1）codegraph；2）ast-grep outline；确需例外时设置逃逸 CADENCE_BYPASS=1。"]
+
+    def test_create_when_file_absent(self):
+        """ut-gate-create：文件不存在时新建仅含受管区的文档。"""
+        new_text, skipped = rc.merge_permission_gate(None, self._entries())
+        self.assertEqual(skipped, [])
+        doc = json.loads(new_text)
+        deny = doc["permissions"]["deny"]
+        self.assertEqual(deny[0], rc.PERMISSION_GATE_BEGIN)
+        self.assertEqual(deny[-1], rc.PERMISSION_GATE_END)
+        self.assertIn("Grep", deny)
+
+    def test_user_entries_outside_region_preserved(self):
+        """ut-gate-union：区块外用户条目逐字保留、顺序不变，受管区重算。"""
+        existing = json.dumps({
+            "permissions": {
+                "allow": ["Bash(npm test:*)"],
+                "deny": ["WebFetch(./private/**)", rc.PERMISSION_GATE_BEGIN,
+                         "OldStaleDeny", rc.PERMISSION_GATE_END],
+            },
+            "env": {"FOO": "1"},
+        }, ensure_ascii=False, indent=2)
+        new_text, skipped = rc.merge_permission_gate(existing, self._entries())
+        doc = json.loads(new_text)
+        deny = doc["permissions"]["deny"]
+        self.assertEqual(deny[0], "WebFetch(./private/**)")
+        self.assertNotIn("OldStaleDeny", deny)
+        self.assertEqual(deny.count(rc.PERMISSION_GATE_BEGIN), 1)
+        self.assertIn("Grep", deny)
+        self.assertEqual(doc["permissions"]["allow"], ["Bash(npm test:*)"])
+        self.assertEqual(doc["env"], {"FOO": "1"})
+
+    def test_scoped_allow_different_scope_not_conflict(self):
+        """ut-gate-scoped-allow：作用域不相交的 allow 不阻断不同作用域的 deny。
+
+        用户 allow `Bash(npm test:*)` 只放行 npm test；受管 deny
+        `Bash(grep:*)` 只拦截 grep 前缀——两者调用集不相交，写 deny 不会
+        覆盖用户的 allow；仅当任一侧为裸工具名或规则完全相同时才判冲突。
+        """
+        existing = json.dumps({
+            "permissions": {"allow": ["Bash(npm test:*)"]},
+        }, ensure_ascii=False, indent=2)
+        new_text, skipped = rc.merge_permission_gate(existing, self._entries())
+        self.assertEqual(skipped, [])
+        deny = json.loads(new_text)["permissions"]["deny"]
+        self.assertIn("Bash(grep:*)", deny)
+
+    def test_unparseable_json_conservative_skip(self):
+        """ut-gate-unparseable：JSON 残缺→返回 None+报告，绝不改写。"""
+        new_text, skipped = rc.merge_permission_gate("{broken", self._entries())
+        self.assertIsNone(new_text)
+        self.assertEqual(skipped[0]["kind"], "unparseable")
+
+    def test_allow_not_downgraded(self):
+        """ut-gate-allow：用户显式 allow 的工具不降级为 deny，保守跳过并标明。"""
+        existing = json.dumps({
+            "permissions": {"allow": ["Grep"], "deny": []},
+        }, ensure_ascii=False, indent=2)
+        new_text, skipped = rc.merge_permission_gate(existing, self._entries())
+        self.assertEqual([s["kind"] for s in skipped], ["allow-conflict"])
+        self.assertEqual(skipped[0]["entry"], "Grep")
+        deny = json.loads(new_text)["permissions"]["deny"]
+        self.assertNotIn("Grep", deny)
+        self.assertIn("Glob", deny)
+
+    def test_all_denies_skipped_writes_no_region(self):
+        """ut-gate-all-skipped：拦截条目全部被跳过时不生成受管区。"""
+        existing = json.dumps({
+            "permissions": {"allow": ["Grep", "Glob", "Bash"]},
+        }, ensure_ascii=False, indent=2)
+        new_text, skipped = rc.merge_permission_gate(existing, self._entries())
+        # 全部被跳过→不写 deny 键：.get 消除 KeyError，断言无键/无受管标记
+        deny = json.loads(new_text).get("permissions", {}).get("deny")
+        self.assertTrue(deny is None or rc.PERMISSION_GATE_BEGIN not in deny)
+        self.assertEqual([s["kind"] for s in skipped], ["allow-conflict"] * 3)
+
+    def test_idempotent_rerun(self):
+        """ut-gate-idempotent：同一批条目重复合并结果稳定。"""
+        once, _ = rc.merge_permission_gate(None, self._entries())
+        twice, _ = rc.merge_permission_gate(once, self._entries())
+        self.assertEqual(once, twice)
+
+    def test_remove_permission_gate(self):
+        """ut-gate-remove：整体移除受管区，用户条目保留。"""
+        merged, _ = rc.merge_permission_gate(None, self._entries())
+        user = json.dumps({
+            "permissions": {"deny": ["UserDeny"]},
+        }, ensure_ascii=False, indent=2)
+        with_user, _ = rc.merge_permission_gate(user, self._entries())
+        new_text, removed = rc.remove_permission_gate(with_user)
+        self.assertTrue(removed)
+        self.assertEqual(json.loads(new_text)["permissions"]["deny"], ["UserDeny"])
+        # 无受管区时为幂等空操作
+        again, removed2 = rc.remove_permission_gate(new_text)
+        self.assertFalse(removed2)
+        self.assertEqual(again, new_text)
+
+    def test_remove_unparseable_returns_none_flag(self):
+        """ut-gate-remove-broken：不可解析→(None, None)，调用方 fail 报告。"""
+        new_text, removed = rc.remove_permission_gate("not json")
+        self.assertIsNone(new_text)
+        self.assertIsNone(removed)
+        new_text, removed = rc.remove_permission_gate(None)
+        self.assertIsNone(new_text)
+        self.assertFalse(removed)
+
+
+class TestPermissionGateIntegration(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+        self.root.mkdir(parents=True)
+        (self.root / ".claude").mkdir()
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8")
+        (self.root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"codegraph": {}, "context7": {}}}),
+            encoding="utf-8")
+
+    def _apply(self, **overrides):
+        report = rc.build_report(
+            "no-interrupt" if overrides.get("no_interrupt") else "normal",
+            self.root,
+        )
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess, "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(**overrides), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def test_gate_generated_for_coding_codegraph_project(self):
+        """ut-s9-generate：coding+codegraph 生成检索 deny 区，理由同源渲染。"""
+        (self.root / ".claude" / "settings.json").write_text(json.dumps({
+            "permissions": {"allow": ["Bash(npm test:*)"],
+                            "deny": ["WebFetch(./private/**)"]},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._apply(no_interrupt=True)
+        doc = json.loads(
+            (self.root / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        deny = doc["permissions"]["deny"]
+        self.assertEqual(deny[0], "WebFetch(./private/**)")
+        self.assertIn(rc.PERMISSION_GATE_BEGIN, deny)
+        self.assertIn(rc.PERMISSION_GATE_END, deny)
+        for tool in ("Grep", "Glob", "Bash(grep:*)", "Bash(rg:*)", "Bash(find:*)",
+                     "WebSearch", "WebFetch"):
+            self.assertIn(tool, deny)
+        reasons = [d for d in deny if isinstance(d, str) and d.startswith("❌")]
+        self.assertEqual(len(reasons), 2)
+        self.assertTrue(all(r.endswith("CADENCE_BYPASS=1 前缀绕开。") for r in reasons))
+        self.assertTrue(any("code-reading.md" in r for r in reasons))
+        self.assertTrue(any("mcp-servers.md" in r for r in reasons))
+
+    def test_first_apply_closes_s8_to_s9_loop(self):
+        """ut-s9-first-apply：全新 coding 项目首轮 apply 即完成 S8→S9 闭环。"""
+        (self.root / ".mcp.json").unlink()
+        report = self._apply(no_interrupt=True)
+        settings = self.root / ".claude" / "settings.json"
+        self.assertTrue(settings.exists())
+        deny = json.loads(settings.read_text(encoding="utf-8"))["permissions"]["deny"]
+        self.assertIn(rc.PERMISSION_GATE_BEGIN, deny)
+        s9 = next(s for s in report["steps"] if s["name"] == rc.STEP_PERMISSION_GATE)
+        self.assertEqual(s9["assets"][0]["action"], "create")
+
+    def test_gate_not_generated_when_conditions_unmet(self):
+        """ut-s9-when-false：非 coding 且无 MCP 配置不产生任何 deny 条目。"""
+        other = Path(self.tmp.name) / "noncoding"
+        other.mkdir()
+        (other / "README.md").write_text("x", encoding="utf-8")
+        report = rc.build_report("no-interrupt", other)
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            result = rc.run_apply(other, _intents(no_interrupt=True), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        self.assertFalse((other / ".claude" / "settings.json").exists())
+
+    def test_user_allow_not_downgraded_in_apply(self):
+        """ut-s9-allow-keep：用户显式 allow 的工具不被写为 deny，报告标明。"""
+        (self.root / ".claude" / "settings.json").write_text(json.dumps({
+            "permissions": {"allow": ["Grep"]},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        report = self._apply(no_interrupt=True)
+        doc = json.loads(
+            (self.root / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        deny = doc["permissions"]["deny"]
+        managed = deny[deny.index(rc.PERMISSION_GATE_BEGIN):
+                       deny.index(rc.PERMISSION_GATE_END)]
+        self.assertNotIn("Grep", managed)
+        self.assertIn("Glob", deny)
+        self.assertTrue(any(w.get("code") == "s9-allow-conflict"
+                            for w in report["warnings"]))
+
+    def test_metadata_change_syncs_entries_and_reason(self):
+        """ut-s9-sync：preferred 变更重 apply 后条目与理由同步变，不残留旧名。"""
+        self._apply(no_interrupt=True)
+        tpl = self.rules_root / "code-reading-coding.md"
+        tpl.write_text(tpl.read_text(encoding="utf-8").replace(
+            'preferred: [codegraph, "ast-grep outline"]',
+            'preferred: [foobar-search, "ast-grep outline"]'), encoding="utf-8")
+        self._apply(no_interrupt=True)
+        text = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
+        self.assertIn("1）foobar-search", text)
+        self.assertNotIn("1）codegraph", text)
+
+    def test_rerun_idempotent_no_extra_backup(self):
+        """ut-s9-idempotent：重跑 apply 区块稳定、无新增归档。"""
+        self._apply(no_interrupt=True)
+        legacy = self.root / "cadence" / "legacy"
+        before = {p.name for p in legacy.iterdir() if p.is_dir()} if legacy.exists() else set()
+        text1 = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
+        self._apply(no_interrupt=True)
+        text2 = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
+        self.assertEqual(text1, text2)
+        after = {p.name for p in legacy.iterdir() if p.is_dir()} if legacy.exists() else set()
+        self.assertEqual(before, after)
+
+    def test_dry_run_previews_gate_block(self):
+        """ut-s9-preview：dry-run 报告展示完整区块预览且零写入。"""
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ):
+            result = rc.run_dry_run(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        s9 = next(s for s in report["steps"] if s["name"] == rc.STEP_PERMISSION_GATE)
+        preview_assets = [a for a in s9["assets"] if a.get("preview")]
+        self.assertTrue(preview_assets)
+        self.assertIn(rc.PERMISSION_GATE_BEGIN, preview_assets[0]["preview"])
+        self.assertIn("Grep", preview_assets[0]["preview"])
+        self.assertFalse((self.root / ".claude" / "settings.json").exists())
+
+    def test_remove_permission_gate_cli(self):
+        """ut-cli-remove-gate：--remove-permission-gate 整体移除且保留用户内容。"""
+        self._apply(no_interrupt=True)
+        settings = self.root / ".claude" / "settings.json"
+        doc = json.loads(settings.read_text(encoding="utf-8"))
+        doc["permissions"]["deny"].insert(0, "UserDeny")
+        settings.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_fd, report_name = tempfile.mkstemp(prefix="rc-remove-gate-", suffix=".json")
+        os.close(report_fd)
+        report_path = Path(report_name)
+        self.addCleanup(report_path.unlink)
+        proc = subprocess.run(
+            ["python3", str(SCRIPT_PATH), "--remove-permission-gate",
+             "--project-root", str(self.root), "--report", str(report_path)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        after = json.loads(settings.read_text(encoding="utf-8"))
+        self.assertIn("UserDeny", after["permissions"]["deny"])
+        self.assertNotIn(rc.PERMISSION_GATE_BEGIN, after["permissions"]["deny"])
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(report["overall"], "ok")
+        self.assertTrue(any("settings.json" in b.get("file", "")
+                            for b in report["backups"]))
+
+
+class TestCodexInlineRender(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.rules_dir = Path(self.tmp.name) / "rules"
+        self.rules_dir.mkdir(parents=True)
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        for name in ("language.md", "mcp-servers.md", "document-storage.md",
+                     "markdown-format.md", "openspec-superpowers-workflow.md"):
+            (self.rules_dir / name).write_text(
+                (refs / name).read_text(encoding="utf-8"), encoding="utf-8")
+        # 落地名 code-reading.md 取 coding 源（fixture 模拟 coding 项目落地结果）
+        (self.rules_dir / "code-reading.md").write_text(
+            (refs / "code-reading-coding.md").read_text(encoding="utf-8"),
+            encoding="utf-8")
+        (self.rules_dir / "code-usage.md").write_text(
+            (refs / "code-usage-coding.md").read_text(encoding="utf-8"),
+            encoding="utf-8")
+
+    def test_render_contains_markers_chain_and_ironlaw(self):
+        """ut-inline-content：标记对 + 优先级链 + 规则摘要 + 铁律齐备。"""
+        block = rc.render_codex_inline(self.rules_dir)
+        self.assertTrue(block.startswith(rc.CODEX_INLINE_BEGIN))
+        self.assertTrue(block.rstrip("\n").endswith(rc.CODEX_INLINE_END))
+        self.assertIn("工具优先级：codegraph → ast-grep outline", block)
+        self.assertIn("工具优先级：Context7", block)
+        self.assertIn("mcp-servers.md：MCP Server 使用规则", block)
+        self.assertIn("铁律", block)
+        self.assertIn("language.md：语言规则", block)
+
+    def test_render_within_budget(self):
+        """ut-inline-budget：常规规则集渲染不超过 60 行（含标记）。"""
+        block = rc.render_codex_inline(self.rules_dir)
+        self.assertLessEqual(len(block.rstrip("\n").split("\n")),
+                             rc.CODEX_INLINE_BUDGET)
+
+    def test_render_truncates_with_omission_note(self):
+        """ut-inline-truncate：超预算时截断至 60 行内并标注省略。"""
+        for i in range(80):
+            (self.rules_dir / f"zz-extra-{i:02d}.md").write_text(
+                f"# 补充规则 {i}\n正文\n", encoding="utf-8")
+        block = rc.render_codex_inline(self.rules_dir)
+        lines = block.rstrip("\n").split("\n")
+        self.assertLessEqual(len(lines), rc.CODEX_INLINE_BUDGET)
+        self.assertTrue(any("超 60 行预算" in ln and "省略" in ln for ln in lines))
+        # 链行优先保留
+        self.assertIn("工具优先级：codegraph → ast-grep outline", block)
+
+    def test_render_deterministic(self):
+        """ut-inline-deterministic：同一源两次渲染逐字一致（漂移检测前提）。"""
+        self.assertEqual(rc.render_codex_inline(self.rules_dir),
+                         rc.render_codex_inline(self.rules_dir))
+
+
+class TestCodexInlineBlock(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+        self.root.mkdir(parents=True)
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8")
+        (self.root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"codegraph": {}, "context7": {}}}),
+            encoding="utf-8")
+
+    def _apply(self, **overrides):
+        report = rc.build_report(
+            "no-interrupt" if overrides.get("no_interrupt") else "normal",
+            self.root,
+        )
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess, "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(**overrides), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def test_block_created_within_budget_outside_preserved(self):
+        """ut-s10-create：区块生成 ≤60 行，区块外内容逐字不变。"""
+        (self.root / "AGENTS.md").write_text(
+            "# AGENTS.md\n\n用户自有说明，不得改动。\n\n## 用户章节\n\n- 用户条目\n",
+            encoding="utf-8")
+        self._apply(no_interrupt=True)
+        agents = (self.root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn(rc.CODEX_INLINE_BEGIN, agents)
+        self.assertIn(rc.CODEX_INLINE_END, agents)
+        block = agents[agents.index(rc.CODEX_INLINE_BEGIN):]
+        self.assertLessEqual(len(block.rstrip("\n").split("\n")),
+                             rc.CODEX_INLINE_BUDGET)
+        self.assertIn("用户自有说明，不得改动。", agents)
+        self.assertIn("## 用户章节", agents)
+        self.assertIn("- 用户条目", agents)
+        self.assertIn("工具优先级：codegraph → ast-grep outline", agents)
+
+    def test_add_rule_updates_block_automatically(self):
+        """ut-s10-auto-update：新增规则文件重跑 apply，区块自动含其一行摘要。
+
+        显式用例（打通“新规则文件零源码改动进区块”）：渲染器枚举落地
+        结果而非固定清单（与 Task 8 同一机制）——新增 .claude/rules/*.md
+        后重跑 apply，区块自动包含其摘要，无需改任何常量。
+        """
+        self._apply(no_interrupt=True)
+        before = (self.root / "AGENTS.md").read_text(encoding="utf-8")
+        (self.root / ".claude" / "rules" / "zz-new-rule.md").write_text(
+            "# 新增规则\n新正文\n", encoding="utf-8")
+        self._apply(no_interrupt=True)
+        after = (self.root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertNotIn("zz-new-rule.md", before)
+        self.assertIn("zz-new-rule.md：新增规则", after)
+
+    def test_rerun_idempotent_and_tampered_region_repaired(self):
+        """ut-s10-idempotent：重跑无变化零归档；手改区块后重跑修复且写前归档。"""
+        report1 = self._apply(no_interrupt=True)
+        text1 = (self.root / "AGENTS.md").read_text(encoding="utf-8")
+        legacy = self.root / "cadence" / "legacy"
+        before = ({p.name for p in legacy.iterdir() if p.is_dir()}
+                  if legacy.exists() else set())
+        report2 = self._apply(no_interrupt=True)
+        self.assertEqual((self.root / "AGENTS.md").read_text(encoding="utf-8"), text1)
+        after = ({p.name for p in legacy.iterdir() if p.is_dir()}
+                 if legacy.exists() else set())
+        self.assertEqual(before, after)
+        # 手改区块内首行（模拟漂移）→ 重跑修复为规范渲染，且写前有 AGENTS.md 归档
+        (self.root / "AGENTS.md").write_text(
+            text1.replace("Cadence 规则内联投影", "被手改的投影", 1),
+            encoding="utf-8")
+        report3 = self._apply(no_interrupt=True)
+        self.assertEqual((self.root / "AGENTS.md").read_text(encoding="utf-8"), text1)
+        self.assertTrue(any(b.get("file", "").endswith("AGENTS.md")
+                            for b in report3["backups"]))
+        self.assertFalse(any(b.get("file", "").endswith("AGENTS.md")
+                              for b in report2["backups"]))
+        self.assertEqual(report1["overall"], "ok")
+
+
+class TestVerifyCommand(unittest.TestCase):
+    """--verify 五项只读自检的测试夹具。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "proj"
+        self.rules_root = Path(self.tmp.name) / "tpl"
+        real_tpl = Path(__file__).resolve().parents[1] / "references" / "rules"
+        self.rules_root.mkdir(parents=True)
+        for f in real_tpl.iterdir():
+            if f.is_file():
+                (self.rules_root / f.name).write_bytes(f.read_bytes())
+        self.openspec_yaml = (
+            Path(__file__).resolve().parents[1]
+            / "references" / "openspec" / "config.yaml"
+        )
+        self.root.mkdir(parents=True)
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest"}}', encoding="utf-8")
+        (self.root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"codegraph": {}, "context7": {}}}),
+            encoding="utf-8")
+
+    def _apply(self):
+        report = rc.build_report("no-interrupt", self.root)
+        with mock.patch.object(
+            rc, "locate_templates",
+            return_value=(self.rules_root, self.openspec_yaml),
+        ), mock.patch.object(
+            rc.subprocess, "run",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result = rc.run_apply(self.root, _intents(no_interrupt=True), report)
+        self.assertEqual(result, 0, report.get("failure"))
+        return report
+
+    def _verify_report(self):
+        return {"overall": "healthy", "mode": "verify",
+                "project_root": str(self.root), "checks": [], "exit_code": None}
+
+    def _verify_cli(self, root):
+        report_fd, report_name = tempfile.mkstemp(prefix="rc-verify-", suffix=".json")
+        os.close(report_fd)
+        report_path = Path(report_name)
+        self.addCleanup(report_path.unlink)
+        proc = subprocess.run(
+            ["python3", str(SCRIPT_PATH), "--verify",
+             "--project-root", str(root), "--report", str(report_path), "--json"],
+            capture_output=True, text=True,
+        )
+        payload = json.loads(proc.stdout)
+        return proc.returncode, payload
+
+    def test_run_verify_green_after_apply(self):
+        """ut-verify-green：apply 后五项全 ok、退出 0（HOME 隔离避免软链误报）。"""
+        self._apply()
+        report = self._verify_report()
+        with mock.patch.object(Path, "home",
+                               return_value=Path(self.tmp.name) / "home"), \
+             mock.patch.object(rc, "locate_templates",
+                               return_value=(self.rules_root, self.openspec_yaml)):
+            code = rc.run_verify(self.root, report)
+        self.assertEqual(
+            code, 0, json.dumps(report.get("checks"), ensure_ascii=False))
+        names = [c["name"] for c in report["checks"]]
+        self.assertEqual(names, ["l0_version", "rules_hash", "permission_gate",
+                                 "codex_inline", "symlink_resolution"])
+        self.assertTrue(all(c["status"] == "ok" for c in report["checks"]))
+
+    def test_outdated_l0_reports_and_exit_one(self):
+        """ut-verify-outdated：L0 v3 报“版本过时（当前 v3，最新 v4）”且退出 1。"""
+        (self.root / "CLAUDE.md").write_text(
+            "# CLAUDE.md\n\n" + L0_V3_SOURCE + "\n\n## 强制规则\n- x\n",
+            encoding="utf-8")
+        (self.root / "AGENTS.md").write_text(
+            "# AGENTS.md\n\n" + L0_V3_SOURCE + "\n", encoding="utf-8")
+        report = self._verify_report()
+        with mock.patch.object(Path, "home",
+                               return_value=Path(self.tmp.name) / "home"), \
+             mock.patch.object(rc, "locate_templates",
+                               return_value=(self.rules_root, self.openspec_yaml)):
+            code = rc.run_verify(self.root, report)
+        self.assertEqual(code, 1)
+        l0 = next(c for c in report["checks"] if c["name"] == "l0_version")
+        self.assertEqual(l0["status"], "drift")
+        for item in l0["items"]:
+            self.assertIn("L0 版本过时（当前 v3，最新 v4）", item["detail"])
+
+    def test_not_generated_not_drift_for_fresh_project(self):
+        """ut-verify-not-generated：从未 apply 的项目③④报未生成，不误报漂移。"""
+        fresh = Path(self.tmp.name) / "fresh"
+        fresh.mkdir()
+        report = {"overall": "healthy", "mode": "verify",
+                  "project_root": str(fresh), "checks": [], "exit_code": None}
+        with mock.patch.object(Path, "home",
+                               return_value=Path(self.tmp.name) / "home"), \
+             mock.patch.object(rc, "locate_templates",
+                               return_value=(self.rules_root, self.openspec_yaml)):
+            code = rc.run_verify(fresh, report)
+        gate = next(c for c in report["checks"] if c["name"] == "permission_gate")
+        inline = next(c for c in report["checks"] if c["name"] == "codex_inline")
+        self.assertEqual(gate["items"][0]["status"], "not-generated")
+        self.assertIn("apply", gate["items"][0]["detail"])
+        self.assertEqual(inline["items"][0]["status"], "not-generated")
+        self.assertEqual(code, 1)
+
+    def test_drift_after_rule_edit_exit_one_json_consumable(self):
+        """ut-verify-drift：apply 后改规则源→对应项漂移、退出 1、CLI JSON 可消费。"""
+        self._apply()
+        landed = self.root / ".claude" / "rules" / "mcp-servers.md"
+        landed.write_text(
+            landed.read_text(encoding="utf-8").replace(
+                "preferred: [Context7]", "preferred: [Context7X]"),
+            encoding="utf-8")
+        code, payload = self._verify_cli(self.root)
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["overall"], "drift")
+        names = {c["name"] for c in payload["checks"]}
+        self.assertEqual(names, {"l0_version", "rules_hash", "permission_gate",
+                                 "codex_inline", "symlink_resolution"})
+        rules_check = next(c for c in payload["checks"] if c["name"] == "rules_hash")
+        self.assertEqual(rules_check["status"], "drift")
+        inline_check = next(c for c in payload["checks"] if c["name"] == "codex_inline")
+        self.assertEqual(inline_check["status"], "drift")
+        gate_check = next(c for c in payload["checks"] if c["name"] == "permission_gate")
+        self.assertEqual(gate_check["status"], "ok")
+
+    def test_verify_readonly(self):
+        """ut-verify-readonly：verify 全程零写入（文件集合与内容快照不变）。"""
+        self._apply()
+        snapshot = {str(p): p.read_bytes()
+                    for p in sorted(self.root.rglob("*")) if p.is_file()}
+        report = self._verify_report()
+        with mock.patch.object(Path, "home",
+                               return_value=Path(self.tmp.name) / "home"), \
+             mock.patch.object(rc, "locate_templates",
+                               return_value=(self.rules_root, self.openspec_yaml)):
+            rc.run_verify(self.root, report)
+        files_after = {str(p) for p in self.root.rglob("*") if p.is_file()}
+        self.assertEqual(set(snapshot), files_after)
+        for rel, content in snapshot.items():
+            self.assertEqual(Path(rel).read_bytes(), content, rel)
+
+
+class TestSubagentMcpAccessibilityDocs(unittest.TestCase):
+    def test_mcp_configuration_contains_matrix_and_probe(self):
+        """ut-wp5-skill-docs：四端矩阵、各端坑位与探针步骤齐备。"""
+        skill = (Path(__file__).resolve().parents[2]
+                 / "mcp-configuration" / "SKILL.md")
+        text = skill.read_text(encoding="utf-8")
+        self.assertIn("子代理 MCP 可达性", text)
+        self.assertIn("mcp__<server>__*", text)  # Kimi glob 写法坑
+        self.assertIn("已知限制", text)           # pi 不继承
+        self.assertIn("#13898", text)             # Claude Code 项目级继承 bug
+        self.assertIn("默认全量继承", text)        # Codex
+        self.assertIn("子代理 MCP 可见性验证探针", text)
+        self.assertIn("仅告警不阻断", text)
+        self.assertIn("MCP 依赖任务留在主会话", text)  # pi 规避策略
+
+    def test_mcp_servers_template_contains_fallback_chain(self):
+        """ut-wp5-accessibility-fallback：同一文档护栏覆盖 mcp-servers 兜底链。"""
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        text = (refs / "mcp-servers.md").read_text(encoding="utf-8")
+        for needle in (
+            "子代理兜底链",
+            "web_search",
+            "webSearchPrime",
+            "搜索通道不可用",
+            "不得放弃任务或编造结果",
+        ):
+            self.assertIn(needle, text)
+
+
+class TestSubagentFallbackChainRule(unittest.TestCase):
+    def test_mcp_servers_rule_contains_fallback_chain(self):
+        """ut-wp5-fallback-chain：子代理兜底链三段式齐备（原生→MCP→报告）。"""
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        text = (refs / "mcp-servers.md").read_text(encoding="utf-8")
+        self.assertIn("子代理兜底链", text)
+        self.assertIn("web_search", text)
+        self.assertIn("webSearchPrime", text)
+        self.assertIn("搜索通道不可用", text)
+        self.assertIn("不得放弃任务或编造结果", text)
+
+    def test_metadata_still_parses_after_fallback_chain(self):
+        """ut-wp5-meta-intact：增补后顶部元数据解析不受影响。"""
+        refs = Path(__file__).resolve().parents[1] / "references" / "rules"
+        entries = rc.parse_tool_metadata(
+            (refs / "mcp-servers.md").read_text(encoding="utf-8"))
+        self.assertEqual(len(entries), 1)
 
 
 if __name__ == "__main__":
