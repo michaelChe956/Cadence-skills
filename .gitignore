@@ -19,3 +19,6 @@ cadence/legacy/
 
 # MCP 图片识别可用性状态缓存（运行时产物，禁止入库）
 cadence/cache/mcp-availability/
+
+# CodeGraph 本地索引
+.codegraph/
