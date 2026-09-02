@@ -176,7 +176,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v3:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v3:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v4:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v4:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -654,10 +654,10 @@ before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -1422,7 +1422,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1462,8 +1462,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass

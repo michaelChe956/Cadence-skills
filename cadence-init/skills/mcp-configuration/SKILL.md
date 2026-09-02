@@ -110,6 +110,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
 7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
 8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 到 .gitignore；缓存条目精确一行且已存在时不重复追加
+9. **子代理 MCP 可见性验证探针** — 四端各派一个子代理"列出你的 MCP 工具名"；探针失败仅告警不阻断，并输出对应端的排查指引（见 7.6 节四端矩阵）
 
 **下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
 
@@ -602,6 +603,19 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 - `.gitignore` 无需新增条目：Kimi 复用的 `.mcp.json` 已在忽略清单内。
 
 **Kimi 侧验证方式**：Kimi Code 会话中输入 `/mcp` 查看 server 连接状态，输入 `/mcp-config` 交互式新增/编辑/删除 server。
+
+### 7.6 子代理 MCP 可达性（四端矩阵）
+
+主会话配置完成后，子代理（subagent/task 派生会话）的 MCP 可达性按端不同；配置与派发任务时必须按下表核对：
+
+| 端 | 子代理 MCP | 已知坑位与动作 |
+|---|---|---|
+| Claude Code | ✅ 默认继承 `.mcp.json` | 项目级 `.mcp.json` 曾有子代理不可见 bug（anthropics/claude-code#13898）、通配写法曾报错（#53865）——配置后必须执行下方验证探针；可选 `mcpServers` frontmatter 字符串引用 |
+| Codex | ✅ 默认全量继承 | 无需动作；需收窄时用 `[agents.<name>]` + agent TOML `mcp_servers = [...]` |
+| Kimi | ✅ 默认保留全部工具 | 自定义 agent 写 `tools` 时必须含 `mcp__<server>__*` 形式的 glob（裸 server 名匹配不到任何工具）；不写 `tools` 即全保留 |
+| pi | ❌ 不继承（已知限制） | MCP 依赖任务留在主会话执行；子代理按 mcp-servers 规则的"子代理兜底链"退化报告 |
+
+**子代理 MCP 可见性验证探针**（检查清单第 9 步）：向四端各派一个子代理执行"列出你的 MCP 工具名"。探针失败仅告警不阻断，按对应端坑位排查：Claude Code 子代理报 0 个工具 → 改用用户级配置或 `mcpServers` frontmatter 引用后重试；Kimi 报 0 个 → 检查 `tools` 是否漏写 `mcp__<server>__*` glob；pi 报 0 个 → 已知限制，按兜底链把任务交回主会话。当前运行时无法派发到某端时，按探针失败告警并继续。
 
 ### 8. 配置 .gitignore
 
