@@ -2020,12 +2020,17 @@ for f in language.md document-storage.md markdown-format.md mcp-servers.md playw
     framework_rules_sync_status=1
   fi
 done
-if ! diff -q "$CODE_READING_SOURCE_NONCODING" \
-           "$REPO_ROOT/.claude/rules/code-reading.md" >/dev/null 2>&1; then
+# 按根副本实际落地的项目类型选择比对源（2026-09-02：本仓库经检测为 coding；
+# 判定依据=根副本 code-reading.md 是否含 coding 变体标记，保持"零漂移"不变量）
+if grep -q "CodeGraph" "$REPO_ROOT/.claude/rules/code-reading.md" 2>/dev/null; then
+  _cr_src="$CODE_READING_SOURCE_CODING"; _cu_src="$CODE_USAGE_SOURCE_CODING"
+else
+  _cr_src="$CODE_READING_SOURCE_NONCODING"; _cu_src="$CODE_USAGE_SOURCE_NONCODING"
+fi
+if ! diff -q "$_cr_src" "$REPO_ROOT/.claude/rules/code-reading.md" >/dev/null 2>&1; then
   framework_rules_sync_status=1
 fi
-if ! diff -q "$CODE_USAGE_SOURCE_NONCODING" \
-           "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
+if ! diff -q "$_cu_src" "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
   framework_rules_sync_status=1
 fi
 if [ "$framework_rules_sync_status" -eq 0 ]; then
