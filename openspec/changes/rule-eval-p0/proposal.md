@@ -14,7 +14,9 @@
 - **四端轨迹适配器**：claude -p / codex exec / pi -p / kimi -p 的 stream-json 各自封装为统一中间格式；
 - **确定性断言器**：事件匹配 + 产物检查 + 时间序检查，强制 gate `permission_denials`/`is_error`（防假绿），断言排除规则原文（防假阳），MCP 探针用 fake MCP server；
 - **三级车道与报告**：Tier-0 PR（零真实 CLI，mock 冒烟）、Tier-1 夜间 self-hosted 矩阵（8 探针 × 4 端 × 强弱模型 × 多 run）、Tier-2 手动（+可选 judge）；四张度量矩阵（遵循率 / MCP 使用率 / 弱模型保证度 / 跨端一致性）+ 对已提交基线的具名 diff 红灯；
-- **运行器工程面**：断点续跑、多层成本熔断、模型与 CLI 版本双 pin、transcript 全量留存回放。
+- **假绿防线双分类**：受管 deny 转改道率子度量（p1 成功路径不误判）、区块外 deny 判 FAIL、基础设施失败单独归因不入矩阵；启用前 fixture 取证真实 denial 字段结构；
+- **"未安装 Cadence"对照组**（第四 fixture 变体，量化规则边际效应）与**既有 session 审计表**（第五张观测表，不进 gate、不入 git）；
+- **运行器工程面**：断点续跑、多层成本熔断、每端 pin 当前配置模型（维护者裁定：四端模型各异，跨端一致性=实际配置口径）、CLI 版本锁、结果 JSON schema 版本化、transcript 分级保留、端级/runner 级降级、Tier-1 分夜轮转与滚动 7 夜聚合矩阵。
 
 范围限定：只测 4 个 skill（`pre-check`/`rule-config`/`mcp-configuration`/`project-rules-examples`）；不做触发识别测试（维护者直接 command 调用）；`project-analysis` 为 legacy 待废弃，不入集。
 
