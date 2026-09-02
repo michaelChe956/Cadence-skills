@@ -1,3 +1,10 @@
+<!-- cadence-tools:start -->
+cadence-tools:
+  - preferred: [Context7]
+    fallback: [WebSearch, WebFetch]
+    when: context7_configured
+<!-- cadence-tools:end -->
+
 ## MCP Server 使用规则
 
 > **MCP 工具使用规范**
@@ -109,6 +116,10 @@ codegraph serve --mcp
 2. 每个 provider 分别独立记录，禁止合并为单一总布尔值。`status` 仅限 `unknown`、`available`、`unavailable` 三态：`available` 直接调用，`unavailable` 跳过且不得在同一 scope 内无限重试，`unknown` 允许按首次流程探测；本次调用失败后也不得在同一 scope 内对该 provider 反复重试。
 3. 缓存文件损坏、schema 版本不识别或 scope 不匹配时，相关状态一律视为 `unknown` 并允许重新探测；MCP 配置变更、客户端重连或用户显式要求重检时，既有记录同样失效。
 4. 状态记录仅可包含固定白名单字段：scope 标识、生成时间、provider 名称、status、探测时间、探测方式与原因。不得记录 API Key、Authorization 凭据、原始错误响应正文、图片内容、MCP 返回正文或敏感 URL。项目 `.gitignore` 必须精确包含一行 `cadence/cache/mcp-availability/`，以排除该目录而非整个 `cadence/cache/`。
+
+### 子代理兜底链
+
+若你是子代理（subagent/task 派生会话）：联网搜索优先使用原生 `web_search`；其不可用或失败时，检查你的工具面有无 MCP 搜索工具（如 `webSearchPrime`）并改用；两者皆不可用时，向主会话报告"搜索通道不可用"，由主会话接手，不得放弃任务或编造结果。主会话收到该报告后应自行完成搜索并回传结论；不得因通道不可用而丢弃子任务。
 
 ### 智普视觉理解 MCP（可选）
 
