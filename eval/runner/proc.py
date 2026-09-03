@@ -72,7 +72,15 @@ def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
     fills = {"{prompt}": prompt, "{model}": model,
              "{turns}": str(max_turns if max_turns is not None else DEFAULT_TURNS)}
     argv = []
+    skip_next = False
     for part in template:
+        if skip_next:
+            skip_next = False
+            continue
+        # 空模型时不传 --model {model}（用 CLI 默认配置）
+        if not fills["{model}"] and part == "--model":
+            skip_next = True
+            continue
         for key, value in fills.items():
             if key in part:
                 part = part.replace(key, value)
