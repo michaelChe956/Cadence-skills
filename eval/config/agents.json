@@ -36,15 +36,17 @@
     }
   },
   "kimi": {
-    "enabled": false,
+    "enabled": true,
     "executable": "kimi",
     "pinned_model": "",
     "strong_model": "",
     "cli_version": "",
     "capture": "session",
     "max_turns": null,
-    "skill_env": {
-      "KIMI_CODE_CONFIG_DIR": "{fixture_home}/.kimi-code"
-    }
+    "skill_env": {},
+    "argv_extra": [
+      "--skills-dir",
+      "{fixture_home}/.kimi-code/skills"
+    ]
   }
 }

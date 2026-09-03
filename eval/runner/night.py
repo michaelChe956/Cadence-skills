@@ -25,6 +25,12 @@ def _enabled_agents(agents_cfg: dict) -> list:
     return [name for name, cfg in agents_cfg.items() if cfg.get("enabled")]
 
 
+def _resolved_argv_extra(agents_cfg: dict, agent: str, fixture) -> list:
+    """agents.json 的 argv_extra 列表，{fixture_home} 占位符替换为 fixture.home。"""
+    raw = (agents_cfg.get(agent) or {}).get("argv_extra") or []
+    return [str(v).replace("{fixture_home}", str(fixture.home)) for v in raw]
+
+
 def _resolved_skill_env(agents_cfg: dict, agent: str, fixture) -> Optional[dict]:
     """将配置中的 fixture_home 占位符替换为隔离 fixture HOME。"""
     raw = (agents_cfg.get(agent) or {}).get("skill_env") or {}
@@ -63,6 +69,9 @@ def _save_run(nightly: Path, run_id: str, result: dict, traj) -> None:
     ifmt.dump(traj, runs / f"{run_id}.intermediate.json")
 
 
+_agents_cfg_global = {}
+
+
 def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
                      run_id, results_dir, transcripts_dir, base_dir, theme="orders",
                      mock_bin_dir=None, variant="installed", real_home=False,
@@ -82,12 +91,13 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         "<fixture>", str(fixture.root))
     if real_home and skill_env:
         proc.link_agent_auth(agent, fixture)
+    _argv_extra = _resolved_argv_extra(_agents_cfg_global, agent, fixture) if real_home else None
     out = proc.run_cli(
         agent, prompt, cwd=fixture.root,
         home=None if real_home else fixture.home, pins=pins,
         timeout_s=policy.get("per_run_timeout_s", 900),
         env_extra=dict(prompt_env, EVAL_PROMPT=prompt), bin_dir=mock_bin_dir,
-        out_dir=transcripts_dir, skill_env=skill_env,
+        out_dir=transcripts_dir, skill_env=skill_env, argv_extra=_argv_extra,
         session_root=fixture.home if real_home and skill_env else None)
     transcript = out.get("transcript_path") or ""
     if transcript and Path(transcript).is_file():

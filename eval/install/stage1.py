@@ -91,7 +91,15 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
             "skill_env": skill_env,
         }
         if real_cli:
-            cli_kwargs["argv_extra"] = REAL_STAGE1_ARGV_EXTRA.get(agent)
+            cli_kwargs["argv_extra"] = list(REAL_STAGE1_ARGV_EXTRA.get(agent) or [])
+            # agents.json 的 argv_extra（如 kimi 的 --skills-dir）也追加
+            from eval.runner.night import _resolved_argv_extra as _rae
+            from eval.runner import guards as _guards
+            try:
+                _cfg = _guards.load_config(fixture.repo / "eval" / "config" / "agents.json")
+                cli_kwargs["argv_extra"].extend(_rae(_cfg, agent, fixture))
+            except Exception:
+                pass
         out = cli(agent, spec["prompt"], **cli_kwargs)
         final_text = proc.extract_final_text(agent, out.get("transcript_path") or "")
         if spec["name"] == "pre-check":
