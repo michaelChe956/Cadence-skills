@@ -207,6 +207,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         fixture = gen.make_fixture("fresh", stage_base, repo_root, theme=plan["theme"])
         fixtures[agent] = fixture
         skill_env = _resolved_skill_env(agents_cfg, agent, fixture) if real_home else None
+        if real_home:
+            proc.link_agent_auth(agent, fixture)
         mock_verify = (lambda root: 0) if mock else None
         stage_report = stage1.run_stage1(
             agent, fixture, pins, timeout_s=policy.get("stage1_timeout_s", 1200),
