@@ -4,7 +4,7 @@
     "executable": "claude",
     "pinned_model": "glm-5.3",
     "strong_model": "glm-5.3",
-    "cli_version": "2.1.247",
+    "cli_version": "",
     "capture": "stdout",
     "max_turns": 40,
     "skill_env": {
@@ -16,7 +16,7 @@
     "executable": "codex",
     "pinned_model": "gpt-5.4",
     "strong_model": null,
-    "cli_version": "0.148.0",
+    "cli_version": "",
     "capture": "stdout",
     "max_turns": null,
     "skill_env": {
@@ -28,7 +28,7 @@
     "executable": "pi",
     "pinned_model": "glm-5.3",
     "strong_model": null,
-    "cli_version": "0.84.4",
+    "cli_version": "",
     "capture": "session",
     "max_turns": null,
     "skill_env": {
@@ -40,7 +40,7 @@
     "executable": "kimi",
     "pinned_model": "kimi-code/kimi-for-coding",
     "strong_model": null,
-    "cli_version": "0.39.1",
+    "cli_version": "",
     "capture": "session",
     "max_turns": null,
     "skill_env": {
