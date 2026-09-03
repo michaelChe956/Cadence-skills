@@ -1,0 +1,42 @@
+{
+  "claude": {
+    "enabled": true,
+    "executable": "claude",
+    "pinned_model": "glm-5.3",
+    "strong_model": "glm-5.3",
+    "cli_version": "2.1.247",
+    "capture": "stdout",
+    "max_turns": 40,
+    "skill_env": {"CLAUDE_CONFIG_DIR": "{fixture_home}/.claude"}
+  },
+  "codex": {
+    "enabled": true,
+    "executable": "codex",
+    "pinned_model": "gpt-5.4",
+    "strong_model": null,
+    "cli_version": "",
+    "capture": "stdout",
+    "max_turns": null,
+    "skill_env": {"CODEX_HOME": "{fixture_home}/.codex"}
+  },
+  "pi": {
+    "enabled": true,
+    "executable": "pi",
+    "pinned_model": "glm-5.3",
+    "strong_model": null,
+    "cli_version": "",
+    "capture": "session",
+    "max_turns": null,
+    "skill_env": {"PI_CONFIG_DIR": "{fixture_home}/.pi"}
+  },
+  "kimi": {
+    "enabled": false,
+    "executable": "kimi",
+    "pinned_model": "kimi-code/kimi-for-coding",
+    "strong_model": null,
+    "cli_version": "",
+    "capture": "session",
+    "max_turns": null,
+    "skill_env": {"KIMI_CODE_CONFIG_DIR": "{fixture_home}/.kimi-code"}
+  }
+}
