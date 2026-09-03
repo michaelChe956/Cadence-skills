@@ -12,7 +12,7 @@
     }
   },
   "codex": {
-    "enabled": true,
+    "enabled": false,
     "executable": "codex",
     "pinned_model": "",
     "strong_model": "",
