@@ -16,6 +16,14 @@ from eval.runner import proc
 V3_BLOCK_RE = re.compile(
     r"<!-- cadence-managed:openspec-superpowers-routing:v3:start -->.*?v3:end -->", re.S)
 
+REAL_STAGE1_ARGV_EXTRA = {
+    "claude": ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"],
+    # codex/pi/kimi 的真实策略属首夜 Runbook 核定项，claude 先行。
+    "codex": [],
+    "pi": [],
+    "kimi": [],
+}
+
 
 def _tree_hash(directory: Path) -> dict:
     out = {}
@@ -70,13 +78,21 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
     verify = verify or _default_verify(repo)
     extra: dict = {}
     commands_report = []
+    real_cli = cli is proc.run_cli
     for spec in STAGE1_COMMANDS:
         before = _tree_hash(root)
-        out = cli(agent, spec["prompt"], cwd=root,
-                  home=None if skill_env else home, pins=pins,
-                  timeout_s=timeout_s,
-                  env_extra={"EVAL_STAGE": "stage1", "EVAL_COMMAND": spec["name"]},
-                  bin_dir=bin_dir, skill_env=skill_env)
+        cli_kwargs = {
+            "cwd": root,
+            "home": None if skill_env else home,
+            "pins": pins,
+            "timeout_s": timeout_s,
+            "env_extra": {"EVAL_STAGE": "stage1", "EVAL_COMMAND": spec["name"]},
+            "bin_dir": bin_dir,
+            "skill_env": skill_env,
+        }
+        if real_cli:
+            cli_kwargs["argv_extra"] = REAL_STAGE1_ARGV_EXTRA.get(agent)
+        out = cli(agent, spec["prompt"], **cli_kwargs)
         final_text = proc.extract_final_text(agent, out.get("transcript_path") or "")
         if spec["name"] == "pre-check":
             extra["pre_check_clean"] = before == _tree_hash(root)

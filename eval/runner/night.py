@@ -80,6 +80,8 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         "EVAL_STAGE": "probe", "EVAL_CWD": str(fixture.root)})
     prompt = prompt_env["EVAL_PROMPT"].replace("{module}", theme).replace(
         "<fixture>", str(fixture.root))
+    if real_home and skill_env:
+        proc.link_agent_auth(agent, fixture)
     out = proc.run_cli(
         agent, prompt, cwd=fixture.root,
         home=None if real_home else fixture.home, pins=pins,

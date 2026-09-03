@@ -21,6 +21,38 @@ INVOCATIONS = {
     "kimi": {"argv": ["kimi", "-p", "{prompt}", "--model", "{model}"], "capture": "session"},
 }
 
+# 各端配置重定向（skill_env）同时会带走凭证目录——真实模式需把真实凭证
+# 符号链接进 fixture 配置目录（本体不动，temp 清理自动回收）。
+AUTH_LINKS = {
+    "claude": [(".claude/settings.json", ".claude/settings.json"),
+               (".claude/.credentials.json", ".claude/.credentials.json")],
+    "codex": [(".codex/auth.json", ".codex/auth.json")],
+    "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json")],
+    "kimi": [(".kimi-code/credentials", ".kimi-code/credentials"),
+             (".kimi-code/oauth", ".kimi-code/oauth")],
+}
+
+
+def link_agent_auth(agent: str, fixture) -> int:
+    """把真实 HOME 的凭证文件软链进 fixture 隔离目录；返回成功链接数。
+
+    源文件不存在时跳过（该端可能未登录或路径名有出入——首夜 Runbook 核定项）。
+    """
+    import os
+    linked = 0
+    for rel_src, rel_dst in AUTH_LINKS.get(agent, []):
+        src = Path.home() / rel_src
+        dst = Path(fixture.home) / rel_dst
+        if not src.is_file():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists() or dst.is_symlink():
+            continue
+        os.symlink(src, dst)
+        linked += 1
+    return linked
+
+
 DEFAULT_TURNS = 40
 PROMPT_ENV = "EVAL_PROMPT"
 
@@ -30,10 +62,14 @@ SESSION_PATTERNS = {
 }
 
 
-def build_argv(agent, model, max_turns=None, prompt_env=PROMPT_ENV):
-    """按端模板组装 argv；prompt 占位符只从环境变量取值（spec：MUST NOT 内联 shell）。"""
+def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
+    """按端模板组装 argv；prompt 作为单独参数传入，不内联 shell。
+
+    显式传入的非空 prompt 优先；未传入时才回退读取环境变量，以兼容
+    直接调用 build_argv 的旧用法。
+    """
     template = list(INVOCATIONS[agent]["argv"])
-    prompt = os.environ.get(prompt_env, "")
+    prompt = prompt if prompt else os.environ.get(prompt_env, "")
     fills = {"{prompt}": prompt, "{model}": model,
              "{turns}": str(max_turns if max_turns is not None else DEFAULT_TURNS)}
     argv = []
@@ -59,8 +95,12 @@ def _find_newest(home: Path, patterns: list, since_ts: float) -> Optional[Path]:
 
 
 def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
-            bin_dir=None, out_dir=None, skill_env=None, session_root=None):
+            bin_dir=None, out_dir=None, skill_env=None, session_root=None,
+            argv_extra=None):
     """执行一次端调用并捕获轨迹。返回 dict（见 Interfaces）。
+
+    ``argv_extra`` 会追加到 ``build_argv`` 生成的 argv 末尾，用于真实模式按
+    调用目的附加权限参数；mock 模式可忽略此参数。
 
     env 注入：EVAL_PROMPT 由本函数写入子进程 env；PATH 前置 bin_dir（mock 模式）。
     HOME 策略：home 非 None 时覆写 HOME（mock/隔离模式）；home=None 时不覆写
@@ -83,7 +123,10 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
         env.update({k: str(v) for k, v in env_extra.items()})
     if bin_dir is not None:
         env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
-    argv = build_argv(agent, pins.get("pinned_model", ""), pins.get("max_turns"))
+    argv = build_argv(agent, pins.get("pinned_model", ""), pins.get("max_turns"),
+                      prompt=env[PROMPT_ENV])
+    if argv_extra:
+        argv.extend(argv_extra)
     started = time.time()
     capture_dir = Path(out_dir) if out_dir is not None else Path(tempfile.gettempdir())
     capture_dir.mkdir(parents=True, exist_ok=True)

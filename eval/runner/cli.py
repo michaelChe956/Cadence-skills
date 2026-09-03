@@ -60,7 +60,8 @@ def cmd_forensics_denial(args):
     """调用真实 claude 取证并要求至少捕获一个 denial 事件。"""
     from eval.runner import forensics
     path = forensics.forensics_denial(
-        REPO_ROOT, Path(args.base).resolve(), {"pinned_model": args.model})
+        REPO_ROOT, Path(args.base).resolve(), {"pinned_model": args.model},
+        variant=args.variant)
     import json
     doc = json.loads(path.read_text(encoding="utf-8"))
     return 0 if doc["denial_events_raw"] else 1
@@ -160,6 +161,8 @@ def build_parser():
     p = sub.add_parser("forensics-denial",
                        help="fixture 人造真实 denial 取证（真实 claude，self-hosted）")
     p.add_argument("--base", required=True, help="工作基目录（临时目录）")
+    p.add_argument("--variant", default="mcp_pre", choices=["fresh", "v3", "mcp_pre"],
+                    help="取证 fixture 变体（默认 mcp_pre，确保 codegraph gate 成立）")
     p.add_argument("--model", default="glm-5.3")
     p.set_defaults(func=cmd_forensics_denial)
     p = sub.add_parser("verify-kimi", help="kimi 单端先行验证（真实 CLI）")

@@ -53,3 +53,20 @@ class TestClaudeAdapter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_real_denial_evidence_replay(self):
+        """ut-claude-real-deny-replay：取证证据回放——DENIAL_MARKERS 命中真实字段。"""
+        from pathlib import Path
+        evidence = Path(__file__).parent.parent / "evidence" / \
+            "denial-fields-claude-2026-09-03.json"
+        if not evidence.is_file():
+            self.skipTest("取证证据文件不存在（首夜前未生成属正常）")
+        data = json.loads(evidence.read_text(encoding="utf-8"))
+        if not data.get("denial_events_raw"):
+            self.skipTest("证据中无 denial 事件（未跑取证）")
+        raw = data["denial_events_raw"][0]
+        content = raw.get("content", str(raw))
+        self.assertTrue(
+            any(marker in content.lower()
+                for marker in ClaudeAdapter.DENIAL_MARKERS),
+            f"DENIAL_MARKERS 未命中真实 denial 文案：{content[:80]}")
