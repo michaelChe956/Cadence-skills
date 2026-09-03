@@ -1,0 +1,119 @@
+name: Eval CI
+
+on:
+  pull_request:
+    paths:
+      - "eval/**"
+      - "cadence-init/skills/pre-check/**"
+      - "cadence-init/skills/rule-config/**"
+      - "cadence-init/skills/mcp-configuration/**"
+      - "cadence-init/skills/project-rules-examples/**"
+      - ".github/workflows/eval.yml"
+  push:
+    branches: [main]
+    paths:
+      - "eval/**"
+      - "cadence-init/skills/pre-check/**"
+      - "cadence-init/skills/rule-config/**"
+      - "cadence-init/skills/mcp-configuration/**"
+      - "cadence-init/skills/project-rules-examples/**"
+      - ".github/workflows/eval.yml"
+  schedule:
+    - cron: "0 19 * * *"  # UTC 19:00 = 北京时间次日 03:00，夜间窗口
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-tier0:
+    name: Tier-0 零真实 CLI（单测 + mock 冒烟 + 离线重跑）
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: eval 单元测试（unittest 全量）
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s eval/tests -t . -v
+
+      - name: mock 冒烟（阶段一四端全绿）
+        run: |
+          set -euo pipefail
+          python3 -m eval.runner.cli smoke
+
+      - name: 离线重跑（断言器回归防线）
+        run: |
+          set -euo pipefail
+          python3 -m eval.runner.cli rerun \
+            --transcripts eval/transcripts \
+            --golden eval/transcripts/golden-verdicts.json
+
+  runner-probe:
+    name: 云端探活（防 self-hosted 排队超时）
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+    steps:
+      - name: 查询 cadence-eval runner 在线状态
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.EVAL_RUNNER_CHECK_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"   # 未配 token：默认放行，Tier-1 首步自检兜底
+            exit 0
+          fi
+          online=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/actions/runners" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for r in d.get("runners", []) if any(l.get("name") == "cadence-eval" for l in r.get("labels", [])) and r.get("status")=="online"))')
+          echo "available=$( [ "${online:-0}" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+  eval-tier1-nightly:
+    name: Tier-1 夜间矩阵（self-hosted；付费前 mock 自检）
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      needs.runner-probe.outputs.available == 'true'
+    needs: runner-probe
+    runs-on: [self-hosted, cadence-eval]
+    timeout-minutes: 480
+    env:
+      EVAL_BASE: $HOME/eval-runs
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 付费矩阵前 mock 自检（harness 自身无误才进真实 CLI）
+        run: |
+          set -euo pipefail
+          python3 -m eval.runner.cli smoke
+
+      - name: 夜间流水线（阶段一 + 探针 + 对照组；断点续跑/熔断内置）
+        run: |
+          set -euo pipefail
+          NIGHT_DATE="$(TZ=Asia/Shanghai date +%F)"  # 夜历法按北京时间判定（与调度表同口径）
+          python3 -m eval.runner.cli night --date "$NIGHT_DATE" --base "$EVAL_BASE"
+
+      - name: 四矩阵 + 双键基线 diff（红灯则本 job 失败）
+        run: |
+          set -euo pipefail
+          NIGHT_DATE="$(TZ=Asia/Shanghai date +%F)"  # 与上一步同夜同口径
+          python3 -m eval.runner.cli report --base "$EVAL_BASE"
+
+      - name: Job Summary（连续失败端置顶告警）
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORT="$(ls -1 "$EVAL_BASE"/reports/eval/*/report.md 2>/dev/null | tail -1 || true)"
+          if [ -n "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "本夜无报告产出（可能全部 skip：runner 离线/配额耗尽——不误红）" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
