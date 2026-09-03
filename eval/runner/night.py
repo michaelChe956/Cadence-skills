@@ -6,6 +6,7 @@
 import json
 import shutil
 import time
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -195,84 +196,102 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
     breaker = guards.CircuitBreaker(policy)
     fixtures = {}
     # 阶段一先完成，避免 strong 行引用不存在的 fixture。
-    for agent in plan["agents"]:
-        pins = dict(agents_cfg[agent])
+    # 并行执行四端（policy.parallel_agents 控制，默认 4，mock 串行）
+    _max_workers = policy.get("parallel_agents", 4 if not mock else 1)
+    _lock = threading.Lock()
+    _counters = {"sessions": 0, "error_streak": 0}
+    _breaker = guards.CircuitBreaker(policy)
+
+    def _agent_pipeline(ag):
+        _pins = dict(agents_cfg[ag])
         if not mock:
-            ok_version, message = proc.cli_version_check(agent, pins)
-            if not ok_version:
-                guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", agent, False)
-                print(f"[night] {agent} 版本锁失败，标 unavailable：{message}")
-                continue
-        stage_base = base_dir / "stage1" / date_str / agent
-        fixture = gen.make_fixture("fresh", stage_base, repo_root, theme=plan["theme"])
-        fixtures[agent] = fixture
-        skill_env = _resolved_skill_env(agents_cfg, agent, fixture) if real_home else None
+            ok_ver, msg = proc.cli_version_check(ag, _pins)
+            if not ok_ver:
+                guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
+                return ag, None, f"[{ag}] 版本锁失败：{msg}"
+        _stage_base = base_dir / "stage1" / date_str / ag
+        _fx = gen.make_fixture("fresh", _stage_base, repo_root, theme=plan["theme"])
+        _se = _resolved_skill_env(agents_cfg, ag, _fx) if real_home else None
         if real_home:
-            proc.link_agent_auth(agent, fixture)
-        mock_verify = (lambda root: 0) if mock else None
-        stage_report = stage1.run_stage1(
-            agent, fixture, pins, timeout_s=policy.get("stage1_timeout_s", 1200),
-            bin_dir=bin_dir, verify=mock_verify, skill_env=skill_env)
-        idem_report = idempotency.run_idempotency(
-            agent, fixture, pins, passes=2, bin_dir=bin_dir, verify=mock_verify,
-            skill_env=skill_env)
-        if not stage_report.get("ok") or not idem_report.get("stable"):
-            guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", agent, False)
-            print(f"[night] {agent} 阶段一/幂等失败，跳过其探针")
-            continue
-        if agent in plan["v3_agents"]:
-            v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / agent,
-                                     repo_root, theme=plan["theme"])
-            v3_report = stage1.run_stage1(
-                agent, v3_fx, pins, timeout_s=policy.get("stage1_timeout_s", 1200),
-                bin_dir=bin_dir, verify=mock_verify,
-                skill_env=_resolved_skill_env(agents_cfg, agent, v3_fx) if real_home else None)
-            if not v3_report.get("ok"):
-                guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", agent, False)
-                continue
-        guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", agent, True)
-        for probe_id in plan["probe_ids"]:
-            variant_idx = prb.variant_for_night(probe_id, night_index(date_str))
-            for run_no in range(policy.get("runs_per_combo", 2)):
-                run_id = f"{date_str}-{agent}-{probe_id}-installed-{run_no}"
-                if guards.should_skip(runs_dir, run_id):
+            proc.link_agent_auth(ag, _fx)
+        _mv = (lambda root: 0) if mock else None
+        _sr = stage1.run_stage1(ag, _fx, _pins, timeout_s=policy.get("stage1_timeout_s", 1200),
+                                bin_dir=bin_dir, verify=_mv, skill_env=_se)
+        _ir = idempotency.run_idempotency(ag, _fx, _pins, passes=2, bin_dir=bin_dir,
+                                           verify=_mv, skill_env=_se)
+        if not _sr.get("ok") or not _ir.get("stable"):
+            guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
+            return ag, _fx, f"[{ag}] 阶段一/幂等失败，跳过其探针"
+        if ag in plan["v3_agents"]:
+            _v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / ag,
+                                      repo_root, theme=plan["theme"])
+            _v3r = stage1.run_stage1(ag, _v3_fx, _pins, timeout_s=policy.get("stage1_timeout_s", 1200),
+                                     bin_dir=bin_dir, verify=_mv,
+                                     skill_env=_resolved_skill_env(agents_cfg, ag, _v3_fx) if real_home else None)
+            if not _v3r.get("ok"):
+                guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
+                return ag, _fx, f"[{ag}] v3 升级失败"
+        guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, True)
+        from eval.runner.schedule import night_index
+        for pid in plan["probe_ids"]:
+            _vidx = prb.variant_for_night(pid, night_index(date_str))
+            for rn in range(policy.get("runs_per_combo", 2)):
+                _rid = f"{date_str}-{ag}-{pid}-installed-{rn}"
+                if guards.should_skip(runs_dir, _rid):
                     continue
-                trip, reason = breaker.check(session_count, (time.time() - started) / 60, error_streak)
-                if trip:
-                    print(f"[night] 熔断触发（{reason}），剩余组合次日补跑")
-                    # 熔断也必须完成真实 HOME 漂移取证并产出当前窗口报告，不能
-                    # 因提前 return 丢失 drift 观测；报告无基线时不引入红灯。
-                    _record_global_drift(nightly, global_before, global_root)
-                    from eval.runner import report as rep
-                    return rep.write_report(base_dir, baseline_path=None,
-                                            config_dir=config_dir, end_date=date_str)
-                result = run_single_probe(
-                    agent, probe_id, variant_idx, fixture, pins, policy, run_id,
-                    runs_dir, transcripts_dir, base_dir / "stage1" / date_str / agent,
+                with _lock:
+                    _trip, _tr = _breaker.check(
+                        _counters["sessions"], (time.time() - started) / 60,
+                        _counters["error_streak"])
+                if _trip:
+                    return ag, _fx, f"[{ag}] 熔断触发（{_tr}）"
+                _res = run_single_probe(ag, pid, _vidx, _fx, _pins, policy, _rid,
+                    runs_dir, transcripts_dir, _stage_base,
                     theme=plan["theme"], mock_bin_dir=bin_dir, real_home=real_home,
-                    skill_env=skill_env)
-                session_count += 1
-                if result.get("verdict") == "INFRA_FAIL":
-                    error_streak += 1
-                else:
-                    # PASS、FAIL 以及 MODEL_DRIFT 都表示本轮已取得端响应；
-                    # MODEL_DRIFT 出矩阵，但不得继承基础设施错误熔断 streak。
-                    error_streak = 0
-        if agent in plan["control_agents"]:
-            control_base = base_dir / "control" / date_str / agent
-            control_fx = gen.make_fixture("control", control_base, repo_root,
-                                           theme=plan["theme"])
-            for probe_id in prb.CONTROL_PROBES:
-                variant_idx = prb.variant_for_night(probe_id, night_index(date_str))
-                for run_no in range(policy.get("runs_per_combo", 2)):
-                    run_id = f"{date_str}-{agent}-{probe_id}-control-{run_no}"
-                    if guards.should_skip(runs_dir, run_id):
+                    skill_env=_se)
+                with _lock:
+                    _counters["sessions"] += 1
+                    if _res.get("verdict") == "INFRA_FAIL":
+                        _counters["error_streak"] += 1
+                    else:
+                        _counters["error_streak"] = 0
+        if ag in plan["control_agents"]:
+            _cb = base_dir / "control" / date_str / ag
+            _cfx = gen.make_fixture("control", _cb, repo_root, theme=plan["theme"])
+            for pid in prb.CONTROL_PROBES:
+                _vidx = prb.variant_for_night(pid, night_index(date_str))
+                for rn in range(policy.get("runs_per_combo", 2)):
+                    _rid = f"{date_str}-{ag}-{pid}-control-{rn}"
+                    if guards.should_skip(runs_dir, _rid):
                         continue
-                    run_single_probe(
-                        agent, probe_id, variant_idx, control_fx, pins, policy, run_id,
-                        runs_dir, transcripts_dir, control_base, theme=plan["theme"],
-                        mock_bin_dir=bin_dir, variant="control", real_home=real_home)
-                    session_count += 1
+                    run_single_probe(ag, pid, _vidx, _cfx, _pins, policy, _rid,
+                                     runs_dir, transcripts_dir, _cb,
+                                     theme=plan["theme"], mock_bin_dir=bin_dir,
+                                     variant="control", real_home=real_home)
+                    with _lock:
+                        _counters["sessions"] += 1
+        return ag, _fx, f"[{ag}] 完成"
+
+    if _max_workers <= 1:
+        for ag in plan["agents"]:
+            _, fx, msg = _agent_pipeline(ag)
+            print(msg)
+            if fx:
+                fixtures[ag] = fx
+    else:
+        with ThreadPoolExecutor(max_workers=_max_workers) as _pool:
+            _futs = {_pool.submit(_agent_pipeline, ag): ag for ag in plan["agents"]}
+            for _fut in as_completed(_futs):
+                ag = _futs[_fut]
+                try:
+                    _, fx, msg = _fut.result()
+                    print(msg)
+                    if fx:
+                        fixtures[ag] = fx
+                except Exception as exc:
+                    print(f"[{ag}] 线程异常：{exc}")
+
+    session_count = _counters["sessions"]
     session_count += run_strong_rows(
         date_str, plan, agents_cfg, fixtures, policy, runs_dir, transcripts_dir,
         base_dir, mock_bin_dir=bin_dir, real_home=real_home)
