@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from eval.adapters import get_adapter
+from eval.runner import guards, night
 from eval.fixtures import generator as gen
 from eval.install import stage1
 from eval.runner import proc
@@ -20,6 +21,10 @@ def verify(repo_root: Path, base_dir: Path, pins: dict) -> int:
     with tempfile.TemporaryDirectory(dir=str(base_dir)) as tmp:
         base = Path(tmp)
         fixture = gen.make_fixture("fresh", base, repo_root)
+        agents_cfg = guards.load_config(
+            repo_root / "eval" / "config" / "agents.json")
+        skill_env = night._resolved_skill_env(agents_cfg, "kimi", fixture)
+        proc.link_agent_auth("kimi", fixture)
 
         ok_version, version_detail = proc.cli_version_check("kimi", pins)
         checks.append(("cli-version", ok_version, version_detail))
@@ -28,9 +33,11 @@ def verify(repo_root: Path, base_dir: Path, pins: dict) -> int:
             "kimi",
             "请只回答：OK",
             cwd=fixture.root,
-            home=fixture.home,
+            home=None,
             pins=pins,
             timeout_s=300,
+            skill_env=skill_env,
+            session_root=fixture.home,
             env_extra={"EVAL_STAGE": "probe", "EVAL_PROBE_ID": "P4"},
         )
         transcript = output.get("transcript_path") or ""
@@ -51,7 +58,8 @@ def verify(repo_root: Path, base_dir: Path, pins: dict) -> int:
             )
         checks.append(("model-readback", trajectory_ok, trajectory_detail))
 
-        report = stage1.run_stage1("kimi", fixture, pins, timeout_s=1800)
+        report = stage1.run_stage1("kimi", fixture, pins, timeout_s=1800,
+                                  skill_env=skill_env)
         checks.append((
             "stage1",
             report["ok"],

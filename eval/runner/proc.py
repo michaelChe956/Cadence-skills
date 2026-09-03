@@ -28,8 +28,7 @@ AUTH_LINKS = {
                (".claude/.credentials.json", ".claude/.credentials.json")],
     "codex": [(".codex/auth.json", ".codex/auth.json")],
     "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json")],
-    "kimi": [(".kimi-code/credentials", ".kimi-code/credentials"),
-             (".kimi-code/oauth", ".kimi-code/oauth")],
+    "kimi": [(".kimi-code/credentials", ".kimi-code/credentials")],
 }
 
 
