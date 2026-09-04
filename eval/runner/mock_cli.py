@@ -26,12 +26,49 @@ def _emit(lines):
         sys.stdout.write(json.dumps(ln, ensure_ascii=False) + "\n")
 
 
-def _stage1_pre_check(cwd: Path) -> None:
-    """pre-check：只产出诊断报告（stdout），零写盘（断言 pre-check.zero-change）。"""
+def _stage1_pre_check(cwd: Path) -> dict:
+    """pre-check：稳定五 phase JSON 报告，fixture 已就绪时零写盘。"""
+    report = {
+        "overall": "success",
+        "steps": [{"name": n, "status": "ready", "action": "already-installed",
+                   "version": "fixture", "error": ""}
+                  for n in ("npx", "uvx", "ast-grep", "codegraph", "openspec", "pi-mcp-adapter")],
+        "phases": [
+            {"phase": "base-tools", "result": "skipped", "action": "phase-check", "duration_ms": 1,
+             "created": 0, "updated": 0, "skipped": 6, "conflicts": 0, "error": None},
+            {"phase": "openspec", "result": "skipped", "action": "phase-check", "duration_ms": 2,
+             "created": 0, "updated": 0, "skipped": 4, "conflicts": 0, "error": None},
+            {"phase": "superpowers-git", "result": "skipped", "action": "fetch-pull-ff-only", "duration_ms": 4,
+             "created": 0, "updated": 0, "skipped": 1, "conflicts": 0, "error": None,
+             "origin": "fixture-origin", "branch": "main", "before_revision": "abc", "after_revision": "abc"},
+            {"phase": "superpowers-links", "result": "skipped", "action": "all-skipped", "duration_ms": 1,
+             "created": 0, "updated": 0, "skipped": 56, "conflicts": 0, "error": None},
+            {"phase": "verify", "result": "skipped", "action": "all-skipped", "duration_ms": 1,
+             "created": 0, "updated": 0, "skipped": 1, "conflicts": 0, "error": None},
+        ],
+    }
+    return report
 
 
 def _stage1_rule_config(cwd: Path) -> None:
     """rule-config：规则清单 / L0 v4 / 权限区 / codex 内联区。"""
+    # mock 安装也复刻 OpenSpec 四端投影锚点，供 stage1 断言消费；pre-check 本身不写盘。
+    (cwd / ".claude" / "commands" / "opsx").mkdir(parents=True, exist_ok=True)
+    for base, prefix, suffix, count in (
+        (cwd / ".claude" / "skills", "openspec-", "", 1),
+        (cwd / ".agents" / "skills", "openspec-", "", 1),
+        (cwd / ".pi" / "skills", "openspec-", "", 5),
+        (cwd / ".pi" / "prompts", "opsx-", ".md", 5),
+        (cwd / ".kimi-code" / "skills", "openspec-", "", 5),
+    ):
+        for index in range(count):
+            path = base / f"{prefix}{index + 1}{suffix}"
+            if suffix:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# opsx prompt\n", encoding="utf-8")
+            else:
+                (path / "SKILL.md").parent.mkdir(parents=True, exist_ok=True)
+                (path / "SKILL.md").write_text("# openspec\n", encoding="utf-8")
     rules = cwd / ".claude" / "rules"
     rules.mkdir(parents=True, exist_ok=True)  # 先建目录再写文件
     for name in RULES_FILES:
@@ -135,11 +172,16 @@ def main(argv=None):
     probe_id = os.environ.get("EVAL_PROBE_ID", "P1")
     if stage == "stage1":
         command = os.environ.get("EVAL_COMMAND", "")
-        writer = STAGE1_WRITERS.get(command)  # pre-check/未知 command：零写盘
-        if writer is not None:
-            writer(cwd)
-        _emit([{"type": "result", "subtype": "success",
-                "result": f"诊断报告：{command or '检查'}完成", "duration_ms": 5000}])
+        if command == "pre-check":
+            report = _stage1_pre_check(cwd)
+            _emit([{"type": "result", "subtype": "success",
+                    "result": json.dumps(report, ensure_ascii=False), "duration_ms": 5000}])
+        else:
+            writer = STAGE1_WRITERS.get(command)
+            if writer is not None:
+                writer(cwd)
+            _emit([{"type": "result", "subtype": "success",
+                    "result": f"诊断报告：{command or '检查'}完成", "duration_ms": 5000}])
         return 0
     _emit(_probe_transcript(args.agent, probe_id))
     return 0

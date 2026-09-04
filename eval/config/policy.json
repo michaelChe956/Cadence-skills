@@ -2,6 +2,7 @@
   "runs_per_combo": 2,
   "per_run_timeout_s": 900,
   "stage1_timeout_s": 1200,
+  "stage1_pre_check_timeout_s": 240,
   "max_sessions_per_night": 80,
   "max_wall_minutes": 420,
   "max_error_streak": 6,

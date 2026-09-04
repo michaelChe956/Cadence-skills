@@ -228,7 +228,9 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         if real_home:
             proc.link_agent_auth(ag, _fx)
         _mv = (lambda root: 0) if mock else None
-        _sr = stage1.run_stage1(ag, _fx, _pins, timeout_s=policy.get("stage1_timeout_s", 1200),
+        _sr = stage1.run_stage1(ag, _fx, _pins,
+                                timeout_s=policy.get("stage1_timeout_s", 1200),
+                                pre_check_timeout_s=policy.get("stage1_pre_check_timeout_s", 240),
                                 bin_dir=bin_dir, verify=_mv, skill_env=_se)
         # 真实模式跳过幂等检查——CLI 会话非确定性（时间戳/顺序），byte-identical 不成立
         if mock:
@@ -242,7 +244,9 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         if ag in plan["v3_agents"]:
             _v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / ag,
                                       repo_root, theme=plan["theme"])
-            _v3r = stage1.run_stage1(ag, _v3_fx, _pins, timeout_s=policy.get("stage1_timeout_s", 1200),
+            _v3r = stage1.run_stage1(ag, _v3_fx, _pins,
+                                     timeout_s=policy.get("stage1_timeout_s", 1200),
+                                     pre_check_timeout_s=policy.get("stage1_pre_check_timeout_s", 240),
                                      bin_dir=bin_dir, verify=_mv,
                                      skill_env=_resolved_skill_env(agents_cfg, ag, _v3_fx) if real_home else None)
             if not _v3r.get("ok"):

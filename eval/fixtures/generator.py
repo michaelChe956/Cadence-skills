@@ -90,6 +90,61 @@ def _install_skills(repo_root: Path, home: Path) -> None:
                 link.symlink_to(entry)
 
 
+def make_superpowers_source(home: Path, count: int = 14) -> Path:
+    """构造隔离的有效 Superpowers Git work tree，另置非目标 sentinel。"""
+    source = Path(home) / ".agents" / "superpowers"
+    skills = source / "skills"
+    skills.mkdir(parents=True, exist_ok=True)
+    for index in range(count):
+        _write(skills / f"superpower-{index + 1}" / "SKILL.md", f"# fixture skill {index + 1}\n")
+    _write(skills / "knowledge-base-context" / "SKILL.md", "# non-target sentinel\n")
+    if not (source / ".git").is_dir():
+        _git_init(source)
+    remote = source.parent / "superpowers-origin.git"
+    if not (remote / "HEAD").is_file():
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    existing_origin = subprocess.run(["git", "remote", "get-url", "origin"], cwd=source,
+                                     capture_output=True, text=True).stdout.strip()
+    if not existing_origin:
+        subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=source, check=True)
+    subprocess.run(["git", "push", "-q", "-u", "origin", "main"], cwd=source, check=True)
+    return source
+
+
+def make_superpowers_layers(home: Path, source: Path) -> tuple:
+    """为四个消费层建立 source 条目的软链，保留非目标 sentinel 不投影。"""
+    source = Path(source) / "skills"
+    names = [p.name for p in sorted(source.iterdir()) if p.name != "knowledge-base-context"]
+    layers = tuple(Path(home) / rel for rel in (
+        ".agents/skills", ".codex/skills/skills", ".claude/skills", ".pi/agent/skills"))
+    for layer in layers:
+        layer.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            target = layer / name
+            if not target.exists() and not target.is_symlink():
+                target.symlink_to(source / name)
+    return layers
+
+
+def snapshot_superpowers_state(home: Path) -> dict:
+    """快照源、四层软链及非目标条目，供 eval runner/断言消费。"""
+    home = Path(home)
+    out = {}
+    for rel in (".agents/superpowers", ".agents/skills", ".codex/skills/skills",
+                ".claude/skills", ".pi/agent/skills"):
+        base = home / rel
+        if not base.exists() and not base.is_symlink():
+            continue
+        for p in sorted(base.rglob("*")) if base.is_dir() else []:
+            child = p.relative_to(home).as_posix()
+            if p.is_symlink():
+                out[child] = {"type": "link", "target": str(p.readlink())}
+            elif p.is_file():
+                out[child] = {"type": "file", "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+    return out
+
+
 def make_fixture(variant: str, base_dir: Path, repo_root: Path,
                  theme: str = "orders", install: bool = True) -> FixturePaths:
     if variant not in VARIANTS:
@@ -115,6 +170,8 @@ def make_fixture(variant: str, base_dir: Path, repo_root: Path,
     _git_init(root)
     if install:
         _install_skills(repo_root, home)
+        source = make_superpowers_source(home)
+        make_superpowers_layers(home, source)
     return FixturePaths(root=root, home=home, repo=repo_root)
 
 

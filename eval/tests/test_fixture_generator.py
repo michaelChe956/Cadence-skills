@@ -66,6 +66,19 @@ class TestFixtureGenerator(unittest.TestCase):
         toml = (fx.root / ".codex" / "config.toml").read_text(encoding="utf-8")
         self.assertIn("[mcp_servers.existing-server]", toml)
 
+    def test_superpowers_source_and_four_layers(self):
+        """ut-fx-superpowers：有效 Git 源、四层各 14 链且保留非目标 sentinel。"""
+        home = self.base / "home"
+        source = gen.make_superpowers_source(home)
+        layers = gen.make_superpowers_layers(home, source)
+        self.assertTrue((source / ".git").is_dir())
+        self.assertTrue((source / "skills" / "knowledge-base-context").is_dir())
+        names = [p.name for p in (source / "skills").iterdir()
+                 if p.name != "knowledge-base-context"]
+        self.assertEqual(len(names), 14)
+        for layer in layers:
+            self.assertEqual(sum(1 for p in layer.iterdir() if p.is_symlink()), 14)
+
     def test_fixture_files_leak_no_repo_path(self):
         """ut-fx-noleak：fixture 项目文本文件不含 Cadence 仓库路径（防泄漏 spec 场景）。"""
         fx = gen.make_fixture("fresh", self.base, REPO_ROOT)

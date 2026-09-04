@@ -10,6 +10,130 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+
+TARGET_HOME_LAYERS = (
+    ".agents/skills", ".codex/skills/skills", ".claude/skills", ".pi/agent/skills",
+)
+
+
+def _path_is_openspec_projection(rel: str) -> bool:
+    rel = rel.replace("\\", "/")
+    return (rel == ".claude/commands/opsx" or rel.startswith(".claude/commands/opsx/")
+            or rel.startswith(".claude/skills/openspec-")
+            or rel.startswith(".agents/skills/openspec-")
+            or rel.startswith(".pi/skills/") or rel.startswith(".pi/prompts/")
+            or rel.startswith(".kimi-code/skills/openspec-"))
+
+
+def _non_target_tree_hash(snapshot, root: Optional[Path] = None) -> dict:
+    """返回排除 OpenSpec 投影白名单后的 workspace 文件哈希。"""
+    if isinstance(snapshot, Path):
+        root = snapshot
+        snapshot = {}
+        if root.is_dir():
+            for p in sorted(root.rglob("*")):
+                if p.is_file() or p.is_symlink():
+                    rel = p.relative_to(root).as_posix()
+                    if _path_is_openspec_projection(rel):
+                        continue
+                    try:
+                        snapshot[rel] = ("link:" + str(p.read_link()) if p.is_symlink()
+                                         else hashlib.sha256(p.read_bytes()).hexdigest())
+                    except OSError:
+                        snapshot[rel] = "unreadable"
+    else:
+        snapshot = dict(snapshot or {})
+        snapshot = {str(k): v for k, v in snapshot.items()
+                    if not _path_is_openspec_projection(str(k))}
+    return snapshot
+
+
+def _phase_map(report: Optional[dict]) -> dict:
+    if not isinstance(report, dict) or not isinstance(report.get("phases"), list):
+        return {}
+    return {p.get("phase"): p for p in report["phases"]
+            if isinstance(p, dict) and isinstance(p.get("phase"), str)}
+
+
+def _count_named(path: Path, prefix: str = "", suffix: str = "") -> int:
+    if not path.is_dir():
+        return 0
+    return sum(1 for item in path.iterdir()
+               if item.name.startswith(prefix) and item.name.endswith(suffix))
+
+
+def _precheck_projection_ok(root: Path) -> tuple[bool, str]:
+    """按四端锚路径验证 OpenSpec 投影，不依赖 stdout 文案。"""
+    checks = {
+        ".claude (commands/opsx OR skills/openspec-*)": (
+            (root / ".claude" / "commands" / "opsx").is_dir()
+            or _count_named(root / ".claude" / "skills", "openspec-") > 0
+        ),
+        ".agents/skills/openspec-*": _count_named(root / ".agents/skills", "openspec-") > 0,
+        ".pi/skills/openspec-* (5)": _count_named(root / ".pi/skills", "openspec-") == 5,
+        ".pi/prompts/opsx-*.md (5)": _count_named(root / ".pi/prompts", "opsx-", ".md") == 5,
+        ".kimi-code/skills/openspec-* (5)": _count_named(root / ".kimi-code/skills", "openspec-") == 5,
+    }
+    bad = [path for path, ok in checks.items() if not ok]
+    return not bad, "缺少或数量错误的投影路径：" + ", ".join(bad) if bad else ""
+
+
+def _precheck_links_ok(home: Optional[Path], expected: int = 14) -> tuple[bool, str]:
+    """验证 Superpowers 源对应的四层链接恰为 expected 条。"""
+    if home is None:
+        return True, "skip: 未提供 HOME"
+    home = Path(home)
+    source = home / ".agents/superpowers/skills"
+    names = sorted(p.name for p in source.iterdir()) if source.is_dir() else []
+    names = [n for n in names if n != "knowledge-base-context"]
+    if len(names) != expected:
+        return False, f"源条目数量 {len(names)} != {expected}（{source}）"
+    failures = []
+    for layer_rel in TARGET_HOME_LAYERS:
+        layer = home / layer_rel
+        if layer.is_dir():
+            source_root = source.resolve()
+            extras = []
+            for item in layer.iterdir():
+                if item.name in names or not item.is_symlink():
+                    continue
+                try:
+                    item.resolve().relative_to(source_root)
+                except (OSError, ValueError):
+                    continue
+                extras.append(item.name)
+            failures.extend(
+                f"{layer_rel}/{name} 非目标条目（不在源目录枚举中）" for name in sorted(extras)
+            )
+        actual = 0
+        for name in names:
+            target = layer / name
+            if not target.is_symlink():
+                failures.append(f"{layer_rel}/{name} 非软链")
+                continue
+            try:
+                resolved = target.resolve()
+            except OSError:
+                failures.append(f"{layer_rel}/{name} 无法解析")
+                continue
+            if resolved != (source / name).resolve():
+                failures.append(f"{layer_rel}/{name} -> {resolved}（期望 {(source / name).resolve()}）")
+            else:
+                actual += 1
+        if actual != expected:
+            failures.append(f"{layer_rel} 链接数 {actual}/{expected}")
+    return not failures, "; ".join(failures)
+
+
+def _precheck_home_changed(home_info: object) -> tuple[bool, str]:
+    if not isinstance(home_info, dict) or "before" not in home_info or "after" not in home_info:
+        return True, "skip: 未提供 HOME 前后快照"
+    before = home_info.get("before") or {}
+    after = home_info.get("after") or {}
+    changed = sorted(set(before) ^ set(after) |
+                     {p for p in before if p in after and before[p] != after[p]})
+    return not changed, "HOME 非目标条目变化：" + ", ".join(changed) if changed else ""
+
 from eval.fixtures import generator as gen
 
 L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->"
@@ -59,12 +183,89 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
 
     # --- pre-check：诊断报告产出 + 项目文件零改动 ---
     report_text = texts.get("pre-check", "")
-    results.append(_ok("pre-check.report") if "诊断" in report_text or "检查" in report_text
-                   else _bad("pre-check.report", f"final_text 无诊断标记：{report_text[:80]!r}"))
+    report = extra.get("pre_check_report")
+    report_ok = (isinstance(report, dict) and report.get("overall") in ("success", "ok")
+                 and isinstance(report.get("steps"), list)
+                 and isinstance(report.get("phases"), list))
+    has_structured_report = isinstance(report, dict) and isinstance(report.get("phases"), list)
+    results.append(_ok("pre-check.report") if report_ok or "诊断" in report_text or "检查" in report_text
+                   else _bad("pre-check.report", f"final_text 无诊断标记或合法报告：{report_text[:80]!r}"))
     if variant == "fresh":  # v3/mcp_pre 本身有预置文件，零改动断言只对全新变体成立
         clean = extra.get("pre_check_clean")
         results.append(_ok("pre-check.zero-change") if clean is not False
                        else _bad("pre-check.zero-change", "pre-check 产生文件改动"))
+
+    # 结构化 pre-check 断言：先验证报告，再验证真实锚点。
+    phases = _phase_map(report)
+    expected_phases = ("base-tools", "openspec", "superpowers-git", "superpowers-links", "verify")
+    missing_phases = ([p for p in expected_phases if p not in phases]
+                      if has_structured_report else [])
+    projection_ok, projection_detail = _precheck_projection_ok(root)
+    # 直接调用断言器的旧单测没有 HOME/投影 fixture；集成 runner 总会传入 home，
+    # 因而只在有快照时把锚点作为硬断言，报告缺 phase 仍始终判红。
+    if missing_phases:
+        results.append(_bad("pre-check.projections",
+                            "报告缺少 phase：" + ", ".join(missing_phases)))
+    elif extra.get("pre_check_home") is None:
+        results.append(_ok("pre-check.projections", "skip: 未提供集成 HOME 快照"))
+    else:
+        results.append(_ok("pre-check.projections") if projection_ok
+                       else _bad("pre-check.projections", projection_detail))
+
+    if missing_phases:
+        results.append(_bad("pre-check.links", "报告缺少 phase：" + ", ".join(missing_phases)))
+    elif extra.get("pre_check_home") is None:
+        results.append(_ok("pre-check.links", "skip: 未提供集成 HOME 快照"))
+    else:
+        home_info = extra.get("pre_check_home")
+        home_path = home_info.get("path") if isinstance(home_info, dict) else home_info
+        links_ok, links_detail = _precheck_links_ok(Path(home_path).resolve()
+                                                     if isinstance(home_path, str)
+                                                     else home_path, 14)
+        results.append(_ok("pre-check.links") if links_ok else _bad("pre-check.links", links_detail))
+
+    phase_errors = []
+    for name in expected_phases:
+        phase = phases.get(name)
+        if phase is None:
+            continue
+        if phase.get("error") not in (None, ""):
+            phase_errors.append(f"{name}.error={phase.get('error')!r}")
+        if not all(key in phase for key in ("result", "action", "created", "updated", "skipped", "conflicts")):
+            phase_errors.append(f"{name} 缺少 result/action/计数字段")
+        writes = int(phase.get("created", 0) or 0) + int(phase.get("updated", 0) or 0)
+        if writes and phase.get("result") != "success":
+            phase_errors.append(f"{name} 有写入但 result={phase.get('result')!r}（必须 success）")
+        if not writes and int(phase.get("conflicts", 0) or 0) == 0 and phase.get("result") not in ("skipped", "success"):
+            phase_errors.append(f"{name} 零写入但 result={phase.get('result')!r}（应 skipped）")
+    git = phases.get("superpowers-git")
+    if git is not None:
+        for key in ("origin", "branch", "before_revision", "after_revision"):
+            if not git.get(key):
+                phase_errors.append(f"superpowers-git 缺少 {key}")
+    results.append(_ok("pre-check.phases") if (not phase_errors and not missing_phases)
+                   or (not has_structured_report)
+                   else _bad("pre-check.phases", "; ".join(phase_errors or ["缺少：" + ", ".join(missing_phases)])))
+
+    if not has_structured_report:
+        results.append(_ok("pre-check.performance", "skip: 未提供结构化 pre-check 报告"))
+    else:
+        calls = extra.get("pre_check_tool_calls")
+        duration = extra.get("pre_check_duration_s")
+        budget_errors = []
+        if not isinstance(calls, int) or calls > 5:
+            budget_errors.append(f"tool_calls={calls!r}，阈值 <=5")
+        try:
+            duration_value = float(duration)
+        except (TypeError, ValueError):
+            duration_value = None
+        if duration_value is None or duration_value > 120:
+            budget_errors.append(f"duration_s={duration!r}，阈值 <=120s")
+        results.append(_ok("pre-check.performance") if not budget_errors
+                       else _bad("pre-check.performance", "; ".join(budget_errors)))
+    home_ok, home_detail = _precheck_home_changed(extra.get("pre_check_home"))
+    results.append(_ok("pre-check.home", home_detail) if home_ok
+                   else _bad("pre-check.home", home_detail))
 
     # --- rule-config：规则清单 / L0 v4 / 权限区 / 内联区 / --verify ---
     rules_dir = root / ".claude" / "rules"

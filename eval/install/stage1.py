@@ -1,5 +1,6 @@
 """阶段一安装流水线：四 command 依序 headless 调用 + 断言表 + --verify 消费。"""
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -35,6 +36,75 @@ def _tree_hash(directory: Path) -> dict:
                 out[str(p.relative_to(directory))] = \
                     hashlib.sha256(p.read_bytes()).hexdigest()
     return out
+
+
+def _extract_precheck_report(text: str):
+    """从终文本扫描完整 JSON object；任意解析失败安全返回 ``None``。"""
+    if not isinstance(text, str):
+        return None
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text[index:])
+        except ValueError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get("phases"), list):
+            return value
+    return None
+
+
+def _count_tool_calls(transcript_path: str) -> int:
+    """仅统计 transcript 中的 ``tool_use`` 事件，不计脚本内部子命令。"""
+    if not transcript_path:
+        return 0
+    count = 0
+    try:
+        with open(transcript_path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                message = event.get("message") if isinstance(event, dict) else None
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, list):
+                    count += sum(1 for item in content
+                                 if isinstance(item, dict) and item.get("type") == "tool_use")
+    except OSError:
+        return 0
+    return count
+
+
+def _is_precheck_home_target(rel: str) -> bool:
+    rel = rel.replace("\\", "/")
+    return (rel.startswith(".agents/superpowers/") or rel == ".agents/superpowers"
+            or rel.startswith(".agents/skills/") or rel.startswith(".codex/skills/skills/")
+            or rel.startswith(".claude/skills/") or rel.startswith(".pi/agent/skills/")
+            or rel.startswith(".claude/commands/opsx/") or rel.startswith(".claude/skills/openspec-")
+            or rel.startswith(".agents/skills/openspec-") or rel.startswith(".pi/skills/")
+            or rel.startswith(".pi/prompts/") or rel.startswith(".kimi-code/skills/openspec-"))
+
+
+def _snapshot_precheck_home(home: Path) -> dict:
+    """HOME 非目标文件快照；投影、Superpowers 源与四层链接不纳入漂移比较。"""
+    home = Path(home)
+    snap = {}
+    if not home.is_dir():
+        return snap
+    for path in sorted(home.rglob("*")):
+        if not (path.is_file() or path.is_symlink()):
+            continue
+        rel = path.relative_to(home).as_posix()
+        if _is_precheck_home_target(rel):
+            continue
+        try:
+            snap[rel] = ("link:" + str(path.readlink()) if path.is_symlink()
+                         else hashlib.sha256(path.read_bytes()).hexdigest())
+        except OSError:
+            snap[rel] = "unreadable"
+    return snap
 
 
 def _default_verify(repo: Path) -> Callable[[Path], int]:
@@ -74,20 +144,21 @@ def _detect_variant(root: Path) -> tuple:
 
 
 def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
-               verify=None, bin_dir=None, skill_env=None):
+               verify=None, bin_dir=None, skill_env=None, pre_check_timeout_s=240):
     variant, outside_baseline = _detect_variant(fixture.root)
     root, home, repo = fixture.root, fixture.home, fixture.repo
     verify = verify or _default_verify(repo)
     extra: dict = {}
     commands_report = []
     real_cli = cli is proc.run_cli
+    precheck_home_before = _snapshot_precheck_home(home)
     for spec in STAGE1_COMMANDS:
         before = _tree_hash(root)
         cli_kwargs = {
             "cwd": root,
             "home": None if skill_env else home,
             "pins": pins,
-            "timeout_s": timeout_s,
+            "timeout_s": pre_check_timeout_s if spec["name"] == "pre-check" else timeout_s,
             "env_extra": {"EVAL_STAGE": "stage1", "EVAL_COMMAND": spec["name"]},
             "bin_dir": bin_dir,
             "skill_env": skill_env,
@@ -105,7 +176,13 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
         out = cli(agent, spec["prompt"], **cli_kwargs)
         final_text = proc.extract_final_text(agent, out.get("transcript_path") or "")
         if spec["name"] == "pre-check":
-            extra["pre_check_clean"] = before == _tree_hash(root)
+            extra["pre_check_clean"] = asrt._non_target_tree_hash(before, root) == asrt._non_target_tree_hash(_tree_hash(root), root)
+            extra["pre_check_report"] = _extract_precheck_report(final_text)
+            extra["pre_check_tool_calls"] = _count_tool_calls(out.get("transcript_path") or "")
+            extra["pre_check_duration_s"] = float(out.get("duration_s", 0.0))
+            extra["pre_check_home"] = {"path": str(home),
+                                        "before": precheck_home_before,
+                                        "after": _snapshot_precheck_home(home)}
         if spec["name"] == "rule-config":
             extra["rules_before"] = _tree_hash(root / ".claude" / "rules")
         commands_report.append({"name": spec["name"], "returncode": out["returncode"],

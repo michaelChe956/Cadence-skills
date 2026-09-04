@@ -194,12 +194,15 @@ class TestStage1Runner(unittest.TestCase):
         self.assertEqual(report["verify_exit"], 0)
 
     def test_stage1_collects_extra(self):
-        """ut-s1r-extra：runner 采集 pre-check 零改动与 rules_before 快照供断言表。"""
+        """ut-s1r-extra：runner 采集 pre-check 报告、调用数、耗时和 HOME 快照。"""
         report = stage1.run_stage1("claude", self.fx, {"pinned_model": "glm-5.3"},
                                    bin_dir=self.bin_dir, verify=lambda root: 0)
         names = [a["name"] for a in report["assertions"]]
         self.assertIn("pre-check.zero-change", names)
         self.assertIn("prx.not-rules", names)
+        self.assertEqual(report["commands"][0]["name"], "pre-check")
+        self.assertEqual(report["commands"][0]["duration_s"] >= 0, True)
+        self.assertEqual(report["commands"][0]["final_text"].find("superpowers-git") >= 0, True)
 
 
 if __name__ == "__main__":

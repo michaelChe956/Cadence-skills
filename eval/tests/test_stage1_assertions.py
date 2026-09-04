@@ -94,6 +94,50 @@ class TestStage1Assertions(unittest.TestCase):
                                      {"pre_check_clean": False})
         self.assertFalse(next(r for r in results if r.name == "pre-check.zero-change").ok)
 
+
+class TestPreCheckAssertions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "fixture"
+        self.root.mkdir()
+
+    def test_report_projections_links_phases_and_budget_green(self):
+        _installed_workspace(self.root)
+        report = {
+            "overall": "success", "steps": [],
+            "phases": [
+                {"phase": n, "result": "skipped", "action": "phase-check", "duration_ms": 12,
+                 "created": 0, "updated": 0, "skipped": 14, "conflicts": 0, "error": None}
+                for n in ("base-tools", "openspec", "superpowers-git", "superpowers-links", "verify")
+            ],
+        }
+        report["phases"][2].update({"action": "fetch-pull-ff-only", "origin": "fixture-origin", "branch": "main", "before_revision": "abc", "after_revision": "abc"})
+        results = asrt.assert_stage1(
+            "fresh", self.root, 0, dict(TEXTS),
+            {"pre_check_report": report, "pre_check_tool_calls": 1, "pre_check_duration_s": 8.0},
+        )
+        self.assertEqual([r.name for r in results if not r.ok], [])
+
+    def test_bad_report_or_budget_fails(self):
+        _installed_workspace(self.root)
+        results = asrt.assert_stage1(
+            "fresh", self.root, 0, dict(TEXTS),
+            {"pre_check_report": {"overall": "success", "steps": [], "phases": []},
+             "pre_check_tool_calls": 6, "pre_check_duration_s": 121.0},
+        )
+        by_name = {r.name: r for r in results}
+        self.assertFalse(by_name["pre-check.projections"].ok)
+        self.assertFalse(by_name["pre-check.performance"].ok)
+
+
+class TestStage1VariantAssertions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "fixture"
+        self.root.mkdir()
+
     def test_v3_upgrade_assertions(self):
         """ut-s1-v3：v3 变体断言升级+备份+区块外逐字不变。"""
         _installed_workspace(self.root)
