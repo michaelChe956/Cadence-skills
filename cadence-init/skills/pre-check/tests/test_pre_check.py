@@ -18,6 +18,39 @@ from helpers.fixture import (
 )
 
 
+NEGATIVE_CASES = {
+    1: "base-tools-failure",
+    2: "openspec-partial",
+    3: "superpowers-source-missing",
+    4: "superpowers-non-git",
+    5: "superpowers-zsh-multiple-candidates",
+    6: "links-correct",
+    7: "links-non-symlink-conflict",
+    8: "links-pi-missing-cadence",
+    9: "playwright-not-requested",
+    10: "report-cleanup",
+}
+
+
+class TestNegativeFixtureMatrix(unittest.TestCase):
+    def test_all_design_negative_fixtures_are_registered(self):
+        self.assertEqual(set(NEGATIVE_CASES), set(range(1, 11)))
+        for number, name in NEGATIVE_CASES.items():
+            with self.subTest(number=number):
+                self.assertTrue((Path(__file__).parent / "fixtures" / name).exists(), name)
+
+    def test_no_interrupt_failures_stop_downstream_writes(self):
+        # #7 的 no-interrupt 语义是备份→创建→验证成功，按设计口径不属于失败快返矩阵。
+        for number in (1, 3, 4, 5):
+            with self.subTest(number=number), isolated_fixture(NEGATIVE_CASES[number]) as fx:
+                before_project, before_home = snapshot_tree(fx.project), snapshot_tree(fx.home)
+                proc, doc = run_precheck(fx, "run", "--no-interrupt")
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertEqual(snapshot_tree(fx.project), before_project)
+                self.assertEqual(snapshot_tree(fx.home), before_home)
+                self.assertIn("failed", {p["result"] for p in doc["phases"]})
+
+
 class TestSkillContract(unittest.TestCase):
     def setUp(self):
         self.text = (Path(__file__).parents[1] / "SKILL.md").read_text(encoding="utf-8")

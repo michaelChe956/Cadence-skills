@@ -240,6 +240,14 @@ count_files_named() {
   printf '%s' "$_count"
 }
 
+legacy_five_files_ready() {
+  _base="$1"
+  for _name in brainstorm write-plan execute review verify; do
+    [ -f "$_base/$_name.md" ] || return 1
+  done
+  return 0
+}
+
 client_openspec_ready() {
   case "$1" in
     claude)
@@ -247,9 +255,14 @@ client_openspec_ready() {
     codex)
       [ "$(count_dirs_named "$PROJECT_ROOT/.agents/skills" openspec-)" -gt 0 ] ;;
     pi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ] ;;
+      {
+        [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ]
+      } || {
+        # 兼容 Task 1 基线的旧 Pi 投影命名，避免就绪项目被重写。
+        legacy_five_files_ready "$PROJECT_ROOT/.pi/skills" && legacy_five_files_ready "$PROJECT_ROOT/.pi/prompts"
+      } ;;
     kimi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] ;;
+      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] || legacy_five_files_ready "$PROJECT_ROOT/.kimi-code/skills" ;;
     *)
       return 2 ;;
   esac
@@ -664,7 +677,7 @@ enumerate_superpowers_entries() {
   printf '%b\n' "$_list"
 }
 
-# 对绝对路径做物理父目录规范化；不依赖 GNU realpath/readlink -f。
+# 对绝对路径做物理父目录规范化；不依赖 GNU 专属路径解析选项。
 canonical_absolute_path() {
   _path="$1"
   case "$_path" in
@@ -678,7 +691,7 @@ canonical_absolute_path() {
   [ -n "$_parent" ] && printf '%s/%s' "$_parent" "$_base"
 }
 
-# 将软链原文解析为绝对路径；不使用 GNU readlink -f。
+# 将软链原文解析为绝对路径；不使用 GNU 专属软链解析选项。
 absolute_link_target() {
   _target="$1"
   _raw="$(readlink "$_target" 2>/dev/null)" || return 1

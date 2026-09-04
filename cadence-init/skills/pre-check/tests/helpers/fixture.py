@@ -33,6 +33,8 @@ class Fixture:
         fake_timeout = TEST_DIR / "helpers" / "fake-timeout.sh"
         if fake_timeout.exists() and fixture_name != "superpowers-timeout":
             shutil.copy2(fake_timeout, self.bin / "timeout")
+        if fixture_name == "base-tools-failure":
+            shutil.copy2(TEST_DIR / "helpers" / "fake-failing-tool.sh", self.bin / "npx")
         for path in self.bin.iterdir():
             path.chmod(path.stat().st_mode | 0o111)
         self.calls = root / "calls"

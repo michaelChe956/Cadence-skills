@@ -55,4 +55,6 @@
 禁用旧命令、heredoc、流程图和现场编排提示；保留 `no-interrupt`、普通模式失败语义、Playwright opt-in、API Key 占位符和 `unsupported` 人工 fallback。
 
 
-当前实现已落地五项 `phases[]`，34 个 Python 测试全绿。
+当前实现已落地五项 `phases[]`，36 个 Python 测试全绿；Task 8 注册 10 条固定编号负向 fixture 矩阵。
+
+> 偏差裁决：brief 的失败快返模板将 #7 列入失败编号，但设计 §4.2/§7.1 与 T4 专属测试规定 no-interrupt 非软链冲突应备份→创建→验证并成功；因此矩阵失败快返编号按 (1,3,4,5)，#7 仍保留注册及专属测试。

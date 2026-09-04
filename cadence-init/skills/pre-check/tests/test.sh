@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-check 测试目录入口；先执行 Bash smoke，再执行 Python 阶段测试。
+# pre-check 测试目录入口；先执行 Bash smoke，再执行 Python 阶段测试，最后执行离线集成验收。
 set -u
 TEST_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PASS=0
@@ -11,6 +11,11 @@ else
   FAIL=$((FAIL + 1))
 fi
 if (cd "$TEST_DIR" && python3 -m unittest discover -s . -p 'test_*.py' -v); then
+  PASS=$((PASS + 1))
+else
+  FAIL=$((FAIL + 1))
+fi
+if bash "$TEST_DIR/integration_pre_check.sh"; then
   PASS=$((PASS + 1))
 else
   FAIL=$((FAIL + 1))
