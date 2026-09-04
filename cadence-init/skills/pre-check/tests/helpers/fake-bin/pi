@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# 测试替身：仅模拟已安装 pi-mcp-adapter 的 list 查询。
+if [ "${1:-}" = "list" ]; then
+  printf 'pi-mcp-adapter\n'
+  exit 0
+fi
+exit 1

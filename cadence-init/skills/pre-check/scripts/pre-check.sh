@@ -6,7 +6,7 @@
 #   pre-check.sh run   [--mirror <name>] [--no-interrupt] [--upgrade]
 #   pre-check.sh check [--mirror <name>] [--no-interrupt]
 # 输出: stdout = 单份 JSON 报告；stderr = 彩色人类摘要。
-# 兼容: mac bash 3.2 + BSD 工具 / Linux GNU 工具（POSIX 子集，无关联数组/grep -P）。
+# 兼容: mac bash 3.2 + BSD 工具 / Linux GNU 工具（POSIX 子集，无关联数组）。
 
 set -u
 # 不用 set -e：需逐项捕获失败并汇总进 JSON，而非中途退出。
@@ -117,10 +117,92 @@ if [ "$MODE" = "check" ] && [ "$UPGRADE" = "1" ]; then
   exit 2
 fi
 
+# 读取镜像配置后，阶段与既有工具均消费同一组源设置。
 load_mirror "$MIRROR"
 
-# JSON 步骤累积（每项一行紧凑 JSON，由 Task 5 汇总）
+# JSON 步骤累积（每项一行紧凑 JSON，由报告汇总）。
 STEPS_JSON=""
+
+# 项目根固定为调用 cwd 的物理路径；所有阶段动作消费此根目录。
+PROJECT_ROOT="$(pwd -P)"
+
+# 五阶段报告累积（使用字符串，不使用 Bash 4 关联数组）。
+PHASES_JSON=""
+PHASE_CURRENT_STARTED_S=0
+PHASE_CURRENT_CREATED=0
+PHASE_CURRENT_UPDATED=0
+PHASE_CURRENT_SKIPPED=0
+PHASE_CURRENT_CONFLICTS=0
+PHASE_CURRENT_RESULT=""
+PHASE_CURRENT_ERROR=""
+
+# 当前阶段开始计时（Bash 3.2/macOS 以秒为粒度，统一序列化为毫秒整数）。
+now_s() { date +%s; }
+
+phase_begin() {
+  PHASE_CURRENT_STARTED_S="$(now_s)"
+  PHASE_CURRENT_CREATED=0
+  PHASE_CURRENT_UPDATED=0
+  PHASE_CURRENT_SKIPPED=0
+  PHASE_CURRENT_CONFLICTS=0
+  PHASE_CURRENT_RESULT=""
+  PHASE_CURRENT_ERROR=""
+}
+
+phase_finish() {
+  _error="${9:-null}"
+  _item="{\"phase\":\"$(json_escape "$1")\",\"result\":\"$(json_escape "$2")\",\"action\":\"$(json_escape "$3")\",\"duration_ms\":$4,\"created\":$5,\"updated\":$6,\"skipped\":$7,\"conflicts\":$8,\"error\":$_error}"
+  if [ -z "$PHASES_JSON" ]; then
+    PHASES_JSON="$_item"
+  else
+    PHASES_JSON="$PHASES_JSON,$_item"
+  fi
+}
+
+run_phase() {
+  _phase="$1"
+  _function="$2"
+  phase_begin
+  "$_function"
+  _rc=$?
+  _elapsed=$(((($(now_s) - PHASE_CURRENT_STARTED_S)) * 1000))
+  if [ "$PHASE_CURRENT_CREATED" -eq 0 ] && [ "$PHASE_CURRENT_UPDATED" -eq 0 ] && [ "$PHASE_CURRENT_CONFLICTS" -eq 0 ]; then
+    _default_result=skipped
+  else
+    _default_result=success
+  fi
+  if [ "$_rc" -eq 0 ]; then
+    _result="${PHASE_CURRENT_RESULT:-$_default_result}"
+  elif [ "$NO_INTERRUPT" = "1" ]; then
+    _result=failed
+  else
+    # 普通模式允许阶段汇总后继续；非零代表该阶段部分完成。
+    _result=partial
+  fi
+  _error_json=null
+  [ -n "${PHASE_CURRENT_ERROR:-}" ] && _error_json="\"$(json_escape \"$PHASE_CURRENT_ERROR\")\""
+  phase_finish "$_phase" "$_result" "${PHASE_CURRENT_ACTION:-$_function}" "$_elapsed" "$PHASE_CURRENT_CREATED" "$PHASE_CURRENT_UPDATED" "$PHASE_CURRENT_SKIPPED" "$PHASE_CURRENT_CONFLICTS" "$_error_json"
+  return "$_rc"
+}
+
+# Task 1 将六个既有工具调用封装为基础工具 phase；返回值聚合但不短路。
+do_base_tools() {
+  _rc=0
+  do_npx || _rc=1
+  do_uvx || _rc=1
+  do_ast_grep || _rc=1
+  do_codegraph || _rc=1
+  do_openspec || _rc=1
+  do_pi_mcp_adapter || _rc=1
+  return "$_rc"
+}
+
+# Task 1 仅建立编排骨架；下游阶段在后续任务填入确定性动作。
+do_openspec_phase() { PHASE_CURRENT_ACTION="openspec-projections"; return 0; }
+do_superpowers_git_phase() { PHASE_CURRENT_ACTION="fetch-pull-ff-only"; return 0; }
+do_superpowers_links_phase() { PHASE_CURRENT_ACTION="sync-four-layers"; return 0; }
+do_verify_phase() { PHASE_CURRENT_ACTION="all-skipped"; return 0; }
+
 
 log "${C_BLU}🔧 pre-check${C_NC} mode=$MODE mirror=$MIRROR no_interrupt=$NO_INTERRUPT upgrade=$UPGRADE"
 log "${C_BLU}📡 npm registry:${C_NC} $CADENCE_NPM_REGISTRY"
@@ -169,17 +251,13 @@ remove_step() {
   STEPS_JSON="$(printf '%s' "$STEPS_JSON" | sed -e "s|{\"name\":\"$_n\"[^{}]*}||g" -e 's/,,*/,/g' -e 's/^,//' -e 's/,$//')"
 }
 
-# 失败处理：no-interrupt 立即非零退出；否则计数并继续
+# 失败处理：记录失败项并返回非零；阶段编排器负责统一报告和 no-interrupt 快返。
 handle_failure() {
   _name="$1"; _msg="$2"
   FAILED_COUNT=$((FAILED_COUNT + 1))
+  PHASE_CURRENT_ERROR="$_msg"
   err "❌ $_name 失败：$_msg"
-  if [ "$NO_INTERRUPT" = "1" ]; then
-    err "🛑 no-interrupt 模式：立即终止"
-    # 输出当前已累积 JSON 后退出（overall 由 Task 5 标记为 failed）
-    emit_report "failed"
-    exit 1
-  fi
+  return 1
 }
 
 # --- 六工具处理 ---
@@ -325,7 +403,7 @@ do_pi_mcp_adapter() {
 _norm_ver() { printf '%s' "$1" | sed -n 's/.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1; }
 
 # 版本比较：返回 0 表示 $1 < $2（落后需升级），否则非 0。
-# 纯 bash 三段数字比较：不依赖 sort -V（BSD/mac sort 无 -V，曾致 mac 上静默判为不落后）。
+# 纯 bash 三段数字比较：不依赖 GNU 专属版本排序选项（BSD/mac sort 无此选项，曾致 mac 上静默判为不落后）。
 _ver_lt() {
   _a="$(_norm_ver "$1")"; _b="$(_norm_ver "$2")"
   [ -n "$_a" ] && [ -n "$_b" ] || return 1
@@ -451,20 +529,45 @@ emit_report() {
   printf '  "finished_at": "%s",\n' "$_ts"
   printf '  "overall": "%s",\n' "$_overall"
   printf '  "steps": [%s],\n' "$STEPS_JSON"
+  printf '  "phases": [%s],\n' "$PHASES_JSON"
   printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
   printf '  "hints": {"superpowers_git_candidates": %s}\n' "$_git_candidates"
   printf '}\n'
 }
 
-# --- 主流程 ---
-do_npx
-do_uvx
-do_ast_grep
-do_codegraph
-do_openspec
-do_pi_mcp_adapter
+# --- 主流程：固定五阶段顺序 ---
+run_phase "base-tools" do_base_tools
+_BASE_RC=$?
+if [ "$_BASE_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
+  emit_report "failed"
+  exit 1
+fi
+run_phase "openspec" do_openspec_phase
+_OPENSPEC_RC=$?
+if [ "$_OPENSPEC_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
+  emit_report "failed"
+  exit 1
+fi
+run_phase "superpowers-git" do_superpowers_git_phase
+_GIT_RC=$?
+if [ "$_GIT_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
+  emit_report "failed"
+  exit 1
+fi
+run_phase "superpowers-links" do_superpowers_links_phase
+_LINKS_RC=$?
+if [ "$_LINKS_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
+  emit_report "failed"
+  exit 1
+fi
+run_phase "verify" do_verify_phase
+_VERIFY_RC=$?
+if [ "$_VERIFY_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
+  emit_report "failed"
+  exit 1
+fi
 
-# 升级钩子：仅 UPGRADE=1 时执行；仅升级已 ready 的工具
+# 升级钩子：仅 UPGRADE=1 时执行；仅升级已 ready 的工具。
 if [ "$UPGRADE" = "1" ]; then
   log "${C_BLU}⬆️  升级模式（来源：当前 mirror）${C_NC}"
   upgrade_npm_tool "ast-grep" "@ast-grep/cli" ast-grep --version
