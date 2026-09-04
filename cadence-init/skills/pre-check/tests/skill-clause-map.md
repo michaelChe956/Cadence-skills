@@ -25,6 +25,10 @@
 | PC-LINK-03 | 正确链幂等重跑零写入，非 Superpowers 条目不触碰 | `test_correct_links_are_skipped_and_non_superpowers_survives` | Task 4 |
 | PC-LINK-04 | 非软链冲突普通模式 warning/skip 保留原内容；no-interrupt 备份后创建并验证 | `test_non_symlink_conflict_normal_warns_and_preserves`, `test_non_symlink_conflict_no_interrupt_backups_then_verifies` | Task 4 |
 | PC-LINK-05 | no-interrupt 软链恢复链失败返回 failed 且保留备份；pi 层非目标缺失不影响 Superpowers phase | `test_no_interrupt_link_failure_fails_phase`, `test_pi_missing_cadence_entry_does_not_fail_superpowers` | Task 4 |
+| PC-VERIFY-01 | verify 只读复核 OpenSpec、Git 字段及四层 Superpowers 链接，错误同时落入 `VERIFY_ERROR`/phase.error | `TestFailureFastReturn.test_verify_error_is_reported` | Task 5 |
+| PC-FAIL-01 | no-interrupt phase 失败立即 emit failed，阻止下游写入；普通模式将失败 phase 记为 partial 并继续 | `test_base_tool_failure_does_not_write_downstream`, `test_normal_mode_records_partial_and_continues` | Task 5 |
+| PC-FAIL-02 | 未请求 Playwright 时不安装、不写入规则或 skill 目录 | `test_playwright_not_requested_writes_nothing` | Task 5 |
+| PC-REPORT-05 | 独占 report 在 success/failure/timeout 路径捕获后由 trap 清理 | `helpers/report-cleanup.sh`；三路径生命周期测试 | Task 5 |
 
 
 当前旧实现仅汇总六工具，报告没有 `phases[]`，因此阶段报告测试按预期失败。

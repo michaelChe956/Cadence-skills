@@ -151,6 +151,7 @@ phase_begin() {
   PHASE_CURRENT_ERROR=""
   PHASE_CURRENT_SOURCE_ENTRIES=0
   PHASE_CURRENT_LAYERS_JSON=""
+  PHASE_CURRENT_FAILURE_RECORDED=0
 }
 
 phase_finish() {
@@ -190,22 +191,21 @@ run_phase() {
   fi
   if [ "$_rc" -eq 0 ]; then
     _result="${PHASE_CURRENT_RESULT:-$_default_result}"
-  elif [ "$NO_INTERRUPT" = "1" ]; then
-    _result=failed
   else
-    # 普通模式允许阶段汇总后继续；非零代表该阶段部分完成。
-    _result=partial
+    _result=failed
+    [ -n "${PHASE_CURRENT_ERROR:-}" ] || PHASE_CURRENT_ERROR="phase-failed:$_phase:rc=$_rc"
   fi
-  # 阶段失败必须进入 overall 汇总；基础工具内部已逐项计数时避免重复累加。
-  if [ "$_rc" -ne 0 ] && [ "$FAILED_COUNT" -eq "$_failed_before" ]; then
-    FAILED_COUNT=$((FAILED_COUNT + 1))
+  if [ "$_rc" -ne 0 ] && [ "$FAILED_COUNT" -gt "$_failed_before" ]; then
+    PHASE_CURRENT_FAILURE_RECORDED=1
   fi
+  # 失败计数由失败 phase 的 handler 负责记录，避免普通模式重复计数。
   phase_finish "$_phase" "$_result" "${PHASE_CURRENT_ACTION:-$_function}" "$_elapsed" "$PHASE_CURRENT_CREATED" "$PHASE_CURRENT_UPDATED" "$PHASE_CURRENT_SKIPPED" "$PHASE_CURRENT_CONFLICTS" "${PHASE_CURRENT_ERROR:-}"
   return "$_rc"
 }
 
 # Task 1 将六个既有工具调用封装为基础工具 phase；返回值聚合但不短路。
 do_base_tools() {
+  _base_failed_before="$FAILED_COUNT"
   _rc=0
   do_npx || _rc=1
   do_uvx || _rc=1
@@ -213,6 +213,7 @@ do_base_tools() {
   do_codegraph || _rc=1
   do_openspec || _rc=1
   do_pi_mcp_adapter || _rc=1
+  [ "$FAILED_COUNT" -gt "$_base_failed_before" ] && _rc=1
   return "$_rc"
 }
 
@@ -884,7 +885,95 @@ EOF
   fi
   return 0
 }
-do_verify_phase() { PHASE_CURRENT_ACTION="all-skipped"; return 0; }
+do_verify_phase() {
+  PHASE_CURRENT_ACTION="all-skipped"
+  VERIFY_ERROR=""
+  verify_openspec_clients || {
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    VERIFY_ERROR="openspec-artifacts"
+    PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+    return 1
+  }
+  SUPERPOWERS_DIR="${SUPERPOWERS_DIR:-$HOME/.agents/superpowers}"
+  validate_superpowers_repo || {
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    VERIFY_ERROR="superpowers-not-git"
+    PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+    return 1
+  }
+  # 重新读取 Git 元数据，避免 verify 使用过期的 phase 全局字段。
+  GIT_ORIGIN="$(git -C "$SUPERPOWERS_DIR" remote get-url origin 2>/dev/null)"
+  GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  GIT_AFTER_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
+  if [ -z "$GIT_ORIGIN" ] || [ -z "$GIT_BRANCH" ] || [ -z "$GIT_AFTER_REVISION" ]; then
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    VERIFY_ERROR="git-fields"
+    PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+    return 1
+  fi
+  _entries="$(enumerate_superpowers_entries)"
+  [ -n "$_entries" ] || {
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    VERIFY_ERROR="superpowers-entries"
+    PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+    return 1
+  }
+  for _layer in "$HOME/.agents/skills" "$HOME/.codex/skills/skills" "$HOME/.claude/skills" "$HOME/.pi/agent/skills"; do
+    while IFS= read -r _name; do
+      [ -n "$_name" ] || continue
+      _target="$_layer/$_name"
+      [ -L "$_target" ] || {
+        VERIFY_ERROR="missing-link:$_target"
+        PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        return 1
+      }
+      _resolved="$(resolve_final_link_target "$_target")"
+      if [ ! -e "$_resolved" ] || ! is_superpowers_target "$_resolved"; then
+        VERIFY_ERROR="broken-link:$_target"
+        PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        return 1
+      fi
+    done <<EOF
+$_entries
+EOF
+  done
+  PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+  return 0
+}
+
+# 普通模式将已序列化的当前 phase 原位改为 partial，不丢失 error/counters。
+mark_phase_partial() {
+  _phase="$1"
+  _rc="$2"
+  _phase_prefix='"phase":"'"$_phase"'","result":"'
+  _before="$PHASES_JSON"
+  _prefix="${_before%%$_phase_prefix*}"
+  if [ "$_prefix" != "$_before" ]; then
+    _tail="${_before#*$_phase_prefix}"
+    _rest="${_tail#*\"}"
+    PHASES_JSON="${_prefix}${_phase_prefix}partial\"${_rest}"
+  fi
+  PHASE_CURRENT_RESULT="partial"
+  [ -n "${PHASE_CURRENT_ERROR:-}" ] || PHASE_CURRENT_ERROR="phase-failed:$_phase:rc=$_rc"
+  handle_failure "$_phase" "$PHASE_CURRENT_ERROR"
+  return 0
+}
+
+run_required_phase() {
+  _phase="$1"
+  _fn="$2"
+  run_phase "$_phase" "$_fn"
+  _rc=$?
+  [ "$_rc" -eq 0 ] && return 0
+  if [ "$NO_INTERRUPT" = "1" ]; then
+    emit_report "failed"
+    return "$_rc"
+  fi
+  mark_phase_partial "$_phase" "$_rc"
+  return 0
+}
 
 
 log "${C_BLU}🔧 pre-check${C_NC} mode=$MODE mirror=$MIRROR no_interrupt=$NO_INTERRUPT upgrade=$UPGRADE"
@@ -937,10 +1026,16 @@ remove_step() {
 # 失败处理：记录失败项并返回非零；阶段编排器负责统一报告和 no-interrupt 快返。
 handle_failure() {
   _name="$1"; _msg="$2"
-  FAILED_COUNT=$((FAILED_COUNT + 1))
+  # 每个 phase 只累计一次失败；同一 phase 的多个子步骤仍保留最后错误上下文。
+  if [ "${PHASE_CURRENT_FAILURE_RECORDED:-0}" -eq 0 ]; then
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+  fi
   PHASE_CURRENT_ERROR="$_msg"
+  FAILED_PHASE="$_name"
+  FAILED_ERROR="$_msg"
+  PHASE_CURRENT_FAILURE_RECORDED=1
   err "❌ $_name 失败：$_msg"
-  return 1
+  return 0
 }
 
 # --- 六工具处理 ---
@@ -1185,7 +1280,7 @@ compute_overall() {
   fi
 }
 
-# 输出单份 JSON 到 stdout。<overall> 可由 handle_failure 强制传 failed。
+# 输出单份 JSON 到 stdout。强制 failed 由 run_required_phase 在 no-interrupt 失败分支调用 emit_report failed 触发。
 emit_report() {
   _overall="${1:-$(compute_overall)}"
   _ts="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
@@ -1218,37 +1313,12 @@ emit_report() {
   printf '}\n'
 }
 
-# --- 主流程：固定五阶段顺序 ---
-run_phase "base-tools" do_base_tools
-_BASE_RC=$?
-if [ "$_BASE_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
-  emit_report "failed"
-  exit 1
-fi
-run_phase "openspec" do_openspec_phase
-_OPENSPEC_RC=$?
-if [ "$_OPENSPEC_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
-  emit_report "failed"
-  exit 1
-fi
-run_phase "superpowers-git" do_superpowers_git_phase
-_GIT_RC=$?
-if [ "$_GIT_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
-  emit_report "failed"
-  exit 1
-fi
-run_phase "superpowers-links" do_superpowers_links_phase
-_LINKS_RC=$?
-if [ "$_LINKS_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
-  emit_report "failed"
-  exit 1
-fi
-run_phase "verify" do_verify_phase
-_VERIFY_RC=$?
-if [ "$_VERIFY_RC" -ne 0 ] && [ "$NO_INTERRUPT" = "1" ]; then
-  emit_report "failed"
-  exit 1
-fi
+# --- 主流程：固定五阶段顺序；required phase 统一实施 no-interrupt 屏障 ---
+run_required_phase "base-tools" do_base_tools || exit $?
+run_required_phase "openspec" do_openspec_phase || exit $?
+run_required_phase "superpowers-git" do_superpowers_git_phase || exit $?
+run_required_phase "superpowers-links" do_superpowers_links_phase || exit $?
+run_required_phase "verify" do_verify_phase || exit $?
 
 # 升级钩子：仅 UPGRADE=1 时执行；仅升级已 ready 的工具。
 if [ "$UPGRADE" = "1" ]; then

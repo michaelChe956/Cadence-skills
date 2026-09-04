@@ -14,7 +14,71 @@ from helpers.fixture import (
     phase_by_name,
     run_precheck,
     run_precheck_under_shell,
+    snapshot_tree,
 )
+
+
+class TestFailureFastReturn(unittest.TestCase):
+    def test_base_tool_failure_does_not_write_downstream(self):
+        with isolated_fixture("base-tools-failure") as fx:
+            failing_tool = Path(__file__).resolve().parent / "helpers" / "fake-failing-tool.sh"
+            shutil.copy2(failing_tool, fx.bin / "npx")
+            (fx.bin / "npx").chmod(0o755)
+            before_project = snapshot_tree(fx.project)
+            before_home = snapshot_tree(fx.home)
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(snapshot_tree(fx.project), before_project)
+            self.assertEqual(snapshot_tree(fx.home), before_home)
+            self.assertEqual(phase_by_name(doc, "base-tools")["result"], "failed")
+            self.assertEqual([p["phase"] for p in doc["phases"]], ["base-tools"])
+            self.assertEqual(doc["overall"], "failed")
+            self.assertNotIn("init --tools", fx.calls.read_text(encoding="utf-8"))
+
+    def test_playwright_not_requested_writes_nothing(self):
+        with isolated_fixture("playwright-not-requested") as fx:
+            _proc, _doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertFalse((fx.project / ".claude/rules/playwright.md").exists())
+            self.assertFalse((fx.home / ".claude/skills/playwright-cli").exists())
+
+    def test_verify_error_is_reported(self):
+        with isolated_fixture("superpowers-source-missing") as fx:
+            _proc, doc = run_precheck(fx, "run")
+            verify = phase_by_name(doc, "verify")
+            self.assertIsInstance(verify["error"], str)
+            self.assertTrue(verify["error"])
+
+    def test_report_cleanup_success_failure_timeout(self):
+        helper = Path(__file__).resolve().parent / "helpers" / "report-cleanup.sh"
+        for exit_code in (0, 1, 124):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as td:
+                report = Path(td) / "report.json"
+                proc = subprocess.run(
+                    ["bash", str(helper), str(report), "sh", "-c", "printf '{\\\"overall\\\":\\\"success\\\"}\\n'; exit $0", str(exit_code)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                self.assertEqual(proc.returncode, exit_code)
+                self.assertEqual(json.loads(proc.stdout)["overall"], "success")
+                self.assertFalse(report.exists())
+
+    def test_normal_mode_records_partial_and_continues(self):
+        with isolated_fixture("base-tools-failure") as fx:
+            failing_tool = Path(__file__).resolve().parent / "helpers" / "fake-failing-tool.sh"
+            shutil.copy2(failing_tool, fx.bin / "npx")
+            (fx.bin / "npx").chmod(0o755)
+            proc, doc = run_precheck(fx, "run")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            base = phase_by_name(doc, "base-tools")
+            self.assertEqual(base["result"], "partial")
+            self.assertIn("未检测到 npx", base["error"])
+            self.assertEqual(doc["overall"], "partial")
+            self.assertEqual(
+                [phase["phase"] for phase in doc["phases"]],
+                ["base-tools", "openspec", "superpowers-git", "superpowers-links", "verify"],
+            )
+            self.assertIn("init --tools", fx.calls.read_text(encoding="utf-8"))
 
 
 class TestOpenSpecPhase(unittest.TestCase):
