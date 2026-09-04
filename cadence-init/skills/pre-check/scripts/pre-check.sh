@@ -240,14 +240,6 @@ count_files_named() {
   printf '%s' "$_count"
 }
 
-legacy_five_files_ready() {
-  _base="$1"
-  for _name in brainstorm write-plan execute review verify; do
-    [ -f "$_base/$_name.md" ] || return 1
-  done
-  return 0
-}
-
 client_openspec_ready() {
   case "$1" in
     claude)
@@ -255,14 +247,9 @@ client_openspec_ready() {
     codex)
       [ "$(count_dirs_named "$PROJECT_ROOT/.agents/skills" openspec-)" -gt 0 ] ;;
     pi)
-      {
-        [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ]
-      } || {
-        # 兼容 Task 1 基线的旧 Pi 投影命名，避免就绪项目被重写。
-        legacy_five_files_ready "$PROJECT_ROOT/.pi/skills" && legacy_five_files_ready "$PROJECT_ROOT/.pi/prompts"
-      } ;;
+      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ] ;;
     kimi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] || legacy_five_files_ready "$PROJECT_ROOT/.kimi-code/skills" ;;
+      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] ;;
     *)
       return 2 ;;
   esac
@@ -287,6 +274,9 @@ verify_openspec_clients() {
 }
 
 do_openspec_phase() {
+  if [ ! -f "$PROJECT_ROOT/openspec/config.yaml" ]; then
+    log "${C_YEL}ℹ️  openspec/config.yaml 缺失，将由后续 rule-config 步骤 11 创建${C_NC}"
+  fi
   detect_openspec_clients
   if [ -n "$OPENSPEC_MISSING" ]; then
     if [ "$MODE" != "run" ]; then

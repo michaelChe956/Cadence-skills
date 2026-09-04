@@ -160,6 +160,50 @@ class TestFailureFastReturn(unittest.TestCase):
 
 
 class TestOpenSpecPhase(unittest.TestCase):
+    def test_legacy_five_file_names_are_missing_and_initialized(self):
+        with isolated_fixture("openspec-ready") as fx:
+            for directory in (fx.project / ".pi/skills", fx.project / ".pi/prompts", fx.project / ".kimi-code/skills"):
+                for path in list(directory.iterdir()):
+                    if path.is_dir():
+                        name = "write-plan" if path.name == "plan" else path.name.removeprefix("openspec-")
+                        legacy = directory / name
+                        shutil.rmtree(path)
+                        legacy.write_text("legacy skill\n", encoding="utf-8")
+                    else:
+                        name = path.name.replace("opsx-plan", "write-plan")
+                        path.rename(directory / name)
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("init --tools pi,kimi", fx.calls.read_text(encoding="utf-8").splitlines())
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
+            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 5)
+            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 5)
+            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 5)
+
+    def test_verify_does_not_allow_legacy_five_file_names(self):
+        with isolated_fixture("openspec-ready") as fx:
+            for directory in (fx.project / ".pi/skills", fx.project / ".pi/prompts", fx.project / ".kimi-code/skills"):
+                for path in list(directory.iterdir()):
+                    if path.is_dir():
+                        name = "write-plan" if path.name == "plan" else path.name.removeprefix("openspec-")
+                        legacy = directory / name
+                        shutil.rmtree(path)
+                        legacy.write_text("legacy skill\n", encoding="utf-8")
+                    else:
+                        name = path.name.replace("opsx-plan", "write-plan")
+                        path.rename(directory / name)
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+            self.assertNotIn("verify", [phase["phase"] for phase in doc["phases"]])
+
+    def test_missing_config_yaml_prints_rule_config_hint(self):
+        with isolated_fixture("openspec-ready") as fx:
+            proc, _doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("openspec/config.yaml 缺失", proc.stderr)
+            self.assertIn("rule-config 步骤 11 创建", proc.stderr)
+
     def test_only_missing_pi_kimi_are_initialized(self):
         with isolated_fixture("openspec-partial") as fx:
             proc, doc = run_precheck(fx, "run", "--no-interrupt")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-check 离线集成验收：复用 Task 1 基线 fixture，验证首跑兼容性与二跑幂等。
+# pre-check 离线集成验收：复用 v2 真实 OpenSpec fixture，验证首跑兼容性与二跑幂等。
 set -u
 TEST_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 SCRIPT="$TEST_DIR/../scripts/pre-check.sh"
@@ -35,17 +35,18 @@ cp "$TEST_DIR/helpers/fake-openspec.sh" "$BIN/openspec"
 cp "$TEST_DIR/helpers/fake-git.sh" "$BIN/git"
 chmod +x "$BIN"/*
 
-# 复用 Task 1 基线的四端旧命名投影；新实现必须识别为就绪而不重写。
+# v2 真实 OpenSpec 投影；严格判定不得接受旧命名文件。
 mkdir -p "$PROJECT/.claude/commands/opsx" "$PROJECT/.claude/skills/openspec-brainstorm" \
   "$PROJECT/.agents/skills/openspec-execute" "$PROJECT/.pi/skills" "$PROJECT/.pi/prompts" \
   "$PROJECT/.kimi-code/skills"
 printf '%s\n' '# fixture propose' > "$PROJECT/.claude/commands/opsx/propose.md"
 printf '%s\n' '# fixture skill' > "$PROJECT/.claude/skills/openspec-brainstorm/SKILL.md"
 printf '%s\n' '# fixture execute' > "$PROJECT/.agents/skills/openspec-execute/SKILL.md"
-for _name in brainstorm write-plan execute review verify; do
-  printf '# pi %s\n' "$_name" > "$PROJECT/.pi/skills/$_name.md"
-  printf '# pi prompt %s\n' "$_name" > "$PROJECT/.pi/prompts/$_name.md"
-  printf '# kimi %s\n' "$_name" > "$PROJECT/.kimi-code/skills/$_name.md"
+for _name in brainstorm plan execute review verify; do
+  mkdir -p "$PROJECT/.pi/skills/openspec-$_name" "$PROJECT/.kimi-code/skills/openspec-$_name"
+  printf '# pi %s\n' "$_name" > "$PROJECT/.pi/skills/openspec-$_name/SKILL.md"
+  printf '# pi prompt %s\n' "$_name" > "$PROJECT/.pi/prompts/opsx-$_name.md"
+  printf '# kimi %s\n' "$_name" > "$PROJECT/.kimi-code/skills/openspec-$_name/SKILL.md"
 done
 printf '%s\n' 'project non-target sentinel' > "$PROJECT/project-sentinel.txt"
 
@@ -135,7 +136,7 @@ _first_rc=$?
 [ "$_first_rc" -eq 0 ] || { cat "$REPORT1" >&2; exit "$_first_rc"; }
 snapshot "$ROOT/after-first.raw"
 normalize_snapshot_file "$ROOT/after-first.raw" "$ROOT/after-first.log" "$ROOT"
-BASELINE="$TEST_DIR/baselines/precheck-v1/tree.txt"
+BASELINE="$TEST_DIR/baselines/precheck-v2/tree.txt"
 normalize_snapshot_file "$BASELINE" "$ROOT/baseline.log" "$ROOT"
 compare_compatibility_snapshot "$ROOT/baseline.log" "$ROOT/after-first.log"
 _baseline_diff_rc=$?

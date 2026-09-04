@@ -3,9 +3,7 @@
 set -u
 
 TEST_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-BASELINE_DIR="$TEST_DIR/baselines/precheck-v1"
-SCRIPT="$TEST_DIR/../scripts/pre-check.sh"
-SKILL_MD="$TEST_DIR/../SKILL.md"
+BASELINE_DIR="$TEST_DIR/baselines/precheck-v2"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/precheck-baseline.XXXXXX")"
 PROJECT="$ROOT/project"
 HOME_DIR="$ROOT/home"
@@ -16,6 +14,15 @@ STDERR="$ROOT/stderr.log"
 trap 'rm -rf "$ROOT"' EXIT HUP INT TERM
 
 mkdir -p "$PROJECT" "$HOME_DIR" "$BIN"
+
+# v2 以 27e87e2 旧脚本冻结；保留 mirrors 目录使旧脚本按自身相对路径加载配置。
+SCRIPT_DIR="$ROOT/old-scripts"
+mkdir -p "$SCRIPT_DIR"
+git show 27e87e2:cadence-init/skills/pre-check/scripts/pre-check.sh > "$SCRIPT_DIR/pre-check.sh"
+cp -R "$TEST_DIR/../scripts/mirrors" "$SCRIPT_DIR/mirrors"
+SCRIPT="$SCRIPT_DIR/pre-check.sh"
+SKILL_MD="$TEST_DIR/../SKILL.md"
+chmod +x "$SCRIPT"
 
 # fake CLI 仅返回固定版本；旧脚本不会访问网络。
 cat > "$BIN/npx" <<'FAKE_NPX'
@@ -57,10 +64,12 @@ mkdir -p "$PROJECT/.claude/commands/opsx" \
 printf '%s\n' '# fixture propose' > "$PROJECT/.claude/commands/opsx/propose.md"
 printf '%s\n' '# fixture skill' > "$PROJECT/.claude/skills/openspec-brainstorm/SKILL.md"
 printf '%s\n' '# fixture execute' > "$PROJECT/.agents/skills/openspec-execute/SKILL.md"
-for name in brainstorm write-plan execute review verify; do
-  printf '# pi %s\n' "$name" > "$PROJECT/.pi/skills/$name.md"
-  printf '# pi prompt %s\n' "$name" > "$PROJECT/.pi/prompts/$name.md"
-  printf '# kimi %s\n' "$name" > "$PROJECT/.kimi-code/skills/$name.md"
+for name in brainstorm plan execute review verify; do
+  mkdir -p "$PROJECT/.pi/skills/openspec-$name"
+  printf '# pi %s\n' "$name" > "$PROJECT/.pi/skills/openspec-$name/SKILL.md"
+  printf '# pi prompt %s\n' "$name" > "$PROJECT/.pi/prompts/opsx-$name.md"
+  mkdir -p "$PROJECT/.kimi-code/skills/openspec-$name"
+  printf '# kimi %s\n' "$name" > "$PROJECT/.kimi-code/skills/openspec-$name/SKILL.md"
 done
 printf '%s\n' 'project non-target sentinel' > "$PROJECT/project-sentinel.txt"
 
@@ -96,7 +105,7 @@ printf '%s\n' 'home non-target sentinel' > "$HOME_DIR/home-sentinel.txt"
 # 前置门禁要求的旧脚本 run --no-interrupt：工作目录必须是隔离项目。
 (
   cd "$PROJECT" || exit 1
-  HOME="$HOME_DIR" PATH="$BIN:$PATH" bash "$SCRIPT" run --no-interrupt > "$REPORT" 2> "$STDERR"
+  HOME="$HOME_DIR" PATH="$BIN:$PATH" CADENCE_TEST_GIT_CANDIDATES="$REMOTE" bash "$SCRIPT" run --no-interrupt > "$REPORT" 2> "$STDERR"
 )
 RC=$?
 [ "$RC" -eq 0 ] || { cat "$STDERR" >&2; cat "$REPORT" >&2; exit "$RC"; }
@@ -158,7 +167,7 @@ normalize_snapshot_file() {
 mkdir -p "$BASELINE_DIR"
 # 基线目录只写 tree/README；不覆盖既有基线，避免后续任务误替换。
 if [ -e "$BASELINE_DIR/tree.txt" ] || [ -e "$BASELINE_DIR/README.md" ]; then
-  echo '基线已存在，拒绝覆盖：precheck-v1' >&2
+  echo '基线已存在，拒绝覆盖：precheck-v2' >&2
   exit 3
 fi
 snapshot_tree "$ROOT/tree.txt"
@@ -167,21 +176,24 @@ SCRIPT_SHA="$(sha256_file "$SCRIPT")"
 SKILL_SHA="$(sha256_file "$SKILL_MD")"
 GIT_HEAD="$(git -C "$HOME_DIR/.agents/superpowers" rev-parse HEAD)"
 cat > "$BASELINE_DIR/README.md" <<EOF_README
-# pre-check v1 旧实现基线
+# pre-check v2 真实 OpenSpec 投影基线
 
 ## 采集边界
 
-- 采集日期：2026-09-04
+- 采集日期：2026-09-05
+- v2 来源：以 \`27e87e2\` 旧脚本为行为基准，修正 fixture 为真实 OpenSpec 形态后重新采集。
+- v1 作废原因：旧 fixture 使用 brainstorm.md、write-plan.md、execute.md、review.md、verify.md 旧命名，掩盖严格 OpenSpec 投影门槛；controller 于 2026-09-05 依据 oracle 终审 ruling 要求废弃该虚构形态。
+- 网络口径勘误：v1 基线采集时（2026-09-04，用当时的新实现脚本）因采集器未设 \`CADENCE_TEST_GIT_CANDIDATES\`，回退真实网络候选 \`https://github.com/obra/superpowers\`（fetch SSL 失败约 90s）；v1 README“真实网络未使用”陈述失真，此为 v1 作废原因之一。v2 采集（\`27e87e2\` 旧脚本 + 本地 bare remote）无任何网络路径。
+- 注入 `CADENCE_TEST_GIT_CANDIDATES` 是纵深防御，防未来新实现脚本在候选未设时回退镜像在线候选（v1 采集事故即此根因）。
+- 本次 v2 在隔离环境重采，使用 \`.pi/skills/openspec-*/SKILL.md\`、\`.pi/prompts/opsx-*.md\` 与 \`.kimi-code/skills/openspec-*/SKILL.md\` 真实布局；真实 HOME、真实 API Key、真实网络：均未使用
 - 旧脚本：\`cadence-init/skills/pre-check/scripts/pre-check.sh\`
 - 旧脚本 SHA-256：\`$SCRIPT_SHA\`
 - 旧 \`SKILL.md\`：\`cadence-init/skills/pre-check/SKILL.md\`
 - 旧 \`SKILL.md\` SHA-256：\`$SKILL_SHA\`
-- 隔离根目录：仓库外临时目录（本次为 \`$ROOT\`，脚本结束自动删除）
-- 真实 HOME、真实 API Key、真实网络：均未使用
 
 ## Fixture 配置
 
-- 项目根：临时 \`project/\`，预置四端 OpenSpec 投影：Claude/Codex、Pi 的 5 个 skill + 5 个 prompt、Kimi 的 5 个 skill。
+- 项目根：临时 \`project/\`，预置四端 OpenSpec 投影：Claude/Codex、Pi 的 5 个 \`openspec-*/SKILL.md\` + 5 个 \`opsx-*.md\`、Kimi 的 5 个 \`openspec-*/SKILL.md\`。
 - 项目非目标 sentinel：\`project-sentinel.txt\`。
 - Superpowers：临时 \`home/.agents/superpowers/\` 有效 Git worktree；\`origin\` 为同一临时目录内的 bare remote，分支为 \`main\`，HEAD 为 \`$GIT_HEAD\`。
 - 软链：\`~/.agents/skills\`、\`~/.codex/skills/skills\`、\`~/.claude/skills\`、\`~/.pi/agent/skills\` 各预置 14 条直连 Superpowers 源的软链。
@@ -190,7 +202,7 @@ cat > "$BASELINE_DIR/README.md" <<EOF_README
 
 ## 运行命令
 
-\`HOME=<isolated-home> PATH=<fake-bin>:\$PATH bash <absolute-pre-check.sh> run --no-interrupt\`，cwd 为隔离项目根。
+\`HOME=<isolated-home> PATH=<fake-bin>:\$PATH CADENCE_TEST_GIT_CANDIDATES=<local-bare-remote> bash <absolute-pre-check.sh> run --no-interrupt\`，cwd 为隔离项目根。
 旧脚本 stdout 保存为临时报告并未写入快照；stderr、临时目录和测试日志均排除。
 
 ## 快照格式与排除项
@@ -202,7 +214,7 @@ cat > "$BASELINE_DIR/README.md" <<EOF_README
 
 ## 目标白名单与冻结口径
 
-后续兼容性测试必须复用同一 fixture 配置与同一快照器。四端 OpenSpec 投影、Superpowers Git 和四层软链是已预置的完成态，旧脚本首跑预期为零写入且 \`overall=success\`；后续实现首跑以此基线做 1:1 对照。四端投影目标白名单为：\`.claude/commands/opsx/\`、\`.claude/skills/openspec-*\`、\`.agents/skills/openspec-*\`、\`.pi/skills/\`、\`.pi/prompts/\`、\`.kimi-code/skills/\`；HOME 侧白名单为 Superpowers 源目录和上述四层软链。不得以新实现快照覆盖本基线；如与审核结论冲突，保留此证据并在 Task 8 标注差异原因。
+后续兼容性测试必须复用同一 fixture 配置与同一快照器。四端 OpenSpec 投影、Superpowers Git 和四层软链是已预置的完成态，首跑预期为零写入且 \`overall=success\`；后续实现首跑以 v2 基线做 1:1 对照。防覆盖守卫保留并对 v2 生效。
 EOF_README
 printf 'baseline captured: %s\n' "$BASELINE_DIR"
 printf 'old_script_sha256=%s\n' "$SCRIPT_SHA"

@@ -49,6 +49,7 @@ if [ "${1:-}" = "init" ] && [ "${2:-}" = "--tools" ]; then
       mkdir -p "$PWD/.pi/skills" "$PWD/.pi/prompts"
       for _name in execute plan review verify brainstorm; do
         mkdir -p "$PWD/.pi/skills/openspec-$_name"
+        printf 'pi openspec skill %s\n' "$_name" > "$PWD/.pi/skills/openspec-$_name/SKILL.md"
         printf 'pi openspec %s\n' "$_name" > "$PWD/.pi/prompts/opsx-$_name.md"
       done ;;
   esac
