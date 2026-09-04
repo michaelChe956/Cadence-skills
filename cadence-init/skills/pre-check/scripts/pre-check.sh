@@ -150,8 +150,18 @@ phase_begin() {
 }
 
 phase_finish() {
-  _error="${9:-null}"
-  _item="{\"phase\":\"$(json_escape "$1")\",\"result\":\"$(json_escape "$2")\",\"action\":\"$(json_escape "$3")\",\"duration_ms\":$4,\"created\":$5,\"updated\":$6,\"skipped\":$7,\"conflicts\":$8,\"error\":$_error}"
+  _error_value="${9:-}"
+  if [ -n "$_error_value" ]; then
+    _error="\"$(json_escape "$_error_value")\""
+  else
+    _error=null
+  fi
+  _item="{\"phase\":\"$(json_escape "$1")\",\"result\":\"$(json_escape "$2")\",\"action\":\"$(json_escape "$3")\",\"duration_ms\":$4,\"created\":$5,\"updated\":$6,\"skipped\":$7,\"conflicts\":$8,\"error\":$_error"
+  # Git phase 额外报告来源、分支和 revision；其他 phase 保持原有 schema。
+  if [ "$1" = "superpowers-git" ]; then
+    _item="${_item},\"origin\":\"$(json_escape "${GIT_ORIGIN:-}")\",\"branch\":\"$(json_escape "${GIT_BRANCH:-}")\",\"before_revision\":\"$(json_escape "${GIT_BEFORE_REVISION:-}")\",\"after_revision\":\"$(json_escape "${GIT_AFTER_REVISION:-}")\""
+  fi
+  _item="${_item}}"
   if [ -z "$PHASES_JSON" ]; then
     PHASES_JSON="$_item"
   else
@@ -163,6 +173,7 @@ run_phase() {
   _phase="$1"
   _function="$2"
   phase_begin
+  _failed_before="$FAILED_COUNT"
   "$_function"
   _rc=$?
   _elapsed=$(((($(now_s) - PHASE_CURRENT_STARTED_S)) * 1000))
@@ -179,9 +190,11 @@ run_phase() {
     # 普通模式允许阶段汇总后继续；非零代表该阶段部分完成。
     _result=partial
   fi
-  _error_json=null
-  [ -n "${PHASE_CURRENT_ERROR:-}" ] && _error_json="\"$(json_escape \"$PHASE_CURRENT_ERROR\")\""
-  phase_finish "$_phase" "$_result" "${PHASE_CURRENT_ACTION:-$_function}" "$_elapsed" "$PHASE_CURRENT_CREATED" "$PHASE_CURRENT_UPDATED" "$PHASE_CURRENT_SKIPPED" "$PHASE_CURRENT_CONFLICTS" "$_error_json"
+  # 阶段失败必须进入 overall 汇总；基础工具内部已逐项计数时避免重复累加。
+  if [ "$_rc" -ne 0 ] && [ "$FAILED_COUNT" -eq "$_failed_before" ]; then
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+  fi
+  phase_finish "$_phase" "$_result" "${PHASE_CURRENT_ACTION:-$_function}" "$_elapsed" "$PHASE_CURRENT_CREATED" "$PHASE_CURRENT_UPDATED" "$PHASE_CURRENT_SKIPPED" "$PHASE_CURRENT_CONFLICTS" "${PHASE_CURRENT_ERROR:-}"
   return "$_rc"
 }
 
@@ -297,7 +310,341 @@ do_openspec_phase() {
   }
   return 0
 }
-do_superpowers_git_phase() { PHASE_CURRENT_ACTION="fetch-pull-ff-only"; return 0; }
+# Superpowers Git 阶段字段（保持 Bash 3.2：不用关联数组）。
+MAX_GIT_CANDIDATES=3
+GIT_CANDIDATES_COUNT=0
+GIT_CANDIDATE_0=""; GIT_CANDIDATE_1=""; GIT_CANDIDATE_2=""
+GIT_ERROR=""
+GIT_ACTION=""
+GIT_ORIGIN=""
+GIT_BRANCH=""
+GIT_BEFORE_REVISION=""
+GIT_AFTER_REVISION=""
+
+parse_git_candidates() {
+  # 镜像配置是空格分隔字符串；在脚本内部逐项解析，避免 zsh 外层先拼接/分词。
+  GIT_CANDIDATES_COUNT=0
+  GIT_CANDIDATE_0=""; GIT_CANDIDATE_1=""; GIT_CANDIDATE_2=""
+  _raw="${CADENCE_SUPERPOWERS_GIT:-}"
+  if [ -n "${CADENCE_TEST_GIT_CANDIDATES:-}" ]; then
+    _raw="$CADENCE_TEST_GIT_CANDIDATES"
+  fi
+  while [ -n "$_raw" ]; do
+    case "$_raw" in
+      *' '*) _candidate="${_raw%% *}"; _raw="${_raw#* }" ;;
+      *) _candidate="$_raw"; _raw="" ;;
+    esac
+    [ -n "$_candidate" ] || continue
+    if [ "$GIT_CANDIDATES_COUNT" -ge "$MAX_GIT_CANDIDATES" ]; then
+      GIT_ERROR="too-many-candidates:$MAX_GIT_CANDIDATES"
+      return 1
+    fi
+    case "$GIT_CANDIDATES_COUNT" in
+      0) GIT_CANDIDATE_0="$_candidate" ;;
+      1) GIT_CANDIDATE_1="$_candidate" ;;
+      2) GIT_CANDIDATE_2="$_candidate" ;;
+    esac
+    GIT_CANDIDATES_COUNT=$((GIT_CANDIDATES_COUNT + 1))
+  done
+  if [ "$GIT_CANDIDATES_COUNT" -eq 0 ]; then
+    GIT_ERROR="missing-candidate"
+    return 1
+  fi
+  return 0
+}
+
+git_candidate_at() {
+  case "$1" in
+    0) printf '%s' "$GIT_CANDIDATE_0" ;;
+    1) printf '%s' "$GIT_CANDIDATE_1" ;;
+    2) printf '%s' "$GIT_CANDIDATE_2" ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_superpowers_repo() {
+  [ -d "$SUPERPOWERS_DIR" ] || return 1
+  [ "$(git -C "$SUPERPOWERS_DIR" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]
+}
+
+# 运行带超时的命令。macOS 默认没有 timeout，因此提供 Bash PID watchdog 回退。
+run_with_timeout() {
+  _limit="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_limit" "$@"
+    return $?
+  fi
+  "$@" &
+  _pid=$!
+  _elapsed=0
+  while kill -0 "$_pid" 2>/dev/null; do
+    if [ "$_elapsed" -ge "$_limit" ]; then
+      kill "$_pid" 2>/dev/null
+      wait "$_pid" 2>/dev/null
+      return 124
+    fi
+    sleep 1
+    _elapsed=$((_elapsed + 1))
+  done
+  wait "$_pid"
+}
+
+phase_remaining_s() {
+  _now="$(now_s)"
+  _used=$((_now - PHASE_CURRENT_STARTED_S))
+  _remaining=$((180 - _used))
+  if [ -n "${CADENCE_TEST_GIT_PHASE_BUDGET_S:-}" ]; then
+    _remaining=$((CADENCE_TEST_GIT_PHASE_BUDGET_S - _used))
+  fi
+  [ "$_remaining" -gt 0 ] && printf '%s' "$_remaining" || printf '0'
+}
+
+git_timeout_for() {
+  _single="$1"
+  _remaining="$(phase_remaining_s)"
+  if [ "$_remaining" -lt "$_single" ]; then
+    printf '%s' "$_remaining"
+  else
+    printf '%s' "$_single"
+  fi
+}
+
+# 统一格式化 Git 子命令错误，确保 phase.error 始终是字符串。
+git_error_with_output() {
+  _label="$1"; _rc="$2"; _file="$3"
+  _detail="$(cat "$_file" 2>/dev/null | tr '\n' ' ')"
+  [ -n "$_detail" ] || _detail="无输出"
+  printf '%s: %s (exit=%s)' "$_label" "$_detail" "$_rc"
+}
+
+clone_superpowers() {
+  _tmp="$(mktemp -d "${TMPDIR:-/tmp}/cadence-superpowers.XXXXXX")" || {
+    GIT_ERROR="clone-tempdir-failed"
+    return 1
+  }
+  _selected=""
+  _errors=""
+  _index=0
+  while [ "$_index" -lt "$GIT_CANDIDATES_COUNT" ]; do
+    _candidate="$(git_candidate_at "$_index")"
+    rm -rf "$_tmp/repo"
+    : > "$_tmp/error"
+    _timeout="$(git_timeout_for 60)"
+    if [ "$_timeout" -le 0 ]; then
+      _errors="${_errors}phase-timeout: no budget remaining"
+      break
+    fi
+    run_with_timeout "$_timeout" git clone --depth 1 "$_candidate" "$_tmp/repo" >"$_tmp/error" 2>&1
+    _rc=$?
+    if [ "$_rc" -eq 0 ]; then
+      _selected="$_candidate"
+      break
+    fi
+    _entry_error="$(git_error_with_output "$_candidate" "$_rc" "$_tmp/error")"
+    if [ -n "$_errors" ]; then _errors="${_errors}; ${_entry_error}"; else _errors="$_entry_error"; fi
+    if [ "$(phase_remaining_s)" -le 0 ]; then
+      _errors="${_errors}; phase-timeout: clone budget exhausted"
+      break
+    fi
+    _index=$((_index + 1))
+  done
+  if [ -z "$_selected" ]; then
+    rm -rf "$_tmp"
+    GIT_ERROR="clone-failed: $_errors"
+    return 1
+  fi
+  if ! mv "$_tmp/repo" "$SUPERPOWERS_DIR" 2>"$_tmp/mv-error"; then
+    _mv_error="$(git_error_with_output move 1 "$_tmp/mv-error")"
+    rm -rf "$_tmp"
+    GIT_ERROR="clone-install-failed: $_mv_error"
+    return 1
+  fi
+  rm -rf "$_tmp"
+  GIT_ACTION="clone"
+  GIT_ORIGIN="$_selected"
+  GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  GIT_BEFORE_REVISION=""
+  GIT_AFTER_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
+  PHASE_CURRENT_CREATED=$((PHASE_CURRENT_CREATED + 1))
+  return 0
+}
+
+update_superpowers() {
+  validate_superpowers_repo || { GIT_ERROR="not-git"; return 1; }
+  GIT_BEFORE_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
+  GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  GIT_ORIGIN="$(git -C "$SUPERPOWERS_DIR" remote get-url origin 2>/dev/null)"
+  [ -n "$GIT_BEFORE_REVISION" ] && [ -n "$GIT_BRANCH" ] || {
+    GIT_ERROR="git-metadata-failed"
+    return 1
+  }
+
+  _selected=""
+  _errors=""
+  _remote_changed=0
+  _origin_matched=0
+  _index=0
+  # matched-first：当前 origin 命中任一候选时，优先只 fetch origin，不改写用户配置。
+  while [ "$_index" -lt "$GIT_CANDIDATES_COUNT" ]; do
+    _candidate="$(git_candidate_at "$_index")"
+    if [ "$_candidate" = "$GIT_ORIGIN" ]; then
+      _origin_matched=1
+      break
+    fi
+    _index=$((_index + 1))
+  done
+  if [ "$_origin_matched" -eq 1 ]; then
+    _timeout="$(git_timeout_for 180)"
+    if [ "$_timeout" -gt 0 ]; then
+      _fetch_file="${TMPDIR:-/tmp}/cadence-superpowers-fetch.$$"
+      run_with_timeout "$_timeout" git -C "$SUPERPOWERS_DIR" fetch origin >"$_fetch_file" 2>&1
+      _rc=$?
+      if [ "$_rc" -eq 0 ]; then
+        _selected="$GIT_ORIGIN"
+      else
+        _entry_error="$(git_error_with_output "$GIT_ORIGIN" "$_rc" "$_fetch_file")"
+        _errors="$_entry_error"
+      fi
+      rm -f "$_fetch_file"
+    else
+      _errors="phase-timeout: no budget remaining"
+    fi
+  fi
+  # origin 未命中，或命中 origin 的 fetch 失败时，才按候选顺序逐一尝试并必要时修复 origin。
+  if [ -z "$_selected" ]; then
+    _index=0
+    while [ "$_index" -lt "$GIT_CANDIDATES_COUNT" ]; do
+      _candidate="$(git_candidate_at "$_index")"
+      _timeout="$(git_timeout_for 180)"
+      if [ "$_timeout" -le 0 ]; then
+        if [ -n "$_errors" ]; then _errors="${_errors}; phase-timeout: no budget remaining"; else _errors="phase-timeout: no budget remaining"; fi
+        break
+      fi
+      _fetch_file="${TMPDIR:-/tmp}/cadence-superpowers-fetch.$$"
+      if [ "$_candidate" = "$GIT_ORIGIN" ]; then
+        run_with_timeout "$_timeout" git -C "$SUPERPOWERS_DIR" fetch origin >"$_fetch_file" 2>&1
+      else
+        # 候选 URL 作为独立 argv 传给 git fetch，不拼接命令字符串。
+        run_with_timeout "$_timeout" git -C "$SUPERPOWERS_DIR" fetch "$_candidate" >"$_fetch_file" 2>&1
+      fi
+      _rc=$?
+      if [ "$_rc" -eq 0 ]; then
+        if [ "$_candidate" != "$GIT_ORIGIN" ]; then
+          _timeout="$(git_timeout_for 180)"
+          if [ "$_timeout" -le 0 ]; then
+            rm -f "$_fetch_file"
+            if [ -n "$_errors" ]; then _errors="${_errors}; phase-timeout: no budget remaining"; else _errors="phase-timeout: no budget remaining"; fi
+            break
+          fi
+          run_with_timeout "$_timeout" git -C "$SUPERPOWERS_DIR" remote set-url origin "$_candidate" >"$_fetch_file" 2>&1
+          _set_rc=$?
+          if [ "$_set_rc" -ne 0 ]; then
+            _entry_error="$(git_error_with_output "$_candidate" "$_set_rc" "$_fetch_file")"
+            rm -f "$_fetch_file"
+            if [ -n "$_errors" ]; then _errors="${_errors}; ${_entry_error}"; else _errors="$_entry_error"; fi
+            _index=$((_index + 1))
+            continue
+          fi
+          _remote_changed=1
+          GIT_ORIGIN="$_candidate"
+        fi
+        _selected="$_candidate"
+        rm -f "$_fetch_file"
+        break
+      fi
+      _entry_error="$(git_error_with_output "$_candidate" "$_rc" "$_fetch_file")"
+      rm -f "$_fetch_file"
+      if [ -n "$_errors" ]; then _errors="${_errors}; ${_entry_error}"; else _errors="$_entry_error"; fi
+      _index=$((_index + 1))
+    done
+  fi
+  if [ -z "$_selected" ]; then
+    GIT_ERROR="fetch-failed: $_errors"
+    return 1
+  fi
+
+  _timeout="$(git_timeout_for 180)"
+  if [ "$_timeout" -le 0 ]; then
+    GIT_ERROR="phase-timeout: pull skipped (no budget remaining)"
+    return 1
+  fi
+  _pull_file="${TMPDIR:-/tmp}/cadence-superpowers-pull.$$"
+  run_with_timeout "$_timeout" git -C "$SUPERPOWERS_DIR" pull --ff-only origin "$GIT_BRANCH" >"$_pull_file" 2>&1
+  _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    GIT_ERROR="$(git_error_with_output pull "$_rc" "$_pull_file")"
+    rm -f "$_pull_file"
+    return 1
+  fi
+  rm -f "$_pull_file"
+  GIT_AFTER_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
+  [ -n "$GIT_AFTER_REVISION" ] || { GIT_ERROR="git-after-revision-failed"; return 1; }
+  GIT_ACTION="fetch-pull-ff-only"
+  if [ "$GIT_BEFORE_REVISION" = "$GIT_AFTER_REVISION" ] && [ "$_remote_changed" -eq 0 ]; then
+    PHASE_CURRENT_UPDATED=0
+    PHASE_CURRENT_RESULT="skipped"
+  else
+    PHASE_CURRENT_UPDATED=$((PHASE_CURRENT_UPDATED + 1))
+  fi
+  return 0
+}
+
+do_superpowers_git_phase() {
+  SUPERPOWERS_DIR="$HOME/.agents/superpowers"
+  GIT_ERROR=""; GIT_ACTION="fetch-pull-ff-only"
+  GIT_ORIGIN=""; GIT_BRANCH=""; GIT_BEFORE_REVISION=""; GIT_AFTER_REVISION=""
+  PHASE_CURRENT_ACTION="fetch-pull-ff-only"
+  parse_git_candidates || {
+    PHASE_CURRENT_ERROR="${GIT_ERROR:-candidate-parse-failed}"
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    return 1
+  }
+  if validate_superpowers_repo; then
+    if [ "$MODE" = "check" ]; then
+      GIT_ACTION="verify-ready"
+      PHASE_CURRENT_ACTION="verify-ready"
+      GIT_ORIGIN="$(git -C "$SUPERPOWERS_DIR" remote get-url origin 2>/dev/null)"
+      GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+      GIT_BEFORE_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
+      GIT_AFTER_REVISION="$GIT_BEFORE_REVISION"
+      PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+      PHASE_CURRENT_RESULT="skipped"
+      return 0
+    fi
+    update_superpowers || {
+      PHASE_CURRENT_ERROR="${GIT_ERROR:-git-update-failed}"
+      PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+      return 1
+    }
+  elif [ -e "$SUPERPOWERS_DIR" ] || [ -L "$SUPERPOWERS_DIR" ]; then
+    GIT_ACTION="not-git"
+    PHASE_CURRENT_ACTION="not-git"
+    GIT_ERROR="not-git"
+    PHASE_CURRENT_ERROR="$GIT_ERROR"
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    return 1
+  elif [ "$MODE" = "check" ]; then
+    GIT_ACTION="check-not-installed"
+    PHASE_CURRENT_ACTION="check-not-installed"
+    PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+    PHASE_CURRENT_RESULT="skipped"
+    return 0
+  else
+    PHASE_CURRENT_ACTION="clone"
+    mkdir -p "$(dirname "$SUPERPOWERS_DIR")" || {
+      PHASE_CURRENT_ERROR="mkdir-superpowers-parent-failed"
+      PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+      return 1
+    }
+    clone_superpowers || {
+      PHASE_CURRENT_ERROR="${GIT_ERROR:-clone-failed}"
+      PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+      return 1
+    }
+  fi
+  return 0
+}
+
 do_superpowers_links_phase() { PHASE_CURRENT_ACTION="sync-four-layers"; return 0; }
 do_verify_phase() { PHASE_CURRENT_ACTION="all-skipped"; return 0; }
 

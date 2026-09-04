@@ -27,11 +27,49 @@ class Fixture:
         fake_openspec = TEST_DIR / "helpers" / "fake-openspec.sh"
         if fake_openspec.exists():
             shutil.copy2(fake_openspec, self.bin / "openspec")
+        fake_git = TEST_DIR / "helpers" / "fake-git.sh"
+        if fake_git.exists():
+            shutil.copy2(fake_git, self.bin / "git")
+        fake_timeout = TEST_DIR / "helpers" / "fake-timeout.sh"
+        if fake_timeout.exists() and fixture_name != "superpowers-timeout":
+            shutil.copy2(fake_timeout, self.bin / "timeout")
         for path in self.bin.iterdir():
             path.chmod(path.stat().st_mode | 0o111)
         self.calls = root / "calls"
         self.calls.touch()
+        self.git_args = root / "git-args"
+        self.git_args.touch()
+        self.tmp = root / "tmp"
+        self.tmp.mkdir()
+        self.fixture_name = fixture_name
+        self._prepare_git_fixture(fixture_name)
         self._prepare_openspec_fixture(fixture_name)
+
+    def _prepare_git_fixture(self, fixture_name):
+        """创建本地 bare 源，并按 fixture 覆盖 Superpowers 目录/候选。"""
+        self.git_source = self.root / "superpowers-source.git"
+        worktree = self.root / "superpowers-worktree"
+        subprocess.run(["git", "init", "--bare", "-q", str(self.git_source)], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(worktree)], check=True)
+        subprocess.run(["git", "-C", str(worktree), "config", "user.email", "fixture@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "config", "user.name", "fixture"], check=True)
+        (worktree / "skills").mkdir(parents=True)
+        (worktree / "skills" / "README.md").write_text("fixture superpowers\\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(worktree), "add", "skills"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "commit", "-qm", "fixture superpowers"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "remote", "add", "origin", str(self.git_source)], check=True)
+        subprocess.run(["git", "-C", str(worktree), "push", "-q", "-u", "origin", "main"], check=True)
+        subprocess.run(["git", "--git-dir", str(self.git_source), "symbolic-ref", "HEAD", "refs/heads/main"], check=True)
+
+        target = self.home / ".agents" / "superpowers"
+        if fixture_name == "superpowers-non-git":
+            target.mkdir(parents=True)
+            (target / "not-git.txt").write_text("not a repository\\n", encoding="utf-8")
+        elif fixture_name != "superpowers-source-missing":
+            # 让默认 fixture 覆盖更新路径；clone fixture 通过删除该目录进入冷启动路径。
+            if fixture_name not in ("superpowers-timeout", "superpowers-zsh-multiple-candidates"):
+                shutil.copytree(worktree, target)
+
 
     def _prepare_openspec_fixture(self, fixture_name):
         """按名称复制 OpenSpec 投影 fixture；默认 fixture 为四端齐全。"""
@@ -54,6 +92,22 @@ class Fixture:
         env["HOME"] = str(self.home)
         env["PATH"] = str(self.bin) + os.pathsep + env.get("PATH", "")
         env["FAKE_OPENSPEC_CALLS"] = str(self.calls)
+        env["FAKE_GIT_ARGS"] = str(self.git_args)
+        env["FAKE_GIT_CLONE_SOURCE"] = "file://" + str(self.git_source)
+        env["CADENCE_TEST_GIT_CANDIDATES"] = str(self.git_source)
+        if self.fixture_name == "superpowers-source-missing":
+            env["CADENCE_TEST_GIT_CANDIDATES"] = "one two three"
+            env["FAKE_GIT_FAIL"] = "clone"
+        elif self.fixture_name == "superpowers-zsh-multiple-candidates":
+            env["CADENCE_TEST_GIT_CANDIDATES"] = "one two"
+            env["FAKE_GIT_FAIL"] = "clone"
+        elif self.fixture_name == "superpowers-timeout":
+            env["FAKE_GIT_BLOCK"] = "clone"
+            env["FAKE_GIT_BLOCK_SECONDS"] = "300"
+            env["CADENCE_TEST_GIT_PHASE_BUDGET_S"] = "5"
+        env["REAL_GIT"] = shutil.which("git") or "/usr/bin/git"
+        env["TMPDIR"] = str(self.tmp)
+        env["FAKE_TIMEOUT_LOG"] = str(self.root / "timeouts")
         return env
 
 
@@ -83,10 +137,13 @@ def run_precheck(fixture, *args):
 
 
 def run_precheck_under_shell(fixture, *args):
-    """通过独立 bash shell 执行，验证 cwd/HOME/PATH 不依赖调用方状态。"""
+    """通过指定 shell 执行，验证外层 shell 不参与候选参数拼接。"""
+    shell = "bash"
+    if args and args[0] in {"bash", "zsh", "sh"}:
+        shell, args = args[0], args[1:]
     command = 'cd "$1" && shift && exec bash "$@"'
     proc = subprocess.run(
-        ["bash", "-c", command, "pre-check", str(fixture.project), str(SCRIPT), *args],
+        [shell, "-c", command, "pre-check", str(fixture.project), str(SCRIPT), *args],
         cwd=fixture.root,
         env=fixture.env(),
         stdout=subprocess.PIPE,

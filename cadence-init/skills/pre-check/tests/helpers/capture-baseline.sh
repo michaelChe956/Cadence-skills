@@ -143,7 +143,7 @@ snapshot_tree() {
     done
   done
   printf 'git origin %s\n' "$(git -C "$HOME_DIR/.agents/superpowers" remote get-url origin)" >> "$_out"
-  printf 'git branch %s\n' "$(git -C "$HOME_DIR/.agents/superpowers" branch --show-current)" >> "$_out"
+  printf 'git branch %s\n' "$(git -C "$HOME_DIR/.agents/superpowers" rev-parse --abbrev-ref HEAD)" >> "$_out"
   printf 'git head %s\n' "$(git -C "$HOME_DIR/.agents/superpowers" rev-parse HEAD)" >> "$_out"
 }
 
