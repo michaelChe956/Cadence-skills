@@ -30,5 +30,29 @@
 | PC-FAIL-02 | 未请求 Playwright 时不安装、不写入规则或 skill 目录 | `test_playwright_not_requested_writes_nothing` | Task 5 |
 | PC-REPORT-05 | 独占 report 在 success/failure/timeout 路径捕获后由 trap 清理 | `helpers/report-cleanup.sh`；三路径生命周期测试 | Task 5 |
 
+## PC-SKILL 三步契约对账
 
-当前旧实现仅汇总六工具，报告没有 `phases[]`，因此阶段报告测试按预期失败。
+| 条款 ID | 约束 | 测试/证据 | 状态 |
+|---|---|---|---|
+| PC-SKILL-01 | 步骤 1：定位 skill 目录与绝对脚本路径，不复制脚本或切换到 skill 目录 | `TestSkillContract.test_has_three_step_contract`、SKILL.md 执行契约 | Task 6 |
+| PC-SKILL-02 | 步骤 2：在项目根一次调用 `run`/`check`，读取脚本 stdout JSON | `TestSkillContract.test_has_three_step_contract`、脚本 smoke | Task 6 |
+| PC-SKILL-03 | 步骤 3：读取 `overall`、`steps[]`、五项 `phases[]` 并按报告呈现；失败按模式停止 | `TestSkillContract.test_has_three_step_contract`、phase 测试 | Task 6 |
+| PC-SKILL-04 | `unsupported` 明确转人工处理，不回退模型自由编排 | `TestSkillContract.test_keeps_boundaries`、SKILL.md 失败处理 | Task 6 |
+| PC-SKILL-05 | Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入 | `TestSkillContract.test_keeps_boundaries`、`test_playwright_not_requested_writes_nothing` | Task 6 |
+| PC-SKILL-06 | API Key 仅保留 `your_zhipu_api_key`/`your_minimax_api_key` 占位符，不收集真实密钥 | `TestSkillContract.test_keeps_boundaries`、SKILL.md 安全提醒 | Task 6 |
+| PC-SKILL-07 | 软链拓扑解析后最终等价：现网直连源路径、兼容中转链均可视为有效拓扑 | `TestSuperpowersLinks.test_direct_and_layered_topologies_are_both_skipped`、SKILL.md 边界说明 | Task 6 |
+
+### 旧文案残留处置
+
+完成策略表（旧 41-47 行）及模型临场编程描述已删除，改以 `phases[]`/`overall` 口径说明。
+
+### 旧章节残留处置
+
+旧增量运行说明（旧 110-128 行）、dot 图（旧 86-101 行及 130-158 行）和快速参考表（旧 160-170 行）均删除；当前正文只保留三步契约与五 phase 报告边界。
+
+### 边界与静态检查
+
+禁用旧命令、heredoc、流程图和现场编排提示；保留 `no-interrupt`、普通模式失败语义、Playwright opt-in、API Key 占位符和 `unsupported` 人工 fallback。
+
+
+当前实现已落地五项 `phases[]`，34 个 Python 测试全绿。

@@ -18,6 +18,51 @@ from helpers.fixture import (
 )
 
 
+class TestSkillContract(unittest.TestCase):
+    def setUp(self):
+        self.text = (Path(__file__).parents[1] / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_has_three_step_contract(self):
+        self.assertIn("步骤 1：定位 skill 目录", self.text)
+        self.assertIn('bash "<PRE_CHECK_SH>" run', self.text)
+        self.assertIn("读取 JSON 报告", self.text)
+        self.assertIn("phases[]", self.text)
+
+    def test_no_model_orchestration_commands_remain(self):
+        for phrase in (
+            # HEAD 旧版正文中的真实命令/流程措辞。
+            "git clone --depth 1",
+            "git clone",
+            "git -C",
+            "npm install",
+            "npx ",
+            "mkdir -p",
+            "openspec init --tools",
+            "openspec update",
+            "python3 -c \"import json;print(' '.join",
+            "增量运行",
+            "快速参考",
+            "digraph",
+            "逐项软链",
+            "模型先执行一次",
+        ):
+            self.assertNotIn(phrase, self.text)
+
+        # 面向未来的补充防线：HEAD 旧版没有这些字面命令/格式。
+        for phrase in ("ln -s", "ln -sf", "heredoc"):
+            self.assertNotIn(phrase, self.text)
+
+    def test_keeps_boundaries(self):
+        for phrase in (
+            "Playwright",
+            "your_zhipu_api_key",
+            "your_minimax_api_key",
+            "不收集真实密钥",
+            "unsupported",
+        ):
+            self.assertIn(phrase, self.text)
+
+
 class TestFailureFastReturn(unittest.TestCase):
     def test_base_tool_failure_does_not_write_downstream(self):
         with isolated_fixture("base-tools-failure") as fx:

@@ -8,433 +8,62 @@ disable-model-invocation: true
 
 ## 概述
 
-自动化环境检查和配置工具，确保项目所需的工具、依赖项、OpenSpec 指令文件和 Superpowers Skills 正确安装。默认使用无人工交互策略完成初始化。
+本 Skill 通过关联脚本完成前置条件检查、OpenSpec 客户端产物补齐、Superpowers 同步和结构化复核。模型侧只负责定位脚本、在项目根调用一次脚本，以及读取报告并向用户呈现结果；确定性的安装、写入、同步和验证均由脚本处理。
 
-**副作用说明**：本 Skill 不修改用户全局配置文件（`~/.npmrc`、uv 配置、`git config --global`），但并非完全无写入。预期行为包括：`run` 会全局安装缺失的基础工具（ast-grep/codegraph/openspec/uv 等）；`--upgrade` 会升级这些工具到当前源最新版；Superpowers 步骤会 clone 并更新本地仓库 origin（用于切换国内镜像）。openspec 产物与 `.claude/.agents/.pi/.kimi-code` 写入待初始化项目根目录。
+脚本默认不收集任何私密信息，也不修改用户全局配置。`run` 可能在项目根写入 OpenSpec 客户端产物，并在需要时准备 Superpowers 来源及其技能链接；`check` 仅探测，不执行写入。Playwright 默认不启用，只有用户明确要求时才可选择。
 
-## 参数模式
+## 参数边界
 
-支持以下调用方式：
+- 参数中的完整 token `no-interrupt` 或 `--no-interrupt` 表示无人工中断模式。
+- 普通模式和 `--no-interrupt` 模式的失败语义不同，不能混用。
+- 不询问、不收集、不验证 API Key、Token 或密码；真实密钥由用户自行在后续配置中替换占位符。
+- `unsupported` 必须明确报告为需要人工处理，不静默改由模型自由编排。
 
-```text
-/pre-check
-/pre-check no-interrupt
-/pre-check --no-interrupt
-```
+## 执行契约
 
-- 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
-- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的检查、交互、增量安装、冲突跳过策略；单项工具失败不阻塞其他检查项的就绪探测，但整体判定为失败（`overall` 为 `partial`/`failed` 或任一步骤 failed）时不得进入 OpenSpec、Superpowers 等下游步骤（详见步骤 0 判定规则）。
-- 两种模式互斥；不得把 `no-interrupt` 规则应用到普通模式。
+### 步骤 1：定位 skill 目录与绝对路径
 
-### no-interrupt 通用规则
+在项目根执行 `pwd -P`，记为 `<PROJECT_ROOT>`；从当前 skill 目录拼出 `<PRE_CHECK_SH>=<skill-dir>/scripts/pre-check.sh`。不要进入 skill 目录或复制脚本；脚本依赖同目录 `scripts/mirrors/{default,cn}.sh`。
 
-- 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
-- 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
-- 不询问、不收集 API Key、Token、密码等私密信息。
-- 不绕过操作系统权限、网络授权或执行平台安全限制；缺少必要条件时按失败处理。
-- 失败报告必须包含失败步骤、失败原因、已完成步骤和恢复建议，不得宣称初始化成功。
+### 步骤 2：在项目根一次调用脚本
 
-### no-interrupt 强制完成策略
-
-除 Playwright 外，六个基础检查都是完成门槛。已安装且验证通过视为完成，不重复安装；缺失时必须安装并验证。任一项失败立即终止 `/pre-check`，不执行剩余检查、API Key 提醒或下游初始化 Skill。
-
-| 项目 | 完成条件 | 失败动作 |
-|------|----------|----------|
-| 六个基础工具 | 脚本 `run --no-interrupt` 退出码为 0 且 JSON `overall=success` | 立即终止 |
-| OpenSpec 四客户端产物 | claude/codex/pi/kimi 四客户端目标指令文件验证成功（`openspec/config.yaml` 缺失不算失败，仅提示由 rule-config 创建） | 立即终止 |
-| Superpowers | 来源目录和四层 Skills 软链验证成功 | 立即终止 |
-| Playwright | 仅用户明确要求时安装和验证 | 未要求时允许跳过 |
-
-`no-interrupt` 模式不得把安装失败、验证失败或配置冲突降级为警告后继续。
-
-### no-interrupt Superpowers 处理
-
-1. 先验证 `~/.agents/superpowers/skills`；有效时按候选源更新逻辑完成四层软链。
-2. 来源目录缺失时，按报告中的代理候选顺序在线浅克隆。
-3. 候选全部失败、来源目录不是 Git 仓库或更新失败时立即报错，终止 `/pre-check`；不得降级为警告或回退到本地目录。
-4. Superpowers 来源目录或软链目标存在同名非软链内容时，将冲突内容重命名为 `<原名称>.cadence-backup-YYYYMMDDHHMMSS`，再创建正确目录或软链并验证。
-5. 备份、创建或验证任一步失败时立即终止；禁止删除原内容，也禁止跳过冲突项继续。
-
-**核心原则**：检查-验证-安装-同步-记录
-
-**强制规则**：
-1. **所有交互必须使用中文** - 提示、错误消息、用户询问一律中文
-2. **必须完成所有六个基础检查** - 不允许跳过 npx/uvx/ast-grep/codegraph/openspec/superpowers 任一步骤
-3. **必须支持增量运行** - 老项目重新运行 `/pre-check` 时，只补齐缺失能力，不重装、不覆盖已就绪配置
-4. **Superpowers 必须使用在线候选源** - 按报告中的候选顺序 clone 或更新，失败即终止
-5. **Playwright 默认跳过** - 仅用户明确要求浏览器自动化能力时才安装 playwright-cli 与 skills
-6. **API Key 配置默认占位** - 不询问、不收集真实密钥；mcp-configuration 默认写入智普/MiniMax API Key 占位配置，并提醒用户后续自行替换
-
-## 人工交互策略
-
-> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
-
-默认不向用户提问。只有出现以下情况才进入人工交互：
-
-| 触发条件 | 处理方式 |
-|----------|----------|
-| Superpowers 目标目录存在同名非软链 | 不覆盖；如用户明确要求替换，再询问并执行 |
-| 用户明确要求安装 Playwright | 检查并安装；安装失败时提供手动命令 |
-| 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只提醒后续替换占位符 |
-
-提问规则：
-- 每次只问一个问题。
-- 问题必须给出推荐默认选项。
-- 如果运行环境支持自动超时，超时后采用推荐默认值。
-- 如果无法等待用户输入，采用保守默认：不覆盖、不删除、不收集真实密钥、不启用 Playwright。
-
-## 何时使用
-
-```dot
-digraph when_to_use {
-    rankdir=TB;
-    node [shape=box, style="rounded"];
-
-    start [label="开始任务", shape=ellipse];
-    need_tools [label="需要使用 npx/uvx/OpenSpec/Superpowers?", shape=diamond];
-    need_project [label="需要定位项目目录?", shape=diamond];
-    use_skill [label="使用本 skill", shape=box, style=filled];
-
-    start -> need_tools;
-    need_tools -> use_skill [label="是"];
-    need_tools -> need_project [label="否"];
-    need_project -> use_skill [label="是"];
-    need_project -> start [label="否", style=dashed];
-}
-```
-
-**使用场景**：环境初始化、CI/CD 环境准备、新开发者环境搭建、新版 Cadence 工具补齐、OpenSpec 指令文件补齐、Superpowers Skills 同步
-
-**不适用场景**：全部工具已确认安装、仅需检查单个工具、非开发环境
-
-## 增量运行
-
-`/pre-check` 支持重复执行。每个工具独立检查，**已安装或已同步的项目会直接跳过，只补装、补齐、更新缺失项**，不会重复安装或破坏已有配置。
-
-增量原则：
-- 已就绪：跳过并报告当前状态。
-- 缺失：安装、初始化或补齐。
-- 部分存在：只修复缺失部分。
-- 冲突存在：不覆盖用户文件，中文警告并给出人工处理建议。
-- 单项失败：报告失败和手动命令，其他已就绪项不回滚。
-- 脚本化执行：六个基础工具由 `<PRE_CHECK_SH>`（pre-check skill 的关联脚本，完整绝对路径）毫秒级本地版本探测，已就绪工具秒跳过、不查远端、不重装；仅缺失或携带 `--upgrade` 时才执行安装/升级。
-
-典型场景：
-- 框架新增 `ast-grep` 后，老项目重新运行 `/pre-check`，只会自动安装 `ast-grep`，不会影响已有的 `npx`、`uvx`、`playwright-cli`。
-- 框架新增 `codegraph` 后，老项目重新运行 `/pre-check`，只会自动安装 `codegraph`，不会影响已有工具。
-- 框架新增 OpenSpec pi 支持后，老项目重新运行 `/pre-check`：缺少 `.pi` 产物时先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，则直接执行 `openspec update`。新项目或四客户端产物均缺失时执行 `openspec init --tools claude,codex,pi,kimi`。
-- 框架新增 OpenSpec kimi 支持后，老项目重新运行 `/pre-check`：缺少 `.kimi-code` 产物时先执行 `openspec init --tools kimi`，再执行 `openspec update`；若 kimi 产物已存在，则直接执行 `openspec update`。新项目或四客户端产物均缺失时执行 `openspec init --tools claude,codex,pi,kimi`。
-- 框架新增 Superpowers 后，老项目重新运行 `/pre-check`，只会更新或识别 `~/.agents/superpowers`，补齐 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 的软链。
-- 某个工具安装失败后修复了环境问题，重新运行 `/pre-check` 会再次尝试安装或同步该工具。
-
-## 检查流程
-
-```dot
-digraph check_flow {
-    rankdir=TB;
-    node [shape=box, style="rounded"];
-
-    start [label="开始检查", shape=ellipse];
-    run_script [label="步骤 0：执行脚本\n六工具探测；npx 仅探测\n(缺失提示装 Node.js)；\n其余安装/复验/升级"];
-    read_report [label="读取 JSON 报告\noverall + steps[]"];
-    judge [label="overall 判定", shape=diamond];
-    fail_stop [label="失败处理：\nno-interrupt 终止\n普通模式报告不继续"];
-    openspec_clients [label="步骤 5：OpenSpec 四客户端产物补齐"];
-    superpowers_sync [label="步骤 6：Superpowers clone/更新 + 四层软链"];
-    playwright [label="可选：用户明确要求时安装 Playwright", shape=box];
-    apikey [label="API Key 占位提醒"];
-    end [label="检查完成", shape=ellipse];
-
-    start -> run_script;
-    run_script -> read_report;
-    read_report -> judge;
-    judge -> fail_stop [label="partial / failed / 非零退出"];
-    judge -> openspec_clients [label="success"];
-    openspec_clients -> superpowers_sync;
-    superpowers_sync -> playwright;
-    playwright -> apikey;
-    apikey -> end;
-}
-```
-
-## 快速参考
-
-| 步骤 | 检查命令或路径 | 成功标志 | 失败处理 |
-|------|----------------|----------|----------|
-| **1-6. 基础工具** | `bash "<PRE_CHECK_SH>" run [--mirror cn]` | JSON `overall=success` 且六工具 status 就绪 | 脚本统一安装/复验；失败按模式处理 |
-| （含 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter） | `--upgrade` 升级 npm 系 + uv | `steps[].status` ∈ ready/installed/upgraded/skipped | 见步骤 0 |
-| **5. OpenSpec** | 脚本报告 `openspec` 项 + 四客户端产物状态 | CLI 就绪（脚本报告为准）且所需指令文件存在；`openspec/config.yaml` 缺失仅提示不影响判定 | 按缺失客户端 `init --tools <缺失客户端>` 后 `update` |
-| **6. Superpowers** | `~/.agents/superpowers/skills` | 四层软链同步完成 | 按候选在线 clone/更新；全败即报告 failed 并终止 |
-| **可选. playwright-cli** | 用户明确要求时检查 `playwright-cli --help` | 输出帮助信息 | 自动全局安装并安装 skills |
-| **默认提醒. API Key** | 展示占位配置提醒 | 用户后续自行替换真实密钥 | 不收集、不验证密钥 |
-
-## 实施步骤
-
-### 步骤 0：执行脚本完成六个基础工具检查
-
-六个基础工具（npx、uvx、ast-grep、codegraph、openspec CLI、pi-mcp-adapter）的就绪探测、缺失安装与安装后复验统一由脚本完成，不再逐条执行安装命令。
-
-**自包含原则（关键）**：Agent 的每条命令都在**独立 shell** 中执行，工作目录（cwd）、环境变量、上一条命令的状态**都不跨命令保留**。因此本 Skill 的每条命令都必须**完全自包含**：用绝对路径，不依赖 cwd，不依赖环境变量，不依赖前一条命令设置的任何东西。
-
-**第一步——确定两个字面路径（模型先执行一次，记住字面值，后续每条命令直接写出）**：
-
-1. **项目根 `<PROJECT_ROOT>`**：待初始化项目的绝对路径。先执行 `pwd`（或 `pwd -P`）得到它，例如 `/home/user/my-project`。所有 openspec 产物与 `.claude/.agents/.pi/.kimi-code` 都落在该目录（报告文件在下一步单独放在 `/tmp`，不在项目根）。
-2. **脚本 `<PRE_CHECK_SH>`**：脚本是本 pre-check skill 的关联脚本，位于 pre-check skill 目录下的 `scripts/pre-check.sh`。模型根据自身安装环境定位 skill 目录并拼出完整绝对路径（例如 `<skill 安装根>/cadence-init/skills/pre-check/scripts/pre-check.sh`）。脚本只读，**不要** `cd` 进 skill 目录，也**不要**把脚本单独复制到别处执行——它依赖同目录下的 `mirrors/`（镜像配置），必须连同 skill 目录一起定位。
-
-**第二步——确定独占报告路径 `<REPORT>`**：报告是临时中间产物，用 `mktemp` 在 `/tmp` 生成**原子唯一**路径（避免同秒并发/重复运行冲突）。执行一次 `mktemp -t precheck-report.XXXXXX.json`，得到形如 `/tmp/precheck-report.aB3dEf.json` 的唯一路径，**记住这个字面值**记为 `<REPORT>`，后续每条命令直接写出它（**加引号**）。不要用 `date +%s`（同秒并发会重名），也不要用 `pwd` 推导（独立 shell 的 cwd 会变）。
-
-**调用命令**：按需选择下面**其中一条**执行（不要全部顺序执行，尤其不要误跑 `--upgrade`）。把 `<PRE_CHECK_SH>` 与 `<REPORT>` 替换为上面记住的字面值：
+仅执行一次与参数相符的命令：
 
 ```bash
-# 通用源，普通模式
-bash "<PRE_CHECK_SH>" run > "<REPORT>"
-
-# 大陆镜像源
-bash "<PRE_CHECK_SH>" run --mirror cn > "<REPORT>"
-
-# no-interrupt 模式（任一基础工具失败即非零退出）
-bash "<PRE_CHECK_SH>" run --mirror cn --no-interrupt > "<REPORT>"
-
-# 仅探测不安装（摸底）
-bash "<PRE_CHECK_SH>" check --mirror cn > "<REPORT>"
-
-# 升级已装工具到当前源 latest（npm 系 + uv 本体）
-bash "<PRE_CHECK_SH>" run --mirror cn --upgrade > "<REPORT>"
+cd "<PROJECT_ROOT>" && bash "<PRE_CHECK_SH>" run [--mirror cn] [--no-interrupt]
 ```
 
-脚本向 stdout 输出单份 JSON，重定向到 `"<REPORT>"`（`/tmp` 下的独占绝对路径）；stderr 彩色摘要直接显示。
+仅探测用 `check`；升级只在明确要求时添加 `--upgrade`。stdout 为一份 JSON，stderr 为中文摘要；不得自行改写安装、OpenSpec、Git 或软链命令。
 
-**读取结果**：报告 JSON 已写入独占路径 `<REPORT>`。用以下命令取 overall 与各工具状态（每条命令自包含，写出 `<REPORT>` 字面值并加引号）：
+脚本调用必须保持项目根 cwd。除显式传入的 `--mirror cn`、`--no-interrupt` 和 `--upgrade` 外，不自行拼接额外流程；报告文件由调用方按既有生命周期管理。
 
-```bash
-# overall（success/partial/failed）
-python3 -c "import json;print(json.load(open('<REPORT>'))['overall'])"
-# 某工具状态
-python3 -c "import json;d=json.load(open('<REPORT>'));print([s for s in d['steps'] if s['name']=='ast-grep'])"
-# Superpowers 远端地址（供步骤 6 使用）
-python3 -c "import json;print(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates'])"
-```
+### 步骤 3：读取 JSON 报告并呈现
 
-**报告生命周期**：报告是 `/tmp` 下的临时文件，用于后续 Superpowers 步骤读取镜像地址、以及向用户汇报初始化结果。无论成功或失败，完成后都删除该次调用的独占文件：
-- 成功路径：全部检查完成后 `rm -f "<REPORT>"`。
-- 失败路径：任一失败终止或报告后，同样 `rm -f "<REPORT>"`，避免残留。
+读取 `overall`、原有 `steps[]` 和五项 `phases[]`，呈现 `result/action/duration_ms/created/updated/skipped/conflicts`；Superpowers phase 呈现 `origin/branch/before_revision/after_revision`。`overall=success` 且五阶段通过才报告完成；重跑以 phase `skipped`/`all-skipped` 和产物无变化证明幂等。
 
-**JSON 结构**（权威）：`overall`（success/partial/failed）、`steps[]`（每项 `name`/`status`/`action`/`version`/`error`，status 枚举 ready/installed/upgraded/skipped/failed）、`next_actions`、`hints.superpowers_git_candidates`（JSON 字符串数组）。
+`--no-interrupt` 任一 phase failed 或脚本非零立即停止，报告失败原因、已完成 phase 和恢复建议；普通模式也不自行执行未覆盖写入。`unsupported` 必须报告人工处理，不静默回退模型自由编排。
 
-**判定规则**：
-- `overall=success` 且六工具 status 均为 ready/installed/upgraded/skipped：基础工具门槛通过，继续步骤 5 的 OpenSpec 四客户端检查与步骤 6 的 Superpowers 同步。
-- `overall` 为 `partial` 或 `failed`，或任一 `steps[].status=failed`，或脚本非零退出：no-interrupt 模式立即终止 `/pre-check` 并报告失败；普通模式报告失败项与恢复建议，**不得继续后续步骤，不宣称成功**。
-- pi-mcp-adapter 的 `status=skipped`（action=pi-not-found）不算失败。
+Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入。API Key 只展示 `your_zhipu_api_key`、`your_minimax_api_key` 占位符和安全提醒，不询问、不收集、不验证真实密钥。
 
-### 可选步骤：检查 playwright-cli
+## 报告与边界说明
 
-> 默认不执行。仅当用户明确要求浏览器自动化、截图、表单填写、端到端测试能力时执行。
+脚本报告保留兼容的 `steps[]`，并提供固定顺序的五项 `phases[]`：`base-tools`、`openspec`、`superpowers-git`、`superpowers-links`、`verify`。呈现 phase 时以脚本返回的 `result` 和计数为准，不根据模型侧猜测补写状态。
 
-```bash
-playwright-cli --help
-```
+普通模式下，失败 phase 可被记录为 `partial` 并继续脚本规定的后续阶段，最终必须如实报告整体状态；这不表示成功，也不允许自行补做脚本未覆盖的写入。`--no-interrupt` 下失败立即阻断下游写入。阶段错误应说明失败原因、已完成 phase 和恢复建议。
 
-**行为（中文输出）**：
-- 未明确要求：报告 "✓ 默认跳过 playwright-cli 安装，可稍后按需启用"
-- 已明确要求且已安装：报告 "✓ playwright-cli 已安装"
-- 已明确要求但未安装：报告 "正在安装 playwright-cli..."，执行全局安装与 skills 安装，完成后报告 "✓ playwright-cli 与 skills 安装成功"
+软链拓扑以解析后最终等价为准：现网直连源路径、兼容中转链均视为同一有效拓扑；已有正确链接应保持幂等，非目标用户内容不得被触碰。冲突和不可支持的布局按报告语义转人工处理。
 
-**安装命令**：
+默认 Playwright 行为是跳过，不安装、不写入；只有用户明确提出浏览器自动化需求时才执行 opt-in。API Key 仅保留以下安全提醒：
 
-> **执行位置**：`npm install -g` 为全局安装（任意目录均可）；`playwright-cli install --skills` 的 skills 产物写入当前项目，须 `cd "<PROJECT_ROOT>"`（项目根绝对路径）后执行，确保在独立 shell 下落到项目根。
+- 智普配置使用 `your_zhipu_api_key` 占位符。
+- MiniMax 配置使用 `your_minimax_api_key` 占位符。
+- 不收集真实密钥，用户应自行替换占位符。
 
-```bash
-npm install -g @playwright/cli@latest        # 全局安装 CLI（任意目录均可）
-cd "<PROJECT_ROOT>" && playwright-cli install --skills   # skills 产物写入项目根，须 cd "<PROJECT_ROOT>"
-```
+🔴 安全提醒：请不要将 API Key 直接告诉 Claude Code。稍后在 MCP 配置步骤中，配置文件会使用占位符，您需要自行替换为真实密钥。
 
-**验证安装**：
+## 失败处理
 
-```bash
-playwright-cli --help
-ls ~/.claude/skills/playwright-cli
-```
-
-**说明**：
-
-- **用途**：浏览器自动化测试、表单填写、截图、数据提取
-- **特点**：Token-efficient，不会强制将页面数据加载到 LLM
-- **Skills**：安装后 Claude Code 可自动识别并使用 Playwright skills
-- **默认行为**：不安装、不启用；需要时由用户显式要求
-
-### 步骤 5：检查 OpenSpec 四客户端产物
-
-> **OpenSpec CLI 就绪以脚本报告为准**：openspec CLI 的探测/安装/复验由步骤 0 脚本统一完成，不再单独执行 `openspec --version`。仅当步骤 0 报告 `steps[]` 中 `name=openspec` 项为就绪（ready/installed/upgraded）时才继续本节；未就绪时先回步骤 0 处理。
-
-**行为（中文输出）**：
-- CLI 已就绪（脚本报告 `openspec` 项为 ready/installed/upgraded）：继续本节四客户端产物检查
-- CLI 未就绪：openspec CLI 由步骤 0 脚本统一安装与验证；本节仅在 CLI 就绪后执行四客户端产物检查
-- `openspec/config.yaml` 不存在：报告 "✓ openspec/config.yaml 尚未创建，将由 rule-config 步骤 11 创建（含 Cadence 协作规则上下文），不阻塞本检查"
-
-**安装**：openspec CLI 由步骤 0 脚本统一安装与验证（见 `steps[]` 中 `name=openspec` 项）；CLI 未就绪时先回到步骤 0 处理，再继续本节四客户端产物检查。
-
-**初始化与更新命令**：
-
-> **执行位置**：`openspec init`/`openspec update` 作用于当前工作目录，产物（`.claude/.agents/.pi/.kimi-code`）写入该目录。为在独立 shell 下确保落到项目根，每条命令用 `cd "<PROJECT_ROOT>" && ...` 自包含（`<PROJECT_ROOT>` 为步骤 0 确定的项目根绝对路径字面值）。
-
-```bash
-# 四客户端产物均缺失（新项目）
-cd "<PROJECT_ROOT>" && openspec init --tools claude,codex,pi,kimi
-
-# 仅 kimi 产物缺失
-cd "<PROJECT_ROOT>" && openspec init --tools kimi && openspec update
-
-# 仅 pi 产物缺失
-cd "<PROJECT_ROOT>" && openspec init --tools pi && openspec update
-
-# 四客户端产物齐全
-cd "<PROJECT_ROOT>" && openspec update
-```
-
-**增量要求**：
-
-按 claude、codex、pi、kimi 四客户端分别检测指令产物存在性，`openspec/config.yaml` 是否存在不作为分支判断条件：
-
-| 客户端 | 产物就绪判定 |
-|--------|--------------|
-| claude | `.claude/commands/opsx/` 存在，或 `.claude/skills/` 下存在 `openspec-*` 目录 |
-| codex | `.agents/skills/` 下存在 `openspec-*` 目录（最新 OpenSpec skills-only，codex 产物落项目根 `.agents/skills/`） |
-| pi | `.pi/skills/` 下恰有 5 个 `openspec-*` 目录，且 `.pi/prompts/` 下恰有 5 个 `opsx-*.md` 文件 |
-| kimi | `.kimi-code/skills/` 下存在 5 个 `openspec-*` 目录 |
-
-- 存在缺失客户端：对缺失客户端执行 `openspec init --tools <缺失客户端列表>`（如 `claude,codex,pi,kimi`、`pi`、`kimi`），再执行 `openspec update`。
-- 四客户端产物均齐全：直接执行 `openspec update`。
-- 已就绪客户端不得重新 init，不覆盖用户改动。
-- `openspec init` 检测到 `openspec/config.yaml` 已存在时原样保留（CLI 行为），不覆盖 rule-config 写入的内容。
-- `openspec update` 只刷新已初始化的工具产物，不能为未初始化的客户端新增产物；缺失客户端必须由 `openspec init` 补齐。
-- OpenSpec 生成的 Claude Code、Codex、pi 与 Kimi Code 目录结构不同，不能混用：
-  - Claude Code：`.claude/commands/opsx/`、`.claude/skills/openspec-*`
-  - Codex：`.agents/skills/openspec-*`（最新 OpenSpec skills-only，产物落项目根 `.agents/skills/`，不产生 `.codex/`）
-  - pi：`.pi/prompts/opsx-*`、`.pi/skills/openspec-*`
-  - Kimi Code：`.kimi-code/skills/openspec-*`（无 commands/adapter，仅 5 个 skill）
-- `--tools pi` 需要 OpenSpec CLI >= 1.4.1；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
-- `--tools kimi` 需要 OpenSpec CLI >= 1.7.0（生成 `.kimi-code/skills/`；1.4.0 起支持 kimi 但路径为旧 `.kimi/skills/`，1.7.0 起改用 `.kimi-code/` 并自动迁移旧 `.kimi` 配置）；步骤 0 脚本始终安装 `@fission-ai/openspec@latest`，版本不足时先回到步骤 0 升级 CLI。
-- 已存在的 OpenSpec skills 或 commands 不删除、不覆盖用户改动；如 `openspec update` 产生冲突，报告冲突并提示用户手动处理。
-
-**验证命令**：
-
-```bash
-cd "<PROJECT_ROOT>" && test -f .agents/skills/openspec-propose/SKILL.md
-cd "<PROJECT_ROOT>" && test -f .claude/commands/opsx/propose.md -o -f .claude/skills/openspec-propose/SKILL.md
-cd "<PROJECT_ROOT>" && test -f .pi/skills/openspec-propose/SKILL.md
-cd "<PROJECT_ROOT>" && test "$(find .pi/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
-cd "<PROJECT_ROOT>" && test "$(find .pi/prompts -mindepth 1 -maxdepth 1 -type f -name 'opsx-*.md' | wc -l | tr -d ' ')" = 5
-cd "<PROJECT_ROOT>" && test -f .kimi-code/skills/openspec-propose/SKILL.md
-cd "<PROJECT_ROOT>" && test "$(find .kimi-code/skills -mindepth 1 -maxdepth 1 -type d -name 'openspec-*' | wc -l | tr -d ' ')" = 5
-```
-
-> 说明：`openspec/config.yaml` 由 rule-config 步骤 11 创建与合并，不属于本检查的完成条件；缺失时仅按"行为（中文输出）"输出提示。
-
-### 步骤 6：检查 Superpowers
-
-**目录约定**：
-
-| 用途 | 路径 |
-|------|------|
-| Superpowers 源目录 | `~/.agents/superpowers` |
-| 统一 Skills 目录 | `~/.agents/skills` |
-| Codex 目标目录 | `~/.codex/skills/skills` |
-| Claude Code 目标目录 | `~/.claude/skills` |
-| pi 目标目录 | `~/.pi/agent/skills` |
-
-> 说明：Kimi Code 扫描用户级通用目录 `~/.agents/skills`（superpowers 软链第 2 层即此目录），经该层直接获得 Superpowers skills，无需新增 `~/.kimi-code/skills` 软链目标；`~/.kimi-code/skills` 是 Kimi 专属用户 skills 目录，不放通用 superpowers。
-
-**在线安装来源**：
-
-> **执行位置与产物**：clone 产物落在 `$HOME/.agents/superpowers`（绝对路径，不受执行目录影响）。报告路径用步骤 0 确定的 `<REPORT>`（`/tmp` 下 mktemp 生成的独占绝对路径字面值）；若该文件不存在，先回步骤 0 生成报告再读本节。
-
-```bash
-# 单条命令自包含：从 <REPORT> 读出候选数组，逐个浅克隆；全部失败时逐项报告错误并终止
-mkdir -p "$HOME/.agents" && if [ -e "$HOME/.agents/superpowers" ] || [ -L "$HOME/.agents/superpowers" ]; then printf 'Superpowers 目标目录已存在，请先处理后重试：%s\n' "$HOME/.agents/superpowers" >&2; exit 1; fi && _tmp="$(mktemp -d "${TMPDIR:-/tmp}/superpowers-clone.XXXXXX")" && _errors="" && for _candidate in $(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))") ; do _output="$(git clone --depth 1 "$_candidate" "$_tmp/repo" 2>&1)" && mv "$_tmp/repo" "$HOME/.agents/superpowers" && rm -rf "$_tmp" && exit 0; _errors="$_errors$_candidate: $_output\n"; rm -rf "$_tmp/repo"; done; rm -rf "$_tmp"; printf 'Superpowers clone 失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1
-```
-
-Superpowers 远端候选必须从 `<REPORT>` 的 `hints.superpowers_git_candidates` 数组读出；按数组顺序尝试，使用 `--depth 1`，不配置 git 代理、不修改 git 全局配置。clone 全部失败时命令以非零退出并逐项报告错误，不提示或校验本地回退来源。
-
-**行为（中文输出）**：
-- `~/.agents/superpowers/.git` 存在：按候选更新逻辑执行，然后同步软链。
-- `~/.agents/superpowers` 存在但不是 Git 仓库：报告来源目录无效并终止，不降级为本地回退。
-- `~/.agents/superpowers` 不存在：按候选顺序在线浅克隆；全部失败时报告每个候选的错误并终止。
-
-**Git 更新逻辑**：
-
-> 单条命令自包含：用 `git -C <dir>` 在指定仓库上操作，不 `cd`、不依赖前一条命令的变量或工作目录；报告路径用 `<REPORT>`（步骤 0 在 `/tmp` 生成的独占绝对路径字面值）。origin 已是候选时直接 fetch+pull；否则逐个 fetch 候选，首个成功者先设为 origin 再 pull。
-
-```bash
-# 从 <REPORT> 读出候选数组并更新；origin 非候选时切换到首个 fetch 成功的候选
-git -C "$HOME/.agents/superpowers" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf 'Superpowers 来源目录不是有效 Git 仓库：%s\n' "$HOME/.agents/superpowers" >&2; exit 1; }; _candidates="$(python3 -c "import json;print(' '.join(json.load(open('<REPORT>'))['hints']['superpowers_git_candidates']))")"; _origin="$(git -C "$HOME/.agents/superpowers" remote get-url origin)"; _matched=0; for _candidate in $_candidates; do [ "$_origin" = "$_candidate" ] && _matched=1 && break; done; if [ "$_matched" -eq 1 ]; then git -C "$HOME/.agents/superpowers" fetch origin; else _selected=""; _errors=""; for _candidate in $_candidates; do _output="$(git -C "$HOME/.agents/superpowers" fetch "$_candidate" 2>&1)" && _selected="$_candidate" && break; _errors="$_errors$_candidate: $_output\n"; done; [ -n "$_selected" ] || { printf 'Superpowers 更新失败（逐候选错误）：\n%b' "$_errors" >&2; exit 1; }; git -C "$HOME/.agents/superpowers" remote set-url origin "$_selected"; fi && git -C "$HOME/.agents/superpowers" pull --ff-only origin "$(git -C "$HOME/.agents/superpowers" rev-parse --abbrev-ref HEAD)"
-```
-
-**软链同步逻辑**：
-
-1. 确保 `~/.agents/skills`、`~/.codex/skills/skills`、`~/.claude/skills`、`~/.pi/agent/skills` 存在。
-2. 将 `~/.agents/superpowers/skills/*` 逐项软链到 `~/.agents/skills`。
-3. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.codex/skills/skills`。
-4. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.claude/skills`。
-5. 将 `~/.agents/skills/*` 中指向 Superpowers 的软链逐项软链到 `~/.pi/agent/skills`。
-6. 已存在正确软链：跳过。
-7. 已存在旧软链但指向不同 Superpowers 来源：更新软链。
-8. 已存在同名非软链文件或目录：跳过并警告，不覆盖。
-9. 清理失效软链时，只清理指向 `~/.agents/superpowers/skills` 或 `~/.agents/skills` 中 Superpowers 条目的失效链接，不能删除 OpenSpec、Cadence 或用户自定义 skills。
-
-> 说明：pi 原生也会读取 `~/.agents/skills`，此处显式软链到 `~/.pi/agent/skills` 是为了与 Claude Code/Codex 保持一致的显式布局，便于统一检查、更新与失效清理。
-
-**验证命令**：
-
-```bash
-test -d "$HOME/.agents/superpowers/skills"
-test -d "$HOME/.agents/skills"
-test -d "$HOME/.codex/skills/skills"
-test -d "$HOME/.claude/skills"
-test -d "$HOME/.pi/agent/skills"
-```
-
-**增量要求**：
-- 重新运行 `/pre-check` 时，已有正确软链必须跳过。
-- 只补齐缺失软链或更新指向旧来源的软链。
-- 来源目录必须是有效 Git 仓库；在线 clone 或 Git 更新失败即终止，不提供本地回退。
-
-### 默认步骤：API Key 占位配置提醒
-
-> **⚠️ 默认执行提醒** — 不主动询问用户是否需要，不要求用户输入真实 API Key，不阻塞初始化。
-
-默认使用中文展示以下提醒：
-
-**智普 AI MCP（视觉理解/联网搜索/网页读取/开源仓库）**
-- 提醒用户前往 https://open.bigmodel.cn/usercenter/apikeys 获取 API Key
-- 告知用户需要订阅 GLM Coding Plan
-- 报告 "⚠️ mcp-configuration 将写入 your_zhipu_api_key 占位符，请稍后自行替换为真实密钥"
-- **不验证密钥有效性，仅做提醒**
-
-**MiniMax Token Plan MCP（网络搜索/图片理解）**
-- 提醒用户前往 https://platform.minimaxi.com/subscribe/token-plan 订阅并获取 API Key
-- 报告 "⚠️ mcp-configuration 将写入 your_minimax_api_key 占位符，请稍后自行替换为真实密钥"
-- **不验证密钥有效性，仅做提醒**
-
-**默认行为**：
-- 报告 "✓ 默认使用 API Key 占位符完成初始化，不收集真实密钥"
-
-**安全提醒（必须展示）**：
-```
-🔴 安全提醒：请不要将 API Key 直接告诉 Claude Code。
-稍后在 MCP 配置步骤中，配置文件会使用占位符，您需要自行替换为真实密钥。
-```
-
-## 常见错误
-
-| 错误 | 原因 | 解决方案 |
-|------|------|----------|
-| **npx 安装失败** | Node.js 未安装 | 先安装 Node.js |
-| **uvx 安装失败** | Python/pip 不可用 | 先安装 Python |
-| **ast-grep 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
-| **codegraph 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
-| **OpenSpec 安装失败** | Node.js/npm 不可用或网络问题 | 检查 Node.js 环境后重新运行 `bash "<PRE_CHECK_SH>" run` |
-| **OpenSpec 更新失败** | 指令文件冲突或项目目录不可写 | 保留现有文件，提示用户处理冲突后重新运行 `/pre-check` |
-| **Superpowers 在线安装失败** | 代理候选均不可用或 git 不可用 | 检查网络与代理可达性，确认候选地址后重新运行 `/pre-check` |
-| **Superpowers 同名非软链冲突** | 目标目录已有用户文件或目录 | 跳过该项并提示用户手动决定是否替换 |
-| **pi-mcp-adapter 安装失败** | pi 可执行文件不可用或网络问题 | 确认 `command -v pi` 成功后重新运行 `bash "<PRE_CHECK_SH>" run`，或修复 pi 环境后重新运行 `/pre-check` |
-| **playwright-cli 安装失败** | Node.js/npm 不可用或网络问题 | 仅在用户明确要求 Playwright 时报告，并提供手动安装命令 |
+- 基础工具 phase 失败时，按当前模式遵循脚本报告：无人工中断模式停止并返回非零；普通模式保留 `partial`/`failed` 状态和恢复建议。
+- OpenSpec、Superpowers 或复核 phase 失败时，不将失败降级为成功，也不执行脚本之外的替代写入。
+- `unsupported`、冲突、来源不可用或验证失败均须明确标注人工处理边界。
+- 任何完成声明都必须同时满足 `overall=success`、五项 phase 通过和报告中的产物状态要求。
