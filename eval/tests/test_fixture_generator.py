@@ -80,7 +80,7 @@ class TestFixtureGenerator(unittest.TestCase):
         b = gen.make_fixture("fresh", self.base / "b", REPO_ROOT, theme="billing")
         self.assertTrue((a.root / "src" / "orders").is_dir())
         self.assertTrue((b.root / "src" / "billing").is_dir())
-        self.assertEqual(len(gen.expected_rules_files()), 9)
+        self.assertEqual(len(gen.expected_rules_files()), 7)
 
     def test_global_config_snapshot_diff(self):
         """ut-fx-snapshot：全局配置快照可对比出夜间运行期间的变化。"""

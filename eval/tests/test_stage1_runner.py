@@ -52,7 +52,7 @@ class TestProc(unittest.TestCase):
         """ut-proc-argv-extra：权限参数追加在模板 argv 末尾，None 不追加。"""
         fake_process = mock.Mock(returncode=0)
         fake_process.communicate.return_value = (b"", b"")
-        extra = ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"]
+        extra = ["--dangerously-skip-permissions"]
         with mock.patch.object(proc.subprocess, "Popen", return_value=fake_process) as popen:
             proc.run_cli(
                 "claude", "prompt", cwd=self.base, home=self.base / "home",
@@ -136,11 +136,11 @@ class TestStage1Runner(unittest.TestCase):
         self.assertTrue(all(call["argv_extra"] == expected for call in calls))
 
     def test_stage1_real_argv_extra_constant_covers_all_agents(self):
-        """ut-s1r-real-argv-extra-constant：四端策略键完整且非 claude 暂不放权。"""
+        """ut-s1r-real-argv-extra-constant：四端策略键完整，claude 安装阶段全放行。"""
         self.assertEqual(set(stage1.REAL_STAGE1_ARGV_EXTRA),
                          {"claude", "codex", "pi", "kimi"})
         self.assertEqual(stage1.REAL_STAGE1_ARGV_EXTRA["claude"],
-                         ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"])
+                         ["--dangerously-skip-permissions"])
         for agent in ("codex", "pi", "kimi"):
             self.assertEqual(stage1.REAL_STAGE1_ARGV_EXTRA[agent], [])
 
@@ -181,7 +181,7 @@ class TestStage1Runner(unittest.TestCase):
         self.assertEqual([c["name"] for c in cmd.STAGE1_COMMANDS],
                          ["pre-check", "mcp-configuration", "rule-config",
                           "project-rules-examples"])
-        for c in cmd.STAGE1_COMMANDS[1:]:
+        for c in cmd.STAGE1_COMMANDS:
             self.assertIn("no-interrupt", c["prompt"])
 
     def test_stage1_mock_all_green(self):

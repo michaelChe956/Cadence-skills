@@ -17,7 +17,9 @@ V3_BLOCK_RE = re.compile(
     r"<!-- cadence-managed:openspec-superpowers-routing:v3:start -->.*?v3:end -->", re.S)
 
 REAL_STAGE1_ARGV_EXTRA = {
-    "claude": ["--permission-mode", "acceptEdits", "--allowedTools", "Bash"],
+    # 安装阶段全放行：deny 尚未安装/安装流程不依赖 deny；敏感文件（.mcp.json）
+    # 与 Write 工具拦截均已消除。deny 测试点在探针阶段（PROBE_ARGV_EXTRA）。
+    "claude": ["--dangerously-skip-permissions"],
     # codex/pi/kimi 的真实策略属首夜 Runbook 核定项，claude 先行。
     "codex": [],
     "pi": [],

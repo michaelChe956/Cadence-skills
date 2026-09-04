@@ -19,10 +19,13 @@ ERROR_PNG_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNoAAAAggCBd81ytg"
     "AAAABJRU5ErkJggg==")
 
+# rule-config 标准安装清单（fresh 无意图参数）：4 普通规则 + code-usage/code-reading
+# 双源单选落地名 + L1 工作流。README.md 是仓库自有文档、playwright.md 是
+# 可选规则（意图参数/已存在才装），均不属必断言清单。
 RULES_FILES = [
-    "README.md", "code-reading.md", "code-usage.md", "document-storage.md",
+    "code-reading.md", "code-usage.md", "document-storage.md",
     "language.md", "markdown-format.md", "mcp-servers.md",
-    "openspec-superpowers-workflow.md", "playwright.md",
+    "openspec-superpowers-workflow.md",
 ]
 
 GLOBAL_CONFIG_FILES = (

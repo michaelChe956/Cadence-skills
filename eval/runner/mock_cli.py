@@ -7,14 +7,18 @@ skill 语义归 Tier-1 真实端。行为由 env 驱动：
 （阶段一按 command 名分支：pre-check 只产诊断报告零写盘，其余各写各自产物）
 """
 import argparse
+import re as _re
 import json
 import os
 import sys
 from pathlib import Path
 
-RULES_FILES = ["README.md", "code-reading.md", "code-usage.md", "document-storage.md",
-               "language.md", "markdown-format.md", "mcp-servers.md",
-               "openspec-superpowers-workflow.md", "playwright.md"]
+# 单一事实源：与 fixture 期望清单同源（generator.RULES_FILES），防两处漂移。
+from eval.fixtures.generator import RULES_FILES
+
+V3_BLOCK_RE = _re.compile(
+    r"<!-- cadence-managed:openspec-superpowers-routing:v3:start -->.*?v3:end -->",
+    _re.S)
 
 
 def _emit(lines):
@@ -32,11 +36,24 @@ def _stage1_rule_config(cwd: Path) -> None:
     rules.mkdir(parents=True, exist_ok=True)  # 先建目录再写文件
     for name in RULES_FILES:
         (rules / name).write_text("# rule\n", encoding="utf-8")
-    (cwd / "CLAUDE.md").write_text(
+    claude_md = cwd / "CLAUDE.md"
+    v4_block = (
         "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->\n"
         "Cadence L0 路由内核 v4\n"
-        "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->\n",
-        encoding="utf-8")
+        "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->")
+    old_text = claude_md.read_text(encoding="utf-8") if claude_md.is_file() else ""
+    m = V3_BLOCK_RE.search(old_text)
+    if m:
+        # v3 升级链：旧文件备份到 cadence/legacy/<ts>/，区块外内容逐字保留
+        import datetime
+        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        legacy = cwd / "cadence" / "legacy" / ts
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / "CLAUDE.md.v3.md").write_text(old_text, encoding="utf-8")
+        (legacy.parent / ".gitignore").write_text("*\n", encoding="utf-8")
+        claude_md.write_text(old_text.replace(m.group(0), v4_block), encoding="utf-8")
+    else:
+        claude_md.write_text(v4_block + "\n", encoding="utf-8")
     (cwd / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"deny": [
         "@@cadence-managed:permission-gate:v1:start@@", "Grep", "Glob", "Bash(grep:*)",
         "@@cadence-managed:permission-gate:v1:end@@"]}}, ensure_ascii=False, indent=2),

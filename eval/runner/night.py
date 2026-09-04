@@ -73,6 +73,16 @@ def _save_run(nightly: Path, run_id: str, result: dict, traj) -> None:
 
 _agents_cfg_global = {}
 
+# 探针阶段 claude 权限：编辑自动接受 + Bash/MCP 放行；项目 settings 的受管 deny
+# 优先级高于 allow，Grep/Glob/WebSearch 仍被拦（P1/P2 测试点）。不得使用
+# --dangerously-skip-permissions——它会跳过项目 deny，使 deny 改道测试失效。
+PROBE_ARGV_EXTRA = {
+    "claude": ["--permission-mode", "acceptEdits", "--allowedTools",
+               "Bash", "mcp__context7", "mcp__time", "mcp__zai-mcp-server",
+               "mcp__MiniMax", "mcp__sequential-thinking", "mcp__web-search-prime",
+               "mcp__web-reader", "mcp__zread"],
+}
+
 
 def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
                      run_id, results_dir, transcripts_dir, base_dir, theme="orders",
@@ -94,6 +104,8 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
     if real_home and skill_env:
         proc.link_agent_auth(agent, fixture)
     _argv_extra = _resolved_argv_extra(_agents_cfg_global, agent, fixture) if real_home else None
+    if real_home and agent in PROBE_ARGV_EXTRA:
+        _argv_extra = list(_argv_extra or []) + list(PROBE_ARGV_EXTRA[agent])
     out = proc.run_cli(
         agent, prompt, cwd=fixture.root,
         home=None if real_home else fixture.home, pins=pins,

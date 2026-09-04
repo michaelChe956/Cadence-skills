@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from eval.fixtures import generator as gen
 from eval.install import assertions as asrt
 
 
@@ -11,9 +12,7 @@ def _installed_workspace(root: Path) -> None:
     """构造一个满足阶段一断言的"已安装"workspace。"""
     rules = root / ".claude" / "rules"
     rules.mkdir(parents=True, exist_ok=True)  # 先建目录再写文件（否则 helper 自身报错）
-    for name in ("README.md", "code-reading.md", "code-usage.md", "document-storage.md",
-                 "language.md", "markdown-format.md", "mcp-servers.md",
-                 "openspec-superpowers-workflow.md", "playwright.md"):
+    for name in gen.expected_rules_files():
         (rules / name).write_text("# rule\n", encoding="utf-8")
     claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").exists() else ""
     (root / "CLAUDE.md").write_text(
@@ -78,7 +77,7 @@ class TestStage1Assertions(unittest.TestCase):
     def test_missing_rule_file_fails_manifest(self):
         """ut-s1-manifest：规则清单缺文件判红。"""
         _installed_workspace(self.root)
-        (self.root / ".claude/rules/playwright.md").unlink()
+        (self.root / ".claude/rules/language.md").unlink()
         results = asrt.assert_stage1("fresh", self.root, 0, dict(TEXTS))
         self.assertFalse(next(r for r in results if r.name == "rules.manifest").ok)
 
