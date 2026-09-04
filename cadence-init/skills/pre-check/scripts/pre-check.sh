@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Cadence pre-check 主脚本：六个基础工具的探测/安装/复验。
-# 职责边界：仅处理 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter。
-# 不处理 Superpowers 软链、OpenSpec 四客户端产物、Playwright、API Key（由 SKILL.md 处理）。
+# Cadence pre-check 主脚本：基础工具探测/安装/复验与 OpenSpec 四端投影补齐。
+# 职责边界：处理 npx/uvx/ast-grep/codegraph/openspec/pi-mcp-adapter，以及 OpenSpec 客户端投影。
+# 不处理 Superpowers 软链、Superpowers Git、Playwright、API Key（由后续 phase/SKILL.md 处理）。
 # 用法:
 #   pre-check.sh run   [--mirror <name>] [--no-interrupt] [--upgrade]
 #   pre-check.sh check [--mirror <name>] [--no-interrupt]
@@ -197,8 +197,106 @@ do_base_tools() {
   return "$_rc"
 }
 
-# Task 1 仅建立编排骨架；下游阶段在后续任务填入确定性动作。
-do_openspec_phase() { PHASE_CURRENT_ACTION="openspec-projections"; return 0; }
+# Task 2：OpenSpec 四端投影检测、增量初始化与数量复核。
+count_dirs_named() {
+  _base="$1"; _prefix="$2"; _count=0
+  if [ -d "$_base" ]; then
+    for _entry in "$_base/${_prefix}"*; do
+      [ -d "$_entry" ] || continue
+      _count=$((_count + 1))
+    done
+  fi
+  printf '%s' "$_count"
+}
+
+count_files_named() {
+  _base="$1"; _prefix="$2"; _suffix="$3"; _count=0
+  if [ -d "$_base" ]; then
+    for _entry in "$_base/${_prefix}"*"${_suffix}"; do
+      [ -f "$_entry" ] || continue
+      _count=$((_count + 1))
+    done
+  fi
+  printf '%s' "$_count"
+}
+
+client_openspec_ready() {
+  case "$1" in
+    claude)
+      [ -d "$PROJECT_ROOT/.claude/commands/opsx" ] || [ "$(count_dirs_named "$PROJECT_ROOT/.claude/skills" openspec-)" -gt 0 ] ;;
+    codex)
+      [ "$(count_dirs_named "$PROJECT_ROOT/.agents/skills" openspec-)" -gt 0 ] ;;
+    pi)
+      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ] ;;
+    kimi)
+      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] ;;
+    *)
+      return 2 ;;
+  esac
+}
+
+detect_openspec_clients() {
+  OPENSPEC_MISSING=""
+  OPENSPEC_SKIPPED=0
+  for _client in claude codex pi kimi; do
+    if client_openspec_ready "$_client"; then
+      OPENSPEC_SKIPPED=$((OPENSPEC_SKIPPED + 1))
+    elif [ -z "$OPENSPEC_MISSING" ]; then
+      OPENSPEC_MISSING="$_client"
+    else
+      OPENSPEC_MISSING="$OPENSPEC_MISSING,$_client"
+    fi
+  done
+}
+
+verify_openspec_clients() {
+  client_openspec_ready claude && client_openspec_ready codex && client_openspec_ready pi && client_openspec_ready kimi
+}
+
+do_openspec_phase() {
+  detect_openspec_clients
+  if [ -n "$OPENSPEC_MISSING" ]; then
+    if [ "$MODE" != "run" ]; then
+      PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+      return 1
+    fi
+    PHASE_CURRENT_ACTION="init-update-verify"
+    _init_missing="$OPENSPEC_MISSING"
+    PHASE_CURRENT_SKIPPED="$OPENSPEC_SKIPPED"
+    log "${C_BLU}🧩 OpenSpec 补齐缺失客户端：$OPENSPEC_MISSING${C_NC}"
+    openspec init --tools "$OPENSPEC_MISSING" >/dev/null 2>&1 || {
+      PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+      PHASE_CURRENT_ERROR="openspec init 失败（tools=$OPENSPEC_MISSING）"
+      return 1
+    }
+    # 只有 init 补齐了投影才允许一次 update；不可在齐全分支更新。
+    detect_openspec_clients
+    _init_ready=0
+    for _client in claude codex pi kimi; do
+      case ",${_init_missing}," in
+        *,${_client},*) client_openspec_ready "$_client" && _init_ready=1 ;;
+      esac
+    done
+    if [ "$_init_ready" -eq 1 ]; then
+      openspec update >/dev/null 2>&1 || {
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        PHASE_CURRENT_ERROR="openspec update 失败"
+        return 1
+      }
+      PHASE_CURRENT_CREATED=$((PHASE_CURRENT_CREATED + 1))
+    fi
+  else
+    PHASE_CURRENT_ACTION="verify-ready"
+    PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 4))
+    PHASE_CURRENT_RESULT="skipped"
+  fi
+  verify_openspec_clients || {
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    PHASE_CURRENT_ERROR="OpenSpec 客户端投影数量或路径复核失败"
+    return 1
+  }
+  return 0
+}
 do_superpowers_git_phase() { PHASE_CURRENT_ACTION="fetch-pull-ff-only"; return 0; }
 do_superpowers_links_phase() { PHASE_CURRENT_ACTION="sync-four-layers"; return 0; }
 do_verify_phase() { PHASE_CURRENT_ACTION="all-skipped"; return 0; }

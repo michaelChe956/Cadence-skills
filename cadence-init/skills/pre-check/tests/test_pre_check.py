@@ -10,8 +10,59 @@ from helpers.fixture import (
     SCRIPT,
     isolated_fixture,
     normalize_snapshot_text,
+    phase_by_name,
+    run_precheck,
     run_precheck_under_shell,
 )
+
+
+class TestOpenSpecPhase(unittest.TestCase):
+    def test_only_missing_pi_kimi_are_initialized(self):
+        with isolated_fixture("openspec-partial") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertIn("init --tools pi,kimi", calls)
+            self.assertIn("update", calls)
+            self.assertNotIn("init --tools claude,codex", calls)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "success")
+            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 5)
+            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 5)
+            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 5)
+
+    def test_wrong_pi_count_fails(self):
+        with isolated_fixture("openspec-wrong-pi-count") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 1)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertGreaterEqual(phase["conflicts"], 1)
+
+    def test_ready_projection_content_unchanged(self):
+        with isolated_fixture("openspec-ready") as fx:
+            before = {
+                path: path.read_bytes()
+                for path in (
+                    fx.project / ".claude/commands/opsx/.sentinel",
+                    fx.project / ".agents/skills/openspec-execute/SKILL.md",
+                )
+            }
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(
+                {path: Path(path).read_bytes() for path in before}, before
+            )
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "skipped")
+
+    def test_ready_projection_skips_update(self):
+        with isolated_fixture("openspec-ready") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotIn("update", fx.calls.read_text(encoding="utf-8").splitlines())
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["skipped"], 4)
 
 
 class TestPhaseReport(unittest.TestCase):

@@ -16,7 +16,7 @@ FAKE_BIN = Path(__file__).resolve().parent / "fake-bin"
 class Fixture:
     """封装一次隔离项目、HOME 和 fake 命令目录。"""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, fixture_name=None):
         self.root = root
         self.project = root / "project"
         self.home = root / "home"
@@ -24,22 +24,45 @@ class Fixture:
         self.project.mkdir()
         self.home.mkdir()
         shutil.copytree(FAKE_BIN, self.bin)
+        fake_openspec = TEST_DIR / "helpers" / "fake-openspec.sh"
+        if fake_openspec.exists():
+            shutil.copy2(fake_openspec, self.bin / "openspec")
         for path in self.bin.iterdir():
             path.chmod(path.stat().st_mode | 0o111)
+        self.calls = root / "calls"
+        self.calls.touch()
+        self._prepare_openspec_fixture(fixture_name)
+
+    def _prepare_openspec_fixture(self, fixture_name):
+        """按名称复制 OpenSpec 投影 fixture；默认 fixture 为四端齐全。"""
+        template = (
+            TEST_DIR / "fixtures" / fixture_name / "project"
+            if fixture_name
+            else None
+        )
+        if template is not None and template.is_dir():
+            for source in template.iterdir():
+                destination = self.project / source.name
+                if source.is_dir():
+                    shutil.copytree(source, destination)
+                else:
+                    shutil.copy2(source, destination)
+        self.project.joinpath("project-sentinel.txt").touch()
 
     def env(self):
         env = os.environ.copy()
         env["HOME"] = str(self.home)
         env["PATH"] = str(self.bin) + os.pathsep + env.get("PATH", "")
+        env["FAKE_OPENSPEC_CALLS"] = str(self.calls)
         return env
 
 
 @contextlib.contextmanager
 def isolated_fixture(_name=None):
-    """创建仓外临时 fixture；name 为未来负向 fixture 预留。"""
+    """创建仓外临时 fixture；名称选择预置 OpenSpec 投影状态。"""
     with tempfile.TemporaryDirectory(prefix="precheck-fixture-") as td:
         root = Path(td)
-        yield Fixture(root)
+        yield Fixture(root, _name)
 
 
 def run_precheck(fixture, *args):
