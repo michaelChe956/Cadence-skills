@@ -20,6 +20,11 @@
 | PC-GIT-05 | 已有仓库使用 fetch + pull --ff-only；revision 不变记 skipped，并报告 Git 元数据 | `test_fetch_pull_revision_idempotence_and_metadata` | Task 3 |
 | PC-GIT-06 | 当前 origin 命中第二候选时不重写 origin | `test_origin_matching_second_candidate_is_not_rewritten` | Task 3 |
 | PC-GIT-07 | 连续延迟候选消耗 phase 预算，耗尽后停止并报告 phase-timeout | `test_delayed_candidates_consume_budget_and_stop_after_exhaustion` | Task 3 |
+| PC-LINK-01 | Superpowers 源条目动态枚举，四层按源条目同步且报告逐层计数 | `TestSuperpowersLinks.test_correct_links_all_skipped_and_report_is_dynamic` | Task 4 |
+| PC-LINK-02 | 直连源和经 `.agents/skills` 中转链均按解析后最终绝对目标判定 correct/skipped | `TestSuperpowersLinks.test_direct_and_layered_topologies_are_both_skipped` | Task 4 |
+| PC-LINK-03 | 正确链幂等重跑零写入，非 Superpowers 条目不触碰 | `test_correct_links_are_skipped_and_non_superpowers_survives` | Task 4 |
+| PC-LINK-04 | 非软链冲突普通模式 warning/skip 保留原内容；no-interrupt 备份后创建并验证 | `test_non_symlink_conflict_normal_warns_and_preserves`, `test_non_symlink_conflict_no_interrupt_backups_then_verifies` | Task 4 |
+| PC-LINK-05 | no-interrupt 软链恢复链失败返回 failed 且保留备份；pi 层非目标缺失不影响 Superpowers phase | `test_no_interrupt_link_failure_fails_phase`, `test_pi_missing_cadence_entry_does_not_fail_superpowers` | Task 4 |
 
 
 当前旧实现仅汇总六工具，报告没有 `phases[]`，因此阶段报告测试按预期失败。

@@ -135,6 +135,8 @@ PHASE_CURRENT_SKIPPED=0
 PHASE_CURRENT_CONFLICTS=0
 PHASE_CURRENT_RESULT=""
 PHASE_CURRENT_ERROR=""
+PHASE_CURRENT_SOURCE_ENTRIES=0
+PHASE_CURRENT_LAYERS_JSON=""
 
 # 当前阶段开始计时（Bash 3.2/macOS 以秒为粒度，统一序列化为毫秒整数）。
 now_s() { date +%s; }
@@ -147,6 +149,8 @@ phase_begin() {
   PHASE_CURRENT_CONFLICTS=0
   PHASE_CURRENT_RESULT=""
   PHASE_CURRENT_ERROR=""
+  PHASE_CURRENT_SOURCE_ENTRIES=0
+  PHASE_CURRENT_LAYERS_JSON=""
 }
 
 phase_finish() {
@@ -157,9 +161,11 @@ phase_finish() {
     _error=null
   fi
   _item="{\"phase\":\"$(json_escape "$1")\",\"result\":\"$(json_escape "$2")\",\"action\":\"$(json_escape "$3")\",\"duration_ms\":$4,\"created\":$5,\"updated\":$6,\"skipped\":$7,\"conflicts\":$8,\"error\":$_error"
-  # Git phase 额外报告来源、分支和 revision；其他 phase 保持原有 schema。
+  # Git phase 额外报告来源、分支和 revision；软链 phase 报告动态源条目及逐层状态。
   if [ "$1" = "superpowers-git" ]; then
     _item="${_item},\"origin\":\"$(json_escape "${GIT_ORIGIN:-}")\",\"branch\":\"$(json_escape "${GIT_BRANCH:-}")\",\"before_revision\":\"$(json_escape "${GIT_BEFORE_REVISION:-}")\",\"after_revision\":\"$(json_escape "${GIT_AFTER_REVISION:-}")\""
+  elif [ "$1" = "superpowers-links" ]; then
+    _item="${_item},\"source_entries\":${PHASE_CURRENT_SOURCE_ENTRIES:-0},\"layers\":[${PHASE_CURRENT_LAYERS_JSON:-}]"
   fi
   _item="${_item}}"
   if [ -z "$PHASES_JSON" ]; then
@@ -645,7 +651,239 @@ do_superpowers_git_phase() {
   return 0
 }
 
-do_superpowers_links_phase() { PHASE_CURRENT_ACTION="sync-four-layers"; return 0; }
+# Task 4：Superpowers 四层软链同步，仅处理源目录枚举出的条目。
+enumerate_superpowers_entries() {
+  _list=""
+  for _source_entry in "$SUPERPOWERS_DIR/skills/"*; do
+    [ -e "$_source_entry" ] || [ -L "$_source_entry" ] || continue
+    _name="${_source_entry##*/}"
+    [ -n "$_name" ] || continue
+    [ -z "$_list" ] && _list="$_name" || _list="$_list\n$_name"
+  done
+  printf '%b\n' "$_list"
+}
+
+# 对绝对路径做物理父目录规范化；不依赖 GNU realpath/readlink -f。
+canonical_absolute_path() {
+  _path="$1"
+  case "$_path" in
+    /*) ;;
+    *) _path="$(pwd -P)/$_path" ;;
+  esac
+  _base="${_path##*/}"
+  _parent="${_path%/*}"
+  [ -n "$_parent" ] || _parent=/
+  _parent="$(cd "$_parent" 2>/dev/null && pwd -P)" || printf '%s' "$_path"
+  [ -n "$_parent" ] && printf '%s/%s' "$_parent" "$_base"
+}
+
+# 将软链原文解析为绝对路径；不使用 GNU readlink -f。
+absolute_link_target() {
+  _target="$1"
+  _raw="$(readlink "$_target" 2>/dev/null)" || return 1
+  case "$_raw" in
+    /*) canonical_absolute_path "$_raw" ;;
+    *) canonical_absolute_path "$(dirname "$_target")/$_raw" ;;
+  esac
+}
+
+# 递归解析软链至最终绝对目标；循环链以自身当前路径停止，避免无限循环。
+resolve_final_link_target() {
+  _current="$1"
+  _depth=0
+  while [ -L "$_current" ] && [ "$_depth" -lt 16 ]; do
+    _next="$(absolute_link_target "$_current")" || break
+    [ -n "$_next" ] || break
+    _current="$_next"
+    _depth=$((_depth + 1))
+  done
+  printf '%s' "$_current"
+}
+
+# 仅将最终路径位于 Superpowers 源目录下的条目视为本脚本所有权范围。
+is_superpowers_target() {
+  case "$1" in
+    "$SUPERPOWERS_DIR/skills/"*/*) return 1 ;;
+    "$SUPERPOWERS_DIR/skills/"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# 软链状态以递归解析后的最终绝对目标判定。
+link_state() {
+  _target="$1"
+  _expected="$2"
+  if [ -L "$_target" ]; then
+    _actual="$(resolve_final_link_target "$_target")"
+    [ "$_actual" = "$_expected" ] && { printf 'correct'; return 0; }
+    is_superpowers_target "$_actual" && [ -e "$_actual" ] && { printf 'stale'; return 0; }
+    is_superpowers_target "$_actual" && { printf 'broken'; return 0; }
+    printf 'conflict'
+    return 0
+  fi
+  [ -e "$_target" ] && printf 'conflict' || printf 'broken'
+}
+
+# 建立或修复单条 Superpowers 软链；冲突模式不删除原内容。
+ensure_superpowers_link() {
+  _source="$1"
+  _target="$2"
+  _mode="$3"
+  _state="$(link_state "$_target" "$_source")"
+  case "$_state" in
+    correct)
+      PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+      printf 'skipped'
+      ;;
+    stale|broken)
+      if [ "$_state" = "broken" ] && [ ! -L "$_target" ]; then
+        _action=created
+      else
+        _action=updated
+      fi
+      rm -f "$_target" || return 1
+      ln -s "$_source" "$_target" || return 1
+      [ "$(resolve_final_link_target "$_target")" = "$_source" ] || return 1
+      if [ "$_action" = "created" ]; then
+        PHASE_CURRENT_CREATED=$((PHASE_CURRENT_CREATED + 1))
+      else
+        PHASE_CURRENT_UPDATED=$((PHASE_CURRENT_UPDATED + 1))
+      fi
+      printf '%s' "$_action"
+      ;;
+    conflict)
+      if [ "$_mode" != "no-interrupt" ]; then
+        log "${C_YEL}⚠️  保留非 Superpowers 冲突：$_target${C_NC}"
+        PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+        printf 'warning-skip'
+        return 0
+      fi
+      _backup="${_target}.cadence-backup-$(date -u +%Y%m%d%H%M%S)"
+      if [ -e "$_backup" ] || [ -L "$_backup" ]; then
+        _backup="${_backup}-1"
+      fi
+      mv "$_target" "$_backup" || return 1
+      ln -s "$_source" "$_target" || return 1
+      [ "$(resolve_final_link_target "$_target")" = "$_source" ] || return 1
+      PHASE_CURRENT_UPDATED=$((PHASE_CURRENT_UPDATED + 1))
+      printf 'updated'
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# 同步一层，并把所有权限定的状态写入该层报告。
+link_layer() {
+  _layer="$1"
+  if [ "$MODE" = "check" ]; then
+    [ -d "$_layer" ] || {
+      # check 模式只探测，不为缺失的消费层创建目录。
+      _entries="$(enumerate_superpowers_entries)"
+      _links=0; _correct=0; _stale=0; _broken=0; _conflicts=0
+      while IFS= read -r _name; do
+        [ -n "$_name" ] || continue
+        _links=$((_links + 1)); _broken=$((_broken + 1))
+      done <<EOF
+$_entries
+EOF
+      PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + _links))
+      PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + _conflicts))
+      _layer_item="{\"path\":\"$(json_escape "$_layer")\",\"source_entries\":${PHASE_CURRENT_SOURCE_ENTRIES},\"superpowers_links\":$_links,\"correct\":$_correct,\"stale\":$_stale,\"broken\":$_broken,\"conflicts\":$_conflicts}"
+      if [ -z "$PHASE_CURRENT_LAYERS_JSON" ]; then
+        PHASE_CURRENT_LAYERS_JSON="$_layer_item"
+      else
+        PHASE_CURRENT_LAYERS_JSON="${PHASE_CURRENT_LAYERS_JSON},${_layer_item}"
+      fi
+      return 0
+    }
+  else
+    mkdir -p "$_layer" || return 1
+  fi
+  _entries="$(enumerate_superpowers_entries)"
+  _links=0; _correct=0; _stale=0; _broken=0; _conflicts=0
+  _layer_failed=0
+  _mode=normal
+  [ "$NO_INTERRUPT" = "1" ] && _mode=no-interrupt
+  while IFS= read -r _name; do
+    [ -n "$_name" ] || continue
+    _source="$SUPERPOWERS_DIR/skills/$_name"
+    _target="$_layer/$_name"
+    _links=$((_links + 1))
+    _state="$(link_state "$_target" "$_source")"
+    _initial_state="$_state"
+    case "$_initial_state" in
+      correct) _correct=$((_correct + 1)) ;;
+      stale) _stale=$((_stale + 1)) ;;
+      broken) _broken=$((_broken + 1)) ;;
+      conflict) _conflicts=$((_conflicts + 1)) ;;
+    esac
+    if [ "$MODE" = "check" ]; then
+      PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
+      continue
+    fi
+    ensure_superpowers_link "$_source" "$_target" "$_mode" >/dev/null || {
+      PHASE_CURRENT_ERROR="软链创建或验证失败：$_target"
+      _layer_failed=1
+      break
+    }
+    # 写入后复核最终状态；冲突计数保留，表示曾发现用户内容冲突。
+    _final_state="$(link_state "$_target" "$_source")"
+    case "$_initial_state" in
+      stale) _stale=$((_stale - 1)) ;;
+      broken) _broken=$((_broken - 1)) ;;
+    esac
+    if [ "$_initial_state" != "correct" ]; then
+      case "$_final_state" in
+        correct) _correct=$((_correct + 1)) ;;
+        stale) [ "$_initial_state" = "stale" ] || _stale=$((_stale + 1)) ;;
+        broken) [ "$_initial_state" = "broken" ] || _broken=$((_broken + 1)) ;;
+        conflict) [ "$_initial_state" = "conflict" ] || _conflicts=$((_conflicts + 1)) ;;
+      esac
+    fi
+
+  done <<EOF
+$_entries
+EOF
+  PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + _conflicts))
+  _layer_item="{\"path\":\"$(json_escape "$_layer")\",\"source_entries\":${PHASE_CURRENT_SOURCE_ENTRIES},\"superpowers_links\":$_links,\"correct\":$_correct,\"stale\":$_stale,\"broken\":$_broken,\"conflicts\":$_conflicts}"
+  if [ -z "$PHASE_CURRENT_LAYERS_JSON" ]; then
+    PHASE_CURRENT_LAYERS_JSON="$_layer_item"
+  else
+    PHASE_CURRENT_LAYERS_JSON="${PHASE_CURRENT_LAYERS_JSON},${_layer_item}"
+  fi
+  [ "$_layer_failed" -eq 0 ] || return 1
+  return 0
+}
+
+do_superpowers_links_phase() {
+  SUPERPOWERS_DIR="$HOME/.agents/superpowers"
+  PHASE_CURRENT_ACTION="sync-four-layers"
+  validate_superpowers_repo || {
+    PHASE_CURRENT_ERROR="Superpowers 来源不是有效 Git work tree"
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    return 1
+  }
+  _entries="$(enumerate_superpowers_entries)"
+  PHASE_CURRENT_SOURCE_ENTRIES=0
+  while IFS= read -r _name; do
+    [ -n "$_name" ] && PHASE_CURRENT_SOURCE_ENTRIES=$((PHASE_CURRENT_SOURCE_ENTRIES + 1))
+  done <<EOF
+$_entries
+EOF
+  [ "$PHASE_CURRENT_SOURCE_ENTRIES" -gt 0 ] || {
+    PHASE_CURRENT_ERROR="Superpowers skills 源目录为空"
+    PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+    return 1
+  }
+  for _layer in "$HOME/.agents/skills" "$HOME/.codex/skills/skills" "$HOME/.claude/skills" "$HOME/.pi/agent/skills"; do
+    link_layer "$_layer" || return 1
+  done
+  if [ "$PHASE_CURRENT_CREATED" -eq 0 ] && [ "$PHASE_CURRENT_UPDATED" -eq 0 ] && [ "$PHASE_CURRENT_CONFLICTS" -eq 0 ]; then
+    PHASE_CURRENT_RESULT="skipped"
+    PHASE_CURRENT_ACTION="all-skipped"
+  fi
+  return 0
+}
 do_verify_phase() { PHASE_CURRENT_ACTION="all-skipped"; return 0; }
 
 

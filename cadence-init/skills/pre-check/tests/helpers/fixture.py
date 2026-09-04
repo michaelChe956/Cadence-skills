@@ -70,6 +70,43 @@ class Fixture:
             if fixture_name not in ("superpowers-timeout", "superpowers-zsh-multiple-candidates"):
                 shutil.copytree(worktree, target)
 
+        if fixture_name in {
+            "links-correct", "links-correct-direct", "links-correct-layered",
+            "links-non-symlink-conflict", "links-pi-missing-cadence",
+        }:
+            # 链接 fixture 使用 14 个动态 Superpowers 条目，避免实现依赖固定总数。
+            shutil.rmtree(target / "skills")
+            (target / "skills").mkdir()
+            for index in range(1, 15):
+                (target / "skills" / ("skill-%02d" % index)).mkdir()
+            agents_layer = self.home / ".agents" / "skills"
+            codex_layer = self.home / ".codex" / "skills" / "skills"
+            claude_layer = self.home / ".claude" / "skills"
+            pi_layer = self.home / ".pi" / "agent" / "skills"
+            layers = (agents_layer, codex_layer, claude_layer, pi_layer)
+            for layer in layers:
+                layer.mkdir(parents=True)
+            if fixture_name == "links-non-symlink-conflict":
+                (agents_layer / "skill-01").write_text("sentinel\n", encoding="utf-8")
+                for name in ("skill-02", "skill-03"):
+                    (agents_layer / name).symlink_to(target / "skills" / name)
+            else:
+                for name in ("skill-01", "skill-02", "skill-03", "skill-04", "skill-05", "skill-06", "skill-07", "skill-08", "skill-09", "skill-10", "skill-11", "skill-12", "skill-13", "skill-14"):
+                    (agents_layer / name).symlink_to(target / "skills" / name)
+                    if fixture_name == "links-correct-layered":
+                        for layer in (codex_layer, claude_layer, pi_layer):
+                            (layer / name).symlink_to(agents_layer / name)
+                    else:
+                        for layer in (codex_layer, claude_layer, pi_layer):
+                            (layer / name).symlink_to(target / "skills" / name)
+            if fixture_name == "links-correct":
+                (agents_layer / "third-party").mkdir()
+                (agents_layer / "third-party" / "KEEP").write_text("user\n", encoding="utf-8")
+            elif fixture_name == "links-pi-missing-cadence":
+                for layer in (agents_layer, codex_layer, claude_layer):
+                    (layer / "cadence-init").mkdir()
+                    (layer / "cadence-init" / "SKILL.md").write_text("cadence\n", encoding="utf-8")
+
 
     def _prepare_openspec_fixture(self, fixture_name):
         """按名称复制 OpenSpec 投影 fixture；默认 fixture 为四端齐全。"""

@@ -206,6 +206,144 @@ class TestSuperpowersGitPhase(unittest.TestCase):
             self.assertTrue(phase["origin"])
 
 
+class TestSuperpowersLinks(unittest.TestCase):
+    def test_correct_links_are_skipped_and_non_superpowers_survives(self):
+        with isolated_fixture("links-correct") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["created"], 0)
+            self.assertEqual(phase["updated"], 0)
+            self.assertEqual(phase["conflicts"], 0)
+            self.assertEqual(phase["result"], "skipped")
+            self.assertEqual((fx.home / ".agents/skills/third-party/KEEP").read_text(), "user\n")
+
+    def test_direct_and_layered_topologies_are_both_skipped(self):
+        for fixture_name in ("links-correct-direct", "links-correct-layered"):
+            with self.subTest(fixture=fixture_name), isolated_fixture(fixture_name) as fx:
+                proc, doc = run_precheck(fx, "run", "--no-interrupt")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                phase = phase_by_name(doc, "superpowers-links")
+                self.assertEqual(phase["result"], "skipped")
+                self.assertEqual(phase["created"], 0)
+                self.assertEqual(phase["updated"], 0)
+                self.assertEqual(phase["conflicts"], 0)
+
+    def test_correct_links_all_skipped_and_report_is_dynamic(self):
+        with isolated_fixture("links-correct-direct") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["source_entries"], 14)
+            self.assertEqual(phase["skipped"], 56)
+            self.assertEqual(phase["created"], 0)
+            self.assertEqual(phase["updated"], 0)
+            self.assertEqual(phase["conflicts"], 0)
+            self.assertEqual(len(phase["layers"]), 4)
+            for layer in phase["layers"]:
+                self.assertEqual(layer["source_entries"], 14)
+                self.assertEqual(layer["superpowers_links"], 14)
+                self.assertEqual(layer["correct"], 14)
+                self.assertEqual(layer["stale"], 0)
+                self.assertEqual(layer["broken"], 0)
+                self.assertEqual(layer["conflicts"], 0)
+
+    def test_non_symlink_conflict_normal_warns_and_preserves(self):
+        with isolated_fixture("links-non-symlink-conflict") as fx:
+            target = fx.home / ".agents/skills/skill-01"
+            before = target.read_text(encoding="utf-8")
+            proc, doc = run_precheck(fx, "run")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertGreaterEqual(phase["conflicts"], 1)
+            self.assertGreaterEqual(phase["skipped"], 1)
+            self.assertEqual(target.read_text(encoding="utf-8"), before)
+            self.assertFalse(target.is_symlink())
+            self.assertFalse(list(target.parent.glob("skill-01.cadence-backup-*")))
+
+    def test_non_symlink_conflict_no_interrupt_backups_then_verifies(self):
+        with isolated_fixture("links-non-symlink-conflict") as fx:
+            target = fx.home / ".agents/skills/skill-01"
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertGreaterEqual(phase["conflicts"], 1)
+            self.assertTrue(target.is_symlink())
+            self.assertEqual(target.resolve(), (fx.home / ".agents/superpowers/skills/skill-01").resolve())
+            backups = list(target.parent.glob("skill-01.cadence-backup-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertRegex(backups[0].name, r"^skill-01\.cadence-backup-[0-9]{14}(-1)?$")
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), "sentinel\n")
+
+    def test_no_interrupt_link_failure_fails_phase(self):
+        with isolated_fixture("links-non-symlink-conflict") as fx:
+            fake_ln = fx.bin / "ln"
+            fake_ln.write_text(
+                "#!/usr/bin/env bash\n"
+                "if [ \"${1:-}\" = \"-s\" ]; then exit 42; fi\n"
+                "exec \"${REAL_LN:-/usr/bin/ln}\" \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_ln.chmod(0o755)
+            env = fx.env()
+            env["REAL_LN"] = "/usr/bin/ln"
+            proc = subprocess.run(
+                ["bash", str(SCRIPT), "run", "--no-interrupt"],
+                cwd=fx.project,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            doc = json.loads(proc.stdout)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["result"], "failed")
+            self.assertTrue(phase["error"])
+            backups = list((fx.home / ".agents/skills").glob("skill-01.cadence-backup-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), "sentinel\n")
+            self.assertFalse((fx.home / ".agents/skills/skill-01").exists())
+
+    def test_broken_superpowers_link_is_rebuilt_without_backup(self):
+        with isolated_fixture("links-correct-direct") as fx:
+            target = fx.home / ".agents/skills/skill-01"
+            target.unlink()
+            target.symlink_to(fx.home / ".agents/superpowers/skills/missing-skill")
+            proc, doc = run_precheck(fx, "run")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["conflicts"], 0)
+            self.assertEqual(phase["updated"], 1)
+            self.assertTrue(target.is_symlink())
+            self.assertEqual(target.resolve(), (fx.home / ".agents/superpowers/skills/skill-01").resolve())
+            self.assertFalse(list(target.parent.glob("skill-01.cadence-backup-*")))
+
+    def test_broken_superpowers_link_no_interrupt_is_rebuilt_without_backup(self):
+        with isolated_fixture("links-correct-direct") as fx:
+            target = fx.home / ".agents/skills/skill-01"
+            target.unlink()
+            target.symlink_to(fx.home / ".agents/superpowers/skills/missing-skill")
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["conflicts"], 0)
+            self.assertEqual(phase["updated"], 1)
+            self.assertTrue(target.is_symlink())
+            self.assertEqual(target.resolve(), (fx.home / ".agents/superpowers/skills/skill-01").resolve())
+            self.assertFalse(list(target.parent.glob("skill-01.cadence-backup-*")))
+
+    def test_pi_missing_cadence_entry_does_not_fail_superpowers(self):
+        with isolated_fixture("links-pi-missing-cadence") as fx:
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "superpowers-links")
+            self.assertEqual(phase["result"], "skipped")
+            self.assertEqual(phase["created"], 0)
+            self.assertEqual(phase["updated"], 0)
+            self.assertEqual(phase["conflicts"], 0)
+            self.assertTrue((fx.home / ".pi/agent/skills/skill-14").is_symlink())
+
+
 class TestPhaseReport(unittest.TestCase):
     def test_check_has_five_timed_phases_and_legacy_steps(self):
         with tempfile.TemporaryDirectory() as td:
