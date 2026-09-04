@@ -128,7 +128,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 99-109 | CK-01~11 十一项检查清单按顺序完成，逐项对应 S1~S11 | 两模式 | step_* 全流水线 | fx-empty-project | it-apply-step-order | 报告步骤顺序为 S1→S8（含 openspec_config）且逐步独立状态；前步失败后续不执行 |
-| 111 | NX-01 下一步交接：配置结果传递给 mcp-configuration | 两模式 | —（报告 `hints.next`） | fx-empty-project | it-apply-hints-next | 成功报告含 `hints.next: "mcp-configuration"` |
+| 111 | NX-01 下一步交接：配置结果传递给 project-rules-examples | 两模式 | —（报告 `hints.next`） | fx-empty-project | it-apply-hints-next | 成功报告含 `hints.next: "project-rules-examples"` |
 
 ### 2.8 处理流程 S1：项目检测与模板定位
 

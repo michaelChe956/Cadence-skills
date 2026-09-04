@@ -65,7 +65,7 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 2. **读 plan**：Agent 读取报告中的计划，向用户汇报将以模板权威覆盖/处理的资产清单与归档位置。
 3. **apply**：执行阶段二命令。当前系统无活跃冲突类型，计划不要求决策文件；`--decisions`/`validate_decisions`/`default_keep` 机制保留休眠兜底（未来引入需用户决策的冲突类型时恢复"逐条提问、每次一问、附带推荐默认项"流程，语义见 references/merge-semantics.md §11.3/§11.6）。
 
-> 对无 `.mcp.json` 的全新 coding 项目，首轮 dry-run 的 S9 预览显示 skip，而首轮 apply 因同 run 内 S8 先写入 `.mcp.json` 实际会创建权限区块；自第二轮起 dry-run 预览与实际一致。
+> 对无 `.mcp.json` 的全新 coding 项目，首轮 dry-run 的 S9 预览显示 skip，而首轮 apply 因同 run 内 S8 先写入 `.mcp.json` 实际会创建权限区块；自第二轮起 dry-run 预览与实际一致。S9 的 `context7_configured` 条件依赖先行的 `mcp-configuration` 已配置 context7 到 `.mcp.json`。
 
 ### no-interrupt 模式
 
@@ -121,7 +121,7 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 
 ## 下一步
 
-成功报告的 `hints.next` 固定为 `mcp-configuration`：rule-config 完成后，将配置结果交接给 `mcp-configuration` skill 进行 MCP 配置。
+成功报告的 `hints.next` 固定为 `project-rules-examples`：rule-config 完成后，将配置结果交接给 `project-rules-examples` skill 创建个性化规则示例。
 
 ## 合并语义
 

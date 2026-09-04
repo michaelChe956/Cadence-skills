@@ -179,7 +179,7 @@ class TestStage1Runner(unittest.TestCase):
     def test_stage1_commands_table(self):
         """ut-s1r-commands：四 command 依序且均为 no-interrupt 确定性形态。"""
         self.assertEqual([c["name"] for c in cmd.STAGE1_COMMANDS],
-                         ["pre-check", "rule-config", "mcp-configuration",
+                         ["pre-check", "mcp-configuration", "rule-config",
                           "project-rules-examples"])
         for c in cmd.STAGE1_COMMANDS[1:]:
             self.assertIn("no-interrupt", c["prompt"])

@@ -164,7 +164,7 @@
 - **AND** 处理 MUST 不经用户决策
 
 ### Requirement: JSON 报告与失败关闭
-脚本 MUST 输出结构化 JSON 报告，包含总体状态、模式、项目类型、各步骤状态与耗时、每资产动作明细、备份路径、冲突处理结果和失败恢复建议；报告 MUST 包含顶层 `warnings` 数组，元素含 `code`、`file`、`message` 与可选 `detail`，错误码限于契约枚举（`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`ENTRY_TOGGLE_MISMATCH`、`L0_DEDUP`）；warning MUST NOT 改变 `overall` 取值；dry-run 与 apply 产出的 warnings MUST 一致，no-interrupt 模式 MUST 同样产出。codegraph 步骤耗时 MUST 单独列出并标注不计入初始化预算；报告 MUST 包含规范字段 `hints.next: "mcp-configuration"`，Agent 汇报后 MUST 据此将配置结果交接给 mcp-configuration 流程。任一步骤失败 MUST 使报告停在失败项并附失败文件、原因与恢复建议；**唯一例外**是 codegraph 步骤中 `install`/`init`/`status` 子命令失败，可按 degraded 降级继续，但 S8 内的配置补写、备份与原子写失败仍 MUST 终止。PyYAML 缺失时脚本 MUST 以专属退出码退出并仍写出报告，供 Agent 以 uvx 兜底重跑。Agent MUST 依据报告如实汇报，缺少成功证据时不得声称完成。
+脚本 MUST 输出结构化 JSON 报告，包含总体状态、模式、项目类型、各步骤状态与耗时、每资产动作明细、备份路径、冲突处理结果和失败恢复建议；报告 MUST 包含顶层 `warnings` 数组，元素含 `code`、`file`、`message` 与可选 `detail`，错误码限于契约枚举（`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`ENTRY_TOGGLE_MISMATCH`、`L0_DEDUP`）；warning MUST NOT 改变 `overall` 取值；dry-run 与 apply 产出的 warnings MUST 一致，no-interrupt 模式 MUST 同样产出。codegraph 步骤耗时 MUST 单独列出并标注不计入初始化预算；报告 MUST 包含规范字段 `hints.next: "project-rules-examples"`，Agent 汇报后 MUST 据此将配置结果交接给 project-rules-examples 流程。任一步骤失败 MUST 使报告停在失败项并附失败文件、原因与恢复建议；**唯一例外**是 codegraph 步骤中 `install`/`init`/`status` 子命令失败，可按 degraded 降级继续，但 S8 内的配置补写、备份与原子写失败仍 MUST 终止。PyYAML 缺失时脚本 MUST 以专属退出码退出并仍写出报告，供 Agent 以 uvx 兜底重跑。Agent MUST 依据报告如实汇报，缺少成功证据时不得声称完成。
 
 #### Scenario: 报告区分幂等跳过与实际变更
 - **WHEN** 在已初始化项目上重复运行脚本

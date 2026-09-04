@@ -48,7 +48,11 @@ class TestNightMock(unittest.TestCase):
                         if not p.name.endswith(".intermediate.json")]
             self.assertEqual(len(controls), 16)
             from eval.runner.schedule import night_plan
-            expected_agents = set(night_plan("2026-09-08", ["claude", "codex", "pi"])["control_agents"])
+            # 从 agents.json 动态读取启用的端（codex 禁用/kimi 启用后不再是硬编码三端）
+            from eval.runner import guards as _g
+            _cfg = _g.load_config(Path(__file__).parent.parent / 'config' / 'agents.json')
+            _enabled = [a for a, c in _cfg.items() if isinstance(c, dict) and c.get('enabled')]
+            expected_agents = set(night_plan("2026-09-08", _enabled)["control_agents"])
             self.assertEqual({p.name.split("-control-")[0].split("-")[3]
                               for p in controls}, expected_agents)
 

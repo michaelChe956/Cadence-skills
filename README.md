@@ -12,8 +12,8 @@ Cadence Skills 会根据任务意图自动触发，也可以用裸 Skill 名手�
 
 1. 使用 `/pre-check` 检查基础工具和环境。
 2. 使用 `/project-analysis` 了解项目结构与技术栈。
-3. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口。
-4. 使用 `/mcp-configuration` 配置项目 MCP，按需使用 `/project-rules-examples` 补齐个性化规则模板。
+3. 使用 `/mcp-configuration` 配置项目 MCP，按需使用 `/project-rules-examples` 补齐个性化规则模板。
+4. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口。
 5. 为存量项目填写 Schema 4.0 输入后，使用 `/knowledge-base-bootstrap` 初始化 KnowledgeBase。
 6. 在需求、设计、计划、编码、测试、评审或调试前，使用 `/knowledge-base-context` 获取最小任务上下文。
 7. 项目事实发生变化时，准备完整变更包并使用 `/knowledge-base-update` 增量更新知识库。
@@ -148,8 +148,8 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 
 1. `/pre-check`：检查并补齐 npx、uvx、ast-grep、codegraph、OpenSpec 及相关工具。
 2. `/project-analysis`：分析项目结构、技术栈和依赖。
-3. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
-4. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
+3. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
+4. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
 5. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板。
 6. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
 

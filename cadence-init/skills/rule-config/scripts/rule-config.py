@@ -60,7 +60,7 @@ except ImportError:
                             "recovery": "pip install pyyaml",
                         },
                         "steps": [],
-                        "hints": {"next": "mcp-configuration"},
+                        "hints": {"next": "project-rules-examples"},
                     },
                     ensure_ascii=False,
                 ),
@@ -520,7 +520,7 @@ def build_report(mode: str, project_root: Path) -> dict:
         "conflicts": [],
         "warnings": [],
         "backups": [],
-        "hints": {"next": "mcp-configuration"},
+        "hints": {"next": "project-rules-examples"},
         "failure": None,
     }
 
