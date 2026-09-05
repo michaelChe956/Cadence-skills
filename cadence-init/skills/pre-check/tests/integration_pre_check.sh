@@ -24,6 +24,8 @@ printf 'ast-grep 0.40.0\n'
 EOF_AST
 cat > "$BIN/codegraph" <<'EOF_CG'
 #!/usr/bin/env bash
+mkdir -p "$HOME/.codegraph"
+printf '{"v":2,"d":"2026-09-05","k":"cli_command","n":"version","c":1,"e":0}\n' >> "$HOME/.codegraph/telemetry-queue.jsonl"
 printf 'codegraph 0.8.0\n'
 EOF_CG
 cat > "$BIN/pi" <<'EOF_PI'
@@ -94,7 +96,7 @@ snapshot() {
   (cd "$PROJECT" && find . -type f -not -path './.git/*' -not -path './.precheck-*' | LC_ALL=C sort) | while IFS= read -r _path; do
     printf 'file project %s %s\n' "${_path#./}" "$(sha256_file "$PROJECT/$_path")" >> "$_out"
   done
-  (cd "$HOME_DIR" && find . -type f -not -path './.git/*' -not -path './.agents/superpowers/.git/*' -not -path './.precheck-*' | LC_ALL=C sort) | while IFS= read -r _path; do
+  (cd "$HOME_DIR" && find . -type f -not -path './.git/*' -not -path './.agents/superpowers/.git/*' -not -path './.precheck-*' -not -path './.codegraph/*' | LC_ALL=C sort) | while IFS= read -r _path; do
     printf 'file home %s %s\n' "${_path#./}" "$(sha256_file "$HOME_DIR/$_path")" >> "$_out"
   done
   for _layer in "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.pi/agent/skills"; do

@@ -71,8 +71,6 @@ class TestProc(unittest.TestCase):
 
     def test_run_cli_passes_prompt_as_argv_argument(self):
         """ut-proc-prompt-argv：run_cli 传入真实 prompt，不能依赖父进程环境变量。"""
-        from unittest import mock
-
         prompt = "请读取 orders；不要丢失 $HOME 或反引号 `id`"
         fake_process = mock.Mock(returncode=0)
         fake_process.communicate.return_value = (b"", b"")
@@ -85,6 +83,19 @@ class TestProc(unittest.TestCase):
         self.assertEqual(out["returncode"], 0)
         argv = popen.call_args.args[0]
         self.assertIn(prompt, argv)
+
+    def test_run_cli_reports_actual_home(self):
+        """ut-proc-actual-home：返回实际子进程 HOME，供 runner 审计。"""
+        fake_process = mock.Mock(returncode=0)
+        fake_process.communicate.return_value = (b"", b"")
+        inherited = self.base / "inherited-home"
+        with mock.patch.dict(os.environ, {"HOME": str(inherited)}, clear=False), \
+                mock.patch.object(proc.subprocess, "Popen", return_value=fake_process):
+            out = proc.run_cli(
+                "claude", "prompt", cwd=self.base, home=None,
+                pins={"pinned_model": "glm-5.3"}, timeout_s=60,
+                out_dir=self.base / "out", skill_env={"TEST_CONFIG": "fixture"})
+        self.assertEqual(out["actual_home"], str(inherited))
 
     def test_build_argv_uses_explicit_prompt_without_environment(self):
         """ut-proc-prompt-isolated：显式 prompt 在 EVAL_PROMPT 清空时仍进入 argv。"""
@@ -183,6 +194,58 @@ class TestStage1Runner(unittest.TestCase):
                           "project-rules-examples"])
         for c in cmd.STAGE1_COMMANDS:
             self.assertIn("no-interrupt", c["prompt"])
+
+    def test_snapshot_precheck_home_ignores_codegraph_telemetry(self):
+        """ut-s1r-codegraph-telemetry：telemetry 追加不构成 HOME 漂移。"""
+        home = self.base / "telemetry-home"
+        telemetry = home / ".codegraph" / "telemetry-queue.jsonl"
+        telemetry.parent.mkdir(parents=True)
+        telemetry.write_text('{"v":2,"k":"cli_command","n":"version"}\n', encoding="utf-8")
+        before = stage1._snapshot_precheck_home(home)
+        with telemetry.open("a", encoding="utf-8") as fh:
+            fh.write('{"v":2,"k":"cli_command","n":"version"}\n')
+        self.assertEqual(stage1._snapshot_precheck_home(home), before)
+
+    def test_inherited_home_snapshot_is_scoped(self):
+        """ut-s1r-home-scope：真实 HOME 只递归已知前缀且保留顶层清单。"""
+        home = self.base / "inherited-home"
+        (home / ".cache" / "large" / "nested").mkdir(parents=True)
+        (home / ".cache" / "large" / "nested" / "secret.txt").write_text("x", encoding="utf-8")
+        (home / ".agents" / "known").mkdir(parents=True)
+        (home / ".agents" / "known" / "new.md").write_text("x", encoding="utf-8")
+        snap = stage1._snapshot_precheck_home(home, inherited=True)
+        self.assertNotIn(".cache/large/nested/secret.txt", snap)
+        self.assertIn(".cache", snap)
+        self.assertIn(".agents/known/new.md", snap)
+
+    def test_inherited_stage1_records_actual_home(self):
+        """ut-s1r-inherited-home：真实模式记录继承 HOME 而非 fixture HOME。"""
+        def fake_cli(*args, **kwargs):
+            return {"returncode": 0, "duration_s": 0, "transcript_path": ""}
+
+        inherited = self.base / "real-home"
+        with mock.patch.dict(os.environ, {"HOME": str(inherited)}, clear=False), \
+                mock.patch.object(stage1.asrt, "assert_stage1", return_value=[]) as assert_stage1:
+            stage1.run_stage1("claude", self.fx, {"pinned_model": "glm-5.3"},
+                              cli=fake_cli, verify=lambda root: 0,
+                              skill_env={"CLAUDE_CONFIG_DIR": str(self.fx.home / ".claude")})
+        home_info = assert_stage1.call_args.args[4]["pre_check_home"]
+        self.assertEqual(home_info["mode"], "inherited")
+        self.assertEqual(home_info["path"], str(inherited))
+        self.assertNotEqual(home_info["path"], home_info["fixture_path"])
+
+    def test_mock_stage1_records_fixture_home(self):
+        """ut-s1r-fixture-home：mock 模式路径事实保持为 fixture HOME。"""
+        def fake_cli(*args, **kwargs):
+            return {"returncode": 0, "duration_s": 0, "transcript_path": ""}
+
+        with mock.patch.object(stage1.asrt, "assert_stage1", return_value=[]) as assert_stage1:
+            stage1.run_stage1("claude", self.fx, {"pinned_model": "glm-5.3"},
+                              cli=fake_cli, verify=lambda root: 0)
+        home_info = assert_stage1.call_args.args[4]["pre_check_home"]
+        self.assertEqual(home_info["mode"], "fixture")
+        self.assertEqual(home_info["path"], str(self.fx.home))
+        self.assertEqual(home_info["fixture_path"], str(self.fx.home))
 
     def test_stage1_mock_all_green(self):
         """ut-s1r-green：mock CLI 下阶段一全绿（Tier-0 冒烟核心）。"""

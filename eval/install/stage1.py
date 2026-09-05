@@ -77,9 +77,19 @@ def _count_tool_calls(transcript_path: str) -> int:
     return count
 
 
+PRECHECK_HOME_PREFIXES = (
+    ".agents/", ".codex/skills/", ".claude/skills/",
+    ".claude/commands/opsx/", ".pi/agent/skills/", ".pi/skills/",
+    ".pi/prompts/", ".kimi-code/skills/", ".codegraph/",
+)
+PRECHECK_HOME_SCOPE = (*PRECHECK_HOME_PREFIXES, "<home-top-level>")
+
+
 def _is_precheck_home_target(rel: str) -> bool:
     rel = rel.replace("\\", "/")
-    return (rel.startswith(".agents/superpowers/") or rel == ".agents/superpowers"
+    # CodeGraph 工具缓存命名空间级豁免：telemetry 等 CLI 缓存不属于 pre-check 目标。
+    return (rel == ".codegraph" or rel.startswith(".codegraph/") or
+            rel.startswith(".agents/superpowers/") or rel == ".agents/superpowers"
             or rel.startswith(".agents/skills/") or rel.startswith(".codex/skills/skills/")
             or rel.startswith(".claude/skills/") or rel.startswith(".pi/agent/skills/")
             or rel.startswith(".claude/commands/opsx/") or rel.startswith(".claude/skills/openspec-")
@@ -87,21 +97,38 @@ def _is_precheck_home_target(rel: str) -> bool:
             or rel.startswith(".pi/prompts/") or rel.startswith(".kimi-code/skills/openspec-"))
 
 
-def _snapshot_precheck_home(home: Path) -> dict:
-    """HOME 非目标文件快照；投影、Superpowers 源与四层链接不纳入漂移比较。"""
+def _snapshot_precheck_home(home: Path, *, inherited: bool = False) -> dict:
+    """HOME 非目标快照；真实 HOME 仅扫描已知前缀和顶层一层。"""
     home = Path(home)
     snap = {}
     if not home.is_dir():
         return snap
-    for path in sorted(home.rglob("*")):
-        if not (path.is_file() or path.is_symlink()):
-            continue
+    if not inherited:
+        candidates = (path for path in sorted(home.rglob("*"))
+                      if path.is_file() or path.is_symlink())
+    else:
+        candidates = []
+        # 已知写入口径递归扫描；未知顶层目录只在下面以目录条目记录，不递归。
+        for prefix in PRECHECK_HOME_PREFIXES:
+            root = home / prefix.rstrip("/")
+            if root.is_dir():
+                candidates.extend(path for path in sorted(root.rglob("*"))
+                                 if path.is_file() or path.is_symlink())
+        for path in sorted(home.iterdir()):
+            if path.is_file() or path.is_symlink() or path.is_dir():
+                candidates.append(path)
+    seen = set()
+    for path in candidates:
         rel = path.relative_to(home).as_posix()
-        if _is_precheck_home_target(rel):
+        if rel in seen or _is_precheck_home_target(rel):
             continue
+        seen.add(rel)
         try:
-            snap[rel] = ("link:" + str(path.readlink()) if path.is_symlink()
-                         else hashlib.sha256(path.read_bytes()).hexdigest())
+            if path.is_dir():
+                snap[rel] = "directory"
+            else:
+                snap[rel] = ("link:" + str(path.readlink()) if path.is_symlink()
+                             else hashlib.sha256(path.read_bytes()).hexdigest())
         except OSError:
             snap[rel] = "unreadable"
     return snap
@@ -147,11 +174,14 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
                verify=None, bin_dir=None, skill_env=None, pre_check_timeout_s=240):
     variant, outside_baseline = _detect_variant(fixture.root)
     root, home, repo = fixture.root, fixture.home, fixture.repo
+    actual_home = proc.effective_home(None if skill_env else home, skill_env)
+    inherited_home = bool(skill_env)
+    # Kimi 无 skill_env 时沿用 fixture HOME：这是“真实夜跑中的 fixture HOME 隔离端”例外。
     verify = verify or _default_verify(repo)
     extra: dict = {}
     commands_report = []
     real_cli = cli is proc.run_cli
-    precheck_home_before = _snapshot_precheck_home(home)
+    precheck_home_before = _snapshot_precheck_home(actual_home, inherited=inherited_home)
     for spec in STAGE1_COMMANDS:
         before = _tree_hash(root)
         cli_kwargs = {
@@ -180,9 +210,12 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
             extra["pre_check_report"] = _extract_precheck_report(final_text)
             extra["pre_check_tool_calls"] = _count_tool_calls(out.get("transcript_path") or "")
             extra["pre_check_duration_s"] = float(out.get("duration_s", 0.0))
-            extra["pre_check_home"] = {"path": str(home),
+            extra["pre_check_home"] = {"mode": "inherited" if inherited_home else "fixture",
+                                        "path": str(actual_home),
+                                        "fixture_path": str(home),
+                                        "scope": list(PRECHECK_HOME_SCOPE) if inherited_home else ["*"],
                                         "before": precheck_home_before,
-                                        "after": _snapshot_precheck_home(home)}
+                                        "after": _snapshot_precheck_home(actual_home, inherited=inherited_home)}
         if spec["name"] == "rule-config":
             extra["rules_before"] = _tree_hash(root / ".claude" / "rules")
         commands_report.append({"name": spec["name"], "returncode": out["returncode"],

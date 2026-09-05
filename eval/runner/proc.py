@@ -101,6 +101,14 @@ def _find_newest(home: Path, patterns: list, since_ts: float) -> Optional[Path]:
     return best
 
 
+def effective_home(home, skill_env=None, env=None) -> Path:
+    """返回实际继承的 HOME；home 非 None 时由调用方覆写。"""
+    if home is not None:
+        return Path(home)
+    environ = os.environ if env is None else env
+    return Path(environ.get("HOME") or Path.home())
+
+
 def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
             bin_dir=None, out_dir=None, skill_env=None, session_root=None,
             argv_extra=None):
@@ -121,8 +129,9 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     shell=False + 列表 argv，杜绝 shell 展开污染。
     """
     env = dict(os.environ)
+    actual_home = effective_home(home, env=env)
     if home is not None:
-        env["HOME"] = str(home)
+        env["HOME"] = str(actual_home)
     if skill_env:
         env.update({k: str(v) for k, v in skill_env.items()})
     env[PROMPT_ENV] = prompt
@@ -161,7 +170,7 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     return {"returncode": returncode, "stdout_path": str(stdout_file),
             "stderr": (err or b"").decode("utf-8", "replace")[-2000:],
             "duration_s": duration, "transcript_path": transcript,
-            "timed_out": timed_out}
+            "timed_out": timed_out, "actual_home": str(actual_home)}
 
 
 def cli_version_check(agent, pins, bin_dir=None):

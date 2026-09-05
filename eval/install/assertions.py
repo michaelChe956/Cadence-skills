@@ -125,9 +125,31 @@ def _precheck_links_ok(home: Optional[Path], expected: int = 14) -> tuple[bool, 
     return not failures, "; ".join(failures)
 
 
-def _precheck_home_changed(home_info: object) -> tuple[bool, str]:
-    if not isinstance(home_info, dict) or "before" not in home_info or "after" not in home_info:
+def _precheck_home_schema(home_info: object) -> tuple[bool, str]:
+    """验证 runner 注入的 HOME 模式、实际路径和 fixture 路径一致。"""
+    if home_info is None:
         return True, "skip: 未提供 HOME 前后快照"
+    if not isinstance(home_info, dict):
+        return False, "HOME 快照结构非法"
+    mode = home_info.get("mode")
+    path = home_info.get("path")
+    fixture_path = home_info.get("fixture_path")
+    if mode not in ("fixture", "inherited") or not isinstance(path, str) or not isinstance(fixture_path, str):
+        return False, "HOME 快照缺少 mode/path/fixture_path"
+    same = Path(path).resolve() == Path(fixture_path).resolve()
+    if (mode == "fixture") != same:
+        return False, f"HOME 路径与 mode 矛盾：mode={mode!r}, path={path!r}, fixture_path={fixture_path!r}"
+    return True, ""
+
+
+def _precheck_home_changed(home_info: object) -> tuple[bool, str]:
+    schema_ok, schema_detail = _precheck_home_schema(home_info)
+    if not schema_ok:
+        return False, schema_detail
+    if home_info is None:
+        return True, schema_detail
+    if "before" not in home_info or "after" not in home_info:
+        return False, "HOME 快照缺少 before/after"
     before = home_info.get("before") or {}
     after = home_info.get("after") or {}
     changed = sorted(set(before) ^ set(after) |
@@ -200,10 +222,15 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     expected_phases = ("base-tools", "openspec", "superpowers-git", "superpowers-links", "verify")
     missing_phases = ([p for p in expected_phases if p not in phases]
                       if has_structured_report else [])
+    # 先锁定 runner 提供的路径事实，再让投影和 links 消费相同路径。
+    home_info = extra.get("pre_check_home")
+    home_schema_ok, home_schema_detail = _precheck_home_schema(home_info)
     projection_ok, projection_detail = _precheck_projection_ok(root)
     # 直接调用断言器的旧单测没有 HOME/投影 fixture；集成 runner 总会传入 home，
     # 因而只在有快照时把锚点作为硬断言，报告缺 phase 仍始终判红。
-    if missing_phases:
+    if home_info is not None and not home_schema_ok:
+        results.append(_bad("pre-check.projections", home_schema_detail))
+    elif missing_phases:
         results.append(_bad("pre-check.projections",
                             "报告缺少 phase：" + ", ".join(missing_phases)))
     elif extra.get("pre_check_home") is None:
@@ -212,16 +239,16 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
         results.append(_ok("pre-check.projections") if projection_ok
                        else _bad("pre-check.projections", projection_detail))
 
-    if missing_phases:
+    # 先锁定 runner 提供的路径事实，再让 links 消费相同路径。
+    if home_info is not None and not home_schema_ok:
+        results.append(_bad("pre-check.links", home_schema_detail))
+    elif missing_phases:
         results.append(_bad("pre-check.links", "报告缺少 phase：" + ", ".join(missing_phases)))
-    elif extra.get("pre_check_home") is None:
+    elif home_info is None:
         results.append(_ok("pre-check.links", "skip: 未提供集成 HOME 快照"))
     else:
-        home_info = extra.get("pre_check_home")
-        home_path = home_info.get("path") if isinstance(home_info, dict) else home_info
-        links_ok, links_detail = _precheck_links_ok(Path(home_path).resolve()
-                                                     if isinstance(home_path, str)
-                                                     else home_path, 14)
+        home_path = home_info["path"]
+        links_ok, links_detail = _precheck_links_ok(Path(home_path).resolve(), 14)
         results.append(_ok("pre-check.links") if links_ok else _bad("pre-check.links", links_detail))
 
     phase_errors = []

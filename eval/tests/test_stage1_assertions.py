@@ -119,6 +119,22 @@ class TestPreCheckAssertions(unittest.TestCase):
         )
         self.assertEqual([r.name for r in results if not r.ok], [])
 
+    def test_home_path_schema_rejects_mismatch_and_missing_mode(self):
+        """ut-s1-home-schema：HOME 路径事实缺失或错配必须判红。"""
+        fixture = self.root
+        bad_inherited = {"mode": "inherited", "path": str(fixture),
+                         "fixture_path": str(fixture), "before": {}, "after": {}}
+        missing_mode = {"path": str(fixture), "fixture_path": str(fixture),
+                        "before": {}, "after": {}}
+        self.assertFalse(asrt._precheck_home_changed(bad_inherited)[0])
+        self.assertFalse(asrt._precheck_home_changed(missing_mode)[0])
+
+    def test_home_path_schema_accepts_matching_fixture(self):
+        """ut-s1-home-schema-green：fixture 模式路径与 fixture_path 一致时通过。"""
+        info = {"mode": "fixture", "path": str(self.root),
+                "fixture_path": str(self.root), "before": {}, "after": {}}
+        self.assertTrue(asrt._precheck_home_changed(info)[0])
+
     def test_bad_report_or_budget_fails(self):
         _installed_workspace(self.root)
         results = asrt.assert_stage1(
