@@ -306,13 +306,49 @@ class TestOpenSpecPhase(unittest.TestCase):
             phase = phase_by_name(doc, "openspec")
             self.assertEqual(phase["result"], "skipped")
 
-    def test_ready_projection_skips_update(self):
+    def test_ready_projection_updates_without_init(self):
         with isolated_fixture("openspec-ready") as fx:
             proc, doc = run_precheck(fx, "run", "--no-interrupt")
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertNotIn("update", fx.calls.read_text(encoding="utf-8").splitlines())
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(calls.count("update"), 1)
+            self.assertFalse(any(call.startswith("init") for call in calls))
             phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "skipped")
+            self.assertEqual(phase["action"], "update-verify")
+            self.assertEqual(phase["updated"], 0)
             self.assertEqual(phase["skipped"], 4)
+
+    def test_ready_projection_check_mode_stays_readonly(self):
+        with isolated_fixture("openspec-ready") as fx:
+            proc, doc = run_precheck(fx, "check")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertNotIn("update", calls)
+            self.assertFalse(any(call.startswith("init") for call in calls))
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["action"], "verify-ready")
+            self.assertEqual(phase["result"], "skipped")
+            self.assertEqual(phase["skipped"], 4)
+
+    def test_ready_projection_update_failure_bridges_phase_error(self):
+        with isolated_fixture("openspec-ready") as fx:
+            env = fx.env()
+            env["FAKE_OPENSPEC_UPDATE_FAIL"] = "1"
+            proc = subprocess.run(
+                ["bash", str(SCRIPT), "run", "--no-interrupt"],
+                cwd=fx.project,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            doc = json.loads(proc.stdout)
+            self.assertEqual(proc.returncode, 1)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertGreaterEqual(phase["conflicts"], 1)
+            self.assertIn("openspec update 失败", phase["error"])
 
 
 class TestSuperpowersGitPhase(unittest.TestCase):

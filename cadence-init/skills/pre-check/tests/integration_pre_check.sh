@@ -153,6 +153,13 @@ diff -u "$ROOT/after-first.log" "$ROOT/after-rerun.log"
 _rerun_diff_rc=$?
 [ "$_rerun_diff_rc" -eq 0 ] || exit "$_rerun_diff_rc"
 
+_update_calls="$(awk '$0 == "update" { count++ } END { print count + 0 }' "$FAKE_OPENSPEC_CALLS")"
+[ "$_update_calls" -eq 2 ] || {
+  printf 'expected 2 openspec update calls, got %s\n' "$_update_calls" >&2
+  cat "$FAKE_OPENSPEC_CALLS" >&2
+  exit 1
+}
+
 python3 - "$REPORT1" "$REPORT2" <<'PY'
 import json, sys
 first = json.load(open(sys.argv[1], encoding='utf-8'))

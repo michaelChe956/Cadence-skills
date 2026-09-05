@@ -12,7 +12,7 @@ class TestMockCliPhases(unittest.TestCase):
         actions = {phase["phase"]: phase["action"] for phase in report["phases"]}
         self.assertEqual(actions, {
             "base-tools": "do_base_tools",
-            "openspec": "verify-ready",
+            "openspec": "update-verify",
             "superpowers-git": "fetch-pull-ff-only",
             "superpowers-links": "all-skipped",
             "verify": "all-skipped",

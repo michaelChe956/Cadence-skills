@@ -292,7 +292,7 @@ do_openspec_phase() {
       PHASE_CURRENT_ERROR="openspec init 失败（tools=$OPENSPEC_MISSING）"
       return 1
     }
-    # 只有 init 补齐了投影才允许一次 update；不可在齐全分支更新。
+    # 缺失分支 init 后最多一次 update；齐全分支 run 模式执行一次 update，check 模式仅只读复核。
     detect_openspec_clients
     _init_ready=0
     for _client in claude codex pi kimi; do
@@ -309,7 +309,16 @@ do_openspec_phase() {
       PHASE_CURRENT_CREATED=$((PHASE_CURRENT_CREATED + 1))
     fi
   else
-    PHASE_CURRENT_ACTION="verify-ready"
+    if [ "$MODE" = "run" ]; then
+      PHASE_CURRENT_ACTION="update-verify"
+      openspec update >/dev/null 2>&1 || {
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        PHASE_CURRENT_ERROR="openspec update 失败"
+        return 1
+      }
+    else
+      PHASE_CURRENT_ACTION="verify-ready"
+    fi
     PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 4))
     PHASE_CURRENT_RESULT="skipped"
   fi

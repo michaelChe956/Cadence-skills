@@ -106,7 +106,7 @@ class TestPreCheckAssertions(unittest.TestCase):
         _installed_workspace(self.root)
         phase_actions = {
             "base-tools": "do_base_tools",
-            "openspec": "verify-ready",
+            "openspec": "update-verify",
             "superpowers-git": "fetch-pull-ff-only",
             "superpowers-links": "all-skipped",
             "verify": "all-skipped",

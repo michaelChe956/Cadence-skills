@@ -65,6 +65,7 @@ if [ "${1:-}" = "init" ] && [ "${2:-}" = "--tools" ]; then
 fi
 
 if [ "${1:-}" = "update" ] && [ "$#" -eq 1 ]; then
+  [ "${FAKE_OPENSPEC_UPDATE_FAIL:-0}" = "1" ] && exit 1
   exit 0
 fi
 exit 2

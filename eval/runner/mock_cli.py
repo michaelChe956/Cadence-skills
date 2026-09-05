@@ -36,7 +36,7 @@ def _stage1_pre_check(cwd: Path) -> dict:
         "phases": [
             {"phase": "base-tools", "result": "skipped", "action": "do_base_tools", "duration_ms": 1,
              "created": 0, "updated": 0, "skipped": 6, "conflicts": 0, "error": None},
-            {"phase": "openspec", "result": "skipped", "action": "verify-ready", "duration_ms": 2,
+            {"phase": "openspec", "result": "skipped", "action": "update-verify", "duration_ms": 2,
              "created": 0, "updated": 0, "skipped": 4, "conflicts": 0, "error": None},
             {"phase": "superpowers-git", "result": "skipped", "action": "fetch-pull-ff-only", "duration_ms": 4,
              "created": 0, "updated": 0, "skipped": 1, "conflicts": 0, "error": None,
