@@ -104,10 +104,17 @@ class TestPreCheckAssertions(unittest.TestCase):
 
     def test_report_projections_links_phases_and_budget_green(self):
         _installed_workspace(self.root)
+        phase_actions = {
+            "base-tools": "do_base_tools",
+            "openspec": "verify-ready",
+            "superpowers-git": "fetch-pull-ff-only",
+            "superpowers-links": "all-skipped",
+            "verify": "all-skipped",
+        }
         report = {
             "overall": "success", "steps": [],
             "phases": [
-                {"phase": n, "result": "skipped", "action": "phase-check", "duration_ms": 12,
+                {"phase": n, "result": "skipped", "action": phase_actions[n], "duration_ms": 12,
                  "created": 0, "updated": 0, "skipped": 14, "conflicts": 0, "error": None}
                 for n in ("base-tools", "openspec", "superpowers-git", "superpowers-links", "verify")
             ],
