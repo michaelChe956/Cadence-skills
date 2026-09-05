@@ -206,7 +206,7 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
         out = cli(agent, spec["prompt"], **cli_kwargs)
         final_text = proc.extract_final_text(agent, out.get("transcript_path") or "")
         if spec["name"] == "pre-check":
-            extra["pre_check_clean"] = asrt._non_target_tree_hash(before, root) == asrt._non_target_tree_hash(_tree_hash(root), root)
+            extra["pre_check_clean"] = not asrt._zero_change_violations(before, _tree_hash(root))
             extra["pre_check_report"] = _extract_precheck_report(final_text)
             extra["pre_check_tool_calls"] = _count_tool_calls(out.get("transcript_path") or "")
             extra["pre_check_duration_s"] = float(out.get("duration_s", 0.0))

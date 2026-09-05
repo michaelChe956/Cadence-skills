@@ -87,6 +87,25 @@ class TestStage1Assertions(unittest.TestCase):
         results = asrt.assert_stage1("fresh", self.root, 1, dict(TEXTS))
         self.assertFalse(next(r for r in results if r.name == "verify.exit0").ok)
 
+    def test_zero_change_openspec_layered_guard(self):
+        """ut-s1-zerochange-layered：11 场景白名单与变更检测（含 4 反斜杠回归）。"""
+        cases = [
+            ({"openspec/specs/base.md": "h"}, {"openspec/specs/base.md": "h", "openspec/config.yaml": "new", ".claude/skills/openspec-x": "x"}, []),
+            ({"openspec/config.yaml": "old"}, {"openspec/config.yaml": "new"}, ["openspec/config.yaml"]),
+            ({"openspec/config.yaml": "old"}, {}, ["openspec/config.yaml"]),
+            ({"openspec/specs/x.md": "old"}, {"openspec/specs/x.md": "new"}, ["openspec/specs/x.md"]),
+            ({}, {"openspec/specs/new.md": "x"}, ["openspec/specs/new.md"]),
+            ({}, {"unexpected": "x"}, ["unexpected"]),
+            ({}, {".claude/skills/openspec-x": "x"}, []),
+            ({r"openspec\config.yaml": "old"}, {r"openspec\config.yaml": "new"}, ["openspec/config.yaml"]),
+            ({r"openspec\specs\x.md": "old"}, {r"openspec\specs\x.md": "new"}, ["openspec/specs/x.md"]),
+            ({}, {r"unexpected\x.txt": "x"}, ["unexpected/x.txt"]),
+            ({}, {r".claude\skills\openspec-x": "x"}, []),
+        ]
+        for before, after, expected in cases:
+            with self.subTest(before=before, after=after):
+                self.assertEqual(asrt._zero_change_violations(before, after), expected)
+
     def test_pre_check_dirty_tree_fails(self):
         """ut-s1-zerochange：pre-check 产生文件改动判红。"""
         _installed_workspace(self.root)

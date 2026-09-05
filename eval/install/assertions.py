@@ -25,6 +25,22 @@ def _path_is_openspec_projection(rel: str) -> bool:
             or rel.startswith(".kimi-code/skills/openspec-"))
 
 
+def _zero_change_violations(before, after) -> list[str]:
+    """按 openspec 分层守卫检查 pre-check 前后树差异。"""
+    b = {str(k).replace("\\", "/"): v for k, v in (before or {}).items()}
+    a = {str(k).replace("\\", "/"): v for k, v in (after or {}).items()}
+    violations = []
+    for rel in sorted(set(b) | set(a)):
+        if _path_is_openspec_projection(rel):
+            continue
+        if rel.startswith("openspec/") and "/" not in rel[len("openspec/"):]:
+            if rel not in b and rel in a:
+                continue
+        if b.get(rel) != a.get(rel):
+            violations.append(rel)
+    return violations
+
+
 def _non_target_tree_hash(snapshot, root: Optional[Path] = None) -> dict:
     """返回排除 OpenSpec 投影白名单后的 workspace 文件哈希。"""
     if isinstance(snapshot, Path):
