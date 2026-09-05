@@ -18,7 +18,8 @@ TARGET_HOME_LAYERS = (
 
 def _path_is_openspec_projection(rel: str) -> bool:
     rel = rel.replace("\\", "/")
-    return (rel == ".claude/commands/opsx" or rel.startswith(".claude/commands/opsx/")
+    return (rel == ".agents/skills/.openspec-target"
+            or rel == ".claude/commands/opsx" or rel.startswith(".claude/commands/opsx/")
             or rel.startswith(".claude/skills/openspec-")
             or rel.startswith(".agents/skills/openspec-")
             or rel.startswith(".pi/skills/") or rel.startswith(".pi/prompts/")

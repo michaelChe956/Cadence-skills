@@ -101,6 +101,7 @@ class TestStage1Assertions(unittest.TestCase):
             ({r"openspec\specs\x.md": "old"}, {r"openspec\specs\x.md": "new"}, ["openspec/specs/x.md"]),
             ({}, {r"unexpected\x.txt": "x"}, ["unexpected/x.txt"]),
             ({}, {r".claude\skills\openspec-x": "x"}, []),
+            ({}, {".agents/skills/.openspec-target": "codex"}, []),
         ]
         for before, after, expected in cases:
             with self.subTest(before=before, after=after):
