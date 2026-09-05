@@ -14,6 +14,6 @@ else
   _rc=0
 fi
 
-# 先让调用方读取结构化结果，再由 EXIT trap 删除独占报告。
+# 先让调用方读取结构化结果，再由退出/信号 trap 删除独占报告。
 cat "$REPORT"
 exit "$_rc"

@@ -13,6 +13,26 @@ REPORT="$ROOT/report.json"
 STDERR="$ROOT/stderr.log"
 trap 'rm -rf "$ROOT"' EXIT HUP INT TERM
 
+# 采集器依赖 git 2.22 及以上；在首个 git 操作前用 POSIX 工具解析主次版本。
+GIT_VERSION_OUTPUT="$(git --version 2>/dev/null)"
+GIT_RC=$?
+if [ "$GIT_RC" -ne 0 ]; then
+  echo '错误：执行 git --version 失败；采集器需要 git >= 2.22。' >&2
+  exit 2
+fi
+GIT_VERSION="$(printf '%s\n' "$GIT_VERSION_OUTPUT" | sed -n 's/^git version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*$/\1 \2/p')"
+if [ -z "$GIT_VERSION" ]; then
+  echo '错误：无法解析 git 版本；采集器需要 git >= 2.22。' >&2
+  exit 2
+fi
+GIT_MAJOR="$(printf '%s\n' "$GIT_VERSION" | awk '{print $1}')"
+GIT_MINOR="$(printf '%s\n' "$GIT_VERSION" | awk '{print $2}')"
+if ! awk -v major="$GIT_MAJOR" -v minor="$GIT_MINOR" \
+  'BEGIN { exit !(major > 2 || (major == 2 && minor >= 22)) }'; then
+  echo "错误：当前 git 版本为 ${GIT_MAJOR}.${GIT_MINOR}，采集器需要 git >= 2.22。" >&2
+  exit 2
+fi
+
 mkdir -p "$PROJECT" "$HOME_DIR" "$BIN"
 
 # v2 以 27e87e2 旧脚本冻结；保留 mirrors 目录使旧脚本按自身相对路径加载配置。

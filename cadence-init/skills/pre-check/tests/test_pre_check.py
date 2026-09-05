@@ -2,8 +2,10 @@
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -140,6 +142,67 @@ class TestFailureFastReturn(unittest.TestCase):
                 self.assertEqual(proc.returncode, exit_code)
                 self.assertEqual(json.loads(proc.stdout)["overall"], "success")
                 self.assertFalse(report.exists())
+
+    def test_report_cleanup_removes_report_on_hup_int_term(self):
+        helper = Path(__file__).resolve().parent / "helpers" / "report-cleanup.sh"
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig.name), tempfile.TemporaryDirectory() as td:
+                report = Path(td) / "report.json"
+                proc = subprocess.Popen(
+                    [
+                        "bash", str(helper), str(report), "bash", "-c",
+                        "printf '{\\\"overall\\\":\\\"success\\\"}\\n'; sleep 30",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                pgid = os.getpgid(proc.pid)
+                try:
+                    deadline = time.monotonic() + 5
+                    while not report.exists() and time.monotonic() < deadline:
+                        self.assertIsNone(proc.poll(), "报告文件出现前 helper 已退出")
+                        time.sleep(0.05)
+                    self.assertTrue(report.exists(), "受包装命令未在时限内写入报告")
+                    os.killpg(pgid, sig)
+                    proc.wait(timeout=30)
+                    self.assertFalse(report.exists())
+                finally:
+                    if proc.poll() is None:
+                        os.killpg(pgid, signal.SIGKILL)
+                        proc.wait(timeout=5)
+
+    def test_run_precheck_removes_auto_report_on_hup_int_term(self):
+        helper = Path(__file__).resolve().parent / "helpers" / "run-pre-check.sh"
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig.name), isolated_fixture("superpowers-timeout") as fx:
+                proc = subprocess.Popen(
+                    ["bash", str(helper), str(fx.project), "run", "--no-interrupt"],
+                    cwd=fx.root,
+                    env=fx.env(),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                pgid = os.getpgid(proc.pid)
+                report = None
+                try:
+                    deadline = time.monotonic() + 10
+                    while time.monotonic() < deadline:
+                        reports = list(fx.tmp.glob("precheck-report.*.json"))
+                        if reports and "[clone]" in fx.git_args.read_text(encoding="utf-8"):
+                            report = reports[0]
+                            break
+                        self.assertIsNone(proc.poll(), "报告创建或 pre-check 阻塞前 wrapper 已退出")
+                        time.sleep(0.05)
+                    self.assertIsNotNone(report, "未观察到自动报告文件和阻塞的 pre-check 子进程")
+                    os.killpg(pgid, sig)
+                    proc.wait(timeout=30)
+                    self.assertFalse(report.exists())
+                finally:
+                    if proc.poll() is None:
+                        os.killpg(pgid, signal.SIGKILL)
+                        proc.wait(timeout=5)
 
     def test_normal_mode_records_partial_and_continues(self):
         with isolated_fixture("base-tools-failure") as fx:
