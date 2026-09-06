@@ -1,10 +1,3 @@
-<!-- cadence-tools:start -->
-cadence-tools:
-  - preferred: [Context7]
-    fallback: [WebSearch, WebFetch]
-    when: context7_configured
-<!-- cadence-tools:end -->
-
 ## MCP Server 使用规则
 
 > **MCP 工具使用规范**

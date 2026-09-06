@@ -78,7 +78,7 @@ _agents_cfg_global = {}
 # --dangerously-skip-permissions——它会跳过项目 deny，使 deny 改道测试失效。
 PROBE_ARGV_EXTRA = {
     "claude": ["--permission-mode", "acceptEdits", "--allowedTools",
-               "Bash", "mcp__context7", "mcp__time", "mcp__zai-mcp-server",
+               "Bash", "Grep", "Glob", "mcp__codegraph", "mcp__context7", "mcp__time", "mcp__zai-mcp-server",
                "mcp__MiniMax", "mcp__sequential-thinking", "mcp__web-search-prime",
                "mcp__web-reader", "mcp__zread"],
 }

@@ -3540,28 +3540,18 @@ class TestOptionalRuleIntegrity(unittest.TestCase):
 
 class TestToolMetadata(unittest.TestCase):
     def test_code_reading_template_has_metadata(self):
-        """ut-meta-code-reading：coding 检索规则模板携带三字段元数据。"""
+        """ut-meta-code-reading：coding 模板已移除 cadence-tools 元数据（实验撤除物理拦截）。"""
         text = (Path(__file__).resolve().parents[1] / "references" / "rules"
                 / "code-reading-coding.md").read_text(encoding="utf-8")
-        entries = rc.parse_tool_metadata(text)
-        self.assertEqual(len(entries), 1)
-        self.assertIn("codegraph", entries[0]["preferred"])
-        self.assertIn("ast-grep outline", entries[0]["preferred"])
-        self.assertIn("Grep", entries[0]["fallback"])
-        self.assertIn("Bash(rg:*)", entries[0]["fallback"])
-        self.assertIn("project_type=coding", entries[0]["when"])
-        self.assertIn("codegraph_enabled", entries[0]["when"])
+        self.assertNotIn("cadence-tools", text)
+        self.assertEqual(rc.parse_tool_metadata(text), [])
 
     def test_mcp_servers_template_has_metadata(self):
-        """ut-meta-mcp-servers：MCP 规则模板携带 Context7 优先元数据。"""
+        """ut-meta-mcp-servers：MCP 模板已移除 cadence-tools 元数据（实验撤除物理拦截）。"""
         text = (Path(__file__).resolve().parents[1] / "references" / "rules"
                 / "mcp-servers.md").read_text(encoding="utf-8")
-        entries = rc.parse_tool_metadata(text)
-        self.assertEqual(len(entries), 1)
-        self.assertIn("Context7", entries[0]["preferred"])
-        self.assertIn("WebSearch", entries[0]["fallback"])
-        self.assertIn("WebFetch", entries[0]["fallback"])
-        self.assertEqual(entries[0]["when"], "context7_configured")
+        self.assertNotIn("cadence-tools", text)
+        self.assertEqual(rc.parse_tool_metadata(text), [])
 
     def test_no_markers_returns_empty(self):
         """ut-meta-absent：无标记区返回空（保守：不产生拦截）。"""
@@ -3823,7 +3813,7 @@ class TestPermissionGateIntegration(unittest.TestCase):
         return report
 
     def test_gate_generated_for_coding_codegraph_project(self):
-        """ut-s9-generate：coding+codegraph 生成检索 deny 区，理由同源渲染。"""
+        """ut-s9-generate：源模板无 cadence-tools 元数据时不生成任何 deny 区块（实验撤除拦截）。"""
         (self.root / ".claude" / "settings.json").write_text(json.dumps({
             "permissions": {"allow": ["Bash(npm test:*)"],
                             "deny": ["WebFetch(./private/**)"]},
@@ -3832,28 +3822,22 @@ class TestPermissionGateIntegration(unittest.TestCase):
         doc = json.loads(
             (self.root / ".claude" / "settings.json").read_text(encoding="utf-8"))
         deny = doc["permissions"]["deny"]
-        self.assertEqual(deny[0], "WebFetch(./private/**)")
-        self.assertIn(rc.PERMISSION_GATE_BEGIN, deny)
-        self.assertIn(rc.PERMISSION_GATE_END, deny)
-        for tool in ("Grep", "Glob", "Bash(grep:*)", "Bash(rg:*)", "Bash(find:*)",
-                     "WebSearch", "WebFetch"):
-            self.assertIn(tool, deny)
-        reasons = [d for d in deny if isinstance(d, str) and d.startswith("❌")]
-        self.assertEqual(len(reasons), 2)
-        self.assertTrue(all(r.endswith("CADENCE_BYPASS=1 前缀绕开。") for r in reasons))
-        self.assertTrue(any("code-reading.md" in r for r in reasons))
-        self.assertTrue(any("mcp-servers.md" in r for r in reasons))
+        self.assertEqual(deny, ["WebFetch(./private/**)"])
+        self.assertNotIn(rc.PERMISSION_GATE_BEGIN, deny)
+        for tool in ("Grep", "Glob", "Bash(grep:*)", "WebSearch"):
+            self.assertNotIn(tool, deny)
 
     def test_first_apply_closes_s8_to_s9_loop(self):
         """ut-s9-first-apply：全新 coding 项目首轮 apply 即完成 S8→S9 闭环。"""
         (self.root / ".mcp.json").unlink()
         report = self._apply(no_interrupt=True)
         settings = self.root / ".claude" / "settings.json"
-        self.assertTrue(settings.exists())
-        deny = json.loads(settings.read_text(encoding="utf-8"))["permissions"]["deny"]
-        self.assertIn(rc.PERMISSION_GATE_BEGIN, deny)
+        if settings.exists():
+            doc = json.loads(settings.read_text(encoding="utf-8"))
+            self.assertNotIn(rc.PERMISSION_GATE_BEGIN,
+                             doc.get("permissions", {}).get("deny", []))
         s9 = next(s for s in report["steps"] if s["name"] == rc.STEP_PERMISSION_GATE)
-        self.assertEqual(s9["assets"][0]["action"], "create")
+        self.assertIn(s9["status"], ("done", "ok"))
 
     def test_gate_not_generated_when_conditions_unmet(self):
         """ut-s9-when-false：非 coding 且无 MCP 配置不产生任何 deny 条目。"""
@@ -3877,34 +3861,28 @@ class TestPermissionGateIntegration(unittest.TestCase):
         report = self._apply(no_interrupt=True)
         doc = json.loads(
             (self.root / ".claude" / "settings.json").read_text(encoding="utf-8"))
-        deny = doc["permissions"]["deny"]
-        managed = deny[deny.index(rc.PERMISSION_GATE_BEGIN):
-                       deny.index(rc.PERMISSION_GATE_END)]
-        self.assertNotIn("Grep", managed)
-        self.assertIn("Glob", deny)
-        self.assertTrue(any(w.get("code") == "s9-allow-conflict"
-                            for w in report["warnings"]))
+        self.assertEqual(doc["permissions"]["allow"], ["Grep"])
+        self.assertNotIn("deny", doc["permissions"])
 
     def test_metadata_change_syncs_entries_and_reason(self):
-        """ut-s9-sync：preferred 变更重 apply 后条目与理由同步变，不残留旧名。"""
+        """ut-s9-sync：源模板无元数据时重 apply 不产生任何 deny 残留（实验撤除口径）。"""
         self._apply(no_interrupt=True)
-        tpl = self.rules_root / "code-reading-coding.md"
-        tpl.write_text(tpl.read_text(encoding="utf-8").replace(
-            'preferred: [codegraph, "ast-grep outline"]',
-            'preferred: [foobar-search, "ast-grep outline"]'), encoding="utf-8")
         self._apply(no_interrupt=True)
-        text = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
-        self.assertIn("1）foobar-search", text)
-        self.assertNotIn("1）codegraph", text)
+        settings = self.root / ".claude" / "settings.json"
+        if settings.exists():
+            doc = json.loads(settings.read_text(encoding="utf-8"))
+            self.assertNotIn(rc.PERMISSION_GATE_BEGIN,
+                             doc.get("permissions", {}).get("deny", []))
 
     def test_rerun_idempotent_no_extra_backup(self):
         """ut-s9-idempotent：重跑 apply 区块稳定、无新增归档。"""
         self._apply(no_interrupt=True)
         legacy = self.root / "cadence" / "legacy"
         before = {p.name for p in legacy.iterdir() if p.is_dir()} if legacy.exists() else set()
-        text1 = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
+        settings = self.root / ".claude" / "settings.json"
+        text1 = settings.read_text(encoding="utf-8") if settings.exists() else None
         self._apply(no_interrupt=True)
-        text2 = (self.root / ".claude" / "settings.json").read_text(encoding="utf-8")
+        text2 = settings.read_text(encoding="utf-8") if settings.exists() else None
         self.assertEqual(text1, text2)
         after = {p.name for p in legacy.iterdir() if p.is_dir()} if legacy.exists() else set()
         self.assertEqual(before, after)
@@ -3919,18 +3897,24 @@ class TestPermissionGateIntegration(unittest.TestCase):
             result = rc.run_dry_run(self.root, _intents(no_interrupt=True), report)
         self.assertEqual(result, 0, report.get("failure"))
         s9 = next(s for s in report["steps"] if s["name"] == rc.STEP_PERMISSION_GATE)
-        preview_assets = [a for a in s9["assets"] if a.get("preview")]
-        self.assertTrue(preview_assets)
-        self.assertIn(rc.PERMISSION_GATE_BEGIN, preview_assets[0]["preview"])
-        self.assertIn("Grep", preview_assets[0]["preview"])
+        preview_text = str(s9)
+        self.assertNotIn("'Grep'", preview_text)
         self.assertFalse((self.root / ".claude" / "settings.json").exists())
 
     def test_remove_permission_gate_cli(self):
         """ut-cli-remove-gate：--remove-permission-gate 整体移除且保留用户内容。"""
-        self._apply(no_interrupt=True)
         settings = self.root / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({
+            "permissions": {"deny": [
+                "UserDeny",
+                rc.PERMISSION_GATE_BEGIN,
+                "Grep",
+                "❌ legacy 条目",
+                rc.PERMISSION_GATE_END,
+            ]},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         doc = json.loads(settings.read_text(encoding="utf-8"))
-        doc["permissions"]["deny"].insert(0, "UserDeny")
         settings.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
         report_fd, report_name = tempfile.mkstemp(prefix="rc-remove-gate-", suffix=".json")
         os.close(report_fd)
@@ -3975,8 +3959,8 @@ class TestCodexInlineRender(unittest.TestCase):
         block = rc.render_codex_inline(self.rules_dir)
         self.assertTrue(block.startswith(rc.CODEX_INLINE_BEGIN))
         self.assertTrue(block.rstrip("\n").endswith(rc.CODEX_INLINE_END))
-        self.assertIn("工具优先级：codegraph → ast-grep outline", block)
-        self.assertIn("工具优先级：Context7", block)
+        self.assertNotIn("工具优先级：codegraph", block)
+        self.assertNotIn("工具优先级：Context7", block)
         self.assertIn("mcp-servers.md：MCP Server 使用规则", block)
         self.assertIn("铁律", block)
         self.assertIn("language.md：语言规则", block)
@@ -3997,7 +3981,7 @@ class TestCodexInlineRender(unittest.TestCase):
         self.assertLessEqual(len(lines), rc.CODEX_INLINE_BUDGET)
         self.assertTrue(any("超 60 行预算" in ln and "省略" in ln for ln in lines))
         # 链行优先保留
-        self.assertIn("工具优先级：codegraph → ast-grep outline", block)
+        self.assertIn("- code-reading.md：代码阅读规则", block)
 
     def test_render_deterministic(self):
         """ut-inline-deterministic：同一源两次渲染逐字一致（漂移检测前提）。"""
@@ -4058,7 +4042,7 @@ class TestCodexInlineBlock(unittest.TestCase):
         self.assertIn("用户自有说明，不得改动。", agents)
         self.assertIn("## 用户章节", agents)
         self.assertIn("- 用户条目", agents)
-        self.assertIn("工具优先级：codegraph → ast-grep outline", agents)
+        self.assertNotIn("工具优先级：codegraph", agents)
 
     def test_add_rule_updates_block_automatically(self):
         """ut-s10-auto-update：新增规则文件重跑 apply，区块自动含其一行摘要。
@@ -4214,7 +4198,7 @@ class TestVerifyCommand(unittest.TestCase):
         landed = self.root / ".claude" / "rules" / "mcp-servers.md"
         landed.write_text(
             landed.read_text(encoding="utf-8").replace(
-                "preferred: [Context7]", "preferred: [Context7X]"),
+                "## MCP Server 使用规则", "## MCP Server 使用规则X"),
             encoding="utf-8")
         code, payload = self._verify_cli(self.root)
         self.assertEqual(code, 1)
@@ -4292,7 +4276,7 @@ class TestSubagentFallbackChainRule(unittest.TestCase):
         refs = Path(__file__).resolve().parents[1] / "references" / "rules"
         entries = rc.parse_tool_metadata(
             (refs / "mcp-servers.md").read_text(encoding="utf-8"))
-        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries, [])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,52 @@
+{
+  "claude": {
+    "enabled": true,
+    "executable": "claude",
+    "pinned_model": "",
+    "strong_model": "",
+    "cli_version": "",
+    "capture": "stdout",
+    "max_turns": 40,
+    "skill_env": {
+      "CLAUDE_CONFIG_DIR": "{fixture_home}/.claude"
+    }
+  },
+  "codex": {
+    "enabled": false,
+    "executable": "codex",
+    "pinned_model": "",
+    "strong_model": "",
+    "cli_version": "",
+    "capture": "stdout",
+    "max_turns": null,
+    "skill_env": {
+      "CODEX_HOME": "{fixture_home}/.codex"
+    }
+  },
+  "pi": {
+    "enabled": false,
+    "executable": "pi",
+    "pinned_model": "",
+    "strong_model": "",
+    "cli_version": "",
+    "capture": "session",
+    "max_turns": null,
+    "skill_env": {
+      "PI_CONFIG_DIR": "{fixture_home}/.pi"
+    }
+  },
+  "kimi": {
+    "enabled": false,
+    "executable": "kimi",
+    "pinned_model": "",
+    "strong_model": "",
+    "cli_version": "",
+    "capture": "session",
+    "max_turns": null,
+    "skill_env": {},
+    "argv_extra": [
+      "--skills-dir",
+      "{fixture_home}/.kimi-code/skills"
+    ]
+  }
+}

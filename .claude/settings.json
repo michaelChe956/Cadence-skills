@@ -4,19 +4,7 @@
     "allow": [
       "mcp__codegraph__*"
     ],
-    "deny": [
-      "@@cadence-managed:permission-gate:v1:start@@",
-      "Grep",
-      "Glob",
-      "Bash(grep:*)",
-      "Bash(rg:*)",
-      "Bash(find:*)",
-      "❌ Grep、Glob、Bash、Bash、Bash 被规则限制（规则源：code-reading.md）。规则优先级链：1）codegraph；2）ast-grep outline；请按此顺序重试，勿再调用受限工具。确需例外：运行 rule-config --remove-permission-gate 撤销拦截，或 Bash 域以 CADENCE_BYPASS=1 前缀绕开。",
-      "WebSearch",
-      "WebFetch",
-      "❌ WebSearch、WebFetch 被规则限制（规则源：mcp-servers.md）。规则优先级链：1）Context7；请按此顺序重试，勿再调用受限工具。确需例外：运行 rule-config --remove-permission-gate 撤销拦截，或 Bash 域以 CADENCE_BYPASS=1 前缀绕开。",
-      "@@cadence-managed:permission-gate:v1:end@@"
-    ]
+    "deny": []
   },
   "hooks": {
     "UserPromptSubmit": [
