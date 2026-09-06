@@ -82,6 +82,16 @@ PROBE_ARGV_EXTRA = {
 }
 
 
+def validate_real_superpowers(source: Path) -> Optional[str]:
+    """真实模式夜测启动校验（fail-fast）：真实 superpowers 可用返回 None，否则返回错误说明。"""
+    try:
+        from eval.fixtures.generator import validate_real_superpowers_source
+        validate_real_superpowers_source(source)
+        return None
+    except ValueError as exc:
+        return str(exc)
+
+
 def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
                      run_id, results_dir, transcripts_dir, base_dir, theme="orders",
                      mock_bin_dir=None, variant="installed", real_home=False,
@@ -200,6 +210,11 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         from eval.runner import cli as cli_mod
         bin_dir = cli_mod.mock_bin(base_dir / "mockbin")
     real_home = not mock
+    if real_home:
+        _sp_err = validate_real_superpowers(Path.home() / ".agents" / "superpowers")
+        if _sp_err:
+            print(f"[night] 真实模式前置校验失败，停止：{_sp_err}")
+            return 1
     global_root = Path.home() if real_home else base_dir
     global_before = gen.snapshot_global_configs(global_root)
     started = time.time()
@@ -221,7 +236,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
                 guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
                 return ag, None, f"[{ag}] 版本锁失败：{msg}"
         _stage_base = base_dir / "stage1" / date_str / ag
-        _fx = gen.make_fixture("fresh", _stage_base, repo_root, theme=plan["theme"])
+        _fx = gen.make_fixture("fresh", _stage_base, repo_root, theme=plan["theme"],
+                               **({"superpowers_mode": "real"} if real_home else {}))
         _se = _resolved_skill_env(agents_cfg, ag, _fx) if real_home else None
         if real_home:
             proc.link_agent_auth(ag, _fx)
@@ -241,7 +257,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
             return ag, _fx, f"[{ag}] 阶段一/幂等失败，跳过其探针"
         if ag in plan["v3_agents"]:
             _v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / ag,
-                                      repo_root, theme=plan["theme"])
+                                      repo_root, theme=plan["theme"],
+                                      superpowers_mode="real" if real_home else "mock")
             _v3r = stage1.run_stage1(ag, _v3_fx, _pins,
                                      timeout_s=policy.get("stage1_timeout_s", 1200),
                                      pre_check_timeout_s=policy.get("stage1_pre_check_timeout_s", 240),

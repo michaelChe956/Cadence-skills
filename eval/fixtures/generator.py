@@ -145,8 +145,32 @@ def snapshot_superpowers_state(home: Path) -> dict:
     return out
 
 
+def validate_real_superpowers_source(source: Path, expected: int = 14) -> None:
+    """校验真实 superpowers 源可用：存在、技能目录恰好 expected 个（排除哨兵）、均为含 SKILL.md 的目录。
+
+    失败抛 ValueError 并附安装指引（fail-fast：环境问题在夜测启动即暴露，
+    不等探针会话被空壳技能卡死）。
+    """
+    skills = Path(source) / "skills"
+    problems = []
+    if not skills.is_dir():
+        problems.append(f"源目录不存在：{skills}——本机未安装 superpowers，请先运行 /pre-check 安装")
+    else:
+        entries = [p for p in sorted(skills.iterdir()) if p.name != "knowledge-base-context"]
+        names = [p.name for p in entries]
+        bad = [p.name for p in entries if not (p.is_dir() and (p / "SKILL.md").is_file())]
+        if bad:
+            problems.append(f"技能条目非目录或缺 SKILL.md：{bad}")
+        if len(names) != expected:
+            problems.append(f"技能数量 {len(names)} ≠ 预期 {expected}，现清单：{names}")
+    if problems:
+        raise ValueError("；".join(problems))
+
+
 def make_fixture(variant: str, base_dir: Path, repo_root: Path,
-                 theme: str = "orders", install: bool = True) -> FixturePaths:
+                 theme: str = "orders", install: bool = True,
+                 superpowers_mode: str = "mock",
+                 real_superpowers_source: Path | None = None) -> FixturePaths:
     if variant not in VARIANTS:
         raise ValueError(f"未知 fixture 变体：{variant}")
     if variant == "control":
@@ -170,8 +194,17 @@ def make_fixture(variant: str, base_dir: Path, repo_root: Path,
     _git_init(root)
     if install:
         _install_skills(repo_root, home)
-        source = make_superpowers_source(home)
-        make_superpowers_layers(home, source)
+        if superpowers_mode == "real":
+            source = Path(real_superpowers_source
+                          if real_superpowers_source is not None
+                          else Path.home() / ".agents" / "superpowers")
+            validate_real_superpowers_source(source)
+            make_superpowers_layers(home, source)
+        elif superpowers_mode == "mock":
+            source = make_superpowers_source(home)
+            make_superpowers_layers(home, source)
+        else:
+            raise ValueError(f"未知 superpowers_mode：{superpowers_mode}")
     return FixturePaths(root=root, home=home, repo=repo_root)
 
 
