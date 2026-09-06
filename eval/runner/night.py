@@ -73,14 +73,12 @@ def _save_run(nightly: Path, run_id: str, result: dict, traj) -> None:
 
 _agents_cfg_global = {}
 
-# 探针阶段 claude 权限：编辑自动接受 + Bash/MCP 放行；项目 settings 的受管 deny
-# 优先级高于 allow，Grep/Glob/WebSearch 仍被拦（P1/P2 测试点）。不得使用
-# --dangerously-skip-permissions——它会跳过项目 deny，使 deny 改道测试失效。
+# 探针阶段 claude 权限：--dangerously-skip-permissions 全工具放行——等价于
+# "对所有授权框都点 allow 的人工用户"，无白名单边界（白名单外工具不会被误拒），
+# 模型的工具选择完全自由，才能纯观测规则文本的引导力。deny 改道测试已随
+# 纯文本实验（gate 撤除）移除，跳过项目权限不再有副作用。
 PROBE_ARGV_EXTRA = {
-    "claude": ["--permission-mode", "acceptEdits", "--allowedTools",
-               "Bash", "Grep", "Glob", "mcp__codegraph", "mcp__context7", "mcp__time", "mcp__zai-mcp-server",
-               "mcp__MiniMax", "mcp__sequential-thinking", "mcp__web-search-prime",
-               "mcp__web-reader", "mcp__zread"],
+    "claude": ["--dangerously-skip-permissions"],
 }
 
 
