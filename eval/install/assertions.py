@@ -320,14 +320,18 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     claude_md = _read(root, "CLAUDE.md") or ""
     results.append(_ok("l0.v4") if L0_BEGIN in claude_md else _bad("l0.v4", "CLAUDE.md 无 v4 受管区块"))
     settings_raw = _read(root, ".claude/settings.json")
-    gate_ok = False
+    # 纯文本模式（实验撤除物理拦截）：deny 区块不生成——settings 缺失或无受管
+    # 区块均为合规；仅当出现"半截区块"（有 begin 无 end，疑似手改损坏）才判红。
+    gate_ok = True
     if settings_raw is not None:
         try:
             deny = json.loads(settings_raw).get("permissions", {}).get("deny", [])
-            gate_ok = GATE_BEGIN in deny and GATE_END in deny
+            has_begin, has_end = GATE_BEGIN in deny, GATE_END in deny
+            if has_begin != has_end:
+                gate_ok = False
         except (ValueError, TypeError):
             gate_ok = False
-    results.append(_ok("gate.region") if gate_ok else _bad("gate.region", "settings.json 无受管 deny 区块"))
+    results.append(_ok("gate.region") if gate_ok else _bad("gate.region", "settings.json 受管 deny 区块损坏（begin/end 不成对）"))
     agents_md = _read(root, "AGENTS.md") or ""
     results.append(_ok("codex.inline") if INLINE_BEGIN in agents_md
                    else _bad("codex.inline", "AGENTS.md 无 codex-rules-inline 区块"))
