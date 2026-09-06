@@ -27,7 +27,8 @@ class TestFixtureGenerator(unittest.TestCase):
         # P7 探针的截图占位（1x1 PNG，魔数校验）
         png = fx.root / "assets" / "error.png"
         self.assertTrue(png.is_file())
-        self.assertEqual(png.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        # 真报错截图（用户提供，JPEG 数据、error.png 文件名——按内容嗅探）
+        self.assertIn(png.read_bytes()[:2], (b"\x89P", b"\xff\xd8"))
         self.assertFalse((fx.root / "CLAUDE.md").exists())
         self.assertFalse((fx.root / ".claude").exists())
 
