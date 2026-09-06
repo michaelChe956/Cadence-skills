@@ -130,16 +130,17 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
     drift = guards.model_drift(traj, pins)
     fake_log = fake.read_calls(log_dir) if log_dir.exists() else []
     if drift:
-        result = {
-            "schema_version": "1.0", "run_id": run_id, "agent": agent,
-            "model": traj.model_readback, "cli_version": traj.cli_version,
-            "probe_id": probe_id,
-            "rule_clause_ids": list(probe.get("rule_clause_ids", [])),
-            "verdict": "MODEL_DRIFT", "fail_reason": drift,
-            "denials": [vars(d) for d in traj.denials],
-            "transcript_path": transcript, "started_at": traj.started_at,
-            "duration_s": traj.duration_s, "details": {"stderr": out["stderr"][-500:]},
-        }
+        # 行为断言与模型漂移解耦：工具选择/产物类断言不依赖模型身份，
+        # drift 会话照常评分，判定存 behavior 字段供人工/报告分析。
+        result = assertor.score_run(
+            run_id, probe, traj, workspace=fixture.root, fake_mcp_log=fake_log,
+            pre_snapshot=pre_snapshot, returncode=out["returncode"],
+            stderr=out["stderr"], timed_out=out.get("timed_out", False))
+        result["variant"] = variant
+        result["behavior"] = result.get("verdict")
+        result["behavior_failures"] = result.get("fail_reason")
+        result["verdict"] = "MODEL_DRIFT"
+        result["fail_reason"] = drift
     else:
         result = assertor.score_run(
             run_id, probe, traj, workspace=fixture.root, fake_mcp_log=fake_log,

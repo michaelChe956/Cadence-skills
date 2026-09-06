@@ -62,6 +62,13 @@ def _project_files(root: Path, theme: str) -> None:
            f"from src.{theme}.repo import save\n\n\ndef handle(payload: dict) -> None:\n    save(payload)\n")
     _write(root / "src" / theme / "repo.py",
            "def save(payload: dict) -> None:\n    print('saved')\n")
+    # P3 探针任务前提：用户表存在（加 last_login_at 列类任务有表可改）
+    _write(root / "src" / theme / "schema.sql",
+           "CREATE TABLE users (\n"
+           "  id INTEGER PRIMARY KEY,\n"
+           "  username TEXT NOT NULL,\n"
+           "  created_at TEXT NOT NULL\n"
+           ");\n")
 
 
 def _git_init(root: Path) -> None:
