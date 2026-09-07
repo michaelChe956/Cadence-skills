@@ -105,11 +105,14 @@ def _is_codex_runtime_state(rel: str) -> bool:
     if rest.endswith((".sqlite", ".sqlite-wal", ".sqlite-shm")):
         return True
     return rest in ("history.jsonl", "session_index.jsonl", "version.json",
-                    ".sandbox_migration", "installation_id") or rel == ".pi/agent/settings.json"
+                    ".sandbox_migration", "installation_id")
 
 
 def _is_precheck_home_target(rel: str) -> bool:
     rel = rel.replace("\\", "/")
+    # pi 自身配置（pi install 会写其 settings.json——运行时状态）
+    if rel == ".pi/agent/settings.json":
+        return True
     if _is_codex_runtime_state(rel):
         return True
     # CodeGraph 工具缓存命名空间级豁免：telemetry 等 CLI 缓存不属于 pre-check 目标。
