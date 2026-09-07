@@ -9975,7 +9975,8 @@ def _install_skills(repo_root: Path, home: Path) -> None:
             target = shared / skill_dir.name
             if not target.exists():
                 target.symlink_to(skill_dir)
-    for layer in (home / ".claude" / "skills", home / ".codex" / "skills" / "skills"):
+    for layer in (home / ".claude" / "skills", home / ".codex" / "skills" / "skills",
+                  home / ".pi" / "agent" / "skills"):
         layer.mkdir(parents=True, exist_ok=True)
         for entry in sorted(shared.iterdir()):
             link = layer / entry.name

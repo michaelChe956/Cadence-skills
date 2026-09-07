@@ -121,6 +121,11 @@ def _is_precheck_home_target(rel: str) -> bool:
                ".pi/agent/mcp-onboarding.json", ".pi/agent/run-history.jsonl",
                ".pi/agent/trust.json", ".pi/agent/models-store.json"):
         return True
+    # pi 的 git 插件缓存与 profiles（运行时自动管理）
+    if rel == ".pi/agent/git" or rel.startswith(".pi/agent/git/"):
+        return True
+    if rel == ".pi/agent/profiles" or rel.startswith(".pi/agent/profiles/"):
+        return True
     if _is_codex_runtime_state(rel):
         return True
     # CodeGraph 工具缓存命名空间级豁免：telemetry 等 CLI 缓存不属于 pre-check 目标。
