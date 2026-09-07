@@ -149,12 +149,17 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     stdout_file = capture_dir / f".eval-{agent}-{os.getpid()}-{int(started * 1000)}-stdout.jsonl"
     proc = subprocess.Popen(
         argv, cwd=str(cwd), env=env, shell=False,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+        start_new_session=True)  # 独立进程组：超时可整组 kill，防 CLI 孙进程成孤儿空转
     try:
         out, err = proc.communicate(timeout=timeout_s)
         returncode, timed_out = proc.returncode, False
     except subprocess.TimeoutExpired:
-        proc.kill()
+        import signal
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # 整组清杀（孙进程不留）
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
         out, err = proc.communicate()
         returncode, timed_out = -9, True
     duration = time.time() - started
