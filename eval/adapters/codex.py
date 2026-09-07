@@ -86,6 +86,27 @@ class CodexAdapter(base.AgentAdapter):
             if not isinstance(payload, dict):
                 payload = {}
 
+            # stdout 流（codex exec --json）格式：顶层 {"type":"item.completed",
+            # "item":{...}}——rollout 格式之外的主流形态
+            if data.get("type") in ("item.started", "item.completed"):
+                item = data.get("item")
+                if isinstance(item, dict):
+                    if item.get("type") == "agent_message" and data.get("type") == "item.completed" \
+                            and isinstance(item.get("text"), str):
+                        texts.append(item["text"])
+                    elif item.get("type") in ("command_execution", "function_call") \
+                            and data.get("type") == "item.completed":
+                        raw_name = item.get("type")
+                        tool = base.normalize_tool(self.name, raw_name)
+                        cmd = item.get("command")
+                        digest = " ".join(str(cmd).split()[:3]) if isinstance(cmd, str) else ""
+                        traj.tool_calls.append(ifmt.ToolCall(
+                            index=sequence, tool=tool, raw_tool=str(raw_name or ""),
+                            args_digest=digest, is_error=item.get("status") == "failed",
+                            ts=timestamp if isinstance(timestamp, str) else None))
+                        sequence += 1
+                continue
+
             if dtype in ("session_meta", "turn_context"):
                 model = payload.get("model")
                 if isinstance(model, str) and model:
