@@ -87,6 +87,9 @@ PRECHECK_HOME_SCOPE = (*PRECHECK_HOME_PREFIXES, "<home-top-level>")
 
 def _is_codex_runtime_state(rel: str) -> bool:
     """codex CLI 在 HOME 下的运行时状态豁免（HOME 隔离后落 fixture home）。"""
+    # npm 缓存（HOME 隔离后 pi install 写 $HOME/.npm/_cacache——纯缓存）
+    if rel == ".npm" or rel.startswith(".npm/"):
+        return True
     if rel == ".codex":
         return True
     if not rel.startswith(".codex/"):
