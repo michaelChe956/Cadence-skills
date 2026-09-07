@@ -92,14 +92,17 @@ def _is_codex_runtime_state(rel: str) -> bool:
     if not rel.startswith(".codex/"):
         return False
     rest = rel[len(".codex/"):]
-    if rest.startswith("skills/"):  # 技能层由 pre-check 管理，不在此豁免
+    if rest.startswith("skills/.system/"):  # codex 内置系统技能首启展开（imagegen 等）
+        return True
+    if rest.startswith("skills/"):  # Cadence 技能层由 pre-check 管理，不在此豁免
         return False
     if rest.startswith(("sessions/", "shell_snapshots/", "thread-writer-locks/",
                         ".tmp/", "tmp/", "plugins/", "log/")):
         return True
     if rest.endswith((".sqlite", ".sqlite-wal", ".sqlite-shm")):
         return True
-    return rest in ("history.jsonl", "session_index.jsonl", "version.json")
+    return rest in ("history.jsonl", "session_index.jsonl", "version.json",
+                    ".sandbox_migration", "installation_id")
 
 
 def _is_precheck_home_target(rel: str) -> bool:

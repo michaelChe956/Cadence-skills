@@ -219,6 +219,13 @@ def extract_final_text(agent, transcript_path):
             d = json.loads(ln)
         except ValueError:
             continue
+        # codex stdout 流：{"type":"item.completed","item":{"type":"agent_message","text":...}}
+        if (d.get("type") == "item.completed"
+                and isinstance(d.get("item"), dict)
+                and d["item"].get("type") == "agent_message"
+                and isinstance(d["item"].get("text"), str)):
+            final = d["item"]["text"]
+            continue
         if d.get("type") == "result" and isinstance(d.get("result"), str):
             final = d["result"]
         elif isinstance(d.get("message"), dict):
