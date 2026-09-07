@@ -14,7 +14,11 @@ INVOCATIONS = {
         "capture": "stdout",
     },
     "codex": {
-        "argv": ["codex", "exec", "--json", "--model", "{model}", "{prompt}"],
+        # -s danger-full-access：对齐 claude 的全放行语义（用户已拍板）——
+        # read-only 沙箱下 HOME（cwd 外）不可写，HOME 隔离端安装流水线
+        # （pi install 等写 $HOME）会全部失败
+        "argv": ["codex", "exec", "--json", "-s", "danger-full-access",
+                 "--model", "{model}", "{prompt}"],
         "capture": "stdout",
     },
     "pi": {"argv": ["pi", "-p", "{prompt}", "--model", "{model}"], "capture": "session"},

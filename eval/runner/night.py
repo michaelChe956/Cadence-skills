@@ -268,6 +268,14 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
             _ir = {"stable": True}  # 真实模式视为通过，幂等仅 mock 验证
         if not _sr.get("ok") or not _ir.get("stable"):
             guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
+            # 调试落盘：失败时保留完整 stage1 结果（断言明细/命令/快照摘要）
+            try:
+                import json as _json
+                _dbg = base_dir / f"stage1-fail-debug-{ag}-{date_str}.json"
+                _dbg.write_text(_json.dumps(_sr, ensure_ascii=False, indent=2,
+                                            default=str), encoding="utf-8")
+            except OSError:
+                pass
             return ag, _fx, f"[{ag}] 阶段一/幂等失败，跳过其探针"
         if ag in plan["v3_agents"]:
             _v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / ag,
