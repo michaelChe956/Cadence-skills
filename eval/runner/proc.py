@@ -72,7 +72,8 @@ DEFAULT_TURNS = 40
 PROMPT_ENV = "EVAL_PROMPT"
 
 SESSION_PATTERNS = {
-    "pi": [".pi/agent/sessions/**/run-*/session.jsonl"],
+    "pi": [".pi/agent/sessions/**/run-*/session.jsonl",
+           ".pi/agent/sessions/**/*.jsonl"],
     "kimi": [".kimi-code/sessions/**/agents/*/wire.jsonl"],
 }
 
