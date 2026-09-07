@@ -85,8 +85,27 @@ PRECHECK_HOME_PREFIXES = (
 PRECHECK_HOME_SCOPE = (*PRECHECK_HOME_PREFIXES, "<home-top-level>")
 
 
+def _is_codex_runtime_state(rel: str) -> bool:
+    """codex CLI 在 HOME 下的运行时状态豁免（HOME 隔离后落 fixture home）。"""
+    if rel == ".codex":
+        return True
+    if not rel.startswith(".codex/"):
+        return False
+    rest = rel[len(".codex/"):]
+    if rest.startswith("skills/"):  # 技能层由 pre-check 管理，不在此豁免
+        return False
+    if rest.startswith(("sessions/", "shell_snapshots/", "thread-writer-locks/",
+                        ".tmp/", "tmp/", "plugins/", "log/")):
+        return True
+    if rest.endswith((".sqlite", ".sqlite-wal", ".sqlite-shm")):
+        return True
+    return rest in ("history.jsonl", "session_index.jsonl", "version.json")
+
+
 def _is_precheck_home_target(rel: str) -> bool:
     rel = rel.replace("\\", "/")
+    if _is_codex_runtime_state(rel):
+        return True
     # CodeGraph 工具缓存命名空间级豁免：telemetry 等 CLI 缓存不属于 pre-check 目标。
     return (rel == ".codegraph" or rel.startswith(".codegraph/") or
             rel.startswith(".agents/superpowers/") or rel == ".agents/superpowers"
@@ -171,11 +190,15 @@ def _detect_variant(root: Path) -> tuple:
 
 
 def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
-               verify=None, bin_dir=None, skill_env=None, pre_check_timeout_s=240):
+               verify=None, bin_dir=None, skill_env=None, pre_check_timeout_s=240,
+               home_override=None):
     variant, outside_baseline = _detect_variant(fixture.root)
     root, home, repo = fixture.root, fixture.home, fixture.repo
-    actual_home = proc.effective_home(None if skill_env else home, skill_env)
-    inherited_home = bool(skill_env)
+    # home_override：HOME 隔离端（codex）显式传 fixture.home——cli_kwargs 的
+    # home 取它而非 skill_env 推导；inherited 语义由实际 home 是否为 fixture 决定
+    _cli_home = home_override if home_override is not None else (None if skill_env else home)
+    actual_home = proc.effective_home(_cli_home, skill_env)
+    inherited_home = _cli_home is None
     # Kimi 无 skill_env 时沿用 fixture HOME：这是“真实夜跑中的 fixture HOME 隔离端”例外。
     verify = verify or _default_verify(repo)
     extra: dict = {}
@@ -186,7 +209,7 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
         before = _tree_hash(root)
         cli_kwargs = {
             "cwd": root,
-            "home": None if skill_env else home,
+            "home": _cli_home,
             "pins": pins,
             "timeout_s": pre_check_timeout_s if spec["name"] == "pre-check" else timeout_s,
             "env_extra": {"EVAL_STAGE": "stage1", "EVAL_COMMAND": spec["name"]},

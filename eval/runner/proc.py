@@ -27,7 +27,9 @@ AUTH_LINKS = {
     "claude": [(".claude/settings.json", ".claude/settings.json"),
                (".claude/.credentials.json", ".claude/.credentials.json")],
     "codex": [(".codex/auth.json", ".codex/auth.json"),
-              (".codex/config.toml", ".codex/config.toml")],
+              (".codex/config.toml", ".codex/config.toml"),
+              (".codex/models.json", ".codex/models.json"),
+              (".gitconfig", ".gitconfig")],
     "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json")],
     "kimi": [(".kimi-code/credentials", ".kimi-code/credentials")],
 }

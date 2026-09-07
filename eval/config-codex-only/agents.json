@@ -1,6 +1,6 @@
 {
   "claude": {
-    "enabled": true,
+    "enabled": false,
     "executable": "claude",
     "pinned_model": "",
     "strong_model": "",
@@ -25,7 +25,7 @@
     "home_isolation": true
   },
   "pi": {
-    "enabled": true,
+    "enabled": false,
     "executable": "pi",
     "pinned_model": "",
     "strong_model": "",
@@ -37,7 +37,7 @@
     }
   },
   "kimi": {
-    "enabled": true,
+    "enabled": false,
     "executable": "kimi",
     "pinned_model": "",
     "strong_model": "",

@@ -10060,10 +10060,28 @@ def validate_real_superpowers_source(source: Path, expected: int = 14) -> None:
         raise ValueError("；".join(problems))
 
 
+def clone_superpowers_into(home: Path, source: Path) -> Path:
+    """方案 C：把真实 superpowers 仓库本地克隆进 fixture home（复印件而非软链）。
+
+    pre-check.sh 的链路判定用物理解析路径前缀（pwd -P 还原父目录软链），
+    目录级软链会让 56 条链全判 conflict；真实克隆副本上判定完全正常。
+    本地 git 对 git 克隆，秒级零网络；origin 指向真实仓库（fetch-pull 语义
+    与真实环境等价——对齐真实仓库当前 revision）。
+    """
+    import shutil
+    dst = Path(home) / ".agents" / "superpowers"
+    if dst.exists() or dst.is_symlink():
+        return dst
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "clone", "--quiet", str(source), str(dst)], check=True)
+    return dst
+
+
 def make_fixture(variant: str, base_dir: Path, repo_root: Path,
                  theme: str = "orders", install: bool = True,
                  superpowers_mode: str = "mock",
-                 real_superpowers_source: Path | None = None) -> FixturePaths:
+                 real_superpowers_source: Path | None = None,
+                 home_isolation: bool = False) -> FixturePaths:
     if variant not in VARIANTS:
         raise ValueError(f"未知 fixture 变体：{variant}")
     if variant == "control":
@@ -10092,7 +10110,13 @@ def make_fixture(variant: str, base_dir: Path, repo_root: Path,
                           if real_superpowers_source is not None
                           else Path.home() / ".agents" / "superpowers")
             validate_real_superpowers_source(source)
-            make_superpowers_layers(home, source)
+            if home_isolation:
+                # 方案 C：HOME 隔离时克隆真实副本进 fixture（不软链），
+                # 四层链指向 fixture 内副本——pre-check 全程在副本上工作
+                local = clone_superpowers_into(home, source)
+                make_superpowers_layers(home, local)
+            else:
+                make_superpowers_layers(home, source)
         elif superpowers_mode == "mock":
             source = make_superpowers_source(home)
             make_superpowers_layers(home, source)

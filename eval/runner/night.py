@@ -41,6 +41,16 @@ def _resolved_skill_env(agents_cfg: dict, agent: str, fixture) -> Optional[dict]
     return resolved or None
 
 
+def _home_isolation(agents_cfg: dict, agent: str) -> bool:
+    """端级 HOME 隔离开关（agents.json "home_isolation": true）。
+
+    codex 端必需：codex 的技能清单把 $HOME/.agents/skills 作为独立 root 注入
+    system prompt（不受 CODEX_HOME 约束）——真实 HOME 的旧版技能会污染验证。
+    HOME=fixture.home 全隔离后该 root 跟随迁移到 fixture（opus-5 调研实证）。
+    """
+    return bool((agents_cfg.get(agent) or {}).get("home_isolation"))
+
+
 def _inject_fake_mcp(fixture_root: Path, roles: list, log_dir: Path) -> None:
     if not roles:
         return
@@ -116,7 +126,7 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         _argv_extra = list(_argv_extra or []) + list(PROBE_ARGV_EXTRA[agent])
     out = proc.run_cli(
         agent, prompt, cwd=fixture.root,
-        home=None if real_home else fixture.home, pins=pins,
+        home=None if (real_home and not _home_isolation(_agents_cfg_global, agent)) else fixture.home, pins=pins,
         timeout_s=policy.get("per_run_timeout_s", 900),
         env_extra=dict(prompt_env, EVAL_PROMPT=prompt), bin_dir=mock_bin_dir,
         out_dir=transcripts_dir, skill_env=skill_env, argv_extra=_argv_extra,
@@ -237,8 +247,10 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
                 guards.update_streak(base_dir / REPORT_SUBDIR / "state" / "streaks.json", ag, False)
                 return ag, None, f"[{ag}] 版本锁失败：{msg}"
         _stage_base = base_dir / "stage1" / date_str / ag
+        _iso = _home_isolation(agents_cfg, ag)
         _fx = gen.make_fixture("fresh", _stage_base, repo_root, theme=plan["theme"],
-                               **({"superpowers_mode": "real"} if real_home else {}))
+                               **({"superpowers_mode": "real"} if real_home else {}),
+                               home_isolation=_iso and real_home)
         _se = _resolved_skill_env(agents_cfg, ag, _fx) if real_home else None
         if real_home:
             proc.link_agent_auth(ag, _fx)
@@ -246,7 +258,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         _sr = stage1.run_stage1(ag, _fx, _pins,
                                 timeout_s=policy.get("stage1_timeout_s", 1200),
                                 pre_check_timeout_s=policy.get("stage1_pre_check_timeout_s", 240),
-                                bin_dir=bin_dir, verify=_mv, skill_env=_se)
+                                bin_dir=bin_dir, verify=_mv, skill_env=_se,
+                                home_override=_fx.home if (_iso and real_home) else None)
         # 真实模式跳过幂等检查——CLI 会话非确定性（时间戳/顺序），byte-identical 不成立
         if mock:
             _ir = idempotency.run_idempotency(ag, _fx, _pins, passes=2, bin_dir=bin_dir,
@@ -259,7 +272,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
         if ag in plan["v3_agents"]:
             _v3_fx = gen.make_fixture("v3", base_dir / "stage1-v3" / date_str / ag,
                                       repo_root, theme=plan["theme"],
-                                      superpowers_mode="real" if real_home else "mock")
+                                      superpowers_mode="real" if real_home else "mock",
+                                      home_isolation=_home_isolation(agents_cfg, ag) and real_home)
             _v3r = stage1.run_stage1(ag, _v3_fx, _pins,
                                      timeout_s=policy.get("stage1_timeout_s", 1200),
                                      pre_check_timeout_s=policy.get("stage1_pre_check_timeout_s", 240),
