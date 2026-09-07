@@ -110,8 +110,16 @@ def _is_codex_runtime_state(rel: str) -> bool:
 
 def _is_precheck_home_target(rel: str) -> bool:
     rel = rel.replace("\\", "/")
-    # pi 自身配置（pi install 会写其 settings.json——运行时状态）
+    # pi 运行时状态（HOME 隔离后落 fixture home）
     if rel == ".pi/agent/settings.json":
+        return True
+    if rel.startswith(".pi/agent/npm/") or rel == ".pi/agent/npm":
+        return True
+    if rel.startswith((".pi/agent/sessions/", ".pi/agent/run-history", ".pi/agent/missions/")):
+        return True
+    if rel in (".pi/agent/mcp-cache.json", ".pi/agent/mcp-npx-cache.json",
+               ".pi/agent/mcp-onboarding.json", ".pi/agent/run-history.jsonl",
+               ".pi/agent/trust.json", ".pi/agent/models-store.json"):
         return True
     if _is_codex_runtime_state(rel):
         return True

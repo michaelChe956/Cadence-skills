@@ -34,7 +34,10 @@ AUTH_LINKS = {
               (".codex/config.toml", ".codex/config.toml"),
               (".codex/models.json", ".codex/models.json"),
               (".gitconfig", ".gitconfig")],
-    "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json")],
+    "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json"),
+           (".pi/agent/settings.json", ".pi/agent/settings.json"),
+           (".pi/agent/models.json", ".pi/agent/models.json"),
+           (".gitconfig", ".gitconfig")],
     "kimi": [(".kimi-code/credentials", ".kimi-code/credentials")],
 }
 

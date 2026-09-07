@@ -1,0 +1,16 @@
+{
+  "runs_per_combo": 2,
+  "per_run_timeout_s": 900,
+  "stage1_timeout_s": 1200,
+  "stage1_pre_check_timeout_s": 240,
+  "max_sessions_per_night": 80,
+  "max_wall_minutes": 420,
+  "max_error_streak": 6,
+  "reroute_window": 8,
+  "degrade_drop_pp": 20,
+  "absolute_floor": 0.70,
+  "retention_keep_nights": 7,
+  "window_nights": 7,
+  "roam_ls_find_max": 5,
+  "zh_min_ratio": 0.6
+}
