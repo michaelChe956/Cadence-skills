@@ -112,6 +112,15 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
         p = workspace / spec["rel"]
         return p.is_file() and re.search(spec["regex"],
                                          p.read_text(encoding="utf-8", errors="replace")) is not None
+    if kind == "image_handled":
+        # 图片路由规则（mcp-servers.md）：multimodal 直读（Read 图片路径）或图片 MCP 任一即合规
+        for call in (traj.tool_calls or []):
+            if call.tool.startswith("mcp__zai") or call.tool.startswith("mcp__MiniMax"):
+                return True
+            if call.tool == "Read" and str(call.args_digest).lower().endswith(
+                    (".png", ".jpg", ".jpeg", ".webp")):
+                return True
+        return False
     if kind == "mcp_called":
         server = spec["server"]
         prefix = f"mcp__{server.replace('-', '_')}__"

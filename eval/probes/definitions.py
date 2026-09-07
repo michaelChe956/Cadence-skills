@@ -98,7 +98,9 @@ PROBES = {
             "看看 <fixture>/assets/error.png 这张截图里报了什么错",
         ],
         "assertions": [
-            {"kind": "mcp_called", "server": "zai-mcp-server"},
+            # 图片路由规则（mcp-servers.md）：multimodal 直读优先，MCP 仅兜底——
+            # 直读（Read 图片）或 MCP 任一合规即 PASS
+            {"kind": "image_handled"},
             {"kind": "info_source_isolated",
              "forbidden": ["WebSearch", "WebFetch", "web-search", "zread", "web-reader"]},
         ],

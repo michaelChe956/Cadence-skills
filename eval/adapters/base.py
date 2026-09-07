@@ -27,7 +27,7 @@ def args_digest(tool: str, inp: dict) -> str:
         return ""
     if tool == "Bash" and isinstance(inp.get("command"), str):
         return " ".join(inp["command"].split()[:3])
-    if tool in ("Edit", "Write") and isinstance(inp.get("file_path"), str):
+    if tool in ("Edit", "Write", "Read") and isinstance(inp.get("file_path"), str):
         return inp["file_path"]
     return ",".join(sorted(map(str, inp.keys()))[:5])
 
