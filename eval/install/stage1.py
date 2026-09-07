@@ -118,6 +118,8 @@ def _is_precheck_home_target(rel: str) -> bool:
             or rel.startswith(".agents/skills/") or rel.startswith(".codex/skills/skills/")
             or rel.startswith(".claude/skills/") or rel.startswith(".pi/agent/skills/")
             or rel.startswith(".claude/commands/opsx/") or rel.startswith(".claude/skills/openspec-")
+            # pi 的 npm 安装目标（pre-check 装 pi-mcp-adapter 的预期写入位置）
+            or rel == ".pi/agent/npm" or rel.startswith(".pi/agent/npm/")
             or rel.startswith(".agents/skills/openspec-") or rel.startswith(".pi/skills/")
             or rel.startswith(".pi/prompts/") or rel.startswith(".kimi-code/skills/openspec-"))
 
