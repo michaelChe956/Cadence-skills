@@ -105,7 +105,7 @@ def _is_codex_runtime_state(rel: str) -> bool:
     if rest.endswith((".sqlite", ".sqlite-wal", ".sqlite-shm")):
         return True
     return rest in ("history.jsonl", "session_index.jsonl", "version.json",
-                    ".sandbox_migration", "installation_id")
+                    ".sandbox_migration", "installation_id") or rel == ".pi/agent/settings.json"
 
 
 def _is_precheck_home_target(rel: str) -> bool:

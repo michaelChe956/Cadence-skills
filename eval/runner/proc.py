@@ -46,6 +46,8 @@ def link_agent_auth(agent: str, fixture) -> int:
     """
     import os
     linked = 0
+    # 复制集：fixture 内需可写（模型会改）的配置——软链会穿透写宿主
+    COPY_INSTEAD = {("codex", ".codex/config.toml"), ("codex", ".codex/models.json")}
     for rel_src, rel_dst in AUTH_LINKS.get(agent, []):
         src = Path.home() / rel_src
         dst = Path(fixture.home) / rel_dst
@@ -54,7 +56,11 @@ def link_agent_auth(agent: str, fixture) -> int:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() or dst.is_symlink():
             continue
-        os.symlink(src, dst)
+        if (agent, rel_src) in COPY_INSTEAD:
+            import shutil
+            shutil.copy2(src, dst)
+        else:
+            os.symlink(src, dst)
         linked += 1
     return linked
 
