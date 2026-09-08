@@ -81,8 +81,6 @@ def _save_run(nightly: Path, run_id: str, result: dict, traj) -> None:
     ifmt.dump(traj, runs / f"{run_id}.intermediate.json")
 
 
-_agents_cfg_global = {}
-
 # 探针阶段 claude 权限：--dangerously-skip-permissions 全工具放行——等价于
 # "对所有授权框都点 allow 的人工用户"，无白名单边界（白名单外工具不会被误拒），
 # 模型的工具选择完全自由，才能纯观测规则文本的引导力。deny 改道测试已随
@@ -105,8 +103,16 @@ def validate_real_superpowers(source: Path) -> Optional[str]:
 def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
                      run_id, results_dir, transcripts_dir, base_dir, theme="orders",
                      mock_bin_dir=None, variant="installed", real_home=False,
-                     skill_env=None) -> dict:
-    """执行单个探针并将结果、中间格式及原始轨迹落盘。"""
+                     skill_env=None, agents_cfg=None) -> dict:
+    """执行单个探针并将结果、中间格式及原始轨迹落盘。
+
+    ``agents_cfg`` 必须由调用方显式传入（agents.json 全量配置）：探针阶段的
+    HOME 隔离决策与 argv_extra 解析都取自它。曾用模块级 ``_agents_cfg_global``
+    承载，但该变量从未被赋值——``_home_isolation({}, agent)`` 恒 False 让隔离端
+    探针继承宿主 HOME，session 文件落宿主 ``~/.pi``，``_find_newest`` 在
+    fixture.home 下搜不到而退回 stdout 兜底，整轮判 transcript-missing。
+    """
+    agents_cfg = agents_cfg if agents_cfg is not None else {}
     probe = prb.get(probe_id)
     results_dir = Path(results_dir)
     transcripts_dir = Path(transcripts_dir)
@@ -119,14 +125,19 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         "EVAL_STAGE": "probe", "EVAL_CWD": str(fixture.root)})
     prompt = prompt_env["EVAL_PROMPT"].replace("{module}", theme).replace(
         "<fixture>", str(fixture.root))
-    if real_home and skill_env:
+    # HOME 隔离端（agents.json home_isolation）真实模式下统一走 fixture.home；
+    # 对照组也适用——否则宿主 HOME 的已装技能会泄入对照组，污染边际差。
+    _isolated = real_home and _home_isolation(agents_cfg, agent)
+    # 隔离 HOME 里没有凭证与首启 bootstrap 缓存，必须先链入：对照组不传
+    # skill_env，旧条件（real_home and skill_env）会让它拿空 HOME 启动而崩。
+    if real_home and (skill_env or _isolated):
         proc.link_agent_auth(agent, fixture)
-    _argv_extra = _resolved_argv_extra(_agents_cfg_global, agent, fixture) if real_home else None
+    _argv_extra = _resolved_argv_extra(agents_cfg, agent, fixture) if real_home else None
     if real_home and agent in PROBE_ARGV_EXTRA:
         _argv_extra = list(_argv_extra or []) + list(PROBE_ARGV_EXTRA[agent])
     out = proc.run_cli(
         agent, prompt, cwd=fixture.root,
-        home=None if (real_home and not _home_isolation(_agents_cfg_global, agent)) else fixture.home, pins=pins,
+        home=None if (real_home and not _isolated) else fixture.home, pins=pins,
         timeout_s=policy.get("per_run_timeout_s", 900),
         env_extra=dict(prompt_env, EVAL_PROMPT=prompt), bin_dir=mock_bin_dir,
         out_dir=transcripts_dir, skill_env=skill_env, argv_extra=_argv_extra,
@@ -191,7 +202,7 @@ def run_strong_rows(date_str, plan, agents_cfg, fixtures, policy,
                 agent, probe_id, variant_idx, fixture, pins, policy, run_id,
                 runs_dir, transcripts_dir, Path(base_dir) / "stage1" / date_str / agent,
                 theme=plan.get("theme", "orders"), mock_bin_dir=mock_bin_dir,
-                real_home=real_home, skill_env=skill_env)
+                real_home=real_home, skill_env=skill_env, agents_cfg=agents_cfg)
             executed += 1
     return executed
 
@@ -307,7 +318,7 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
                 _res = run_single_probe(ag, pid, _vidx, _fx, _pins, policy, _rid,
                     runs_dir, transcripts_dir, _stage_base,
                     theme=plan["theme"], mock_bin_dir=bin_dir, real_home=real_home,
-                    skill_env=_se)
+                    skill_env=_se, agents_cfg=agents_cfg)
                 with _lock:
                     _counters["sessions"] += 1
                     if _res.get("verdict") == "INFRA_FAIL":
@@ -326,7 +337,8 @@ def run_night(date_str: str, repo_root: Path, base_dir: Path,
                     run_single_probe(ag, pid, _vidx, _cfx, _pins, policy, _rid,
                                      runs_dir, transcripts_dir, _cb,
                                      theme=plan["theme"], mock_bin_dir=bin_dir,
-                                     variant="control", real_home=real_home)
+                                     variant="control", real_home=real_home,
+                                     agents_cfg=agents_cfg)
                     with _lock:
                         _counters["sessions"] += 1
         return ag, _fx, f"[{ag}] 完成"

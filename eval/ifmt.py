@@ -47,6 +47,10 @@ class IntermediateTrajectory:
     duration_s: float = 0.0
     settings_snapshot: dict = field(default_factory=dict)
     source_path: str = ""
+    # 上游 API 错误（如 pi 的 stopReason=error + errorMessage、codex 的 event_msg
+    # error）：会话文件存在但内容只有报错时，归因必须是 api-unavailable/
+    # login/quota，不能误报 transcript-missing（harness 坏了）。
+    infra_errors: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -62,6 +66,7 @@ class IntermediateTrajectory:
             "duration_s": self.duration_s,
             "settings_snapshot": self.settings_snapshot,
             "source_path": self.source_path,
+            "infra_errors": list(self.infra_errors),
         }
 
     @classmethod
@@ -78,6 +83,7 @@ class IntermediateTrajectory:
         traj.duration_s = float(doc.get("duration_s", 0.0))
         traj.settings_snapshot = dict(doc.get("settings_snapshot", {}))
         traj.source_path = doc.get("source_path", "")
+        traj.infra_errors = list(doc.get("infra_errors", []))
         return traj
 
 

@@ -163,5 +163,115 @@ class TestNightMock(unittest.TestCase):
             self.assertIn("MODEL_DRIFT", doc["fail_reason"])
 
 
+class TestProbeHomeIsolation(unittest.TestCase):
+    """探针阶段 HOME 隔离与 argv_extra 必须读显式传入的 agents_cfg。
+
+    回归靶子：旧实现读模块级 ``_agents_cfg_global``，而该变量全仓无赋值。
+    ``_home_isolation({}, "pi")`` 恒 False → 真实模式探针 home=None → pi 写宿主
+    ``~/.pi/agent/sessions``→``fixture.home`` 下搜不到 session → 退回 stdout
+    兜底（纯 Markdown）→ 适配器解出空轨迹 → r5 夜测 15/16 判
+    ``INFRA_FAIL transcript-missing``。
+    """
+
+    def _probe(self, agents_cfg, agent="pi", skill_env=None, variant="installed"):
+        import tempfile
+        from unittest import mock
+        captured = {}
+        linked = []
+
+        def fake_run_cli(_agent, _prompt, **kwargs):
+            captured.update(kwargs)
+            return {"returncode": 0, "stdout_path": "", "stderr": "",
+                    "duration_s": 1.0, "transcript_path": "", "timed_out": False,
+                    "actual_home": ""}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = Path(__file__).resolve().parents[2]
+            fx = gen.make_fixture("fresh", base / "fx", repo, install=False)
+            with mock.patch.object(night.proc, "run_cli", fake_run_cli), \
+                    mock.patch.object(night.proc, "link_agent_auth",
+                                      lambda a, f: linked.append(a) or 0):
+                night.run_single_probe(
+                    agent, "P1", 0, fx, {"pinned_model": "m"},
+                    {"per_run_timeout_s": 60}, f"rid-{agent}",
+                    base / "runs", base / "transcripts", base / "stage",
+                    real_home=True, variant=variant,
+                    skill_env={"X": "1"} if skill_env is None else skill_env,
+                    agents_cfg=agents_cfg)
+            return captured, fx, linked
+
+    def test_isolated_agent_probe_overrides_home(self):
+        """ut-night-probe-home：home_isolation 端探针必须以 fixture.home 调用。"""
+        cfg = {"pi": {"home_isolation": True,
+                      "skill_env": {"PI_CONFIG_DIR": "{fixture_home}/.pi"}}}
+        captured, fx, _ = self._probe(cfg)
+        self.assertEqual(captured["home"], fx.home)
+        self.assertEqual(captured["session_root"], fx.home)
+
+    def test_non_isolated_agent_probe_keeps_real_home(self):
+        """ut-night-probe-home-off：未开隔离的端仍继承真实 HOME（登录态）。"""
+        captured, _, _ = self._probe({"kimi": {"skill_env": {}}}, agent="kimi")
+        self.assertIsNone(captured["home"])
+
+    def test_isolated_control_probe_isolates_and_links_auth(self):
+        """ut-night-probe-control-home：对照组（无 skill_env）同样隔离并链入凭证。
+
+        对照组不传 skill_env，若沿用 ``real_home and skill_env`` 作为 link 条件，
+        隔离 HOME 会缺 auth/npm/git bootstrap 缓存，pi 首启即崩。
+        """
+        cfg = {"pi": {"home_isolation": True}}
+        captured, fx, linked = self._probe(cfg, skill_env={}, variant="control")
+        self.assertEqual(captured["home"], fx.home)
+        self.assertEqual(linked, ["pi"])
+
+    def test_probe_resolves_argv_extra_from_config(self):
+        """ut-night-probe-argv：agents.json 的 argv_extra 必须解析并透传。"""
+        cfg = {"kimi": {"argv_extra": ["--skills-dir", "{fixture_home}/.kimi-code/skills"]}}
+        captured, fx, _ = self._probe(cfg, agent="kimi")
+        self.assertEqual(captured["argv_extra"],
+                         ["--skills-dir", f"{fx.home}/.kimi-code/skills"])
+
+    def test_run_night_passes_agents_cfg_to_probe(self):
+        """ut-night-probe-cfg-wired：run_night 必须把 agents_cfg 传给每个探针。"""
+        import tempfile
+        from unittest import mock
+        seen = []
+
+        def fake_probe(agent, probe, variant_idx, fixture, pins, policy,
+                       run_id, results_dir, *args, **kwargs):
+            seen.append(kwargs.get("agents_cfg"))
+            result = {"run_id": run_id, "agent": agent, "probe_id": probe,
+                      "verdict": "PASS", "variant": kwargs.get("variant", "installed"),
+                      "rule_clause_ids": []}
+            results_dir = Path(results_dir)
+            results_dir.mkdir(parents=True, exist_ok=True)
+            (results_dir / f"{run_id}.json").write_text(
+                json.dumps(result), encoding="utf-8")
+            return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = Path(__file__).resolve().parents[2]
+            cfg_dir = base / "cfg"
+            cfg_dir.mkdir()
+            agents = {"pi": {"enabled": True, "pinned_model": "m",
+                             "home_isolation": True, "strong_model": None,
+                             "skill_env": {"PI_CONFIG_DIR": "{fixture_home}/.pi"}}}
+            (cfg_dir / "agents.json").write_text(json.dumps(agents), encoding="utf-8")
+            (cfg_dir / "policy.json").write_text(
+                json.dumps({"runs_per_combo": 1, "retention_keep_nights": 7}),
+                encoding="utf-8")
+            plan = {"agents": ["pi"], "probe_ids": ["P1"], "control_agents": ["pi"],
+                    "v3_agents": [], "strong_agents": [], "theme": "orders"}
+            with mock.patch.object(night, "run_single_probe", fake_probe), \
+                    mock.patch("eval.runner.schedule.night_plan", return_value=plan):
+                night.run_night("2026-09-08", repo, base,
+                                config_dir=cfg_dir, mock=True)
+        self.assertTrue(seen, "未执行任何探针")
+        self.assertTrue(all(s == agents for s in seen),
+                        f"探针未收到 agents_cfg：{seen}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -104,6 +104,64 @@ class TestProc(unittest.TestCase):
             argv = proc.build_argv("claude", "glm-5.3", max_turns=40, prompt=prompt)
         self.assertIn(prompt, argv)
 
+    def test_session_capture_ignores_untouched_previous_session(self):
+        """ut-proc-session-diff：上一轮的旧 session 不得被当成本次轨迹。
+
+        r5 夜测实证：``mtime >= started - 1`` 的反向时间窗让探针拿到阶段一
+        收尾会话（间隔仅十几秒），判分对着别的会话做。
+        """
+        home = self.base / "home"
+        stale = home / ".pi/agent/sessions/prev/run-0/session.jsonl"
+        stale.parent.mkdir(parents=True)
+        stale.write_text('{"type":"session"}\n', encoding="utf-8")
+        fake_process = mock.Mock(returncode=0)
+        fake_process.communicate.return_value = (b"markdown \xe6\x96\x87\xe6\x9c\xac", b"")
+        with mock.patch.object(proc.subprocess, "Popen", return_value=fake_process):
+            out = proc.run_cli("pi", "prompt", cwd=self.base, home=home,
+                               pins={"pinned_model": "glm-5.3"}, timeout_s=60,
+                               out_dir=self.base / "out")
+        self.assertNotEqual(Path(out["transcript_path"]), stale)
+        self.assertEqual(Path(out["transcript_path"]), Path(out["stdout_path"]))
+
+    def test_session_capture_picks_session_written_during_call(self):
+        """ut-proc-session-new：本次调用期间新建的 session 必须被定位到。"""
+        home = self.base / "home"
+        fresh = home / ".pi/agent/sessions/cur/2026-09-08T02-00-00-000Z_x.jsonl"
+        fresh.parent.mkdir(parents=True)
+        fake_process = mock.Mock(returncode=0)
+
+        def _write_then_return(*_a, **_kw):
+            fresh.write_text('{"type":"session"}\n', encoding="utf-8")
+            return (b"", b"")
+
+        fake_process.communicate.side_effect = _write_then_return
+        with mock.patch.object(proc.subprocess, "Popen", return_value=fake_process):
+            out = proc.run_cli("pi", "prompt", cwd=self.base, home=home,
+                               pins={"pinned_model": "glm-5.3"}, timeout_s=60,
+                               out_dir=self.base / "out")
+        self.assertEqual(Path(out["transcript_path"]), fresh)
+
+    def test_session_capture_picks_appended_session(self):
+        """ut-proc-session-append：既存文件被本次调用追写也应命中（resume 语义）。"""
+        home = self.base / "home"
+        existing = home / ".pi/agent/sessions/cur/run-0/session.jsonl"
+        existing.parent.mkdir(parents=True)
+        existing.write_text('{"type":"session"}\n', encoding="utf-8")
+        os.utime(existing, (1000000, 1000000))
+        fake_process = mock.Mock(returncode=0)
+
+        def _append_then_return(*_a, **_kw):
+            with existing.open("a", encoding="utf-8") as fh:
+                fh.write('{"type":"message"}\n')
+            return (b"", b"")
+
+        fake_process.communicate.side_effect = _append_then_return
+        with mock.patch.object(proc.subprocess, "Popen", return_value=fake_process):
+            out = proc.run_cli("pi", "prompt", cwd=self.base, home=home,
+                               pins={"pinned_model": "glm-5.3"}, timeout_s=60,
+                               out_dir=self.base / "out")
+        self.assertEqual(Path(out["transcript_path"]), existing)
+
     def test_run_cli_mock_stage1_green(self):
         """ut-proc-run：mock claude 跑通一次调用并产出轨迹文件。"""
         bin_dir = _make_mock_bin(self.base)

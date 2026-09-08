@@ -62,6 +62,36 @@ class TestPrimitives(unittest.TestCase):
                          "infra-fail:timeout")
         self.assertIsNone(asr.classify_infra(0, "", traj_present=True))
 
+    def test_classify_infra_upstream_api_error_not_transcript_missing(self):
+        """ut-asr-infra-api：会话里的上游报错不能归因 transcript-missing。
+
+        r5 夜测中 pi 真会话只有 503 No available accounts；轨迹确实拿到了，
+        只是上游拒给 token——归因 transcript-missing 会把配额问题误指为 harness 缺陷。
+        """
+        self.assertEqual(
+            asr.classify_infra(0, "", traj_present=False,
+                               infra_errors=['503 {"message":"No available accounts"}']),
+            "infra-fail:api-error")
+        self.assertEqual(
+            asr.classify_infra(0, "", traj_present=False,
+                               infra_errors=["401 invalid credential"]),
+            "infra-fail:login")
+        self.assertEqual(
+            asr.classify_infra(0, "", traj_present=False,
+                               infra_errors=["429 usage limit reached"]),
+            "infra-fail:quota")
+        # 无上游报错证据时仍归 transcript-missing（harness 真没拿到轨迹）
+        self.assertEqual(asr.classify_infra(0, "", traj_present=False, infra_errors=[]),
+                         "infra-fail:transcript-missing")
+
+    def test_score_run_uses_traj_infra_errors(self):
+        """ut-asr-infra-api-wired：score_run 必须把轨迹的 infra_errors 接入归因。"""
+        traj = ifmt.IntermediateTrajectory(agent="pi")
+        traj.infra_errors = ['503 {"message":"No available accounts"}']
+        result = asr.score_run("r-api", P1, traj)
+        self.assertEqual(result["verdict"], "INFRA_FAIL")
+        self.assertEqual(result["fail_reason"], "infra-fail:api-error")
+
 
 class TestScoreRun(unittest.TestCase):
     def test_pass(self):

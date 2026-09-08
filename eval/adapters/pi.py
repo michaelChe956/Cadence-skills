@@ -63,6 +63,13 @@ class PiAdapter(base.AgentAdapter):
             message = data["message"]
             role = message.get("role")
             content = message.get("content")
+            # 上游 API 报错（503 / 鉴权失效 / 配额）：pi 仍会写 assistant 行，但
+            # content 为空、stopReason=error、详情在 errorMessage。不采集就只能得到
+            # 空轨迹，被归因为 transcript-missing（误指 harness）。
+            if message.get("stopReason") == "error":
+                detail = message.get("errorMessage")
+                if isinstance(detail, str) and detail:
+                    traj.infra_errors.append(detail[:200])
             if not isinstance(content, list):
                 continue
 

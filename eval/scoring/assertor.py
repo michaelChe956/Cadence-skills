@@ -52,12 +52,25 @@ def zh_ratio(text: str) -> float:
     return len(CJK_RE.findall(compact)) / len(compact)
 
 
-def classify_infra(returncode, stderr, traj_present, timed_out=False):
-    """基础设施失败分类；返回 None 表示非 infra（agent 行为问题）。"""
+def classify_infra(returncode, stderr, traj_present, timed_out=False,
+                   infra_errors=None):
+    """基础设施失败分类；返回 None 表示非 infra（agent 行为问题）。
+
+    ``infra_errors``：轨迹里采到的上游 API 报错（pi 的 stopReason=error /
+    codex 的 event_msg error）。会话文件存在但只有报错时属于上游不可用，
+    不能归因 transcript-missing（后者的语义是 harness 没拿到轨迹，会把真实
+    的配额/鉴权问题误指为自身缺陷）。
+    """
     low = (stderr or "").lower()
     if timed_out:
         return "infra-fail:timeout"
     if not traj_present:
+        joined = " ".join(str(e) for e in (infra_errors or [])).lower()
+        if joined:
+            for kind, markers in INFRA_PATTERNS:
+                if any(m in joined for m in markers):
+                    return f"infra-fail:{kind}"
+            return "infra-fail:api-error"
         return "infra-fail:transcript-missing"
     if returncode != 0:
         for kind, markers in INFRA_PATTERNS:
@@ -148,7 +161,8 @@ def score_run(run_id, probe, traj, workspace=None, fake_mcp_log=None,
     infra = classify_infra(returncode, stderr,
                            traj_present=bool(traj and traj.tool_calls or traj and
                                              traj.final_text),
-                           timed_out=timed_out)
+                           timed_out=timed_out,
+                           infra_errors=getattr(traj, "infra_errors", None))
     if infra:
         return build_result(
             run_id=run_id, agent=traj.agent, model=traj.model_readback,

@@ -117,6 +117,7 @@ class CodexAdapter(base.AgentAdapter):
             if dtype == "event_msg" and payload.get("type") == "error":
                 errors = traj.settings_snapshot.setdefault("_infra_errors", [])
                 errors.append(str(payload.get("message"))[:200])
+                traj.infra_errors.append(str(payload.get("message"))[:200])
                 continue
 
             if dtype != "response_item":

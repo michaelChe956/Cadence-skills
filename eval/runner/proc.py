@@ -148,16 +148,40 @@ def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
     return argv
 
 
-def _find_newest(home: Path, patterns: list, since_ts: float) -> Optional[Path]:
-    best, best_mt = None, -1.0
+def _scan_sessions(root: Path, patterns: list) -> dict:
+    """按 patterns 扫描 root 下的候选 session 文件，返回 {path: mtime}。"""
+    found = {}
     for pattern in patterns:
-        for p in home.glob(pattern):
+        for path in root.glob(pattern):
             try:
-                mt = p.stat().st_mtime
+                found[path] = path.stat().st_mtime
             except OSError:
                 continue
-            if mt >= since_ts and mt > best_mt:
-                best, best_mt = p, mt
+    return found
+
+
+def _pick_new_session(before: dict, after: dict) -> Optional[Path]:
+    """从前后两次扫描中选出本次调用新建或被追写的最新 session。
+
+    旧实现用 ``mtime >= started - 1`` 时间窗，反向宽放 1 秒会把上一轮
+    （阶段一或上一个探针）刚写完的会话误归为本次轨迹——r5 实测
+    P1-installed-0 就是这样拿到阶段一收尾会话。改为前后快照差分后，
+    归属只依赖文件自身是否在本次调用期间发生变化。
+    """
+    best, best_mt = None, -1.0
+    for path, mtime in after.items():
+        if path in before and mtime <= before[path]:
+            continue  # 本次调用未动过的旧会话
+        if mtime > best_mt:
+            best, best_mt = path, mtime
+    return best
+
+
+def _find_newest(home: Path, patterns: list, since_ts: float) -> Optional[Path]:
+    best, best_mt = None, -1.0
+    for path, mtime in _scan_sessions(Path(home), patterns).items():
+        if mtime >= since_ts and mtime > best_mt:
+            best, best_mt = path, mtime
     return best
 
 
@@ -184,7 +208,8 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     home=None 且 skill_env 注入（真实模式）时用 session_root——调用方传
     fixture.home（skill_env 已把 config-dir 重定向到 fixture 根，session
     落其下，SESSION_PATTERNS 相对路径可命中）；仅 home=None 且未传
-    session_root（mock 冒烟语义）才跳过定位。
+    session_root（mock 冒烟语义）才跳过定位。归属取调用前后两次目录
+    快照的差分（新建或 mtime 变大的文件），不用壁钟时间窗。
     stdout 捕获文件写入 out_dir（缺省系统临时目录），不落 fixture 根。
     shell=False + 列表 argv，杜绝 shell 展开污染。
     """
@@ -207,6 +232,12 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     capture_dir = Path(out_dir) if out_dir is not None else Path(tempfile.gettempdir())
     capture_dir.mkdir(parents=True, exist_ok=True)
     stdout_file = capture_dir / f".eval-{agent}-{os.getpid()}-{int(started * 1000)}-stdout.jsonl"
+    # session 定位根与启动前快照（必须在 Popen 之前取，才能做前后差分）
+    _session_root = home if home is not None else session_root
+    _sessions_before = (
+        _scan_sessions(Path(_session_root), SESSION_PATTERNS[agent])
+        if INVOCATIONS[agent]["capture"] == "session" and _session_root is not None
+        else None)
     proc = subprocess.Popen(
         argv, cwd=str(cwd), env=env, shell=False,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
@@ -226,9 +257,10 @@ def run_cli(agent, prompt, cwd, home, pins, timeout_s, env_extra=None,
     stdout_file.write_bytes(out or b"")
     transcript = str(stdout_file)
     if INVOCATIONS[agent]["capture"] == "session":
-        search_root = home if home is not None else session_root
-        found = (_find_newest(Path(search_root), SESSION_PATTERNS[agent], started - 1)
-                 if search_root is not None else None)
+        found = (_pick_new_session(
+            _sessions_before,
+            _scan_sessions(Path(_session_root), SESSION_PATTERNS[agent]))
+            if _sessions_before is not None else None)
         if found is None:
             found = stdout_file  # mock/兜底：未定位到 session 文件时回退 stdout 捕获
         transcript = str(found)

@@ -163,6 +163,69 @@ class TestPiAdapter(unittest.TestCase):
         """ut-adv-pi-capture：pi 为 session 捕获端。"""
         self.assertEqual(self.adapter.capture, "session")
 
+    def test_real_session_shape_r5(self):
+        """ut-adv-pi-real-r5：r5 真实 session 形态（thinking/并发 toolCall/v3 数字
+        version）必须能提取出 tool_calls 与 final_text。
+
+        夜测实抱样本：session 行的 version 是整数 3（非字符串），assistant 内容
+        首项为 thinking，一条消息内并发两个 toolCall，紧跟两条 toolResult。
+        """
+        lines = [
+            '{"type":"session","version":3,"id":"01a07ed7",'
+            '"timestamp":"2026-09-08T02:27:18.223Z","cwd":"/fixture"}',
+            '{"type":"model_change","id":"7739ab57","parentId":null,'
+            '"timestamp":"2026-09-08T02:27:18.611Z","provider":"my-anthropic",'
+            '"modelId":"glm-5.3-flash"}',
+            '{"type":"thinking_level_change","id":"410539cb","thinkingLevel":"high"}',
+            '{"type":"message","message":{"role":"user","content":['
+            '{"type":"text","text":"分析 users 模块的数据流向"}]}}',
+            '{"type":"message","timestamp":"2026-09-08T02:27:20.000Z",'
+            '"message":{"role":"assistant","content":['
+            '{"type":"thinking","text":""},'
+            '{"type":"text","text":"路由回执：读代码/摸底"},'
+            '{"type":"toolCall","id":"c1","name":"bash",'
+            '"arguments":{"command":"codegraph explore \\"users\\""}},'
+            '{"type":"toolCall","id":"c2","name":"bash",'
+            '"arguments":{"command":"ast-grep outline src/users/entry.py"}}]}}',
+            '{"type":"message","message":{"role":"toolResult","content":['
+            '{"type":"text","text":"Found 4 symbols"}]}}',
+            '{"type":"message","message":{"role":"toolResult","content":['
+            '{"type":"text","text":"4: def handle"}]}}',
+            '{"type":"message","message":{"role":"assistant","content":['
+            '{"type":"thinking","text":""},'
+            '{"type":"text","text":"分析完成：entry→service→repo"}]}}',
+        ]
+        traj = self.adapter.parse_stream(lines)
+        self.assertEqual(traj.model_readback, "glm-5.3-flash")
+        self.assertEqual(traj.model_changes, ["glm-5.3-flash"])
+        self.assertEqual(traj.started_at, "2026-09-08T02:27:18.223Z")
+        self.assertEqual([c.tool for c in traj.tool_calls], ["Bash", "Bash"])
+        self.assertEqual(traj.tool_calls[0].args_digest, 'codegraph explore "users"')
+        self.assertIn("分析完成", traj.final_text)
+        self.assertEqual(traj.denials, [])
+        self.assertEqual(traj.infra_errors, [])
+        # 非字符串 version 不冒充 cli_version（保持现有契约）
+        self.assertIsNone(traj.cli_version)
+
+    def test_upstream_api_error_recorded(self):
+        """ut-adv-pi-api-error：stopReason=error 的上游报错必须采集为 infra 证据。
+
+        r5 夜测中 4 条探针的真 session 只有这种空 content + 503 报错行；不采集
+        就只能得到空轨迹，被归因为 transcript-missing（误指 harness 自身）。
+        """
+        lines = [
+            '{"type":"session","version":3,"timestamp":"2026-09-08T02:33:00.069Z"}',
+            '{"type":"model_change","modelId":"glm-5.3-flash"}',
+            '{"type":"message","message":{"role":"assistant","content":[],'
+            '"stopReason":"error","errorMessage":'
+            '"503 {\\"error\\":{\\"message\\":\\"No available accounts\\"}}"}}',
+        ]
+        traj = self.adapter.parse_stream(lines)
+        self.assertEqual(traj.tool_calls, [])
+        self.assertEqual(traj.final_text, "")
+        self.assertEqual(len(traj.infra_errors), 1)
+        self.assertIn("No available accounts", traj.infra_errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()
