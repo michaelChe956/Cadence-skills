@@ -80,12 +80,10 @@ def create_test_project(c: Container, theme: str = "users") -> None:
 def run_stage1(c: Container, agent: str) -> list:
     """运行四命令安装流水线，返回命令结果列表。"""
     results = []
-    cli_cmd = _cli_command(agent)
     for name, prompt in STAGE1_COMMANDS:
         start = time.time()
-        r = c.exec(
-            f'{cli_cmd} "{prompt}" --dangerously-skip-permissions',
-            cwd="/home/tester/project", timeout=600)
+        r = c.exec(_session_cmd(agent, prompt),
+                   cwd="/home/tester/project", timeout=600)
         duration = time.time() - start
         results.append({
             "name": name, "returncode": r["rc"],
@@ -96,13 +94,12 @@ def run_stage1(c: Container, agent: str) -> list:
     return results
 
 
+
 def run_probe(c: Container, agent: str, prompt: str) -> dict:
     """运行单个探针会话。"""
     start = time.time()
-    cli_cmd = _cli_command(agent)
-    r = c.exec(
-        f'{cli_cmd} "{prompt}" --dangerously-skip-permissions',
-        cwd="/home/tester/project", timeout=900)
+    r = c.exec(_session_cmd(agent, prompt),
+               cwd="/home/tester/project", timeout=900)
     duration = time.time() - start
     return {
         "returncode": r["rc"], "duration_s": round(duration, 1),
@@ -110,14 +107,33 @@ def run_probe(c: Container, agent: str, prompt: str) -> dict:
     }
 
 
+
 def _cli_command(agent: str) -> str:
-    """返回指定 agent 的 CLI 调用命令。"""
+    """返回指定 agent 的 CLI 调用命令前缀。"""
     return {
         "claude": "claude -p",
         "codex": "codex exec --json -s danger-full-access",
         "pi": "pi -p",
         "kimi": "kimi -p",
     }.get(agent, "claude -p")
+
+
+# 各端无头权限 flag：claude 跳权限确认；codex 由 -s danger-full-access 控制（无额外 flag）；
+# pi 无权限门；kimi -p 模式本身自动执行（--auto 与 -p 互斥，实测报错）
+_PERMISSION_FLAG = {
+    "claude": "--dangerously-skip-permissions",
+    "codex": "",
+    "pi": "",
+    "kimi": "",
+}
+
+
+def _session_cmd(agent: str, prompt: str) -> str:
+    """构造完整的会话命令（CLI 前缀 + prompt + 按端权限 flag）。"""
+    cmd = f'{_cli_command(agent)} "{prompt}"'
+    flag = _PERMISSION_FLAG.get(agent, "")
+    return f"{cmd} {flag}".strip()
+
 
 
 def run_agent_session(agent: str, probe_prompts: list,

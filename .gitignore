@@ -25,3 +25,6 @@ cadence/cache/mcp-availability/
 
 # eval 运行时产物（夜间报告/审计表，含业务路径与任务内容，不入 git）
 cadence/reports/eval/
+
+# Docker 夜测运行结果（运行产物，不入 git）
+eval/results/

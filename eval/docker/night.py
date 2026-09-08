@@ -11,6 +11,9 @@ from eval.docker.session import (
 from eval.probes.definitions import PROBES
 from eval.ifmt import IntermediateTrajectory, ToolCall
 from eval.scoring import assertor
+from eval.scoring import schema as result_schema
+
+RESULT_ROOT = REPO_ROOT / "eval/results/docker-night"
 
 
 def _make_trajectory(agent: str, probe_result: dict) -> IntermediateTrajectory:
@@ -46,7 +49,10 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
             failures.append("P1: 未产出调用链分析")
     elif probe_id == "P3":  # 时序合规
         # 期望：先分析再动手，或正确判断任务前提
-        if "error" in text.lower() or "失败" in text:
+        # 只匹配明确的任务失败声明——"TDD 先失败测试"等流程术语不算失败
+        fail_signals = ("任务失败", "执行失败", "无法完成", "未能完成",
+                        "出错了", "failed to", "encountered an error")
+        if any(p in text.lower() for p in fail_signals):
             failures.append("P3: 报告失败")
     elif probe_id == "P5":  # 产物目录
         # 期望：提到文件产出/路径
@@ -106,24 +112,10 @@ def run_docker_night(agent: str, probe_ids: list,
         new_files = sorted(set(after) - set(before))
         changed = sorted(p for p in set(before) & set(after) if before[p] != after[p])
 
-        # 产物清单
-        arts = c.exec(
-            'bash -c \'echo "$(ls ~/.claude/skills/ 2>/dev/null | wc -l),'
-            '$(ls ~/.agents/superpowers/skills/ 2>/dev/null | wc -l),'
-            '$(ls ~/project/.claude/rules/*.md 2>/dev/null | wc -l),'
-            '$(test -f ~/project/CLAUDE.md && echo Y || echo N),'
-            '$(test -f ~/project/.mcp.json && echo Y || echo N)\'',
-            timeout=15)
-        arts_parts = arts["stdout"].strip().split(",")
-        artifacts = {
-            "skills": arts_parts[0] if len(arts_parts) > 0 else "?",
-            "superpowers": arts_parts[1] if len(arts_parts) > 1 else "?",
-            "rules": arts_parts[2] if len(arts_parts) > 2 else "?",
-            "claude_md": arts_parts[3] if len(arts_parts) > 3 else "?",
-            "mcp_json": arts_parts[4] if len(arts_parts) > 4 else "?",
-        }
-        print(f"[docker-night] 产物: skills={artifacts['skills']} "
-              f"superpowers={artifacts['superpowers']} rules={artifacts['rules']}")
+        # 产物清单（逐行 key:value 解析，跨端稳定）
+        artifacts = _collect_artifacts(c)
+        print(f"[docker-night] 产物: skills={artifacts.get('skills')} "
+              f"superpowers={artifacts.get('superpowers')} rules={artifacts.get('rules')}")
 
         # 运行探针
         print(f"[docker-night] 开始探针...")
@@ -135,6 +127,8 @@ def run_docker_night(agent: str, probe_ids: list,
 
             print(f"  [{pid}] {prompt[:50]}...")
             r = run_probe(c, agent, prompt)
+            r["stdout_raw"] = r["final_text"]
+            r["final_text"] = _extract_final_text(agent, r["final_text"])
             r["probe_id"] = pid
             r["prompt"] = prompt[:80]
 
@@ -146,6 +140,8 @@ def run_docker_night(agent: str, probe_ids: list,
                   f"({r['duration_s']}s, {len(r.get('final_text',''))} chars)")
             if score.get("behavior_failures"):
                 print(f"         failures: {score['behavior_failures']}")
+
+            _write_probe_result(agent, session_id, r)
 
             probe_results.append(r)
 
@@ -162,14 +158,84 @@ def run_docker_night(agent: str, probe_ids: list,
             "artifacts": artifacts,
             "fs_diff": {"new": len(new_files), "changed": len(changed)},
         }
+
     finally:
         c.destroy()
         print(f"[docker-night] 容器已清理")
 
+def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
+    """按 runner 聚合契约落盘单个探针结果（基线数据 + 失败诊断两用）。"""
+    day = time.strftime("%Y-%m-%d")
+    runs_dir = RESULT_ROOT / "reports" / "nightly" / day / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    score = probe_r["score"]
+    doc = result_schema.build_result(
+        run_id=f"docker-{agent}-{session_id}-{probe_r['probe_id']}",
+        agent=agent, probe_id=probe_r["probe_id"],
+        verdict=score["verdict"],
+        fail_reason=";".join(score.get("failures", [])),
+        duration_s=probe_r.get("duration_s", 0.0),
+        details={
+            "prompt": probe_r.get("prompt", ""),
+            "final_text": probe_r.get("final_text", ""),
+            "stdout_raw": probe_r.get("stdout_raw", ""),
+            "stderr": probe_r.get("stderr", ""),
+            "returncode": probe_r.get("returncode"),
+            "behavior": score["behavior"],
+            "behavior_failures": score.get("behavior_failures"),
+        },
+    )
+    path = runs_dir / f"{doc['run_id']}.json"
+    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+    return path
 
+
+
+def _extract_final_text(agent: str, stdout: str) -> str:
+    """codex 的 --json stdout 是 JSONL 流——提取 agent_message 纯文本用于评分。
+
+    其他端 stdout 本身就是纯文本，原样返回。提取不到时回退原文（保留调试线索）。
+    """
+    if agent != "codex":
+        return stdout
+    texts = []
+    for line in stdout.splitlines():
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        item = data.get("item")
+        if (data.get("type") == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "agent_message"
+                and isinstance(item.get("text"), str)):
+            texts.append(item["text"])
+    return "\n".join(texts) if texts else stdout
+
+
+def _collect_artifacts(c) -> dict:
+    """容器内产物清单（逐行 key:value）。"""
+    r = c.exec(
+        "echo skills:$(ls ~/.claude/skills/ 2>/dev/null | wc -l); "
+        "echo agents_skills:$(ls ~/.agents/skills/ 2>/dev/null | wc -l); "
+        "echo superpowers:$(ls ~/.agents/superpowers/skills/ 2>/dev/null | wc -l); "
+        "echo rules:$(ls ~/project/.claude/rules/*.md 2>/dev/null | wc -l); "
+        "echo claude_md:$(test -f ~/project/CLAUDE.md && echo Y || echo N); "
+        "echo mcp_json:$(test -f ~/project/.mcp.json && echo Y || echo N)",
+        timeout=15)
+    out = {}
+    for line in r["stdout"].strip().splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip()] = v.strip()
+    return out
 if __name__ == "__main__":
     import sys
     agent = sys.argv[1] if len(sys.argv) > 1 else "claude"
     probe_ids = sys.argv[2].split(",") if len(sys.argv) > 2 else ["P1", "P3", "P5"]
     result = run_docker_night(agent, probe_ids)
     print(json.dumps(result["probe_summary"], ensure_ascii=False))
+

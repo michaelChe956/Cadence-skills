@@ -89,17 +89,23 @@ def create_test_container(agent: str, session_id: str) -> Container:
     c = Container(name, agent)
     c.start()
 
-    # 安装 CLI
+    # npm 国内源（CLI 安装 + pi 首启装 mcp-adapter 都走 npm，默认源国内不稳）
+    c.exec("npm config set registry https://registry.npmmirror.com", timeout=30)
+
     cli_map = {
         "claude": "npm install -g @anthropic-ai/claude-code",
         "codex": "npm install -g @openai/codex",
-        "pi": "",   # pi 通过 npm 全局安装，路径不同
-        "kimi": "",  # kimi 安装方式待确认
+        "pi": "npm install -g @earendil-works/pi-coding-agent",
+        "kimi": "",  # kimi 是 ELF 二进制（非 npm），下方从宿主机直接复制
     }
     if cli_map.get(agent):
-        c.exec(cli_map[agent], timeout=120)
+        c.exec(cli_map[agent], timeout=300)
 
-    # 复制认证+模型配置（按 agent 不同）
+    if agent == "kimi":
+        kimi_bin = Path.home() / ".kimi-code/bin/kimi"
+        c.copy_in(str(kimi_bin), "/usr/local/bin/kimi")
+        c.exec("chmod +x /usr/local/bin/kimi")
+
     _copy_auth(c, agent)
 
     # 复制工作树并运行 install.sh
@@ -125,10 +131,16 @@ def _copy_auth(c: Container, agent: str) -> None:
         ],
         "pi": [
             (home / ".pi/agent/auth.json", "/home/tester/.pi/agent/auth.json"),
-            (home / ".pi/agent/settings.json", "/home/tester/.pi/agent/settings.json"),
+            # provider 网关+密钥在 models.json（auth.json 实测为空对象）
+            (home / ".pi/agent/models.json", "/home/tester/.pi/agent/models.json"),
+            # settings.json 需去掉 packages 清单——见下方特殊处理
         ],
         "kimi": [
             (home / ".kimi-code/credentials", "/home/tester/.kimi-code/credentials"),
+            (home / ".kimi-code/config.toml", "/home/tester/.kimi-code/config.toml"),
+            (home / ".kimi-code/device_id", "/home/tester/.kimi-code/device_id"),
+            (home / ".kimi-code/region", "/home/tester/.kimi-code/region"),
+            (home / ".kimi-code/oauth", "/home/tester/.kimi-code/oauth"),
         ],
     }
     # 通用
@@ -139,3 +151,22 @@ def _copy_auth(c: Container, agent: str) -> None:
     for src, dst in auth_files.get(agent, []) + auth_files["__common__"]:
         if src.exists():
             c.copy_in(str(src), dst)
+
+    if agent == "pi":
+        _copy_pi_settings_without_packages(c)
+
+
+def _copy_pi_settings_without_packages(c: Container) -> None:
+    """复制 pi settings.json 但去掉 packages 清单（否则首启装 275MB 扩展包）。"""
+    import json
+    import tempfile
+    src = Path.home() / ".pi/agent/settings.json"
+    if not src.exists():
+        return
+    data = json.loads(src.read_text())
+    data.pop("packages", None)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(data, f, ensure_ascii=False)
+        tmp = f.name
+    c.copy_in(tmp, "/home/tester/.pi/agent/settings.json")
+    Path(tmp).unlink()
