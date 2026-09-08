@@ -54,27 +54,68 @@ def save(payload: dict) -> None:
     print('saved')
 EOF
 
-# 1x1 PNG（P7 探针用）
-python3 -c "
-import struct, zlib
-def chunk(tag, data):
-    c = tag + data
-    return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c))
-ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 0, 0, 0, 0)
-raw = b'\x00\x00'
-idat = zlib.compress(raw)
-png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
-open('assets/error.png', 'wb').write(png)
-"
+# P7 真报错截图：assets/error_screenshot.jpg 在 create_test_project 里注入
+# （用户 Android 真机截图 JPEG，文件名保持 .png——客户端按内容嗅探，先例 6ee4902）
 
 git add -A && git commit -qm 'init'
 echo "project created: $THEME module"
 """
 
-
 def create_test_project(c: Container, theme: str = "users") -> None:
-    """在容器内创建测试项目。"""
+    """在容器内创建测试项目：基础项目 + P7 真截图 + 预置真 key MCP。"""
     c.exec(PROJECT_INIT_SCRIPT, timeout=30)
+    c.copy_in(str(REPO_ROOT / "eval/docker/assets/error_screenshot.jpg"),
+              "/home/tester/project/assets/error.png")
+    _preset_mcp_real_keys(c)
+
+
+def _preset_mcp_real_keys(c: Container) -> None:
+    """预置带真实 key 的 zai MCP 块到容器项目。
+
+    mcp-configuration 产品默认写占位符 key（等用户手动替换）；Docker 测试无人
+    介入，P7 图片探针会因占位 key 全部 login fail。no-interrupt 模式下该命令
+    对已有同名 server 保留现有配置（SKILL.md 合并语义），预置真 key 块存活。
+    key 来源：宿主机仓库根 .mcp.json（本地已替换的真实配置，gitignored）。
+    """
+    import tempfile
+    src = REPO_ROOT / ".mcp.json"
+    if not src.exists():
+        return
+    try:
+        servers = json.loads(src.read_text()).get("mcpServers", {})
+    except ValueError:
+        return
+    zai = servers.get("zai-mcp-server")
+    if not isinstance(zai, dict) or "your_" in json.dumps(zai):
+        return  # 宿主机无真 key 配置——不预置，探针按占位符失败路径走
+
+    # .mcp.json（kimi/pi/claude 读取）
+    with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                     delete=False) as f:
+        json.dump({"mcpServers": {"zai-mcp-server": zai}}, f,
+                  ensure_ascii=False)
+        tmp = f.name
+    c.copy_in(tmp, "/home/tester/project/.mcp.json")
+    Path(tmp).unlink()
+
+    # .codex/config.toml（codex 读取）
+    env_pairs = ", ".join(f'"{k}" = "{v}"'
+                          for k, v in zai.get("env", {}).items())
+    toml = (
+        "[mcp_servers.zai-mcp-server]\n"
+        f'command = "{zai.get("command", "npx")}"\n'
+        f'args = {json.dumps(zai.get("args", ["-y", "@z_ai/mcp-server"]))}\n'
+        f"env = {{ {env_pairs} }}\n"
+    )
+    with tempfile.NamedTemporaryFile("w", suffix=".toml",
+                                     delete=False) as f:
+        f.write(toml)
+        tmp = f.name
+    c.exec("mkdir -p /home/tester/project/.codex")
+    c.copy_in(tmp, "/home/tester/project/.codex/config.toml")
+    Path(tmp).unlink()
+
+
 
 
 def run_stage1(c: Container, agent: str) -> list:
@@ -95,11 +136,18 @@ def run_stage1(c: Container, agent: str) -> list:
 
 
 
-def run_probe(c: Container, agent: str, prompt: str) -> dict:
-    """运行单个探针会话。"""
+
+def run_probe(c: Container, agent: str, prompt: str,
+              timeout: int = 900, retries: int = 1) -> dict:
+    """运行单个探针会话；超时（rc=-9）自动重试——glm/MCP 间歇 hang 已知问题。"""
     start = time.time()
     r = c.exec(_session_cmd(agent, prompt),
-               cwd="/home/tester/project", timeout=900)
+               cwd="/home/tester/project", timeout=timeout)
+    while r["rc"] == -9 and retries > 0:
+        retries -= 1
+        print(f"    [probe-retry] 超时，重试（剩余 {retries}）")
+        r = c.exec(_session_cmd(agent, prompt),
+                   cwd="/home/tester/project", timeout=timeout)
     duration = time.time() - start
     return {
         "returncode": r["rc"], "duration_s": round(duration, 1),

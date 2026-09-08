@@ -91,6 +91,10 @@ def create_test_container(agent: str, session_id: str) -> Container:
 
     # npm 国内源（CLI 安装 + pi 首启装 mcp-adapter 都走 npm，默认源国内不稳）
     c.exec("npm config set registry https://registry.npmmirror.com", timeout=30)
+    # uv/uvx 国内源（默认 PyPI 国内慢——MCP server 冷下载瓶颈）
+    c.exec("mkdir -p ~/.config/uv && printf '[[index]]\\n"
+           "url = \"https://pypi.tuna.tsinghua.edu.cn/simple\"\\n"
+           "default = true\\n' > ~/.config/uv/uv.toml", timeout=30)
 
     cli_map = {
         "claude": "npm install -g @anthropic-ai/claude-code",
@@ -105,6 +109,15 @@ def create_test_container(agent: str, session_id: str) -> Container:
         kimi_bin = Path.home() / ".kimi-code/bin/kimi"
         c.copy_in(str(kimi_bin), "/usr/local/bin/kimi")
         c.exec("chmod +x /usr/local/bin/kimi")
+
+    # MCP server 包预热——避免会话启动时 npx/uvx 冷下载：npm 进度输出会污染
+    # stdio JSON-RPC 通道（rmcp Deserialize error → codex 间歇性启动 hang 实测根因）。
+    # 清单对应 mcp-configuration 生成的标准 server 集。
+    for pkg in ("@z_ai/mcp-server", "@upstash/context7-mcp",
+                "@modelcontextprotocol/server-sequential-thinking"):
+        c.exec(f"npx -y {pkg} --version >/dev/null 2>&1 || true", timeout=180)
+    for uvx_pkg in ("mcp-server-time", "minimax-coding-plan-mcp"):
+        c.exec(f"uvx {uvx_pkg} --help >/dev/null 2>&1 || true", timeout=180)
 
     _copy_auth(c, agent)
 
