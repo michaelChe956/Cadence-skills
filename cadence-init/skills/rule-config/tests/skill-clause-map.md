@@ -57,7 +57,6 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 1-5 | FM-01 frontmatter 含 `disable-model-invocation: true` 且瘦身（Task 9/10）后保留 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-frontmatter-disable-model-invocation | SKILL.md frontmatter 解析出 `disable-model-invocation: true` |
 | 9-11 | OV-01 默认无人工交互策略，按自动检测结果与保守默认值继续 | 两模式 | references/merge-semantics.md 概述节 | fx-empty-project | it-apply-default-policy | 无参数 apply 全程无提问、按默认值完成且报告记录默认值 |
 | 13-21 | PM-01 三种调用形式；完整 token `no-interrupt` 与 `--no-interrupt` 等价，裸 token 一律规范化为 `--no-interrupt` 透传 | 两模式 | —（Agent 参数解析，design D3） | fx-empty-project | it-cli-bare-token | 以裸 token 调用与以 `--no-interrupt` 调用产生相同模式与相同报告 `mode` 字段 |
 | 23 | PM-01b（含 PM-01）token 必须是完整 token，子串不触发 | 两模式 | —（Agent 参数解析） | fx-empty-project | it-cli-token-substring | `xno-interruptx` 等子串不进入 no-interrupt 模式 |
@@ -390,7 +389,6 @@
 | 9 | 项目类型判定两模式规则（codex 五轮重构，原「检测矛盾」已删） | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding；四个 `*-typed-code-reading` 下游一致性用例 | ✅ final `project_type` 同时决定 S8 与 code-reading 来源和规则 7 摘要 |
 | 10 | 意图参数透传 | it-intent-params（XC-02，四参数） | ✅ |
 | 11 | 裸 token | sc-bare-token（PM-01） | ✅ |
-| 12 | disable-model-invocation | sc-disable-model-invocation（FM-01） | ✅ |
 | 13 | L1 独立分支 | ut-step_s3-l1-red-line（S1d-03，SKILL 183 行） | ✅ |
 | 14 | 基础入口文本 | it-entry-base-created（L0-P5/L0-01，含基础模板全文断言） | ✅ |
 | 15 | dry-run 零写入 | it-dryrun-zero-write（XC-01） | ✅ |

@@ -1966,14 +1966,7 @@ fi
 # D. 静态契约检查 sc-*（全部可执行，record_result 五参逐字调用）
 # ============================================================================
 
-# D1. frontmatter disable-model-invocation: true（FM-01）
-if grep -q 'disable-model-invocation: true' "$SKILL_MD"; then
-  record_result sc-disable-model-invocation 0 present present pass
-else
-  record_result sc-disable-model-invocation 1 present missing fail
-fi
-
-# D2. 裸 token 必须出现完整 token 规范化说明（PM-01）
+# D1. 裸 token 必须出现完整 token 规范化说明（PM-01）
 if grep -qE 'no-interrupt.*--no-interrupt|--no-interrupt.*no-interrupt' "$SKILL_MD"; then
   record_result sc-bare-token 0 present present pass
 else

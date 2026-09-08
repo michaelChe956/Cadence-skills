@@ -1,7 +1,6 @@
 ---
 name: pre-check
 description: Use when setting up development environments or incrementally configuring npx/uvx/ast-grep/codegraph/openspec/superpowers tools without requiring user interaction. IMPORTANT - All user interactions MUST be in Chinese (中文) - triggers when tools need installation.
-disable-model-invocation: true
 ---
 
 # 前置条件检查

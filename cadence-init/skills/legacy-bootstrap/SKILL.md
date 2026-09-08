@@ -1,7 +1,6 @@
 ---
 name: legacy-bootstrap
 description: "当需要为当前本地 legacy 项目建立 Cadence 项目认知时，使用 repomix bootstrap 并更新入口文档"
-disable-model-invocation: true
 ---
 
 # Legacy Bootstrap v2.0

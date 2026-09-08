@@ -1,7 +1,6 @@
 ---
 name: mcp-configuration
 description: "配置 MCP：创建 .mcp.json 配置文件并交接 Codex 与 .gitignore 配置"
-disable-model-invocation: true
 ---
 
 # MCP 配置
