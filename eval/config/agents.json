@@ -21,8 +21,7 @@
     "max_turns": null,
     "skill_env": {
       "CODEX_HOME": "{fixture_home}/.codex"
-    },
-    "home_isolation": true
+    }
   },
   "pi": {
     "enabled": true,
@@ -34,8 +33,7 @@
     "max_turns": null,
     "skill_env": {
       "PI_CONFIG_DIR": "{fixture_home}/.pi"
-    },
-    "home_isolation": true
+    }
   },
   "kimi": {
     "enabled": true,

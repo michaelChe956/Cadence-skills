@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+PROMPT_ENV = "EVAL_PROMPT"
+
 INVOCATIONS = {
     "claude": {
         "argv": ["claude", "-p", "{prompt}", "--output-format", "stream-json",
@@ -27,7 +29,8 @@ INVOCATIONS = {
 
 # 各端配置重定向（skill_env）同时会带走凭证目录——真实模式需把真实凭证
 # 符号链接进 fixture 配置目录（本体不动，temp 清理自动回收）。
-AUTH_LINKS = {
+# AUTH_LINKS 已删除——Docker 容器化后不再需要假 HOME 链入
+UTH_LINKS = {
     "claude": [(".claude/settings.json", ".claude/settings.json"),
                (".claude/.credentials.json", ".claude/.credentials.json")],
     "codex": [(".codex/auth.json", ".codex/auth.json"),
@@ -50,77 +53,7 @@ AUTH_LINKS = {
 }
 
 
-def _copy_cache_dir(src: Path, dst: Path) -> None:
-    """复制目录型缓存：优先 CoW reflink（btrfs/xfs 近零成本），失败回退 shutil。
-
-    pi 的 npm 缓存宿主约 275M / 2.5 万文件，逐字节复制拖慢建环且占空间；
-    ``cp --archive --reflink=auto`` 在支持 CoW 的文件系统上只做元数据复制。
-    """
-    import shutil
-    try:
-        completed = subprocess.run(
-            ["cp", "--archive", "--reflink=auto", str(src), str(dst)],
-            capture_output=True, shell=False, timeout=600)
-        if completed.returncode == 0:
-            return
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    if dst.exists() or dst.is_symlink():  # 半成品清掉再全量复制，避免混合树
-        shutil.rmtree(dst, ignore_errors=True)
-    shutil.copytree(src, dst, symlinks=True)
-
-
-def link_agent_auth(agent: str, fixture) -> int:
-    """把真实 HOME 的凭证/缓存链接或复制进 fixture 隔离目录；返回处理条目数。
-
-    源不存在时跳过（该端可能未登录或路径名有出入——首夜 Runbook 核定项）。
-    目录型源只处理 ``COPY_DIRS`` 白名单内的项，且一律复制而非软链：
-    CLI 会写这些缓存目录（pi install / npm install），软链会让写入穿透
-    到宿主真实配置，破坏 HOME 隔离。
-    """
-    import os
-    linked = 0
-    # 复制集：fixture 内需可写（模型/CLI 会改）的配置——软链会穿透写宿主。
-    # pi 的 settings.json 由 `pi install` 重写 packages 清单，实测会写穿软链。
-    COPY_INSTEAD = {("codex", ".codex/config.toml"), ("codex", ".codex/models.json"),
-                    ("pi", ".pi/agent/settings.json")}
-    # 目录型源白名单：仅 pi 首启 bootstrap 缓存。未列入的目录型源保持原
-    # 行为（跳过）——如 kimi 的 .kimi-code/credentials 实为目录，不在本次范围，
-    # 也避免把凭证材料批量复制进 fixture 产物树。
-    COPY_DIRS = {("pi", ".pi/agent/npm"), ("pi", ".pi/agent/git")}
-    for rel_src, rel_dst in AUTH_LINKS.get(agent, []):
-        src = Path.home() / rel_src
-        dst = Path(fixture.home) / rel_dst
-        src_is_dir = src.is_dir()
-        if src_is_dir:
-            if (agent, rel_src) not in COPY_DIRS:
-                continue
-        elif not src.is_file():
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if dst.exists() or dst.is_symlink():
-            continue
-        if src_is_dir:
-            _copy_cache_dir(src, dst)
-        elif (agent, rel_src) in COPY_INSTEAD:
-            import shutil
-            shutil.copy2(src, dst)
-        else:
-            os.symlink(src, dst)
-        linked += 1
-    return linked
-
-
-DEFAULT_TURNS = 40
-PROMPT_ENV = "EVAL_PROMPT"
-
-SESSION_PATTERNS = {
-    "pi": [".pi/agent/sessions/**/run-*/session.jsonl",
-           ".pi/agent/sessions/**/*.jsonl"],
-    "kimi": [".kimi-code/sessions/**/agents/*/wire.jsonl"],
-}
-
-
+# link_agent_auth 已删除——Docker 容器化后不再需要
 def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
     """按端模板组装 argv；prompt 作为单独参数传入，不内联 shell。
 

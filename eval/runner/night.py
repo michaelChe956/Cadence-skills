@@ -41,16 +41,6 @@ def _resolved_skill_env(agents_cfg: dict, agent: str, fixture) -> Optional[dict]
     return resolved or None
 
 
-def _home_isolation(agents_cfg: dict, agent: str) -> bool:
-    """端级 HOME 隔离开关（agents.json "home_isolation": true）。
-
-    codex 端必需：codex 的技能清单把 $HOME/.agents/skills 作为独立 root 注入
-    system prompt（不受 CODEX_HOME 约束）——真实 HOME 的旧版技能会污染验证。
-    HOME=fixture.home 全隔离后该 root 跟随迁移到 fixture（opus-5 调研实证）。
-    """
-    return bool((agents_cfg.get(agent) or {}).get("home_isolation"))
-
-
 def _inject_fake_mcp(fixture_root: Path, roles: list, log_dir: Path) -> None:
     if not roles:
         return
@@ -88,16 +78,6 @@ def _save_run(nightly: Path, run_id: str, result: dict, traj) -> None:
 PROBE_ARGV_EXTRA = {
     "claude": ["--dangerously-skip-permissions"],
 }
-
-
-def validate_real_superpowers(source: Path) -> Optional[str]:
-    """真实模式夜测启动校验（fail-fast）：真实 superpowers 可用返回 None，否则返回错误说明。"""
-    try:
-        from eval.fixtures.generator import validate_real_superpowers_source
-        validate_real_superpowers_source(source)
-        return None
-    except ValueError as exc:
-        return str(exc)
 
 
 def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,

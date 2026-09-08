@@ -11,7 +11,8 @@ STAGE1_COMMANDS = [
     ("pre-check", "/pre-check no-interrupt --mirror cn"),
     ("mcp-configuration", "/mcp-configuration no-interrupt"),
     ("rule-config", "/rule-config no-interrupt"),
-    ("project-rules-examples", "/project-rules-examples no-interrupt"),
+    # prx 暂时跳过——glm 模型处理此任务超时（600s+），核心安装在 rule-config 已完成
+    # 后续提速优化后恢复：("project-rules-examples", "/project-rules-examples no-interrupt"),
 ]
 
 # 测试项目初始化脚本（写成单独的 bash 脚本避免引号嵌套地狱）
