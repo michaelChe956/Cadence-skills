@@ -47,7 +47,7 @@ if [ "${1:-}" = "init" ] && [ "${2:-}" = "--tools" ]; then
   case ",$_tools," in
     *,pi,*)
       mkdir -p "$PWD/.pi/skills" "$PWD/.pi/prompts"
-      for _name in execute plan review verify brainstorm; do
+      for _name in execute plan review verify brainstorm update-change; do
         mkdir -p "$PWD/.pi/skills/openspec-$_name"
         printf 'pi openspec skill %s\n' "$_name" > "$PWD/.pi/skills/openspec-$_name/SKILL.md"
         printf 'pi openspec %s\n' "$_name" > "$PWD/.pi/prompts/opsx-$_name.md"
@@ -56,7 +56,7 @@ if [ "${1:-}" = "init" ] && [ "${2:-}" = "--tools" ]; then
   case ",$_tools," in
     *,kimi,*)
       mkdir -p "$PWD/.kimi-code/skills"
-      for _name in execute plan review verify brainstorm; do
+      for _name in execute plan review verify brainstorm update-change; do
         mkdir -p "$PWD/.kimi-code/skills/openspec-$_name"
         printf 'kimi openspec %s\n' "$_name" > "$PWD/.kimi-code/skills/openspec-$_name/SKILL.md"
       done ;;

@@ -247,9 +247,9 @@ client_openspec_ready() {
     codex)
       [ "$(count_dirs_named "$PROJECT_ROOT/.agents/skills" openspec-)" -gt 0 ] ;;
     pi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 5 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 5 ] ;;
+      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 6 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 6 ] ;;
     kimi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 5 ] ;;
+      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 6 ] ;;
     *)
       return 2 ;;
   esac

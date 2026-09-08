@@ -239,9 +239,9 @@ class TestOpenSpecPhase(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("init --tools pi,kimi", fx.calls.read_text(encoding="utf-8").splitlines())
             self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
-            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 5)
-            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 5)
-            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 5)
+            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 6)
+            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 6)
+            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 6)
 
     def test_verify_does_not_allow_legacy_five_file_names(self):
         with isolated_fixture("openspec-ready") as fx:
@@ -277,9 +277,9 @@ class TestOpenSpecPhase(unittest.TestCase):
             self.assertNotIn("init --tools claude,codex", calls)
             phase = phase_by_name(doc, "openspec")
             self.assertEqual(phase["result"], "success")
-            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 5)
-            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 5)
-            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 5)
+            self.assertEqual(len(list((fx.project / ".pi/skills").glob("openspec-*"))), 6)
+            self.assertEqual(len(list((fx.project / ".pi/prompts").glob("opsx-*.md"))), 6)
+            self.assertEqual(len(list((fx.project / ".kimi-code/skills").glob("openspec-*"))), 6)
 
     def test_wrong_pi_count_fails(self):
         with isolated_fixture("openspec-wrong-pi-count") as fx:
