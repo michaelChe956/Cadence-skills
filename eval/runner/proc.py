@@ -37,29 +37,72 @@ AUTH_LINKS = {
     "pi": [(".pi/agent/auth.json", ".pi/agent/auth.json"),
            (".pi/agent/settings.json", ".pi/agent/settings.json"),
            (".pi/agent/models.json", ".pi/agent/models.json"),
+           # pi 首启 bootstrap 缓存（必需，否则首启崩溃）：pi 按 settings.json 的
+           # packages 清单把扩展物化到 HOME 下这两个目录（npm install ×3 + git
+           # clone）。fixture HOME 为空时每次首启都重跑，顺利也要 26~40s；网络
+           # 失败则抛未捕获 Node 异常、rc=1 退出，stdout 全空且 session 文件
+           # 根本没创建——正是夜测 pre-check/mcp-configuration 的失败签名。
+           # 目录源一律复制（见 link_agent_auth）：软链会让 pi install 写穿宿主。
+           (".pi/agent/npm", ".pi/agent/npm"),
+           (".pi/agent/git", ".pi/agent/git"),
            (".gitconfig", ".gitconfig")],
     "kimi": [(".kimi-code/credentials", ".kimi-code/credentials")],
 }
 
 
-def link_agent_auth(agent: str, fixture) -> int:
-    """把真实 HOME 的凭证文件软链进 fixture 隔离目录；返回成功链接数。
+def _copy_cache_dir(src: Path, dst: Path) -> None:
+    """复制目录型缓存：优先 CoW reflink（btrfs/xfs 近零成本），失败回退 shutil。
 
-    源文件不存在时跳过（该端可能未登录或路径名有出入——首夜 Runbook 核定项）。
+    pi 的 npm 缓存宿主约 275M / 2.5 万文件，逐字节复制拖慢建环且占空间；
+    ``cp --archive --reflink=auto`` 在支持 CoW 的文件系统上只做元数据复制。
+    """
+    import shutil
+    try:
+        completed = subprocess.run(
+            ["cp", "--archive", "--reflink=auto", str(src), str(dst)],
+            capture_output=True, shell=False, timeout=600)
+        if completed.returncode == 0:
+            return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if dst.exists() or dst.is_symlink():  # 半成品清掉再全量复制，避免混合树
+        shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(src, dst, symlinks=True)
+
+
+def link_agent_auth(agent: str, fixture) -> int:
+    """把真实 HOME 的凭证/缓存链接或复制进 fixture 隔离目录；返回处理条目数。
+
+    源不存在时跳过（该端可能未登录或路径名有出入——首夜 Runbook 核定项）。
+    目录型源只处理 ``COPY_DIRS`` 白名单内的项，且一律复制而非软链：
+    CLI 会写这些缓存目录（pi install / npm install），软链会让写入穿透
+    到宿主真实配置，破坏 HOME 隔离。
     """
     import os
     linked = 0
-    # 复制集：fixture 内需可写（模型会改）的配置——软链会穿透写宿主
-    COPY_INSTEAD = {("codex", ".codex/config.toml"), ("codex", ".codex/models.json")}
+    # 复制集：fixture 内需可写（模型/CLI 会改）的配置——软链会穿透写宿主。
+    # pi 的 settings.json 由 `pi install` 重写 packages 清单，实测会写穿软链。
+    COPY_INSTEAD = {("codex", ".codex/config.toml"), ("codex", ".codex/models.json"),
+                    ("pi", ".pi/agent/settings.json")}
+    # 目录型源白名单：仅 pi 首启 bootstrap 缓存。未列入的目录型源保持原
+    # 行为（跳过）——如 kimi 的 .kimi-code/credentials 实为目录，不在本次范围，
+    # 也避免把凭证材料批量复制进 fixture 产物树。
+    COPY_DIRS = {("pi", ".pi/agent/npm"), ("pi", ".pi/agent/git")}
     for rel_src, rel_dst in AUTH_LINKS.get(agent, []):
         src = Path.home() / rel_src
         dst = Path(fixture.home) / rel_dst
-        if not src.is_file():
+        src_is_dir = src.is_dir()
+        if src_is_dir:
+            if (agent, rel_src) not in COPY_DIRS:
+                continue
+        elif not src.is_file():
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() or dst.is_symlink():
             continue
-        if (agent, rel_src) in COPY_INSTEAD:
+        if src_is_dir:
+            _copy_cache_dir(src, dst)
+        elif (agent, rel_src) in COPY_INSTEAD:
             import shutil
             shutil.copy2(src, dst)
         else:

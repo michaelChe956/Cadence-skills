@@ -301,3 +301,106 @@ class TestLinkAgentAuth(unittest.TestCase):
             fx = SimpleNamespace(home=Path(td) / "fx2")
             with mock.patch.object(proc.Path, "home", lambda: Path(td) / "empty"):
                 self.assertEqual(proc.link_agent_auth("claude", fx), 0)
+
+
+class TestPiFirstRunBootstrapCache(unittest.TestCase):
+    """pi 首启 bootstrap 缓存：fixture HOME 缺 npm/ + git/ 时 pi 会重跑
+    ``npm install`` 与 ``git clone``，网络失败即抛未捕获 Node 异常 rc=1
+    退出（stdout 全空、session 未创建）。此组锁定两个缓存目录被带入
+    fixture，且以复制而非软链带入（软链会让 pi install 写穿宿主）。"""
+
+    PI_BOOTSTRAP_CACHES = (".pi/agent/npm", ".pi/agent/git")
+
+    def test_auth_links_declare_bootstrap_caches(self):
+        declared = [src for src, _dst in proc.AUTH_LINKS["pi"]]
+        for rel in self.PI_BOOTSTRAP_CACHES:
+            self.assertIn(rel, declared, f"pi 首启必需缓存未声明：{rel}")
+
+    def test_directory_sources_are_copied_not_symlinked(self):
+        """目录型源必须落为真实目录副本，写入不得穿透宿主。"""
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as td:
+            real_home = Path(td) / "realhome"
+            agent = real_home / ".pi" / "agent"
+            agent.mkdir(parents=True)
+            (agent / "auth.json").write_text("{}", encoding="utf-8")
+            (agent / "settings.json").write_text(
+                json.dumps({"packages": ["npm:pi-mcp-adapter"]}), encoding="utf-8")
+            (agent / "npm" / "node_modules" / "pi-mcp-adapter").mkdir(parents=True)
+            (agent / "npm" / "package.json").write_text("{}", encoding="utf-8")
+            (agent / "git" / "github.com" / "o" / "r").mkdir(parents=True)
+            (agent / "git" / ".gitignore").write_text("*\n", encoding="utf-8")
+            fx = SimpleNamespace(home=Path(td) / "fx")
+            with mock.patch.object(proc.Path, "home", lambda: real_home):
+                proc.link_agent_auth("pi", fx)
+            for rel in self.PI_BOOTSTRAP_CACHES:
+                dst = fx.home / rel
+                self.assertTrue(dst.is_dir(), f"{rel} 未带入 fixture")
+                self.assertFalse(dst.is_symlink(), f"{rel} 不得为软链（写穿宿主）")
+            self.assertTrue(
+                (fx.home / ".pi/agent/npm/node_modules/pi-mcp-adapter").is_dir())
+            self.assertTrue((fx.home / ".pi/agent/git/.gitignore").is_file())
+            # 写入隔离：fixture 内新增文件不得出现在宿主
+            (fx.home / ".pi/agent/npm/node_modules/fresh.txt").write_text("x")
+            self.assertFalse((agent / "npm" / "node_modules" / "fresh.txt").exists())
+
+    def test_pi_settings_is_copied_because_pi_install_rewrites_it(self):
+        """``pi install`` 会重写 settings.json 的 packages 清单——必须复制。"""
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as td:
+            real_home = Path(td) / "realhome"
+            agent = real_home / ".pi" / "agent"
+            agent.mkdir(parents=True)
+            (agent / "settings.json").write_text("{}", encoding="utf-8")
+            fx = SimpleNamespace(home=Path(td) / "fx")
+            with mock.patch.object(proc.Path, "home", lambda: real_home):
+                proc.link_agent_auth("pi", fx)
+            dst = fx.home / ".pi/agent/settings.json"
+            self.assertTrue(dst.is_file())
+            self.assertFalse(dst.is_symlink(), "settings.json 不得为软链（写穿宿主）")
+            dst.write_text('{"packages":[]}', encoding="utf-8")
+            self.assertEqual((agent / "settings.json").read_text(encoding="utf-8"), "{}")
+
+    def test_credentials_still_symlinked(self):
+        """文件型凭证仍软链（登录态共享，不因本次修改退化为复制）。"""
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as td:
+            real_home = Path(td) / "realhome"
+            agent = real_home / ".pi" / "agent"
+            agent.mkdir(parents=True)
+            (agent / "auth.json").write_text("{}", encoding="utf-8")
+            fx = SimpleNamespace(home=Path(td) / "fx")
+            with mock.patch.object(proc.Path, "home", lambda: real_home):
+                proc.link_agent_auth("pi", fx)
+            self.assertTrue((fx.home / ".pi/agent/auth.json").is_symlink())
+
+    def test_non_whitelisted_directory_source_is_skipped(self):
+        """白名单外的目录型源保持原行为（跳过）。
+
+        kimi 的 .kimi-code/credentials 实为目录，不得因本次目录支持被
+        批量复制进 fixture（凭证材料不落产物树，且不扩大本次修改范围）。
+        """
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as td:
+            real_home = Path(td) / "realhome"
+            cred = real_home / ".kimi-code" / "credentials"
+            cred.mkdir(parents=True)
+            (cred / "token.json").write_text("secret", encoding="utf-8")
+            fx = SimpleNamespace(home=Path(td) / "fx")
+            with mock.patch.object(proc.Path, "home", lambda: real_home):
+                self.assertEqual(proc.link_agent_auth("kimi", fx), 0)
+            self.assertFalse((fx.home / ".kimi-code" / "credentials").exists())
+
+    def test_copy_cache_dir_falls_back_when_cp_unavailable(self):
+        """``cp --reflink`` 不可用时回退 shutil.copytree，不得静默丢缓存。"""
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            (src / "nested").mkdir(parents=True)
+            (src / "nested" / "a.txt").write_text("payload", encoding="utf-8")
+            dst = Path(td) / "dst"
+            with mock.patch.object(proc.subprocess, "run",
+                                   side_effect=OSError("cp missing")):
+                proc._copy_cache_dir(src, dst)
+            self.assertEqual((dst / "nested" / "a.txt").read_text(encoding="utf-8"),
+                             "payload")
+            self.assertFalse(dst.is_symlink())
