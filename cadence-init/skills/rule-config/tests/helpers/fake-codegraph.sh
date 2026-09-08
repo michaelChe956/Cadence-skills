@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# @VAR@ 为 sed 替换占位符，非真实值——下列误报已禁用
+# shellcheck disable=SC2242,SC2050,SC2053
 #
 # fake-codegraph.sh — codegraph CLI 替身（Task 3 引入）
 #

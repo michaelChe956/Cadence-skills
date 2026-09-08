@@ -334,7 +334,6 @@ MAX_GIT_CANDIDATES=3
 GIT_CANDIDATES_COUNT=0
 GIT_CANDIDATE_0=""; GIT_CANDIDATE_1=""; GIT_CANDIDATE_2=""
 GIT_ERROR=""
-GIT_ACTION=""
 GIT_ORIGIN=""
 GIT_BRANCH=""
 GIT_BEFORE_REVISION=""
@@ -479,7 +478,6 @@ clone_superpowers() {
     return 1
   fi
   rm -rf "$_tmp"
-  GIT_ACTION="clone"
   GIT_ORIGIN="$_selected"
   GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
   GIT_BEFORE_REVISION=""
@@ -598,7 +596,6 @@ update_superpowers() {
   rm -f "$_pull_file"
   GIT_AFTER_REVISION="$(git -C "$SUPERPOWERS_DIR" rev-parse HEAD 2>/dev/null)"
   [ -n "$GIT_AFTER_REVISION" ] || { GIT_ERROR="git-after-revision-failed"; return 1; }
-  GIT_ACTION="fetch-pull-ff-only"
   if [ "$GIT_BEFORE_REVISION" = "$GIT_AFTER_REVISION" ] && [ "$_remote_changed" -eq 0 ]; then
     PHASE_CURRENT_UPDATED=0
     PHASE_CURRENT_RESULT="skipped"
@@ -610,7 +607,7 @@ update_superpowers() {
 
 do_superpowers_git_phase() {
   SUPERPOWERS_DIR="$HOME/.agents/superpowers"
-  GIT_ERROR=""; GIT_ACTION="fetch-pull-ff-only"
+  GIT_ERROR=""
   GIT_ORIGIN=""; GIT_BRANCH=""; GIT_BEFORE_REVISION=""; GIT_AFTER_REVISION=""
   PHASE_CURRENT_ACTION="fetch-pull-ff-only"
   parse_git_candidates || {
@@ -620,7 +617,6 @@ do_superpowers_git_phase() {
   }
   if validate_superpowers_repo; then
     if [ "$MODE" = "check" ]; then
-      GIT_ACTION="verify-ready"
       PHASE_CURRENT_ACTION="verify-ready"
       GIT_ORIGIN="$(git -C "$SUPERPOWERS_DIR" remote get-url origin 2>/dev/null)"
       GIT_BRANCH="$(git -C "$SUPERPOWERS_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
@@ -636,14 +632,12 @@ do_superpowers_git_phase() {
       return 1
     }
   elif [ -e "$SUPERPOWERS_DIR" ] || [ -L "$SUPERPOWERS_DIR" ]; then
-    GIT_ACTION="not-git"
     PHASE_CURRENT_ACTION="not-git"
     GIT_ERROR="not-git"
     PHASE_CURRENT_ERROR="$GIT_ERROR"
     PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
     return 1
   elif [ "$MODE" = "check" ]; then
-    GIT_ACTION="check-not-installed"
     PHASE_CURRENT_ACTION="check-not-installed"
     PHASE_CURRENT_SKIPPED=$((PHASE_CURRENT_SKIPPED + 1))
     PHASE_CURRENT_RESULT="skipped"
@@ -1043,8 +1037,6 @@ handle_failure() {
     FAILED_COUNT=$((FAILED_COUNT + 1))
   fi
   PHASE_CURRENT_ERROR="$_msg"
-  FAILED_PHASE="$_name"
-  FAILED_ERROR="$_msg"
   PHASE_CURRENT_FAILURE_RECORDED=1
   err "❌ $_name 失败：$_msg"
   return 0
@@ -1054,12 +1046,10 @@ handle_failure() {
 # 每个 do_<tool>：探测版本→已装则 ready 秒跳过；未装则 run 模式安装并复验，check 模式标记 failed。
 # 安装命令输出全部重定向，避免污染 stdout 的 JSON。
 
-INSTALL_TRIED=0   # 标记本次是否执行过安装（供摘要）
 
 _try_install() {  # _try_install <描述> <安装命令...>
   _desc="$1"; shift
   if [ "$MODE" != "run" ]; then return 1; fi
-  INSTALL_TRIED=1
   log "${C_YEL}⬇️  正在安装 $_desc ...${C_NC}"
   "$@" >/dev/null 2>&1
 }
@@ -1252,10 +1242,14 @@ upgrade_npm_tool() {
 # 升级 uv 本体
 upgrade_uv() {
   _cur="$(probe_version uv --version)" || return 0
+  # uv_index_env 刻意分词（见其定义处注释）
+# shellcheck disable=SC2046
   _lat="$(env $(uv_index_env) pip index versions uv 2>/dev/null | sed -n 's/.*(\([0-9][^)]*\)).*/\1/p' | head -n1)"
   [ -n "$_lat" ] || { log "${C_YEL}⚠️  uv 无法查询 latest，跳过升级${C_NC}"; return 0; }
   if _ver_lt "$_cur" "$_lat"; then
     log "${C_YEL}⬆️  升级 uv：$_cur → ${_lat}（来源 ${CADENCE_PY_INDEX}）${C_NC}"
+    # uv_index_env 刻意分词（见其定义处注释）
+# shellcheck disable=SC2046
     if env $(uv_index_env) pip install -U uv >/dev/null 2>&1; then
       _new="$(probe_version uv --version)"
       # 校验升级结果：版本非空且已追到 latest 才记 upgraded

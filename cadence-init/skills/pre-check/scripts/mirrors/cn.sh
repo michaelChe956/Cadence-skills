@@ -1,3 +1,5 @@
+# 被 pre-check.sh source 的配置片段，无 shebang
+# shellcheck shell=bash
 # Cadence pre-check 镜像源配置：中国大陆镜像
 # 由 pre-check.sh 通过 --mirror cn 加载，仅在脚本进程内生效。
 # 不写入用户全局 npm/uv/git 配置。
