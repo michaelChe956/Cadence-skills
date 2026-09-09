@@ -57,8 +57,11 @@ jobs:
     runs-on: [self-hosted, cadence-eval]
     timeout-minutes: 60
     steps:
-      - name: 检出代码
+      - name: 检出代码（分支而非 merge commit——detached HEAD 会让
+          install.sh 的 update 路径与 set-upstream 失败）
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
 
       - name: 环境自检（Podman/镜像/Python3）
         run: |
