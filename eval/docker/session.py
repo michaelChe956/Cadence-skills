@@ -11,8 +11,7 @@ STAGE1_COMMANDS = [
     ("pre-check", "/pre-check no-interrupt --mirror cn"),
     ("mcp-configuration", "/mcp-configuration no-interrupt"),
     ("rule-config", "/rule-config no-interrupt"),
-    # prx 暂时跳过——glm 模型处理此任务超时（600s+），核心安装在 rule-config 已完成
-    # 后续提速优化后恢复：("project-rules-examples", "/project-rules-examples no-interrupt"),
+    ("project-rules-examples", "/project-rules-examples no-interrupt"),
 ]
 
 # 测试项目初始化脚本（写成单独的 bash 脚本避免引号嵌套地狱）
@@ -132,7 +131,60 @@ def run_stage1(c: Container, agent: str) -> list:
             "final_text": r["stdout"],
             "stderr": r["stderr"][-500:] if r["stderr"] else "",
         })
+    _rebuild_codex_toml(c)
     return results
+
+
+def _rebuild_codex_toml(c: Container) -> None:
+    """从项目 .mcp.json 机械重建 .codex/config.toml（codex 专用）。
+
+    mcp-configuration 由模型执行合并，写 TOML 偶发语义错误（实测：http_headers
+    混入 stdio 块 → codex 加载失败，后续会话全部 0.1s 秒挂）。本函数在 stage1
+    后按固定规则重写，保证 codex 拿到的配置永远合法：
+    stdio server（command 字段）→ command/args/env；HTTP server（url 字段）
+    → url/http_headers。仅测试装置使用；产品侧同步脚本化记为后续任务。
+    """
+    import tempfile
+    r = c.exec("cat /home/tester/project/.mcp.json", timeout=15)
+    if r["rc"] != 0 or not r["stdout"].strip():
+        return
+    try:
+        servers = json.loads(r["stdout"]).get("mcpServers", {})
+    except ValueError:
+        return
+
+    def _toml_val(v):
+        return json.dumps(v, ensure_ascii=False)  # TOML 与 JSON 的字符串/数组字面量兼容
+
+    blocks = []
+    for name, srv in servers.items():
+        if not isinstance(srv, dict):
+            continue
+        lines = [f"[mcp_servers.{name}]"]
+        if "command" in srv:
+            lines.append(f"command = {_toml_val(srv['command'])}")
+            if srv.get("args"):
+                lines.append(f"args = {_toml_val(srv['args'])}")
+            if srv.get("env"):
+                env_pairs = ", ".join(f"{_toml_val(k)} = {_toml_val(v)}"
+                                      for k, v in srv["env"].items())
+                lines.append(f"env = {{ {env_pairs} }}")
+        elif "url" in srv:
+            lines.append(f"url = {_toml_val(srv['url'])}")
+            if srv.get("http_headers"):
+                hdr = ", ".join(f"{_toml_val(k)} = {_toml_val(v)}"
+                                for k, v in srv["http_headers"].items())
+                lines.append(f"http_headers = {{ {hdr} }}")
+        blocks.append("\n".join(lines))
+    if not blocks:
+        return
+    toml = "\n\n".join(blocks) + "\n"
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+        f.write(toml)
+        tmp = f.name
+    c.exec("mkdir -p /home/tester/project/.codex")
+    c.copy_in(tmp, "/home/tester/project/.codex/config.toml")
+    Path(tmp).unlink()
 
 
 

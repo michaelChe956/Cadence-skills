@@ -124,6 +124,10 @@ def create_test_container(agent: str, session_id: str) -> Container:
     # 复制工作树并运行 install.sh
     c.exec("mkdir -p /home/tester/.agents")
     c.copy_in(str(REPO_ROOT), "/home/tester/.agents/Cadence-skills")
+    # 工作树当前分支可能无 origin 跟踪（本地特性分支），install.sh 的 update
+    # 路径要求 tracking 分支否则 set -e 提前退出、技能层完全不装（skills=0）
+    c.exec("git -C /home/tester/.agents/Cadence-skills branch "
+           "--set-upstream-to=origin/main", timeout=30)
     c.exec("bash /home/tester/.agents/Cadence-skills/install.sh", timeout=120)
 
     return c
