@@ -57,6 +57,13 @@ jobs:
     runs-on: [self-hosted, cadence-eval]
     timeout-minutes: 60
     steps:
+      - name: GitHub fetch 走国内镜像（进程级配置，不污染全局 gitconfig）
+        run: |
+          set -euo pipefail
+          printf '[url "https://ghfast.top/https://github.com/"]\n\tinsteadOf = https://github.com/\n' \
+            > "${RUNNER_TEMP}/git-mirror.rc"
+          echo "GIT_CONFIG_GLOBAL=${RUNNER_TEMP}/git-mirror.rc" >> "${GITHUB_ENV}"
+
       - name: 检出代码（分支而非 merge commit——detached HEAD 会让
           install.sh 的 update 路径与 set-upstream 失败）
         uses: actions/checkout@v4
