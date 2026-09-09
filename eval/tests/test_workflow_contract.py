@@ -16,26 +16,30 @@ class TestWorkflowContract(unittest.TestCase):
         self.assertIn("unittest discover", script)
         self.assertIn("rerun", script)
 
-    def test_tier1_selfhosted_and_probe(self):
-        """ut-wf-tier1：self-hosted 标签路由 + 云端探活条件触发 + mock 自检前置 + 手动触发。"""
+    def test_tier1_docker_selfhosted(self):
+        """ut-wf-tier1：self-hosted 路由 + Docker 四端夜测 + PR 触发 + 并发执行。"""
         doc = self._load()
-        tier1 = doc["jobs"]["eval-tier1-nightly"]
+        tier1 = doc["jobs"]["eval-tier1-docker"]
         self.assertEqual(tier1["runs-on"], ["self-hosted", "cadence-eval"])
-        self.assertEqual(tier1["needs"], "runner-probe")
-        self.assertIn("needs.runner-probe.outputs.available == 'true'",
-                      tier1["if"])
-        self.assertIn("workflow_dispatch", tier1["if"])  # 手动触发允许（s7）
-        self.assertEqual(tier1["env"]["EVAL_BASE"], "$HOME/eval-runs")
-        first_run = next(s["run"] for s in tier1["steps"] if "run" in s)
-        self.assertIn("smoke", first_run)
-        self.assertIn("night --date", "\n".join(str(s.get("run", ""))
-                                                for s in tier1["steps"]))
-        self.assertIn("TZ=Asia/Shanghai", "\n".join(str(s.get("run", ""))
-                                                    for s in tier1["steps"]))
-        self.assertIn(
-            'any(l.get("name") == "cadence-eval" for l in r.get("labels", []))',
-            WF.read_text(encoding="utf-8"),
-        )
+        cond = tier1["if"]
+        self.assertIn("pull_request", cond)  # PR 触发（用户决策 B 方案）
+        self.assertIn("workflow_dispatch", cond)  # 手动触发保留
+        script = "\n".join(str(s.get("run", "")) for s in tier1["steps"])
+        self.assertIn("eval/docker/night.py", script)  # Docker 夜测入口
+        self.assertIn("report_matrix.py", script)      # 透视汇总
+        self.assertIn("declare -A pids", script)       # 四端并发
+        # 端命令零直调：夜测全部经容器（Tier-1 不在宿主裸跑 CLI）
+        for banned in ("claude -p", "codex exec", "kimi -p", "pi -p"):
+            self.assertNotIn(banned, script)
+
+    def test_tier1_teardown_and_artifacts(self):
+        """ut-wf-tier1-artifacts：结果 artifact 上传 + 失败仍出透视（if: always）。"""
+        doc = self._load()
+        tier1 = doc["jobs"]["eval-tier1-docker"]
+        names = [s.get("name", "") for s in tier1["steps"]]
+        self.assertTrue(any("上传" in n for n in names))
+        summary = next(s for s in tier1["steps"] if "透视" in s.get("name", ""))
+        self.assertEqual(summary.get("if"), "always()")
 
     def test_ci_yml_untouched(self):
         """ut-wf-noci：既有 ci.yml 车道零改动（R9；Tier-0 是新增 workflow 文件）。"""
