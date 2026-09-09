@@ -127,8 +127,13 @@ def create_test_container(agent: str, session_id: str) -> Container:
     # 工作树当前分支可能无 origin 跟踪（本地特性分支），install.sh 的 update
     # 路径要求 tracking 分支否则 set -e 提前退出、技能层完全不装（skills=0）。
     # 失败必须显式报错——静默失败会以产物全空的形式在夜测末端误报，定位成本高。
-    r = c.exec("git -C /home/tester/.agents/Cadence-skills branch "
-               "--set-upstream-to=origin/main", timeout=30)
+    # CI 浅单分支克隆无 origin/main ref——用本地 HEAD 无网络地建 ref 再设
+    # tracking（宿主工作树有真 ref 时 update-ref 为幂等覆盖，同样安全）
+    r = c.exec(
+        "git -C /home/tester/.agents/Cadence-skills "
+        "update-ref refs/remotes/origin/main HEAD "
+        "&& git -C /home/tester/.agents/Cadence-skills branch "
+        "--set-upstream-to=origin/main", timeout=30)
     if r["rc"] != 0:
         raise RuntimeError(
             f"[container] set-upstream 失败 rc={r['rc']}: {r['stderr'][-200:]}")
