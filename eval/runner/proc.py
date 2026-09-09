@@ -54,6 +54,20 @@ UTH_LINKS = {
 
 
 # link_agent_auth 已删除——Docker 容器化后不再需要
+DEFAULT_TURNS = 40
+
+# 会话文件定位模式（transcript 捕获为 session 型的端）——从假 HOME 清理中恢复
+SESSION_PATTERNS = {
+    "pi": [".pi/agent/sessions/**/run-*/session.jsonl",
+           ".pi/agent/sessions/**/*.jsonl"],
+    "kimi": [".kimi-code/sessions/**/agents/*/wire.jsonl"],
+}
+
+
+def link_agent_auth(agent, fixture):
+    """已废弃 no-op：Docker 容器化后认证由容器 copy_in 注入，无需假 HOME 链入。"""
+
+
 def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
     """按端模板组装 argv；prompt 作为单独参数传入，不内联 shell。
 

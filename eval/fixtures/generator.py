@@ -96,9 +96,18 @@ def snapshot_superpowers_state(home: Path) -> dict:
 
 def make_fixture(variant: str, base_dir: Path, repo_root: Path,
                  theme: str = "orders") -> FixturePaths:
-    """Docker 容器化后简化版——install.sh 在容器内执行，不再需要 Python 造 fixture。"""
+    """Docker 容器化后简化版——只创建目录骨架并返回路径。
+
+    完整 fixture（项目文件/1×1 图/预置配置）由 eval/docker/session.py 的
+    PROJECT_INIT_SCRIPT 在容器内生成；本函数仅服务旧 runner 的 smoke/
+    stage1 命令所需的最小目录契约。
+    """
     if variant not in VARIANTS:
         raise ValueError(f"未知 fixture 变体：{variant}")
+    root = base_dir / "project"
+    home = base_dir / "home"
+    root.mkdir(parents=True, exist_ok=True)
+    home.mkdir(parents=True, exist_ok=True)
     return FixturePaths(root=root, home=home, repo=repo_root)
 
 

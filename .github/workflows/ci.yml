@@ -113,6 +113,9 @@ jobs:
       - name: 安装 rule-config 测试依赖
         run: python3 -m pip install --user pytest pyyaml
 
+      - name: 安装 codegraph（rule-config e2e S8 依赖，缺失则 overall=degraded）
+        run: sudo npm install -g @colbymchenry/codegraph
+
       - name: rule-config 单元测试（pytest）
         run: |
           set -euo pipefail

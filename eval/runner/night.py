@@ -23,6 +23,17 @@ from eval.scoring import assertor
 REPORT_SUBDIR = "reports"
 
 
+
+def _home_isolation(agents_cfg, agent):
+    """假 HOME 隔离已随 Docker 容器化退役——恒 False（保留调用点兼容）。"""
+    return False
+
+
+def validate_real_superpowers(sources_root):
+    """已废弃 no-op：真实 superpowers 校验由 Docker 容器内 install/pre-check 承担。"""
+    return None
+
+
 def _enabled_agents(agents_cfg: dict) -> list:
     return [name for name, cfg in agents_cfg.items() if cfg.get("enabled")]
 

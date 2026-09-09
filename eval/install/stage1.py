@@ -126,14 +126,11 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
     # home_override：HOME 隔离端（codex）显式传 fixture.home——cli_kwargs 的
     # home 取它而非 skill_env 推导；inherited 语义由实际 home 是否为 fixture 决定
     _cli_home = home_override if home_override is not None else (None if skill_env else home)
-    actual_home = proc.effective_home(_cli_home, skill_env)
-    inherited_home = _cli_home is None
     # Kimi 无 skill_env 时沿用 fixture HOME：这是“真实夜跑中的 fixture HOME 隔离端”例外。
     verify = verify or _default_verify(repo)
     extra: dict = {}
     commands_report = []
     real_cli = cli is proc.run_cli
-    precheck_home_before = _snapshot_precheck_home(actual_home, inherited=inherited_home)
     for spec in STAGE1_COMMANDS:
         before = _tree_hash(root)
         cli_kwargs = {
@@ -162,12 +159,9 @@ def run_stage1(agent, fixture, pins, timeout_s=1200, *, cli=proc.run_cli,
             extra["pre_check_report"] = _extract_precheck_report(final_text)
             extra["pre_check_tool_calls"] = _count_tool_calls(out.get("transcript_path") or "")
             extra["pre_check_duration_s"] = float(out.get("duration_s", 0.0))
-            extra["pre_check_home"] = {"mode": "inherited" if inherited_home else "fixture",
-                                        "path": str(actual_home),
-                                        "fixture_path": str(home),
-                                        "scope": list(PRECHECK_HOME_SCOPE) if inherited_home else ["*"],
-                                        "before": precheck_home_before,
-                                        "after": _snapshot_precheck_home(actual_home, inherited=inherited_home)}
+            # 假 HOME 快照机制已随 Docker 容器化退役——None 走断言器合法
+            # skip 路径（"未提供集成 HOME 快照"）；容器内为真实 HOME 无需比对
+            extra["pre_check_home"] = None
         if spec["name"] == "rule-config":
             extra["rules_before"] = _tree_hash(root / ".claude" / "rules")
         commands_report.append({"name": spec["name"], "returncode": out["returncode"],

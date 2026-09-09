@@ -68,5 +68,5 @@ if __name__ == "__main__":
         content = raw.get("content", str(raw))
         self.assertTrue(
             any(marker in content.lower()
-                for marker in ClaudeAdapter.DENIAL_MARKERS),
+                for marker in get_adapter("claude").DENIAL_MARKERS),
             f"DENIAL_MARKERS 未命中真实 denial 文案：{content[:80]}")
