@@ -11,12 +11,11 @@ Cadence 是面向 Claude Code、pi、Codex 和 Kimi Code 的 Agent Skills 协作
 Cadence Skills 会根据任务意图自动触发，也可以用裸 Skill 名手动调用。典型工作流如下：
 
 1. 使用 `/pre-check` 检查基础工具和环境。
-2. 使用 `/project-analysis` 了解项目结构与技术栈。
-3. 使用 `/mcp-configuration` 配置项目 MCP（必须在 `rule-config` 之前——后者的权限区块依赖 `.mcp.json` 已就位）。
-4. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口；按需使用 `/project-rules-examples` 补齐个性化规则模板。
-5. 为存量项目填写 Schema 4.0 输入后，使用 `/knowledge-base-bootstrap` 初始化 KnowledgeBase。
-6. 在需求、设计、计划、编码、测试、评审或调试前，使用 `/knowledge-base-context` 获取最小任务上下文。
-7. 项目事实发生变化时，准备完整变更包并使用 `/knowledge-base-update` 增量更新知识库。
+2. 使用 `/mcp-configuration` 配置项目 MCP（必须在 `rule-config` 之前——后者的权限区块依赖 `.mcp.json` 已就位）。
+3. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口；按需使用 `/project-rules-examples` 补齐个性化规则模板。
+4. 为存量项目填写 Schema 4.0 输入后，使用 `/knowledge-base-bootstrap` 初始化 KnowledgeBase。
+5. 在需求、设计、计划、编码、测试、评审或调试前，使用 `/knowledge-base-context` 获取最小任务上下文。
+6. 项目事实发生变化时，准备完整变更包并使用 `/knowledge-base-update` 增量更新知识库。
 
 KnowledgeBase Skills 只在目标项目授权范围内读取证据；它们不会替代业务代码、数据库迁移、部署或发布流程。
 
@@ -155,16 +154,15 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 
 ## 项目初始化（cadence-init）
 
-`cadence-init` 是仓库中包含 14 个 Skills 的插件目录。安装后，在目标项目根目录按需执行以下流程；这些调用均使用实际 Skill 名，不使用插件命名空间。
+`cadence-init` 是仓库中包含 13 个 Skills 的插件目录。安装后，在目标项目根目录按需执行以下流程；这些调用均使用实际 Skill 名，不使用插件命名空间。
 
 ### 初始化步骤
 
 1. `/pre-check`：检查并补齐 npx、uvx、ast-grep、codegraph、OpenSpec 及相关工具。
-2. `/project-analysis`：分析项目结构、技术栈和依赖。
-3. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
-4. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
-5. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板。
-6. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
+2. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
+3. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
+4. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板。
+5. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
 
 `/pre-check` 的运行时工具安装、Superpowers 目录及其同步边界，和 Cadence 的 Git 仓库与三层 skill 链接是两套独立机制，不要混称。
 
@@ -179,9 +177,9 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 /project-rules-examples no-interrupt
 ```
 
-需要 Playwright 时应明确提出启用要求。`/project-analysis` 不支持该参数，仍按其正常流程执行。
+需要 Playwright 时应明确提出启用要求。
 
-## 14 个 Skills
+## 13 个 Skills
 
 ### KnowledgeBase skills
 
@@ -205,11 +203,10 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 | --- | --- |
 | `mcp-configuration` | 配置项目 `.mcp.json` 及客户端交接 |
 | `pre-check` | 检查开发环境、工具和初始化前置条件 |
-| `project-analysis` | 分析项目结构、技术栈、依赖和 Git 信息 |
 | `project-rules-examples` | 创建项目个性化规则模板 |
 | `rule-config` | 配置项目规则、目录和 OpenSpec 协作入口 |
 
-常用调用：`/pre-check`、`/project-analysis`、`/rule-config`。
+常用调用：`/pre-check`、`/rule-config`。
 
 ### Skill 创建与兼容 skills
 
@@ -220,7 +217,7 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 
 常用调用：`/skill-creator`。`legacy-bootstrap` 默认不自动触发，需按实际需要使用。
 
-插件元数据版本以 `cadence-init/.claude-plugin/plugin.json` 的 `0.0.4` 为准；Skill 数量以仓库中的 14 个 `SKILL.md` 为准。
+插件元数据版本以 `cadence-init/.claude-plugin/plugin.json` 的 `0.0.4` 为准；Skill 数量以仓库中的 13 个 `SKILL.md` 为准。
 
 ## Commands 库
 
@@ -248,7 +245,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 ## 最佳实践
 
 - 安装后先运行验证命令，再启动 Agent 客户端。
-- 让 `/pre-check`、`/project-analysis`、`/rule-config` 按顺序完成项目基础配置。
+- 让 `/pre-check`、`/rule-config` 按顺序完成项目基础配置。
 - 先填写并校验 Schema 4.0 输入，再运行 `/knowledge-base-bootstrap`。
 - 已完成知识库的任务优先使用 `/knowledge-base-context`；事实变化使用 `/knowledge-base-update`，不要用重新初始化替代增量更新。
 - 更新 Cadence 时重新运行 `install.sh`，不要手工复制 Skill 目录。
@@ -277,7 +274,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 
 1. Fork 本仓库并创建功能分支。
 2. 使用 `/skill-creator` 创建或维护 Skill，确保目录名、front matter 的 `name` 和 `SKILL.md` 一致。
-3. 更新用户文档时同步检查 14 个 Skill 名称、四类 Agent 路径和安装脚本契约。
+3. 更新用户文档时同步检查 13 个 Skill 名称、四类 Agent 路径和安装脚本契约。
 4. 运行 ShellCheck、安装/更新/卸载验证和文档定向断言后提交 Pull Request。
 
 ## 许可证

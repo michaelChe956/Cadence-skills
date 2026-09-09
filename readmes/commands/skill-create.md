@@ -2,7 +2,7 @@
 
 ## 定位：这不是独立 Command
 
-`skill-creator` 是 `cadence-init` 提供的实际 Skill，不是独立 Command，也不需要单独注册入口。它属于 Cadence 的 14 个 Skills，安装路径由根 README 介绍的 `install.sh` 提供。
+`skill-creator` 是 `cadence-init` 提供的实际 Skill，不是独立 Command，也不需要单独注册入口。它属于 Cadence 的 13 个 Skills，安装路径由根 README 介绍的 `install.sh` 提供。
 
 ## 常见场景
 

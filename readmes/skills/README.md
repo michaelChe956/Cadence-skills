@@ -1,6 +1,6 @@
 # Cadence Skills 使用指南
 
-## Skills 总览（14 个）
+## Skills 总览（13 个）
 
 Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex 和 Kimi Code 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供 `~/.codex/skills/skills/` 兼容投影。
 
@@ -16,13 +16,12 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 API 关系 | — |
 | `knowledge-base-update` | 依据完整变更包增量更新已有 KnowledgeBase | [指南](knowledge-base-update.md) |
 
-### 初始化、规则与项目分析 Skills（5 个）
+### 初始化与规则 Skills（4 个）
 
 | Skill | 用途 |
 | --- | --- |
 | `mcp-configuration` | 创建或维护项目 MCP 配置并交接客户端设置 |
 | `pre-check` | 检查开发环境、基础工具和初始化前置条件 |
-| `project-analysis` | 分析项目结构、技术栈、依赖和 Git 信息 |
 | `project-rules-examples` | 创建项目个性化规则模板 |
 | `rule-config` | 配置规则、入口文件、`cadence/` 目录和 OpenSpec 协作入口 |
 

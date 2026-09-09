@@ -11,14 +11,13 @@ Cadence 当前不提供独立的 Command 文件。项目能力由 `cadence-init`
 以下是常用的裸名调用示例：
 
 - `/pre-check`：检查开发环境和工具。
-- `/project-analysis`：分析项目结构、技术栈和依赖。
 - `/rule-config`：配置项目规则和 Cadence 产物目录。
 - `/knowledge-base-bootstrap`：初始化 Schema 4.0 KnowledgeBase。
 - `/knowledge-base-context`：按任务获取最小知识库上下文。
 - `/knowledge-base-update`：依据完整变更包更新知识库。
 - `/skill-creator`：创建、校验、打包或优化 Skill。
 
-完整的 14 个 Skill 清单见 [Skills 使用指南](../skills/README.md)。
+完整的 13 个 Skill 清单见 [Skills 使用指南](../skills/README.md)。
 
 ## 相关资源
 
