@@ -113,6 +113,27 @@ jobs:
           PYTHONPATH=. python3 eval/docker/report_matrix.py --day all \
             | tee matrix.md >> "${GITHUB_STEP_SUMMARY}" || true
 
+      - name: 透视表更新到 PR 评论（幂等——同表刷新不堆积）
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          {
+            echo "## 📊 Docker 夜测透视（run #${GITHUB_RUN_NUMBER} · $(TZ=Asia/Shanghai date '+%F %T')）"
+            cat matrix.md 2>/dev/null || echo "_本轮无透视数据（可能夜测步骤未产出）_"
+          } > pr-comment.md
+          CMT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.body | startswith("## 📊 Docker 夜测透视"))][0].id' 2>/dev/null || true)
+          if [ -n "${CMT_ID}" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${CMT_ID}" \
+              -F body=@pr-comment.md >/dev/null
+            echo "已更新 PR 透视评论 #${CMT_ID}"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@pr-comment.md --jq .html_url
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+
       - name: 上传夜测结果（失败诊断用）
         if: always()
         uses: actions/upload-artifact@v4
