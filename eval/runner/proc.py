@@ -64,9 +64,6 @@ SESSION_PATTERNS = {
 }
 
 
-def link_agent_auth(agent, fixture):
-    """已废弃 no-op：Docker 容器化后认证由容器 copy_in 注入，无需假 HOME 链入。"""
-
 
 def build_argv(agent, model, max_turns=None, prompt="", prompt_env=PROMPT_ENV):
     """按端模板组装 argv；prompt 作为单独参数传入，不内联 shell。

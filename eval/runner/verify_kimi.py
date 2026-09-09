@@ -24,7 +24,6 @@ def verify(repo_root: Path, base_dir: Path, pins: dict) -> int:
         agents_cfg = guards.load_config(
             repo_root / "eval" / "config" / "agents.json")
         skill_env = night._resolved_skill_env(agents_cfg, "kimi", fixture)
-        proc.link_agent_auth("kimi", fixture)
 
         ok_version, version_detail = proc.cli_version_check("kimi", pins)
         checks.append(("cli-version", ok_version, version_detail))

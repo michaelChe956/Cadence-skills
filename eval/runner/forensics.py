@@ -28,7 +28,6 @@ def forensics_denial(repo_root: Path, base_dir: Path, pins: dict,
         agents_cfg = guards.load_config(
             repo_root / "eval" / "config" / "agents.json")
         skill_env = night._resolved_skill_env(agents_cfg, "claude", fx)
-        proc.link_agent_auth("claude", fx)
         stage1.run_stage1("claude", fx, pins, timeout_s=1800,
                           skill_env=skill_env)
         settings_path = fx.root / ".claude" / "settings.json"
