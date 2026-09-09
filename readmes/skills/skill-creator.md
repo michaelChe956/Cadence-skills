@@ -108,7 +108,6 @@ Skill 目录名必须与 front matter 的 `name` 相同，并且目录中包含 
 ## 相关 Skills
 
 - `pre-check`：检查开发环境和相关工具。
-- `project-analysis`：分析项目结构与技术栈。
 - `rule-config`：配置项目规则和目录结构。
 - `project-rules-examples`：创建项目个性化规则模板。
 
@@ -117,5 +116,5 @@ Skill 目录名必须与 front matter 的 `name` 相同，并且目录中包含 
 完整参数、目录约定和执行流程请参考：
 
 - [仓库内 Skill 定义](../../cadence-init/skills/skill-creator/SKILL.md)
-- [14 个 Skills 导航](README.md)
+- [13 个 Skills 导航](README.md)
 - [Commands 与 Skills 关系](../commands/skill-create.md)

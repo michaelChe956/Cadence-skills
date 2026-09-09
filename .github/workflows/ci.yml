@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   checks:
-    name: ShellCheck、隔离集成测试与 14×3 链接矩阵
+    name: ShellCheck、隔离集成测试与 13×3 链接矩阵
     runs-on: ubuntu-latest
     # 本工作流只验证脚本与链接 fixture，不启动真实四客户端 CLI job。
     steps:
@@ -33,7 +33,7 @@ jobs:
           trap 'rm -rf -- "$test_home"' EXIT
           HOME="$test_home" bash tests/test-install.sh
 
-      - name: 14×3 链接解析 fixture 矩阵
+      - name: 13×3 链接解析 fixture 矩阵
         run: |
           set -euo pipefail
           matrix_home="$(mktemp -d)"
@@ -49,7 +49,7 @@ jobs:
             find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
               -printf '%h\n' | sed 's#^.*/##' | sort -u
           )
-          test "${#skills[@]}" -eq 14
+          test "${#skills[@]}" -eq 13
 
           for skill in "${skills[@]}"; do
             source_skill="$GITHUB_WORKSPACE/cadence-init/skills/$skill"
@@ -91,7 +91,7 @@ jobs:
             test -f "$codex_root/$skill/SKILL.md"
             link_checks=$((link_checks + 3))
           done
-          test "$link_checks" -eq $((14 * 3))
+          test "$link_checks" -eq $((13 * 3))
 
           test -L "$shared_root/$third_party_name"
           test -L "$claude_root/$third_party_name"
@@ -108,7 +108,7 @@ jobs:
           test ! -e "$shared_root/$dangling_name"
           test ! -e "$claude_root/$dangling_name"
           test ! -e "$codex_root/$dangling_name"
-          printf '14×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
+          printf '13×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
 
       - name: 安装 rule-config 测试依赖
         run: python3 -m pip install --user pytest pyyaml
