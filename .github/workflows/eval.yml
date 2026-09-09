@@ -1,0 +1,146 @@
+name: Eval CI
+
+on:
+  pull_request:
+    paths:
+      - "eval/**"
+      - "cadence-init/skills/pre-check/**"
+      - "cadence-init/skills/rule-config/**"
+      - "cadence-init/skills/mcp-configuration/**"
+      - "cadence-init/skills/project-rules-examples/**"
+      - ".github/workflows/eval.yml"
+  push:
+    branches: [main]
+    paths:
+      - "eval/**"
+      - "cadence-init/skills/pre-check/**"
+      - "cadence-init/skills/rule-config/**"
+      - "cadence-init/skills/mcp-configuration/**"
+      - "cadence-init/skills/project-rules-examples/**"
+      - ".github/workflows/eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-tier0:
+    name: Tier-0 零真实 CLI（单测 + mock 冒烟 + 离线重跑）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: eval 单元测试（unittest 全量）
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s eval/tests -t . -v
+
+      - name: mock 冒烟（阶段一四端全绿）
+        run: |
+          set -euo pipefail
+          python3 -m eval.runner.cli smoke
+
+      - name: 离线重跑（断言器回归防线）
+        run: |
+          set -euo pipefail
+          python3 -m eval.runner.cli rerun \
+            --transcripts eval/transcripts \
+            --golden eval/transcripts/golden-verdicts.json
+
+  eval-tier1-docker:
+    name: Tier-1 Docker 四端夜测（self-hosted，PR 触发）
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: [self-hosted, cadence-eval]
+    timeout-minutes: 60
+    steps:
+      - name: GitHub fetch 走国内镜像（进程级配置，不污染全局 gitconfig）
+        run: |
+          set -euo pipefail
+          printf '[url "https://ghfast.top/https://github.com/"]\n\tinsteadOf = https://github.com/\n' \
+            > "${RUNNER_TEMP}/git-mirror.rc"
+          echo "GIT_CONFIG_GLOBAL=${RUNNER_TEMP}/git-mirror.rc" >> "${GITHUB_ENV}"
+
+      - name: 检出代码（分支+全历史——浅克隆会让容器内 install.sh 的
+          fetch/ff 判定因历史不完整报 diverging；detached HEAD 同理不可用）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+          fetch-depth: 0
+
+      - name: 环境自检（Podman/镜像/Python3）
+        run: |
+          set -euo pipefail
+          podman --version
+          python3 --version
+          podman image exists localhost/cadence-test:latest \
+            || podman build -t cadence-test:latest eval/docker/
+
+      - name: 四端 Docker 夜测并发（全新容器×端：安装→四命令→探针→评分→销毁）
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          declare -A pids
+          for agent in codex pi kimi claude; do
+            PYTHONPATH=. python3 eval/docker/night.py "${agent}" P1,P3,P5 \
+              > "night-${agent}.log" 2>&1 &
+            pids["${agent}"]=$!
+          done
+          fail=0
+          for agent in codex pi kimi claude; do
+            if wait "${pids["${agent}"]}"; then
+              echo "::group::夜测 ${agent} ✔"
+              tail -3 "night-${agent}.log"
+              echo "::endgroup::"
+            else
+              fail=1
+              echo "::error::夜测 ${agent} 失败（尾部日志）"
+              echo "::group::夜测 ${agent} ✘"
+              tail -15 "night-${agent}.log"
+              echo "::endgroup::"
+            fi
+          done
+          exit "${fail}"
+
+      - name: 透视汇总（端×探针成功率/均时 + 基线降级检测）
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          PYTHONPATH=. python3 eval/docker/report_matrix.py --day all \
+            | tee matrix.md >> "${GITHUB_STEP_SUMMARY}" || true
+
+      - name: 透视表更新到 PR 评论（幂等——同表刷新不堆积）
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          {
+            echo "## 📊 Docker 夜测透视（run #${GITHUB_RUN_NUMBER} · $(TZ=Asia/Shanghai date '+%F %T')）"
+            cat matrix.md 2>/dev/null || echo "_本轮无透视数据（可能夜测步骤未产出）_"
+          } > pr-comment.md
+          CMT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.body | startswith("## 📊 Docker 夜测透视"))][0].id' 2>/dev/null || true)
+          if [ -n "${CMT_ID}" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${CMT_ID}" \
+              -F body=@pr-comment.md >/dev/null
+            echo "已更新 PR 透视评论 #${CMT_ID}"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@pr-comment.md --jq .html_url
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+
+      - name: 上传夜测结果（失败诊断用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-night-results
+          path: |
+            matrix.md
+            eval/results/docker-night/reports/nightly/
+          retention-days: 14
+          if-no-files-found: ignore

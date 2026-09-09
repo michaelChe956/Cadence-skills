@@ -1,0 +1,18 @@
+**1.** 未加载。
+
+（补充一句以免误导：我上下文中加载了 `CLAUDE.md` 的「OpenSpec 与 Superpowers 任务路由」章节，但其内容不带有任何 HTML 注释起始/结束标记，也不存在 AGENTS.md 的加载内容，因此严格意义上「从起始 HTML 注释到结束 HTML 注释」的 cadence-managed 区块在上下文中不存在，故不作逐字复述。）
+
+**2.** 当前上下文中实际生效的 `.claude/rules/` 文件：
+
+- `README.md`（索引说明）
+- `language.md`
+- `markdown-format.md`
+- `code-usage.md`
+- `document-storage.md`
+- `openspec-superpowers-workflow.md`
+- `code-reading.md`
+- `mcp-servers.md`
+- `serena-usage.md`
+- `playwright.md`
+
+**3.** 产物自动提交（design/plan/code）开关为**关闭**。

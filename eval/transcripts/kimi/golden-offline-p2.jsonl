@@ -1,0 +1,6 @@
+{"type":"metadata","protocol_version":"1.4","created_at":1782229467110}
+{"type":"config.update","modelAlias":"kimi-code/kimi-for-coding","time":"1782229467210"}
+{"type":"context.append_loop_event","event":{"type":"tool.call","toolCallId":"p2-1","name":"mcp__context7__get-library-docs","args":{"library":"react","topic":"server components"}}}
+{"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"p2-1","result":{"output":"官方文档摘要：使用 Server Components 获取服务端数据。"}}}
+{"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"根据官方文档，Server Components 可在服务端获取数据并减少客户端脚本。"}]}}
+{"type":"usage.record","model":"kimi-code/kimi-for-coding","time":"1782229470000"}

@@ -1,0 +1,18 @@
+[
+  {"path": "claude/golden-1.jsonl", "agent": "claude", "probe_id": "P1",
+   "expect_verdict": "PASS",
+   "settings_snapshot": {"permissions": {"deny": [
+     "@@cadence-managed:permission-gate:v1:start@@", "Bash(ls:*)", "Grep", "Glob",
+     "@@cadence-managed:permission-gate:v1:end@@"]}}},
+  {"path": "codex/golden-1.jsonl", "agent": "codex", "probe_id": "P1", "expect_verdict": "FAIL"},
+  {"path": "pi/golden-1.jsonl", "agent": "pi", "probe_id": "P1", "expect_verdict": "FAIL"},
+  {"path": "kimi/golden-1.jsonl", "agent": "kimi", "probe_id": "P1", "expect_verdict": "FAIL"},
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+   "path": "claude/golden-offline-p2.jsonl", "agent": "claude", "probe_id": "P2", "expect_verdict": "PASS"},
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+   "path": "codex/golden-offline-p2.jsonl", "agent": "codex", "probe_id": "P2", "expect_verdict": "PASS"},
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+   "path": "pi/golden-offline-p2.jsonl", "agent": "pi", "probe_id": "P2", "expect_verdict": "PASS"},
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+   "path": "kimi/golden-offline-p2.jsonl", "agent": "kimi", "probe_id": "P2", "expect_verdict": "PASS"}
+]

@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-03",
+  "fixture_settings_deny": [
+    "@@cadence-managed:permission-gate:v1:start@@",
+    "Grep",
+    "Glob",
+    "Bash(grep:*)",
+    "Bash(rg:*)",
+    "Bash(find:*)",
+    "❌ Grep、Glob、Bash、Bash、Bash 被规则限制（规则源：code-reading.md）。规则优先级链：1）codegraph；2）ast-grep outline；请按此顺序重试，勿再调用受限工具。确需例外：运行 rule-config --remove-permission-gate 撤销拦截，或 Bash 域以 CADENCE_BYPASS=1 前缀绕开。",
+    "@@cadence-managed:permission-gate:v1:end@@"
+  ],
+  "denial_events_raw": [
+    {
+      "tool_use_id": "call_675a6af077e14cf0862d0f2f",
+      "content": "Permission to use Bash with command grep -rn \"orders\" /tmp/eval-forensics6/tmp19fxhwc3/fixture/src has been denied."
+    }
+  ],
+  "is_error_calls": [
+    {
+      "index": 0,
+      "tool": "Bash"
+    }
+  ],
+  "returncode": 0,
+  "stderr": "Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects[\"/tmp/eval-forensics6/tmp19fxhwc3/fixture\"].hasTrustDialogAccepted: true in /tmp/eval-forensics6/tmp19fxhwc3/home/.claude/.claude.json.\n[claude-code:unrecognized_model] {\"model\":\"glm-5.3-flash[1M]\",\"query_source\":\"generate_session_title\"}\n[claude-code:unrecognized_model] {\"model\":\"glm-5.3\",\"query_source\":\"sdk\"}\n"
+}

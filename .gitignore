@@ -19,3 +19,12 @@ cadence/legacy/
 
 # MCP 图片识别可用性状态缓存（运行时产物，禁止入库）
 cadence/cache/mcp-availability/
+
+# CodeGraph 本地索引
+.codegraph/
+
+# eval 运行时产物（夜间报告/审计表，含业务路径与任务内容，不入 git）
+cadence/reports/eval/
+
+# Docker 夜测运行结果（运行产物，不入 git）
+eval/results/

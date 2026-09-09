@@ -109,3 +109,14 @@ jobs:
           test ! -e "$claude_root/$dangling_name"
           test ! -e "$codex_root/$dangling_name"
           printf '14×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
+
+      - name: 安装 rule-config 测试依赖
+        run: python3 -m pip install --user pytest pyyaml
+
+      - name: 安装 codegraph（rule-config e2e S8 依赖，缺失则 overall=degraded）
+        run: sudo npm install -g @colbymchenry/codegraph
+
+      - name: rule-config 单元测试（pytest）
+        run: |
+          set -euo pipefail
+          python3 -m pytest cadence-init/skills/rule-config/tests/test_rule_config.py -q

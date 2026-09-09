@@ -18,6 +18,7 @@
 | **计划文档** | **`cadence/plans/`** | **项目计划、开发计划、发布计划（🔴 强制路径）** |
 | **概要需求** | **`cadence/prds/`** | **brainstorm skill 生成的概要需求方案（🔴 新增）** |
 | 需求文档 | `cadence/docs/` | requirement skill 生成的详细需求文档 |
+| 部署/运维文档 | `cadence/docs/` | 上线部署说明、运维手册（日期_名称_vX.Y 命名同全局规范） |
 | 方案设计 | `cadence/designs/` | 技术方案、架构设计、API设计 |
 | **设计评审** | **`cadence/designs-reviews/`** | **设计评审文档（🔴 新增）** |
 | **分析报告** | **`cadence/analysis-docs/`** | **代码分析、调研报告、性能分析（🔴 路径调整）** |

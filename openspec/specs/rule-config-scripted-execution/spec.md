@@ -164,7 +164,7 @@
 - **AND** 处理 MUST 不经用户决策
 
 ### Requirement: JSON 报告与失败关闭
-脚本 MUST 输出结构化 JSON 报告，包含总体状态、模式、项目类型、各步骤状态与耗时、每资产动作明细、备份路径、冲突处理结果和失败恢复建议；报告 MUST 包含顶层 `warnings` 数组，元素含 `code`、`file`、`message` 与可选 `detail`，错误码限于契约枚举（`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`ENTRY_TOGGLE_MISMATCH`、`L0_DEDUP`）；warning MUST NOT 改变 `overall` 取值；dry-run 与 apply 产出的 warnings MUST 一致，no-interrupt 模式 MUST 同样产出。codegraph 步骤耗时 MUST 单独列出并标注不计入初始化预算；报告 MUST 包含规范字段 `hints.next: "mcp-configuration"`，Agent 汇报后 MUST 据此将配置结果交接给 mcp-configuration 流程。任一步骤失败 MUST 使报告停在失败项并附失败文件、原因与恢复建议；**唯一例外**是 codegraph 步骤中 `install`/`init`/`status` 子命令失败，可按 degraded 降级继续，但 S8 内的配置补写、备份与原子写失败仍 MUST 终止。PyYAML 缺失时脚本 MUST 以专属退出码退出并仍写出报告，供 Agent 以 uvx 兜底重跑。Agent MUST 依据报告如实汇报，缺少成功证据时不得声称完成。
+脚本 MUST 输出结构化 JSON 报告，包含总体状态、模式、项目类型、各步骤状态与耗时、每资产动作明细、备份路径、冲突处理结果和失败恢复建议；报告 MUST 包含顶层 `warnings` 数组，元素含 `code`、`file`、`message` 与可选 `detail`，错误码限于契约枚举（`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`ENTRY_TOGGLE_MISMATCH`、`L0_DEDUP`）；warning MUST NOT 改变 `overall` 取值；dry-run 与 apply 产出的 warnings MUST 一致，no-interrupt 模式 MUST 同样产出。codegraph 步骤耗时 MUST 单独列出并标注不计入初始化预算；报告 MUST 包含规范字段 `hints.next: "project-rules-examples"`，Agent 汇报后 MUST 据此将配置结果交接给 project-rules-examples 流程。任一步骤失败 MUST 使报告停在失败项并附失败文件、原因与恢复建议；**唯一例外**是 codegraph 步骤中 `install`/`init`/`status` 子命令失败，可按 degraded 降级继续，但 S8 内的配置补写、备份与原子写失败仍 MUST 终止。PyYAML 缺失时脚本 MUST 以专属退出码退出并仍写出报告，供 Agent 以 uvx 兜底重跑。Agent MUST 依据报告如实汇报，缺少成功证据时不得声称完成。
 
 #### Scenario: 报告区分幂等跳过与实际变更
 - **WHEN** 在已初始化项目上重复运行脚本
@@ -226,3 +226,22 @@ rule-config 的规则模板与 OpenSpec 配置模板 MUST 从脚本自身所在 
 - **WHEN** `HOME` 环境变量指向空目录（无任何插件或缓存布局）
 - **THEN** 脚本 MUST 仍能以 skill 目录模板正常完成全部流程
 - **AND** 不得因固定路径候选缺失而失败
+
+### Requirement: verify 子命令必须提供只读加载自检
+
+`rule-config --verify` MUST 以只读方式检查业务项目五项：①AGENTS.md/CLAUDE.md 的 L0 区块版本（v1/v2/v3/v4 及是否最新）；②受管规则文件与模板哈希比对；③权限投影区块与元数据重算结果比对；④codex-rules-inline 区块与源重算结果比对；⑤三层软链解析是否指向 Cadence 源。输出 MUST 结构化且可选 JSON；全部健康时退出码 MUST 为 0，存在漂移或过时项时 MUST 为 1。第 ③④ 项对从未生成过投影区块的项目 MUST 报"未生成"（提示运行 apply）而不报漂移。`--verify` MUST NOT 修改任何文件。
+
+#### Scenario: 过时版本被报告
+
+- **WHEN** 业务项目 L0 为 v3 且框架当前版本为 v4，运行 `--verify`
+- **THEN** 报告"L0 版本过时（当前 v3，最新 v4）"且退出码为 1
+
+#### Scenario: 全绿可编程判定
+
+- **WHEN** 各项检查全部通过
+- **THEN** 退出码为 0，JSON 输出可被 CI 直接消费为断言
+
+#### Scenario: 投影漂移被定位
+
+- **WHEN** apply 后修改任一规则源文件再运行 `--verify`
+- **THEN** 对应投影项报告漂移且退出码为 1

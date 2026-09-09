@@ -1,14 +1,13 @@
 ---
 name: mcp-configuration
 description: "配置 MCP：创建 .mcp.json 配置文件并交接 Codex 与 .gitignore 配置"
-disable-model-invocation: true
 ---
 
 # MCP 配置
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`，并引导查阅由 rule-config 生成的 `.claude/rules/mcp-servers.md` 受管规则。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`。该受管文件将由随后的 `rule-config` 生成，此时尚不存在，跳过本步骤继续。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 
 ## 参数模式
 
@@ -102,7 +101,7 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 你必须为以下每个项目创建任务并按顺序完成：
 
-1. **查阅受管 MCP 规则** — 引导用户阅读落地后的 `.claude/rules/mcp-servers.md`，不创建或修改该受管文件
+1. **查阅受管 MCP 规则** — 该受管文件将由随后的 `rule-config` 生成，此时尚不存在，跳过本步骤继续
 2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
 3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
 4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
@@ -110,16 +109,17 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
 7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
 8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 到 .gitignore；缓存条目精确一行且已存在时不重复追加
+9. **子代理 MCP 可见性验证探针** — 四端各派一个子代理"列出你的 MCP 工具名"；探针失败仅告警不阻断，并输出对应端的排查指引（见 7.6 节四端矩阵）
 
-**下一步**：将配置结果传递给 @project-rules-examples skill 创建个性化规则示例
+**下一步**：将配置结果传递给 @rule-config skill 创建项目规则和 OpenSpec 配置
 
 ## 处理流程
 
 ### 1. 受管 MCP 规则引用
 
-`.claude/rules/mcp-servers.md` 是由 `rule-config` 权威模板统一生成的受管文件。本技能不得创建、写入、追加、拼接或修改该文件；仅引导用户阅读落地后的 canonical 规则文件。
+`.claude/rules/mcp-servers.md` 将由随后执行的 `rule-config` 权威模板统一生成；本技能不得创建、写入、追加、拼接或修改该受管文件。当前顺序下该文件尚不存在，跳过查阅，以下配置说明仅供创建 `.mcp.json` 与 `.codex/config.toml` 时参考。
 
-> 以下为各 MCP 的配置说明，供创建 `.mcp.json` 与 `.codex/config.toml` 时参考。详细使用规则见 `.claude/rules/mcp-servers.md`。
+> 以下为各 MCP 的配置说明，供创建 `.mcp.json` 与 `.codex/config.toml` 时参考。规则文件由随后执行的 `rule-config` 生成，详细使用规则见生成后的 `.claude/rules/mcp-servers.md`。
 
 #### Time MCP
 
@@ -321,13 +321,12 @@ Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json
 
 **受管 MCP 规则必须保持单一来源**：`.claude/rules/mcp-servers.md` 的内容唯一由 `rule-config` 权威模板统一生成。本技能 **MUST NOT** 向该受管文件追加、拼接或修改任何规则内容。
 
-本技能职责仅限以下三点：
+本技能职责仅限以下两点：
 
 1. 创建并交接 `.mcp.json` 与 Codex `.codex/config.toml` 配置；
-2. 幂等地向 `.gitignore` 添加 `cadence/cache/mcp-availability/` 精确一行（已存在时不重复追加）；
-3. 引导用户阅读落地后的 `.claude/rules/mcp-servers.md` canonical 规则文件。
+2. 幂等地向 `.gitignore` 添加 `cadence/cache/mcp-availability/` 精确一行（已存在时不重复追加）。
 
-图片识别路由语义以落地后的 `.claude/rules/mcp-servers.md` 为准。
+图片识别路由语义以随后由 `rule-config` 生成的 `.claude/rules/mcp-servers.md` 为准。
 
 **无交互行为**：
 - 默认写入智普与 MiniMax 配置块，分别使用 `your_zhipu_api_key` 与 `your_minimax_api_key` 占位；
@@ -388,9 +387,9 @@ MiniMax API Key 获取地址：https://platform.minimaxi.com/subscribe/token-pla
 }
 ```
 
-#### CodeGraph MCP 配置（仅 Coding 项目 — 缺失时自动补齐）
+#### CodeGraph MCP 配置（仅 Coding 项目 — 由后续 rule-config S8 单点安装与注册）
 
-> **非 Coding 项目跳过此步骤**。将以下配置合并到 `.mcp.json` 的 `mcpServers` 中。CodeGraph 需要先通过 `/pre-check` 安装，并在项目根目录执行过 `codegraph init`。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
+> **非 Coding 项目跳过此步骤**。CodeGraph MCP 由随后的 rule-config S8 单点安装与注册。本 skill 不预写 codegraph 配置；仅在 rule-config 报告 degraded（codegraph 不可用）时，才参考本节手动兜底配置。
 
 ```json
 {
@@ -529,9 +528,9 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
 ````
 
-#### CodeGraph MCP 配置（仅 Coding 项目 — 缺失时自动补齐）
+#### CodeGraph MCP 配置（仅 Coding 项目 — 由后续 rule-config S8 单点安装与注册）
 
-> **非 Coding 项目跳过此步骤**。将以下配置合并到 `.codex/config.toml` 的 `[mcp_servers]` 中。CodeGraph 是 stdio MCP，可同步到 Codex。如果 `rule-config` 已完成 CodeGraph 配置，本步骤检测到已存在后直接跳过。
+> **非 Coding 项目跳过此步骤**。CodeGraph MCP 由随后的 rule-config S8 单点安装与注册。本 skill 不预写 codegraph 配置；仅在 rule-config 报告 degraded（codegraph 不可用）时，才参考本节手动兜底配置。
 
 ````toml
 [mcp_servers.codegraph]
@@ -602,6 +601,19 @@ env = { "MINIMAX_API_KEY" = "your_minimax_api_key", "MINIMAX_API_HOST" = "https:
 - `.gitignore` 无需新增条目：Kimi 复用的 `.mcp.json` 已在忽略清单内。
 
 **Kimi 侧验证方式**：Kimi Code 会话中输入 `/mcp` 查看 server 连接状态，输入 `/mcp-config` 交互式新增/编辑/删除 server。
+
+### 7.6 子代理 MCP 可达性（四端矩阵）
+
+主会话配置完成后，子代理（subagent/task 派生会话）的 MCP 可达性按端不同；配置与派发任务时必须按下表核对：
+
+| 端 | 子代理 MCP | 已知坑位与动作 |
+|---|---|---|
+| Claude Code | ✅ 默认继承 `.mcp.json` | 项目级 `.mcp.json` 曾有子代理不可见 bug（anthropics/claude-code#13898）、通配写法曾报错（#53865）——配置后必须执行下方验证探针；可选 `mcpServers` frontmatter 字符串引用 |
+| Codex | ✅ 默认全量继承 | 无需动作；需收窄时用 `[agents.<name>]` + agent TOML `mcp_servers = [...]` |
+| Kimi | ✅ 默认保留全部工具 | 自定义 agent 写 `tools` 时必须含 `mcp__<server>__*` 形式的 glob（裸 server 名匹配不到任何工具）；不写 `tools` 即全保留 |
+| pi | ⚠️ 不继承父会话临时挂载的 server；项目 `.mcp.json` 经全局 pi-mcp-adapter 随子会话自动加载（2026-09-02 naruto 实测子代理可用全部项目 MCP） | 无 `.mcp.json` 的仓库子代理无 MCP（已知限制），MCP 依赖任务留主会话或先配 `.mcp.json` |
+
+**子代理 MCP 可见性验证探针**（检查清单第 9 步）：向四端各派一个子代理执行"列出你的 MCP 工具名"。探针失败仅告警不阻断，按对应端坑位排查：Claude Code 子代理报 0 个工具 → 改用用户级配置或 `mcpServers` frontmatter 引用后重试；Kimi 报 0 个 → 检查 `tools` 是否漏写 `mcp__<server>__*` glob；pi 报 0 个 → 已知限制，按兜底链把任务交回主会话。当前运行时无法派发到某端时，按探针失败告警并继续。
 
 ### 8. 配置 .gitignore
 

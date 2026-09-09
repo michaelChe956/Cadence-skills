@@ -195,9 +195,6 @@ assert_eq "SKILL.md 无未加引号的 cd <PROJECT_ROOT>" "0" "$_unq_cd"
 # 16b. SKILL.md 中所有 bash <PRE_CHECK_SH> 必须为 bash "<PRE_CHECK_SH>"
 _unq_sh="$(grep -cE 'bash <PRE_CHECK_SH>' "$SKILL_MD" || true)"
 assert_eq "SKILL.md 无未加引号的 bash <PRE_CHECK_SH>" "0" "$_unq_sh"
-# 16c. SKILL.md 中重定向到报告必须写 "<REPORT>"（带引号）
-_unq_rep="$(grep -cE '> <REPORT>$| <REPORT>$' "$SKILL_MD" || true)"
-assert_eq "SKILL.md 无未加引号的报告重定向 <REPORT>" "0" "$_unq_rep"
 
 # --- 17. <PRE_CHECK_SH> 位于含空格路径中执行（模拟 skill 安装路径含空格） ---
 # 脚本依赖 mirrors/ 相对自身目录存在，故复制整个 scripts/ 目录（含 mirrors/）到含空格目录

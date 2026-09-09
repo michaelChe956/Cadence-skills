@@ -57,7 +57,6 @@
 
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
-| 1-5 | FM-01 frontmatter 含 `disable-model-invocation: true` 且瘦身（Task 9/10）后保留 | 两模式 | —（静态） | —（仓库内 SKILL.md） | sc-frontmatter-disable-model-invocation | SKILL.md frontmatter 解析出 `disable-model-invocation: true` |
 | 9-11 | OV-01 默认无人工交互策略，按自动检测结果与保守默认值继续 | 两模式 | references/merge-semantics.md 概述节 | fx-empty-project | it-apply-default-policy | 无参数 apply 全程无提问、按默认值完成且报告记录默认值 |
 | 13-21 | PM-01 三种调用形式；完整 token `no-interrupt` 与 `--no-interrupt` 等价，裸 token 一律规范化为 `--no-interrupt` 透传 | 两模式 | —（Agent 参数解析，design D3） | fx-empty-project | it-cli-bare-token | 以裸 token 调用与以 `--no-interrupt` 调用产生相同模式与相同报告 `mode` 字段 |
 | 23 | PM-01b（含 PM-01）token 必须是完整 token，子串不触发 | 两模式 | —（Agent 参数解析） | fx-empty-project | it-cli-token-substring | `xno-interruptx` 等子串不进入 no-interrupt 模式 |
@@ -128,7 +127,7 @@
 | SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
 |----------------|----------|----------|----------------------------|---------|---------|----------|
 | 99-109 | CK-01~11 十一项检查清单按顺序完成，逐项对应 S1~S11 | 两模式 | step_* 全流水线 | fx-empty-project | it-apply-step-order | 报告步骤顺序为 S1→S8（含 openspec_config）且逐步独立状态；前步失败后续不执行 |
-| 111 | NX-01 下一步交接：配置结果传递给 mcp-configuration | 两模式 | —（报告 `hints.next`） | fx-empty-project | it-apply-hints-next | 成功报告含 `hints.next: "mcp-configuration"` |
+| 111 | NX-01 下一步交接：配置结果传递给 project-rules-examples | 两模式 | —（报告 `hints.next`） | fx-empty-project | it-apply-hints-next | 成功报告含 `hints.next: "project-rules-examples"` |
 
 ### 2.8 处理流程 S1：项目检测与模板定位
 
@@ -353,7 +352,7 @@
 | —（D1） | XC-06 PyYAML 缺失以退出码 77 退出且报告照常写出 | 两模式 | merge_yaml | fx-no-pyyaml | ut-merge_yaml-missing-dependency | 退出码恰为 77；stderr 说明；报告含 hints |
 | —（D3） | XC-07 横切原子写 `os.replace()` 与 sha256 工具 | 两模式 | atomic_write / sha256_file | fx-empty-project | ut-atomic_write-replace / ut-sha256_file-basic | 写入经原子替换；sha256 结果与系统工具一致（含 sha256sum/shasum 回退环境） |
 | —（L0 v2） | XC-08 产物路径覆盖表在 kernel v2、`document-storage.md` 与 `ARTIFACT_PATH_OVERRIDE_TABLE` 三源逐字一致；design/spec→`cadence/designs/`、plan→`cadence/plans/`，OpenSpec 仍在 `openspec/` | 两模式 | `ARTIFACT_PATH_OVERRIDE_TABLE` / L0 v2 kernel / document-storage.md | —（三份仓库文档） | TestArtifactPathOverrides | 三份表逐字一致；kernel 为 v2；不改 OpenSpec 路径 |
-| —（S4） | XC-09 顶层 `warnings` 始终为数组且只承载诊断，不影响 `overall`；脚本 code 仅为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP` | 两模式 | build_report / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestComposeEntryWarnings / TestNormalizeMandatoryRules / TestL0V2Migration / TestCommitToggle | dry-run、apply、no-interrupt 均有字段；诊断不把 `overall` 从 ok 降为 fail |
+| —（S4） | XC-09 顶层 `warnings` 始终为数组且只承载诊断，不影响 `overall`；脚本 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`、`s9-settings-unsafe`（settings.json 无法安全合并时保守跳过权限写入）、`s9-allow-conflict`（用户显式 allow 与受管 deny 冲突时保守跳过该 deny） | 两模式 | build_report / `_compose_entry` / step_entry_files | fx-entry-missing-summary | TestComposeEntryWarnings / TestNormalizeMandatoryRules / TestL0V2Migration / TestCommitToggle | dry-run、apply、no-interrupt 均有字段；诊断不把 `overall` 从 ok 降为 fail |
 | —（S4） | XC-10 产物自动提交开关：缺失默认关闭，合法用户值保留，非法值保留原文并报 `INVALID_TOGGLE`；首个既有项目配置章节内唯一 | 两模式 | `_ensure_commit_toggle` | fx-empty-project / fx-entry-user-techstack | TestCommitToggle / TestComposeEntryWarnings | 不创建重复 `## 项目配置`；既有用户内容保留；开关归并后幂等 |
 
 ## 3. 自审覆盖度（Step 3）
@@ -390,7 +389,6 @@
 | 9 | 项目类型判定两模式规则（codex 五轮重构，原「检测矛盾」已删） | it-s1-no-interrupt-ignores-cli / it-s1-no-interrupt-detect-coding / it-s1-normal-cli-promotes / it-s1-normal-detect-coding / it-s1-normal-no-cli-noncoding；四个 `*-typed-code-reading` 下游一致性用例 | ✅ final `project_type` 同时决定 S8 与 code-reading 来源和规则 7 摘要 |
 | 10 | 意图参数透传 | it-intent-params（XC-02，四参数） | ✅ |
 | 11 | 裸 token | sc-bare-token（PM-01） | ✅ |
-| 12 | disable-model-invocation | sc-disable-model-invocation（FM-01） | ✅ |
 | 13 | L1 独立分支 | ut-step_s3-l1-red-line（S1d-03，SKILL 183 行） | ✅ |
 | 14 | 基础入口文本 | it-entry-base-created（L0-P5/L0-01，含基础模板全文断言） | ✅ |
 | 15 | dry-run 零写入 | it-dryrun-zero-write（XC-01） | ✅ |

@@ -12,13 +12,26 @@ Cadence Skills 会根据任务意图自动触发，也可以用裸 Skill 名手�
 
 1. 使用 `/pre-check` 检查基础工具和环境。
 2. 使用 `/project-analysis` 了解项目结构与技术栈。
-3. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口。
-4. 使用 `/mcp-configuration` 配置项目 MCP，按需使用 `/project-rules-examples` 补齐个性化规则模板。
+3. 使用 `/mcp-configuration` 配置项目 MCP（必须在 `rule-config` 之前——后者的权限区块依赖 `.mcp.json` 已就位）。
+4. 使用 `/rule-config` 配置项目规则、`cadence/` 产物目录和 OpenSpec 协作入口；按需使用 `/project-rules-examples` 补齐个性化规则模板。
 5. 为存量项目填写 Schema 4.0 输入后，使用 `/knowledge-base-bootstrap` 初始化 KnowledgeBase。
 6. 在需求、设计、计划、编码、测试、评审或调试前，使用 `/knowledge-base-context` 获取最小任务上下文。
 7. 项目事实发生变化时，准备完整变更包并使用 `/knowledge-base-update` 增量更新知识库。
 
 KnowledgeBase Skills 只在目标项目授权范围内读取证据；它们不会替代业务代码、数据库迁移、部署或发布流程。
+
+
+## 夜测验证状态
+
+CI 之外用 Docker 容器化夜测做端到端验证：每端一个全新容器（安装 CLI → 认证 → install.sh → 四命令 → 探针 → 评分落盘 → 销毁）。首夜基线（2026-09-08/09，每端 2 轮）：
+
+| 探针 | claude | codex | pi | kimi |
+|---|---|---|---|---|
+| P1 检索优先级 | 2/2 · 141s | 2/2 · 116s | 2/2 · 78s | 2/2 · 141s |
+| P3 时序合规 | 2/2 · 137s | 2/2 · 89s | 2/2 · 85s | 2/2 · 260s |
+| P5 产物目录 | 2/2 · 282s | 2/2 · 238s | 2/2 · 162s | 2/2 · 190s |
+
+四端 24/24 全 PASS，安装产物一致（skills=28 / superpowers=14 / rules=7）。透视脚本：`python3 eval/docker/report_matrix.py`。
 
 ## 安装前提
 
@@ -148,8 +161,8 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 
 1. `/pre-check`：检查并补齐 npx、uvx、ast-grep、codegraph、OpenSpec 及相关工具。
 2. `/project-analysis`：分析项目结构、技术栈和依赖。
-3. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
-4. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
+3. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
+4. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
 5. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板。
 6. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
 

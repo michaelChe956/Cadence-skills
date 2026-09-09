@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# CDPATH= 前缀空格为 POSIX 惯用法（禁用 CDPATH 干扰 cd）——SC1007 误报禁用
+# shellcheck disable=SC1007
 #
 # verify-managed-lifecycle.sh — rule-config 脚本 CLI 集成 harness（Task 3 改造）
 #
@@ -176,7 +178,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v3:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v3:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v4:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v4:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -401,7 +403,6 @@ assert_code_reading_and_rule7_for_kind() {  # <project-root> coding|non-coding
 assert_openspec_merged_fields() {  # assert_openspec_merged_fields <config-path> <expected-substring...>
   local config="$1"
   shift
-  local ok=1
   python3 - "$config" "$@" <<'PY'
 import pathlib
 import sys
@@ -654,10 +655,10 @@ before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -1422,7 +1423,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1462,8 +1463,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v3:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass
@@ -1966,14 +1967,7 @@ fi
 # D. 静态契约检查 sc-*（全部可执行，record_result 五参逐字调用）
 # ============================================================================
 
-# D1. frontmatter disable-model-invocation: true（FM-01）
-if grep -q 'disable-model-invocation: true' "$SKILL_MD"; then
-  record_result sc-disable-model-invocation 0 present present pass
-else
-  record_result sc-disable-model-invocation 1 present missing fail
-fi
-
-# D2. 裸 token 必须出现完整 token 规范化说明（PM-01）
+# D1. 裸 token 必须出现完整 token 规范化说明（PM-01）
 if grep -qE 'no-interrupt.*--no-interrupt|--no-interrupt.*no-interrupt' "$SKILL_MD"; then
   record_result sc-bare-token 0 present present pass
 else
@@ -2020,12 +2014,17 @@ for f in language.md document-storage.md markdown-format.md mcp-servers.md playw
     framework_rules_sync_status=1
   fi
 done
-if ! diff -q "$CODE_READING_SOURCE_NONCODING" \
-           "$REPO_ROOT/.claude/rules/code-reading.md" >/dev/null 2>&1; then
+# 按根副本实际落地的项目类型选择比对源（2026-09-02：本仓库经检测为 coding；
+# 判定依据=根副本 code-reading.md 是否含 coding 变体标记，保持"零漂移"不变量）
+if grep -q "CodeGraph" "$REPO_ROOT/.claude/rules/code-reading.md" 2>/dev/null; then
+  _cr_src="$CODE_READING_SOURCE_CODING"; _cu_src="$CODE_USAGE_SOURCE_CODING"
+else
+  _cr_src="$CODE_READING_SOURCE_NONCODING"; _cu_src="$CODE_USAGE_SOURCE_NONCODING"
+fi
+if ! diff -q "$_cr_src" "$REPO_ROOT/.claude/rules/code-reading.md" >/dev/null 2>&1; then
   framework_rules_sync_status=1
 fi
-if ! diff -q "$CODE_USAGE_SOURCE_NONCODING" \
-           "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
+if ! diff -q "$_cu_src" "$REPO_ROOT/.claude/rules/code-usage.md" >/dev/null 2>&1; then
   framework_rules_sync_status=1
 fi
 if [ "$framework_rules_sync_status" -eq 0 ]; then

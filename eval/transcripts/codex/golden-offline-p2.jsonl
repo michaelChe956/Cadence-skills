@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"model":"gpt-5.4"},"timestamp":"2026-09-02T12:00:00Z"}
+{"type":"turn_context","payload":{"model":"gpt-5.4"},"timestamp":"2026-09-02T12:00:00.100Z"}
+{"type":"response_item","payload":{"type":"function_call","name":"mcp__context7__get-library-docs","arguments":"{\"library\":\"react\",\"topic\":\"server components\"}","call_id":"p2-1"},"timestamp":"2026-09-02T12:00:01Z"}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"p2-1","output":"{\"output\":\"官方文档摘要：使用 Server Components 获取服务端数据。\",\"error\":null}"},"timestamp":"2026-09-02T12:00:02Z"}
+{"type":"event_msg","payload":{"type":"agent_message","message":"根据官方文档，Server Components 可在服务端获取数据并减少客户端脚本。"},"timestamp":"2026-09-02T12:00:03Z"}

@@ -161,7 +161,7 @@ L0 迁移不变量：最终只保留一个 v2 区块；混合版本标记仅在�
 | SM-02 | `## 强制规则` 章节 | 章节缺失或摘要引用缺失 | 创建强制规则章节；在 L0 之后（有 L0 时）落位，并按规则文件 marker 补齐缺失摘要 | 同普通模式 | 无 | 报告章节创建/摘要补齐位置；项目配置开关不重复创建 H2 | `TestNormalizeMandatoryRules::test_create_section_when_missing` / `ut-ensure_summary-missing-rule2-rule6` |
 | SM-03 | 强制规则章节中的退役引用 | 命中 `RETIRED_RULE_FILES`（当前为 `serena-usage.md`） | 仅删除该退役规则引用块；仅对 `serena-usage.md` 生效 | 同普通模式 | 无 | 报告正文不再保留退役引用；不得误删未列入退役清单的用户内容 | `TestNormalizeMandatoryRules::test_serena_removed` / `ut-norm-retired` / `ut-norm-retired-empty` |
 | SM-04 | 强制规则章节 | 规则编号、规则 6 两类旧文案或规则 5 标题与权威文本不一致 | 按权威 1~7 顺序重排重编号；替换规则 6 两类旧文案；规则 5 标题统一为 `MCP Server 使用规则` | 同普通模式 | 无 | 报告合成结果；权威条目顺序、编号、标题和入口文案可重复收敛 | `TestCanonicalRules` / `TestNormalizeMandatoryRules::test_renumber_1_to_9` / `ut-norm-rule6-old` / `ut-norm-wording` |
-| SM-05 | 强制规则章节与入口用户内容 | 存在用户自定义 H3/行块、重复 `## 强制规则` 或章节外孤立规则 6 | 保留无法识别的用户内容并置于权威条目之后；只规范化首个章节，报告 warnings | 同普通模式 | 无 | 顶层 `warnings` 契约固定包含脚本实际五个码：`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`；warnings 不影响 `overall`，dry-run/apply/no-interrupt 三态字段一致 | `TestComposeEntryWarnings` / `ut-norm-user-h3` / `ut-norm-orphan-rule6` / `ut-norm-dup-h2` / `ut-compose-warnings` / `ut-s4-warnings` |
+| SM-05 | 强制规则章节与入口用户内容 | 存在用户自定义 H3/行块、重复 `## 强制规则` 或章节外孤立规则 6 | 保留无法识别的用户内容并置于权威条目之后；只规范化首个章节，报告 warnings | 同普通模式 | 无 | 顶层 `warnings` 契约固定包含脚本实际七个码：`USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`、`s9-settings-unsafe`（settings.json 无法安全合并时保守跳过权限写入）、`s9-allow-conflict`（用户显式 allow 与受管 deny 冲突时保守跳过该 deny）；warnings 不影响 `overall`，dry-run/apply/no-interrupt 三态字段一致 | `TestComposeEntryWarnings` / `ut-norm-user-h3` / `ut-norm-orphan-rule6` / `ut-norm-dup-h2` / `ut-compose-warnings` / `ut-s4-warnings` |
 
 ## 7. 可选规则增量（OP-01~04）
 
@@ -256,7 +256,7 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 
 **成功完成报告**（OS-B2，SKILL 675 行）：逐项列出新增 context 完整行、按 artifact 分组的合并规则、无效键处理、所有备份路径、结构冲突字段路径与实际类型、解析或内容冲突、候选结构预检结果、原子发布结果；无新增内容时明确报告"幂等跳过"。（instructions 验证已废止，见 OS-N10；不再报告失败 artifact 或四类 instructions 命令结果。）
 
-**顶层 `warnings` 契约**：报告无论 dry-run、普通 apply 或 no-interrupt apply 都必须有顶层数组 `warnings`；它只承载诊断，不改变 `overall` 的 `ok` / `degraded` / `fail` 判定。脚本实际枚举五个 code：`USER_LINES_KEPT`（用户规则块保留）、`DUPLICATE_H2`（仅处理首个同名 H2）、`ORPHAN_RULE6`（章节外孤立规则 6）、`INVALID_TOGGLE`（非法开关值保留原文）与 `L0_DEDUP`（L0 重复/孤立当前标记归并）。`ENTRY_TOGGLE_MISMATCH` 是 Agent 读取双入口开关时的不一致告警，不由脚本写入此数组。
+**顶层 `warnings` 契约**：报告无论 dry-run、普通 apply 或 no-interrupt apply 都必须有顶层数组 `warnings`；它只承载诊断，不改变 `overall` 的 `ok` / `degraded` / `fail` 判定。脚本实际枚举七个 code：`USER_LINES_KEPT`（用户规则块保留）、`DUPLICATE_H2`（仅处理首个同名 H2）、`ORPHAN_RULE6`（章节外孤立规则 6）、`INVALID_TOGGLE`（非法开关值保留原文）、`L0_DEDUP`（L0 重复/孤立当前标记归并）、`s9-settings-unsafe`（settings.json 无法安全合并时保守跳过权限写入）与 `s9-allow-conflict`（用户显式 allow 与受管 deny 冲突时保守跳过该 deny）。`ENTRY_TOGGLE_MISMATCH` 是 Agent 读取双入口开关时的不一致告警，不由脚本写入此数组。
 
 **产物自动提交开关**：`_ensure_commit_toggle` 在首个既有 `## 项目配置` 章节末尾确保唯一 `- **产物自动提交（design/plan/code）**：关闭`；没有该章节时创建它。章节仅维护该开关，既有技术栈等用户内容逐字保留且不由脚本检测或写入。合法用户值 `开启` / `关闭` 原样保留，非法值保留原文并发出 `INVALID_TOGGLE`。写入双入口一致的开关。读取行为由 Agent 层执行：CLAUDE.md 优先、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`。
 
