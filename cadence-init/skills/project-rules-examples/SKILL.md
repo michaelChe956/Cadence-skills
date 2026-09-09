@@ -103,15 +103,30 @@ description: "创建项目个性化规则模板：需求文档模板、设计文
 
 1. **创建 README.md** — 创建项目个性化规则说明文档
 2. **创建 requirement-template.md** — 需求文档模板
-3. **创建 design-template.md** — 设计文档模板
+3. **创建 design-template.md** — 设计文档模板（含项目事实定制）
 4. **创建 coding-standards.md** — 代码开发规范
 5. **创建 test-standards.md** — 测试规范
 6. **添加 CLAUDE.md 规则** — 在项目 CLAUDE.md 中添加个性化规则引用
 7. **添加 AGENTS.md 规则** — 在项目 AGENTS.md 中添加个性化规则引用
 
+**no-interrupt 模式必须先执行第 0 步**（`apply.sh` 快速路径）：机械铺设由脚本完成后，仅对脚本标记为 `needs-merge` 的项目按下文流程做语义合并，并对 `design-template.md` 做项目事实定制；禁止逐字重新输出脚本已铺设的模板内容。普通模式不使用脚本，按下文流程逐步执行。
+
 **下一步**：返回结果给 @cadencing skill 完成初始化
 
 ## 处理流程
+
+### 0. no-interrupt 快速路径（apply.sh）
+
+执行 `bash <skill 目录>/scripts/apply.sh --project-root <项目根>`，按输出的四态分派：
+
+| 脚本输出 | 含义 | 你的动作 |
+|----------|------|----------|
+| `created <路径>` | 目标原不存在，脚本已复制模板/创建引用 | 该步骤视为完成，不重写 |
+| `pristine <路径>` | 目标与模板逐字节一致（从未被用户改过） | 该步骤视为完成 |
+| `skipped CLAUDE.md/AGENTS.md` | 已含等价引用 | 该步骤视为完成 |
+| `needs-merge <路径>` | 目标存在且与模板不同——**用户内容，脚本未触碰** | 按下文对应步骤做"模板权威合并" |
+
+无论脚本结果如何，`design-template.md` 都必须完成"项目事实定制"（见第 3 步生成要求）；脚本 `created` 时定制在底稿上进行，`needs-merge` 时先按合并规则处理再定制。
 
 ### 1. 创建 README.md
 
