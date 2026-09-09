@@ -64,11 +64,12 @@ jobs:
             > "${RUNNER_TEMP}/git-mirror.rc"
           echo "GIT_CONFIG_GLOBAL=${RUNNER_TEMP}/git-mirror.rc" >> "${GITHUB_ENV}"
 
-      - name: 检出代码（分支而非 merge commit——detached HEAD 会让
-          install.sh 的 update 路径与 set-upstream 失败）
+      - name: 检出代码（分支+全历史——浅克隆会让容器内 install.sh 的
+          fetch/ff 判定因历史不完整报 diverging；detached HEAD 同理不可用）
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref }}
+          fetch-depth: 0
 
       - name: 环境自检（Podman/镜像/Python3）
         run: |
