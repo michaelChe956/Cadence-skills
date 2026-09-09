@@ -160,7 +160,8 @@ def _rebuild_codex_toml(c: Container) -> None:
     for name, srv in servers.items():
         if not isinstance(srv, dict):
             continue
-        lines = [f"[mcp_servers.{name}]"]
+        # 表头 key 用 quoted 形式：bare key 含点号会被 TOML 静默解析为嵌套表
+        lines = [f"[mcp_servers.{_toml_val(name)}]"]
         if "command" in srv:
             lines.append(f"command = {_toml_val(srv['command'])}")
             if srv.get("args"):

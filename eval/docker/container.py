@@ -125,10 +125,19 @@ def create_test_container(agent: str, session_id: str) -> Container:
     c.exec("mkdir -p /home/tester/.agents")
     c.copy_in(str(REPO_ROOT), "/home/tester/.agents/Cadence-skills")
     # 工作树当前分支可能无 origin 跟踪（本地特性分支），install.sh 的 update
-    # 路径要求 tracking 分支否则 set -e 提前退出、技能层完全不装（skills=0）
-    c.exec("git -C /home/tester/.agents/Cadence-skills branch "
-           "--set-upstream-to=origin/main", timeout=30)
-    c.exec("bash /home/tester/.agents/Cadence-skills/install.sh", timeout=120)
+    # 路径要求 tracking 分支否则 set -e 提前退出、技能层完全不装（skills=0）。
+    # 失败必须显式报错——静默失败会以产物全空的形式在夜测末端误报，定位成本高。
+    r = c.exec("git -C /home/tester/.agents/Cadence-skills branch "
+               "--set-upstream-to=origin/main", timeout=30)
+    if r["rc"] != 0:
+        raise RuntimeError(
+            f"[container] set-upstream 失败 rc={r['rc']}: {r['stderr'][-200:]}")
+    r = c.exec("bash /home/tester/.agents/Cadence-skills/install.sh",
+               timeout=120)
+    if r["rc"] != 0:
+        raise RuntimeError(
+            f"[container] install.sh 失败 rc={r['rc']}: "
+            f"{(r['stdout'] + r['stderr'])[-400:]}")
 
     return c
 

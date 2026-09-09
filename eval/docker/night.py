@@ -1,5 +1,6 @@
 """Docker 容器化夜测——完整 runner：容器→安装→探针→评分→报告。"""
 import json
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -85,7 +86,8 @@ def run_docker_night(agent: str, probe_ids: list,
     7. 销毁容器
     """
     if not session_id:
-        session_id = str(int(time.time()))
+        # 秒级时间戳 + pid：同端同秒并发/手抖重跑时容器名与 run_id 互不碰撞
+        session_id = f"{int(time.time())}-{os.getpid()}"
 
     print(f"[docker-night] agent={agent} session={session_id}")
     print(f"[docker-night] probes: {probe_ids}")

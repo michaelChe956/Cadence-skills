@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# CDPATH= 前缀空格为 POSIX 惯用法（禁用 CDPATH 干扰 cd）——SC1007 误报禁用
+# shellcheck disable=SC1007
 #
 # verify-managed-lifecycle.sh — rule-config 脚本 CLI 集成 harness（Task 3 改造）
 #
@@ -401,7 +403,6 @@ assert_code_reading_and_rule7_for_kind() {  # <project-root> coding|non-coding
 assert_openspec_merged_fields() {  # assert_openspec_merged_fields <config-path> <expected-substring...>
   local config="$1"
   shift
-  local ok=1
   python3 - "$config" "$@" <<'PY'
 import pathlib
 import sys
