@@ -6,9 +6,10 @@ from eval.probes import definitions as prb
 
 class TestProbes(unittest.TestCase):
     def test_eight_probes_declared(self):
-        """ut-prb-eight：8 探针齐备且 id 连续。"""
+        """ut-prb-eight：P 组 8 探针齐备；R 组 2 探针另册（docker 通道规则体系探针）。"""
         self.assertEqual(sorted(prb.PROBES), ["P1", "P2", "P3", "P4",
-                                              "P5", "P6", "P7", "P8"])
+                                              "P5", "P6", "P7", "P8",
+                                              "R1", "R2"])
 
     def test_every_probe_binds_clauses(self):
         """ut-prb-clauses：每探针绑定条款 ID；cadence-tools 条款与 p1 元数据同源命名。"""
@@ -41,9 +42,14 @@ class TestProbes(unittest.TestCase):
         self.assertEqual(prb.PROBES["P7"]["needs_fake_mcp"], ["image"])
 
     def test_prompt_variants_rotation(self):
-        """ut-prb-variants：每探针 ≥2 题库变体；夜间轮换确定性且覆盖全部变体。"""
-        for pid, probe in prb.PROBES.items():
-            self.assertGreaterEqual(len(probe["prompt_variants"]), 2, pid)
+        """ut-prb-variants：P 组每探针 ≥2 题库变体；夜间轮换确定性且覆盖全部变体。
+
+        R 组本期单变体（首变体内联，变体轮换不属本期），不适用轮换要求。
+        """
+        for pid in prb.PROBES:
+            if pid in prb.R_GROUP:
+                continue
+            self.assertGreaterEqual(len(prb.PROBES[pid]["prompt_variants"]), 2, pid)
         seen = {prb.variant_for_night("P1", n) for n in range(4)}
         self.assertEqual(seen, {0, 1})
 

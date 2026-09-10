@@ -144,6 +144,12 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
     if kind == "mcp_answer":
         seeds = spec.get("must_contain", [])
         return all(s in traj.final_text for s in seeds)
+    if kind == "text_contains":
+        # 最终输出文本（traj 最终 assistant 消息）必须包含锚点子串
+        return spec["pattern"] in traj.final_text
+    if kind == "text_lacks":
+        # 最终输出文本不得包含禁止子串
+        return spec["pattern"] not in traj.final_text
     if kind == "info_source_isolated":
         return all(tool_absent(traj, re.escape(f)) for f in spec.get("forbidden", []))
     if kind == "snapshot_unchanged":

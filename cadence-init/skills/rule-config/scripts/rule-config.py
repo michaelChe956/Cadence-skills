@@ -78,6 +78,7 @@ except ImportError:
 
 # step name 约定（Task 3 it-budget 断言 s8_codegraph elapsed_ms 对齐）。
 STEP_DETECT = "s1_detect"
+STEP_OMP_BRIDGE = "s11_omp_bridge"
 STEP_TEMPLATES = "s2_locate_templates"
 STEP_RULES_FILES = "s3_rules_files"
 STEP_ENTRY_FILES = "s4_entry_files"
@@ -100,6 +101,7 @@ STEP_ORDER = (
     STEP_CODEGRAPH,
     STEP_PERMISSION_GATE,
     STEP_CODEX_INLINE,
+    STEP_OMP_BRIDGE,
 )
 
 # ---------------------------------------------------------------------------
@@ -110,8 +112,8 @@ STEP_ORDER = (
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
 # 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
 # 漏检历史区块。
-L0_CURRENT_VERSION = "v4"
-L0_OLD_VERSIONS = ["v3", "v2", "v1", "v0"]
+L0_CURRENT_VERSION = "v5"
+L0_OLD_VERSIONS = ["v4", "v3", "v2", "v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
 
@@ -262,6 +264,7 @@ except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模
 # L0 v1/v2 历史规范源：只有与该文本逐字一致的完整旧版区块才可确定性升级。
 # v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
 L0_OLD_SOURCES = {
+    "v4": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v4.md"),
     "v3": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v3.md"),
     "v2": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v2.md"),
     "v1": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v1.md"),
@@ -404,6 +407,7 @@ PRUNE_DIRS = [
     ".codex",
     ".pi",
     ".kimi-code",
+    ".omp",
     ".codegraph",
     "cadence-init",
     "Cadence-skills",
@@ -895,6 +899,23 @@ CODEX_INLINE_END = (
     f"<!-- cadence-managed:codex-rules-inline:{CODEX_INLINE_VERSION}:end -->"
 )
 CODEX_INLINE_BUDGET = 60
+
+
+# ---------------------------------------------------------------------------
+# S11 omp 桥：.agents/rules 文件级软链 + .omp/AGENTS.md 受管活引用
+# （omp-client-support；机制实测 2026-09-09：omp 仅跟随 .agents/rules 兼容层
+#   的文件级软链；目录级软链与 .omp/rules 原生软链均不发现）
+# ---------------------------------------------------------------------------
+
+OMP_CONTEXT_MARKER = "<!-- cadence-managed:omp-context:v1 -->"
+OMP_AGENTS_MD_BODY = (
+    f"{OMP_CONTEXT_MARKER}\n"
+    "@../.claude/CLAUDE.md\n"
+    "@../AGENTS.md\n"
+)
+OMP_BRIDGE_EXCLUDE = {"README.md"}
+OMP_WARNING_MATERIALIZED = "OMP_BRIDGE_MATERIALIZED"
+OMP_WARNING_USER_FILE = "OMP_BRIDGE_USER_FILE_KEPT"
 
 # 摘要清单：无固定清单——枚举 rules_dir 落地结果（全部 *.md 按名排序逐条
 # 一行摘要）。与 CANONICAL_RULES 及 S3 落地结果联动：S3 落了什么、新增了
@@ -2214,6 +2235,37 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     })
     s10["elapsed_ms"] = int((time.monotonic() - t_s10) * 1000)
     plan["steps"][STEP_CODEX_INLINE] = s10
+
+    # --- S11 omp 桥：.agents/rules 软链 + .omp/AGENTS.md 受管活引用（新增） ---
+    s11 = _step_skeleton(STEP_OMP_BRIDGE)
+    t_s11 = time.monotonic()
+    s11["status"] = "ok"
+    bridge_actions, bridge_warns = _bridge_actions(
+        rules_dir, root / ".agents" / "rules")
+    for op, name in bridge_actions:
+        s11["assets"].append({
+            "path": f".agents/rules/{name}",
+            "action": op,
+            "conflict": "user-file" if op == "conflict-backup" else None,
+            # 归档由 step 内写前自带；软链/物化本身无屏障备份
+            "backup_needed": False,
+        })
+    if bridge_warns:
+        plan.setdefault("warnings_preview", []).extend(bridge_warns)
+    omp_md_path = root / ".omp" / "AGENTS.md"
+    omp_existing = _safe_read(omp_md_path)
+    s11["assets"].append({
+        "path": ".omp/AGENTS.md",
+        "action": ("unchanged" if omp_existing == OMP_AGENTS_MD_BODY
+                   else ("update" if omp_existing is not None else "create")),
+        "conflict": ("legacy-content" if omp_existing not in
+                     (None, OMP_AGENTS_MD_BODY) else None),
+        # 旧内容替换前备份归档（cadence/legacy），见 step_s11_omp_bridge
+        "backup_needed": omp_existing not in (None, OMP_AGENTS_MD_BODY),
+        "preview": OMP_AGENTS_MD_BODY,
+    })
+    s11["elapsed_ms"] = int((time.monotonic() - t_s11) * 1000)
+    plan["steps"][STEP_OMP_BRIDGE] = s11
 
     return plan
 
@@ -3897,6 +3949,111 @@ def step_s10_codex_inline(root: Path, intents: Intents, plan: dict,
                                 "branch": "codex-inline-idempotent"})
     _record_step_actions(report, STEP_CODEX_INLINE, actions_log)
 
+def _bridge_actions(rules_dir: Path, bridge_dir: Path) -> tuple:
+    """计算 omp 桥动作与 warnings（纯函数，dry-run/apply 共用）。
+
+    源 = .claude/rules/*.md 减 OMP_BRIDGE_EXCLUDE。动作 op：
+    create（缺失）/ repair（既有软链断链或指向非规则源）/ remove（孤儿软链，
+    指向 .claude/rules/ 但源已退役）/ conflict-backup（与规则同名的非软链
+    普通文件：归档后替换）。repair 仅针对软链；普通文件绝不无备份删除。
+    warns 为仓内 warnings dict 形态（code/message/detail）。
+    """
+    sources = ({p.name for p in rules_dir.glob("*.md")}
+               - OMP_BRIDGE_EXCLUDE) if rules_dir.is_dir() else set()
+    actions: list = []
+    warns: list = []
+    if not bridge_dir.exists():
+        return [("create", n) for n in sorted(sources)], warns
+    entries = {p.name: p for p in bridge_dir.iterdir()}
+    for name in sorted(sources):
+        p = entries.get(name)
+        want = f"../../.claude/rules/{name}"
+        if p is None:
+            actions.append(("create", name))
+        elif p.is_symlink():
+            if os.readlink(p) != want:
+                actions.append(("repair", name))
+        else:
+            actions.append(("conflict-backup", name))
+            warns.append({
+                "code": OMP_WARNING_USER_FILE,
+                "message": ".agents/rules/ 下与规则同名的普通文件将归档后替换",
+                "detail": {"path": f".agents/rules/{name}"},
+            })
+    for name, p in sorted(entries.items()):
+        if name in sources:
+            continue
+        if p.is_symlink() and ".claude/rules/" in os.readlink(p):
+            actions.append(("remove", name))
+            continue
+        warns.append({
+            "code": OMP_WARNING_USER_FILE,
+            "message": ".agents/rules/ 内非管线文件，逐字保留",
+            "detail": {"path": f".agents/rules/{name}"},
+        })
+    return actions, warns
+
+
+def _apply_bridge_action(root: Path, bridge_dir: Path, op: str,
+                         name: str) -> bool:
+    """执行单个桥动作；返回是否走了物化降级（symlink 不可用）。"""
+    bridge_dir.mkdir(parents=True, exist_ok=True)
+    target = bridge_dir / name
+    if op == "remove":
+        target.unlink(missing_ok=True)
+        return False
+    if target.exists() or target.is_symlink():
+        if op == "conflict-backup":
+            backup_file(target, root)  # 归档到 cadence/legacy，可回滚
+        target.unlink()
+    try:
+        os.symlink(f"../../.claude/rules/{name}", target)
+        return False
+    except OSError:
+        src = root / ".claude" / "rules" / name
+        atomic_write(target, _safe_read(src) or "")
+        return True
+
+
+def step_s11_omp_bridge(root: Path, intents: Intents, plan: dict,
+                        report: dict) -> None:
+    """S11 执行：.agents/rules 软链桥 + .omp/AGENTS.md 受管活引用。
+
+    软链集合与规则集合（减 README）保持一致；.omp/AGENTS.md 整文件受管为
+    两行活引用（@import 经 omp 实测展开，CodeGraph 块零副本）；旧内容
+    备份归档后替换。symlink 不可用降级物化副本 + warning，不失败关闭。
+    """
+    rules_dir = root / ".claude" / "rules"
+    bridge_dir = root / ".agents" / "rules"
+    actions, warns = _bridge_actions(rules_dir, bridge_dir)
+    actions_log: list = []
+    materialized = False
+    for op, name in actions:
+        if _apply_bridge_action(root, bridge_dir, op, name):
+            materialized = True
+        actions_log.append({"path": f".agents/rules/{name}", "action": op})
+    if materialized:
+        warns.append({
+            "code": OMP_WARNING_MATERIALIZED,
+            "message": "symlink 不可用，omp 桥已物化副本（重跑可刷新，注意漂移）",
+            "detail": {"bridge": ".agents/rules/"},
+        })
+    if warns:
+        report.setdefault("warnings", []).extend(warns)
+
+    omp_path = root / ".omp" / "AGENTS.md"
+    existing = _safe_read(omp_path)
+    if existing is not None and existing != OMP_AGENTS_MD_BODY:
+        backup_path = backup_file(omp_path, root)
+        report.setdefault("backups", []).append({
+            "file": str(omp_path), "backup": str(backup_path),
+        })
+    if existing != OMP_AGENTS_MD_BODY:
+        ensure_parent(omp_path)
+        atomic_write(omp_path, OMP_AGENTS_MD_BODY)
+        actions_log.append({"path": ".omp/AGENTS.md", "action": "managed-write"})
+    _record_step_actions(report, STEP_OMP_BRIDGE, actions_log)
+
 
 # 步骤名 → 执行函数映射
 STEP_FUNCS = {
@@ -3910,7 +4067,9 @@ STEP_FUNCS = {
     STEP_CODEGRAPH: step_s8_codegraph,
     STEP_PERMISSION_GATE: step_s9_permission_gate,
     STEP_CODEX_INLINE: step_s10_codex_inline,
+    STEP_OMP_BRIDGE: step_s11_omp_bridge,
 }
+
 
 
 # ---------------------------------------------------------------------------
@@ -4207,7 +4366,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
 
 
 def run_verify(root: Path, report: dict) -> int:
-    """--verify 只读自检：五项检查，退出码 0=全部健康、1=存在漂移/过时项。
+    """--verify 只读自检：六项检查，退出码 0=全部健康、1=存在漂移/过时项。
 
     纯只读（compute_plan 本身零写入；报告文件由 CLI 写在项目根之外）；
     ③④ 对从未生成过投影区块的项目报 not-generated（提示 apply）而不报
@@ -4385,6 +4544,41 @@ def run_verify(root: Path, report: dict) -> int:
     checks.append({"name": "symlink_resolution",
                    "status": "drift" if link_drift else "ok", "items": link_items})
 
+    # ⑥ omp 资产：.agents/rules 软链桥 + .omp/AGENTS.md 受管活引用
+    #    （无落地规则目录或从未 apply 的项目报 not-generated，不算漂移）
+    omp_items: list = []
+    omp_drift = False
+    rules_dir_v = root / ".claude" / "rules"
+    if not rules_dir_v.is_dir() or not any(rules_dir_v.glob("*.md")):
+        omp_items.append({"status": "not-generated",
+                          "detail": "无落地规则目录，请先运行 rule-config apply"})
+    else:
+        actions_v, _warns_v = _bridge_actions(rules_dir_v,
+                                              root / ".agents" / "rules")
+        if actions_v:
+            omp_items.append({
+                "status": "drift",
+                "detail": "软链桥与规则集合不一致（"
+                          + "; ".join(f"{op} {n}" for op, n in actions_v[:8])
+                          + ("…" if len(actions_v) > 8 else "")
+                          + "），请重新运行 rule-config apply"})
+            omp_drift = True
+        else:
+            omp_items.append({"status": "ok",
+                              "detail": "软链桥与规则集合一致（减 README）"})
+        omp_text_v = _safe_read(root / ".omp" / "AGENTS.md")
+        if omp_text_v is None:
+            omp_items.append({"status": "not-generated",
+                              "detail": ".omp/AGENTS.md 不存在，请运行 rule-config apply"})
+        elif omp_text_v != OMP_AGENTS_MD_BODY:
+            omp_items.append({"status": "drift",
+                              "detail": ".omp/AGENTS.md 与受管活引用不一致，"
+                                        "请重新运行 rule-config apply"})
+            omp_drift = True
+        else:
+            omp_items.append({"status": "ok", "detail": "受管活引用一致"})
+    checks.append({"name": "omp_assets",
+                   "status": "drift" if omp_drift else "ok", "items": omp_items})
     exit_code = 1 if any(c["status"] == "drift" for c in checks) else 0
     report["overall"] = "drift" if exit_code == 1 else "healthy"
     report["checks"] = checks

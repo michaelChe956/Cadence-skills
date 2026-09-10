@@ -1,10 +1,11 @@
 """阶段一产物断言表（design §4 全表；纯函数，Tier-0 可离线单测）。
 
-断言期望值锚点：L0 v4 标记 / permission-gate v1 区块 / codex-rules-inline v1
+断言期望值锚点：L0 v5 标记 / permission-gate v1 区块 / codex-rules-inline v1
 区块均取自 p1 已合入产物（rule-config.py 常量同源；p1 改标记名时本文件同步）。
 """
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -175,10 +176,16 @@ def _precheck_home_changed(home_info: object) -> tuple[bool, str]:
 
 from eval.fixtures import generator as gen
 
-L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->"
+L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->"
 GATE_BEGIN = "@@cadence-managed:permission-gate:v1:start@@"
 GATE_END = "@@cadence-managed:permission-gate:v1:end@@"
 INLINE_BEGIN = "<!-- cadence-managed:codex-rules-inline:v1:start -->"
+OMP_CONTEXT_MARKER = "<!-- cadence-managed:omp-context:v1 -->"
+OMP_AGENTS_MD_BODY = (  # .omp/AGENTS.md 受管正文（rule-config.py 同源三行活引用）
+    f"{OMP_CONTEXT_MARKER}\n"
+    "@../.claude/CLAUDE.md\n"
+    "@../AGENTS.md\n"
+)
 GITIGNORE_LINES = (".worktrees/", ".mcp.json", ".codex/config.toml",
                    "cadence/cache/mcp-availability/")
 MCP_REQUIRED_SERVERS = ("zai-mcp-server", "MiniMax", "codegraph")  # coding fixture 期望下限
@@ -311,14 +318,14 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     results.append(_ok("pre-check.home", home_detail) if home_ok
                    else _bad("pre-check.home", home_detail))
 
-    # --- rule-config：规则清单 / L0 v4 / 权限区 / 内联区 / --verify ---
+    # --- rule-config：规则清单 / L0 v5 / 权限区 / 内联区 / --verify ---
     rules_dir = root / ".claude" / "rules"
     actual = sorted(p.name for p in rules_dir.glob("*.md")) if rules_dir.is_dir() else []
     expect = sorted(gen.expected_rules_files())
     results.append(_ok("rules.manifest") if actual == expect
                    else _bad("rules.manifest", f"清单不符：{actual} != {expect}"))
     claude_md = _read(root, "CLAUDE.md") or ""
-    results.append(_ok("l0.v4") if L0_BEGIN in claude_md else _bad("l0.v4", "CLAUDE.md 无 v4 受管区块"))
+    results.append(_ok("l0.v5") if L0_BEGIN in claude_md else _bad("l0.v5", "CLAUDE.md 无 v5 受管区块"))
     settings_raw = _read(root, ".claude/settings.json")
     # 纯文本模式（实验撤除物理拦截）：deny 区块不生成——settings 缺失或无受管
     # 区块均为合规；仅当出现"半截区块"（有 begin 无 end，疑似手改损坏）才判红。
@@ -341,7 +348,7 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     # --- v3 变体追加：确定性升级 + 备份 + 区块外逐字不变 ---
     if variant == "v3":
         results.append(_ok("v3.upgraded") if L0_BEGIN in claude_md and "v3:start" not in claude_md
-                       else _bad("v3.upgraded", "v3 区块未升级为 v4"))
+                       else _bad("v3.upgraded", "v3 区块未升级为 v5"))
         legacy = root / "cadence" / "legacy"
         results.append(_ok("v3.backup") if legacy.is_dir() and any(legacy.iterdir())
                        else _bad("v3.backup", "cadence/legacy/ 无备份"))
@@ -349,7 +356,7 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
         if baseline is None:
             results.append(_bad("v3.outside-verbatim", "缺少区块外基线（runner 未采集）"))
         else:
-            m = re.search(re.escape(L0_BEGIN) + r".*?" + "v4:end -->", claude_md, re.S)
+            m = re.search(re.escape(L0_BEGIN) + r".*?" + "v5:end -->", claude_md, re.S)
             outside = claude_md.replace(m.group(0), "") if m else claude_md
             results.append(_ok("v3.outside-verbatim") if baseline in outside
                            else _bad("v3.outside-verbatim", "区块外内容变化"))
@@ -389,4 +396,40 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     else:
         results.append(_ok("prx.not-rules") if _hash_tree(rules_dir) == before
                        else _bad("prx.not-rules", ".claude/rules/ 被本步修改"))
+    # --- 五端渐进规则资产（Change A omp 桥接产物；设计文档 §6.6.2） ---
+    # rules.frontmatter：规则文件逐个核对 frontmatter 围栏内含 description（README 豁免）
+    fm_missing = []
+    for p in sorted(rules_dir.glob("*.md")) if rules_dir.is_dir() else []:
+        if p.name == "README.md":
+            continue  # 仓库自有文档，不属受管规则清单
+        m = re.match(r"^---\n(.*?\n)---\n", p.read_text(encoding="utf-8"), re.S)
+        if not m or "description:" not in m.group(1):
+            fm_missing.append(p.name)
+    results.append(_ok("rules.frontmatter") if not fm_missing
+                   else _bad("rules.frontmatter",
+                             "缺 frontmatter/description：" + ", ".join(fm_missing)))
+
+    # omp.symlinks：.agents/rules 软链集合==规则集合减 README，且逐个指回 .claude/rules
+    bridge = root / ".agents" / "rules"
+    want = sorted(p.name for p in rules_dir.glob("*.md")
+                  if p.name != "README.md") if rules_dir.is_dir() else []
+    have = sorted(p.name for p in bridge.glob("*.md")) if bridge.is_dir() else []
+    bad_links = [n for n in want
+                 if not (bridge / n).is_symlink()
+                 or os.readlink(bridge / n) != f"../../.claude/rules/{n}"]
+    results.append(_ok("omp.symlinks") if have == want and not bad_links
+                   else _bad("omp.symlinks",
+                             f"want={want} have={have} 坏链={bad_links}"))
+
+    # omp.agents-md：.omp/AGENTS.md 逐字等于受管正文（omp-context v1 三行活引用）
+    omp_md = root / ".omp" / "AGENTS.md"
+    results.append(_ok("omp.agents-md")
+                   if omp_md.is_file()
+                   and omp_md.read_text(encoding="utf-8") == OMP_AGENTS_MD_BODY
+                   else _bad("omp.agents-md", "缺失或非受管内容"))
+
+    # agents-md.budget：AGENTS.md 行数预算（80+60 行预算加余量，200 封顶）
+    n_lines = len(agents_md.splitlines())
+    results.append(_ok("agents-md.budget") if n_lines <= 200
+                   else _bad("agents-md.budget", f"{n_lines} 行超 200 行预算"))
     return results

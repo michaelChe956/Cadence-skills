@@ -101,6 +101,7 @@ def create_test_container(agent: str, session_id: str) -> Container:
         "codex": "npm install -g @openai/codex",
         "pi": "npm install -g @earendil-works/pi-coding-agent",
         "kimi": "",  # kimi 是 ELF 二进制（非 npm），下方从宿主机直接复制
+        "omp": "",   # omp 同为自包含 ELF（bun 编译），同样从宿主机复制
     }
     if cli_map.get(agent):
         c.exec(cli_map[agent], timeout=300)
@@ -110,7 +111,15 @@ def create_test_container(agent: str, session_id: str) -> Container:
         c.copy_in(str(kimi_bin), "/usr/local/bin/kimi")
         c.exec("chmod +x /usr/local/bin/kimi")
 
-    # MCP server 包预热——避免会话启动时 npx/uvx 冷下载：npm 进度输出会污染
+    if agent == "omp":
+        # omp 仅依赖 libc/libpthread/libdl/ld-linux（ldd 实测），凭据自含于
+        # models.yml（provider baseUrl/apiKey）；首启在容器 HOME 自建 agent 状态
+        c.exec("mkdir -p /home/tester/.omp/agent", timeout=30)
+        omp_bin = Path.home() / ".local/bin/omp"
+        c.copy_in(str(omp_bin), "/usr/local/bin/omp")
+        c.exec("chmod +x /usr/local/bin/omp")
+
+    # MCP server 包预热
     # stdio JSON-RPC 通道（rmcp Deserialize error → codex 间歇性启动 hang 实测根因）。
     # 清单对应 mcp-configuration 生成的标准 server 集。
     for pkg in ("@z_ai/mcp-server", "@upstash/context7-mcp",
@@ -172,6 +181,12 @@ def _copy_auth(c: Container, agent: str) -> None:
             (home / ".kimi-code/device_id", "/home/tester/.kimi-code/device_id"),
             (home / ".kimi-code/region", "/home/tester/.kimi-code/region"),
             (home / ".kimi-code/oauth", "/home/tester/.kimi-code/oauth"),
+        ],
+        "omp": [
+            # 凭据自含于 models.yml（provider baseUrl/apiKey）；config.yml 提供模型
+            # 角色配置；容器首启自建 agent.db 等状态
+            (home / ".omp/agent/models.yml", "/home/tester/.omp/agent/models.yml"),
+            (home / ".omp/agent/config.yml", "/home/tester/.omp/agent/config.yml"),
         ],
     }
     # 通用

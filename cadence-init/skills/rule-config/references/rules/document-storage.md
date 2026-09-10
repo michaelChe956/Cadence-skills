@@ -1,3 +1,9 @@
+---
+description: 文档存储规则——Cadence 产物目录与命名
+paths:
+  - "**/*.md"
+  - "cadence/**"
+---
 ## 文档存储规则
 
 > **Cadence 产物文档必须存放在 `cadence` 目录下；Claude Code 框架规则保留在 `.claude/rules` 目录下。**

@@ -1,3 +1,9 @@
+---
+description: 代码使用规则——非编码项目行为规范（non-coding）
+paths:
+  # 行为路由桶占位：本规则经 L0 路由必读，不依赖路径自动注入
+  - "**/*.zz-cadence-behavioral"
+---
 ## 代码使用规则
 
 > **Skills 项目特殊规定**

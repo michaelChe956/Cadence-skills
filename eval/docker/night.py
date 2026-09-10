@@ -1,6 +1,9 @@
 """Docker 容器化夜测——完整 runner：容器→安装→探针→评分→报告。"""
 import json
+import re
 import os
+import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -9,6 +12,7 @@ from eval.docker.container import Container, create_test_container, REPO_ROOT
 from eval.docker.session import (
     create_test_project, run_stage1, run_probe, _cli_command,
 )
+from eval.install import assertions as inst_asrt
 from eval.probes.definitions import PROBES
 from eval.ifmt import IntermediateTrajectory, ToolCall
 from eval.scoring import assertor
@@ -34,7 +38,7 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
     后续增强：从容器提取完整 transcript（claude 的 .claude/projects/），
     用 adapter 解析出 tool_calls 后走 assertor.score_run 完整评分。
     """
-    probe = PROBES[probe_id]
+    probe = PROBES.get(probe_id, {})
     text = probe_result.get("final_text", "")
     rc = probe_result.get("returncode", -1)
     failures = []
@@ -64,6 +68,19 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
         if not any(kw in text for kw in ("图", "截图", "分析", "error", "报错")):
             failures.append("P7: 未分析图片")
 
+    # 探针断言 spec 接线（R 组）：text_contains / text_lacks 对最终输出
+    # （_extract_final_text 产物，即 final_text）逐条判定，消除
+    # 「无关键字分支即 PASS」假绿；无 text_* 断言的探针（P 组）语义不变。
+    for assertion in probe.get("assertions", []):
+        kind = assertion.get("kind")
+        if kind not in ("text_contains", "text_lacks"):
+            continue
+        pattern = assertion.get("pattern", "")
+        if kind == "text_contains" and pattern not in text:
+            failures.append(f"{probe_id}: text_contains 未命中 {pattern!r}")
+        elif kind == "text_lacks" and pattern in text:
+            failures.append(f"{probe_id}: text_lacks 命中禁止串 {pattern!r}")
+
     behavior = "FAIL" if failures else "PASS"
     return {
         "verdict": "PASS" if not failures else "FAIL",
@@ -92,10 +109,22 @@ def run_docker_night(agent: str, probe_ids: list,
     print(f"[docker-night] agent={agent} session={session_id}")
     print(f"[docker-night] probes: {probe_ids}")
 
-    c = create_test_container(agent, session_id)
     try:
-        # 创建测试项目
-        create_test_project(c)
+        c = create_test_container(agent, session_id)
+    except Exception as exc:  # 端级考场降级：不阻塞其他端，机器可读留痕
+        reason = f"container-unavailable: {type(exc).__name__}: {exc}"[:200]
+        print(f"[docker-night] ❌ 考场降级 {reason}")
+        _write_degrade_result(agent, session_id, reason)
+        return {
+            "agent": agent, "session_id": session_id,
+            "stage1_ok": False, "stage1": [],
+            "probes": [], "probe_summary": {"passed": 0, "total": 0},
+            "artifacts": {}, "fs_diff": {"new": 0, "changed": 0},
+            "degrade": reason,
+        }
+
+    try:
+        create_test_project(c, agent=agent)
         print(f"[docker-night] 项目已创建")
 
         # 安装前快照
@@ -109,6 +138,11 @@ def run_docker_night(agent: str, probe_ids: list,
             status = "✅" if cmd["returncode"] == 0 else "❌"
             print(f"  {status} {cmd['name']}: rc={cmd['returncode']} {cmd['duration_s']}s")
 
+        # claude 端常载审计:stage1 安装会话已把装载记录写进 loaded.log——
+        # 探针开始前截断清零,审计只看探针会话的 session_start 常载清单
+        if agent == "claude":
+            c.exec("truncate -s 0 /home/tester/project/loaded.log")
+
         # 安装后快照
         after = c.snapshot_fs("/home/tester/project")
         new_files = sorted(set(after) - set(before))
@@ -118,12 +152,17 @@ def run_docker_night(agent: str, probe_ids: list,
         artifacts = _collect_artifacts(c)
         print(f"[docker-night] 产物: skills={artifacts.get('skills')} "
               f"superpowers={artifacts.get('superpowers')} rules={artifacts.get('rules')}")
+        # stage1 产物断言落盘（四条确定性断言；失败只写 FAIL 记录，不阻塞探针）
+        stage1_record = _write_stage1_assertions(c, agent, session_id)
+        print(f"[docker-night] stage1 断言记录: {stage1_record.name}")
 
         # 运行探针
         print(f"[docker-night] 开始探针...")
         probe_results = []
         for pid in probe_ids:
             probe = PROBES[pid]
+            # (agents_only 端限定与 R3 rollout 审计已撤——2026-09-10 用户裁决)
+
             prompt = probe["prompt_variants"][0].replace("{module}", "users")
             prompt = prompt.replace("<fixture>", "/home/tester/project")
 
@@ -151,7 +190,7 @@ def run_docker_night(agent: str, probe_ids: list,
         passed = sum(1 for r in probe_results if r["score"]["behavior"] == "PASS")
         total = len(probe_results)
 
-        return {
+        result = {
             "agent": agent, "session_id": session_id,
             "stage1_ok": stage1_ok,
             "stage1": stage1,
@@ -161,15 +200,34 @@ def run_docker_night(agent: str, probe_ids: list,
             "fs_diff": {"new": len(new_files), "changed": len(changed)},
         }
 
+        # claude 端常载审计结论进汇总 dict(其余端无此键);探针已全部跑完,
+        # loaded.log 只含探针会话的装载事件
+        if agent == "claude":
+            log_text = c.exec("cat /home/tester/project/loaded.log")["stdout"]
+            result["resident_audit"] = _audit_resident_rules(log_text)
+            audit = result["resident_audit"]
+            print(f"[docker-night] 常载审计: {audit['result']} "
+                  f"loaded={audit['loaded']} violations={audit['violations']}")
+        # (omp 端 R3 rollout 审计已撤——2026-09-10 用户裁决:agent 限定为 omp
+        #  原生能力,由用户在项目规则中自行添加,框架与 eval 均不测试)
+        return result
+
     finally:
         c.destroy()
         print(f"[docker-night] 容器已清理")
 
-def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
-    """按 runner 聚合契约落盘单个探针结果（基线数据 + 失败诊断两用）。"""
+def _dump_run_record(doc: dict) -> Path:
+    """run 记录按日落盘（reports/nightly/<day>/runs/<run_id>.json，三处落盘共用）。"""
     day = time.strftime("%Y-%m-%d")
     runs_dir = RESULT_ROOT / "reports" / "nightly" / day / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
+    path = runs_dir / f"{doc['run_id']}.json"
+    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+    return path
+
+def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
+    """按 runner 聚合契约落盘单个探针结果（基线数据 + 失败诊断两用）。"""
     score = probe_r["score"]
     doc = result_schema.build_result(
         run_id=f"docker-{agent}-{session_id}-{probe_r['probe_id']}",
@@ -179,6 +237,7 @@ def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
         duration_s=probe_r.get("duration_s", 0.0),
         details={
             "prompt": probe_r.get("prompt", ""),
+
             "final_text": probe_r.get("final_text", ""),
             "stdout_raw": probe_r.get("stdout_raw", ""),
             "stderr": probe_r.get("stderr", ""),
@@ -187,11 +246,127 @@ def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
             "behavior_failures": score.get("behavior_failures"),
         },
     )
-    path = runs_dir / f"{doc['run_id']}.json"
-    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2),
-                    encoding="utf-8")
-    return path
+    return _dump_run_record(doc)
 
+
+# stage1 记录只取这四条净新增断言——docker 项目拷贝形态与 install runner fixture
+# 不同，既有断言（零改动/HOME/投影）在拷贝上会误红，故按名字白名单过滤。
+STAGE1_ASSERTION_NAMES = (
+    "rules.frontmatter", "omp.symlinks", "omp.agents-md", "agents-md.budget",
+)
+
+# 容器内项目 → 宿主临时根的拷贝清单（只拷断言需要的子路径，避免整项目拷贝）
+_STAGE1_COPY_PATHS = (
+    ".claude/rules",    # rules.frontmatter 期望集合 / omp.symlinks 软链源
+    ".agents/rules",    # omp.symlinks 软链实测
+    ".omp/AGENTS.md",   # omp.agents-md 受管正文
+    "AGENTS.md",        # agents-md.budget 行数
+)
+
+
+def _stage1_copy_project(c, root: Path) -> Path:
+    """把断言需要的容器内子路径拷进宿主临时根（缺失路径跳过，由断言判红）。"""
+    staged = root / "_staged"
+    staged.mkdir()
+    for rel in _STAGE1_COPY_PATHS:
+        src = f"/home/tester/project/{rel}"
+        probe = c.exec(f"test -e {src} && echo Y || echo N")["stdout"].strip()
+        if not probe.endswith("Y"):
+            continue
+        one = staged / rel.replace("/", "_")  # 中转名，避免 podman cp 拷入已存在目录
+        c.copy_out(src, str(one))
+        dst = root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(one), str(dst))
+    return root
+
+
+def _write_stage1_assertions(c, agent: str, session_id: str) -> Path:
+    """stage1 后拷回容器内规则资产 → 四条确定性断言 → 写 stage1 记录（schema 1.0）。
+
+    run_id=docker-<agent>-<session>-stage1；拷贝/断言异常不外抛——FAIL 留痕，
+    绝不阻塞后续探针执行。
+    """
+    picked: list = []
+    copy_error = ""
+    try:
+        with tempfile.TemporaryDirectory(prefix="stage1-assert-") as tmp:
+            root = _stage1_copy_project(c, Path(tmp))
+            picked = [r for r in inst_asrt.assert_stage1("docker", root, 0, {})
+                      if r.name in STAGE1_ASSERTION_NAMES]
+    except Exception as exc:  # 拷贝/断言崩溃：机器可读 FAIL 记录，不阻塞探针
+        copy_error = f"stage1-assert-error: {type(exc).__name__}: {exc}"[:200]
+        print(f"[docker-night] ⚠️ {copy_error}")
+    bad = [r for r in picked if not r.ok]
+    doc = result_schema.build_result(
+        run_id=f"docker-{agent}-{session_id}-stage1",
+        agent=agent, probe_id="stage1",
+        verdict="FAIL" if (bad or copy_error) else "PASS",
+        fail_reason=";".join(filter(None, [copy_error]
+                                    + [f"{r.name}: {r.detail}" for r in bad])),
+        duration_s=0.0,
+        details={"assertions": [{"name": r.name, "ok": r.ok, "detail": r.detail}
+                                for r in picked]},
+    )
+    return _dump_run_record(doc)
+
+# claude 端常载审计:session_start 装载允许集——.claude/rules/ 下仅常驻桶
+# (language.md)与目录页(README.md)可常载;条件桶/行为路由桶/媒体触发桶
+# 出现在 session_start 装载清单即违规(它们应经 L0 路由按需装载)。
+_RESIDENT_ALLOWED_RULES = ("language.md", "README.md")
+
+
+def _audit_resident_rules(loaded_log_text: str) -> dict:
+    """审计 loaded.log 的 session_start 常载清单(纯函数,离线可测)。
+
+    loaded.log 由预置 InstructionsLoaded hook 追加写,每行一条事件 JSON
+    (file_path + load_reason)。load_reason 非 session_start 的按需装载是
+    渐进加载的正确行为,不计入审计;session_start 装载中 .claude/rules/ 下
+    仅允许 _RESIDENT_ALLOWED_RULES 两文件,其余 → FAIL 并列出文件名(去重)。
+    非 JSON 行/空行容错跳过。
+    """
+    loaded = 0
+    violations: list = []
+    for raw in loaded_log_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(evt, dict) or evt.get("load_reason") != "session_start":
+            continue
+        path = evt.get("file_path") or ""
+        if not path:
+            continue
+        loaded += 1
+        if ".claude/rules/" in path:
+            name = path.rsplit("/", 1)[-1]
+            if name not in _RESIDENT_ALLOWED_RULES and name not in violations:
+                violations.append(name)
+    return {"result": "FAIL" if violations else "PASS",
+            "loaded": loaded, "violations": violations}
+
+# (omp 端 R3 rollout 审计与 agents_only 端限定已撤——2026-09-10 用户裁决:
+#  agent 限定是 omp 原生能力,由用户在项目规则中自行添加 agents: 字段,
+#  框架与 eval 均不预置、不测试;标记/审计函数群随之移除。)
+
+def _write_degrade_result(agent: str, session_id: str, reason: str) -> Path:
+    """考场降级 run 记录（schema 1.0 + 顶层 degrade 字段；support-omp-client）。
+
+    report_matrix 检测 degrade 字段时在透视输出打印降级注记。
+    """
+    doc = result_schema.build_result(
+        run_id=f"docker-{agent}-{session_id}-degrade",
+        agent=agent, probe_id="degrade",
+        verdict="FAIL",
+        fail_reason=reason,
+        duration_s=0.0,
+        details={"degrade": reason},
+    )
+    doc["degrade"] = reason
+    return _dump_run_record(doc)
 
 
 def _extract_final_text(agent: str, stdout: str) -> str:

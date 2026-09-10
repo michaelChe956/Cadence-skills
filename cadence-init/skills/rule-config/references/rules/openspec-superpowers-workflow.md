@@ -1,3 +1,9 @@
+---
+description: OpenSpec×Superpowers 协作流程——会话路由与阶段门禁
+paths:
+  # 行为路由桶占位：本规则经 L0 路由必读，不依赖路径自动注入
+  - "**/*.zz-cadence-behavioral"
+---
 <!-- cadence-framework-rule:openspec-superpowers-workflow:v1 -->
 # OpenSpec 与 Superpowers 协作规则
 

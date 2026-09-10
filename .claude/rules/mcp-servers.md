@@ -1,10 +1,14 @@
-<!-- cadence-tools:start -->
-cadence-tools:
-  - preferred: [Context7]
-    fallback: [WebSearch, WebFetch]
-    when: context7_configured
-<!-- cadence-tools:end -->
-
+---
+description: MCP Server 与工具使用规则——联网、图片、浏览器自动化
+paths:
+  # 媒体触发：触图自动载；web-search/浏览器场景经 L0 路由必读
+  - "**/*.png"
+  - "**/*.jpg"
+  - "**/*.jpeg"
+  - "**/*.webp"
+  - "**/*.gif"
+  - "**/*.svg"
+---
 ## MCP Server 使用规则
 
 > **MCP 工具使用规范**
