@@ -54,6 +54,8 @@ def _cell_symbol(ok: int, n: int) -> str:
 def _probe_group(pid: str) -> str:
     if pid == "stage1":
         return "安装产物（stage1 确定性断言）"
+    if pid == "resident":
+        return "渐进受控（常载审计）"
     if pid.startswith("P"):
         return "P 组（规则遵循）"
     if pid.startswith("R"):
@@ -64,6 +66,8 @@ def _probe_group(pid: str) -> str:
 def _probe_label(pid: str) -> str:
     if pid == "stage1":
         return "stage1 安装产物断言"
+    if pid == "resident":
+        return "claude 常载审计（session_start 仅常驻桶+目录页+入口）"
     if pid in _PROBE_NAMES:
         return f"{pid} {_PROBE_NAMES[pid]}"
     return f"{pid}（已撤销 · 历史记录）"
@@ -97,7 +101,7 @@ def main() -> int:
             agent_pass[a][0] += 1
 
     probes = sorted({p for (_, p) in cell},
-                    key=lambda p: ({"P": 0, "R": 1}.get(p[0], 2), p))
+                    key=lambda p: ({"P": 0, "R": 1}.get(p[0], 2 if p != "resident" else 1.5), p))
     used_agents = [a for a in AGENTS if any(k[0] == a for k in cell)]
     degrades = sorted({(r.get("agent", "?"), r.get("degrade"))
                        for r in rows if r.get("degrade")})

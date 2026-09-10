@@ -170,6 +170,9 @@ class TestNightResidentAuditFlow(unittest.TestCase):
         c = _NightFakeContainer(loaded_log)
         score = {"behavior": "PASS", "verdict": "PASS",
                  "failures": [], "behavior_failures": []}
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
         with mock.patch.object(night, "create_test_container",
                                return_value=c), \
              mock.patch.object(night, "create_test_project") as cp, \
@@ -180,8 +183,10 @@ class TestNightResidentAuditFlow(unittest.TestCase):
              mock.patch.object(night, "_score_probe_text",
                                return_value=score), \
              mock.patch.object(night, "_write_probe_result"), \
+             mock.patch.object(night, "RESULT_ROOT", Path(tmp.name)), \
              mock.patch.object(night, "PROBES", self._PROBE):
             result = night.run_docker_night(agent, ["T1"], session_id="s9")
+        return result, c, cp
         return result, c, cp
 
     def test_claude_truncates_then_audits(self):

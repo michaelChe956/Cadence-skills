@@ -208,6 +208,18 @@ def run_docker_night(agent: str, probe_ids: list,
             audit = result["resident_audit"]
             print(f"[docker-night] 常载审计: {audit['result']} "
                   f"loaded={audit['loaded']} violations={audit['violations']}")
+            # 渐进受控证据落盘为 schema 1.0 记录(probe_id=resident)——
+            # 透视表「渐进受控」行的数据源;条件桶/行为路由桶/媒体触发桶
+            # 出现在 session_start 装载清单即 FAIL。
+            _dump_run_record(result_schema.build_result(
+                run_id=f"docker-{agent}-{session_id}-resident",
+                agent=agent, probe_id="resident",
+                verdict="PASS" if audit["result"] == "PASS" else "FAIL",
+                fail_reason=";".join(audit.get("violations") or []),
+                duration_s=0.0,
+                details={"loaded": audit.get("loaded"),
+                         "violations": audit.get("violations")},
+            ))
         # (omp 端 R3 rollout 审计已撤——2026-09-10 用户裁决:agent 限定为 omp
         #  原生能力,由用户在项目规则中自行添加,框架与 eval 均不测试)
         return result
