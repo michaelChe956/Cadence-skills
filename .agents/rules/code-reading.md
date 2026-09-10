@@ -1,0 +1,1 @@
+../../.claude/rules/code-reading.md

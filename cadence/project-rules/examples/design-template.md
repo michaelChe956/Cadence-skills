@@ -31,25 +31,25 @@
 - [ ] 前端项目（Web/Client）
 - [ ] 后端项目（API/Service）
 - [ ] 全栈项目
-- [ ] 其他：[说明]
+- [x] 其他：AI Agent Skill 框架仓库——Python/Bash 工具链 + Markdown 规则与 Skill 模板（`cadence-init/skills/**`），非业务前后端工程
 
 ### 1.2 现有技术栈
 
 | 维度 | 当前技术 | 版本/备注 |
 |------|----------|-----------|
-| 语言 | [例如 TS / Java / Python / Go] | [版本] |
-| 框架 | [例如 React / Spring / FastAPI / Nest] | [版本] |
-| 数据访问 | [例如 MyBatis / JPA / Prisma / 无] | [备注] |
-| 通信方式 | [例如 REST / RPC / MQ / GraphQL] | [备注] |
-| 测试框架 | [例如 Vitest / JUnit / pytest] | [备注] |
+| 语言 | Python 3（脚本，stdlib 优先，外部依赖仅 PyYAML）+ Bash | [Python 具体版本待补充：`python3 --version`] |
+| 框架 | 无 Web 框架；CLI 脚本（argparse 子命令：dry-run / apply / verify） | 两阶段（dry-run → apply）+ 只读 verify 是固定执行模型 |
+| 数据访问 | 无数据库；文件系统（JSON / TOML / YAML / Markdown）+ SQLite（仅 CodeGraph 索引） | 受管文件一律 atomic_write 原子发布 |
+| 通信方式 | 无网络服务；进程契约 = stdout 单份 JSON 报告 + 退出码（0/1/2/77） | 报告路径必须在项目根之外（mktemp） |
+| 测试框架 | pytest（各 skill `tests/`）+ Bash 验证脚本（`tests/test-install.sh`、`verify-managed-lifecycle.sh`）+ `skill-clause-map.md` 条款对账 | 覆盖率要求见 `cadence/project-rules/examples/test-standards.md` |
 
 ### 1.3 现有约定（禁止猜测）
 
-- 请求入参处理方式: [按项目填写]
-- 响应结构: [按项目填写，例如 `respCode/respDesc` 或 `code/message/data`]
-- 异常体系: [按项目填写]
-- 日志体系: [按项目填写]
-- 分层/目录组织: [按项目填写，示例 `routes -> services -> repositories`]
+- 请求入参处理方式: CLI 标志（`--project-root` / `--report` / `[--no-interrupt]` / 意图参数）；Agent 负责定位脚本与编排调用，裸 token 需规范化为 `--no-interrupt` 后透传
+- 响应结构: 脚本报告 JSON 固定 schema：`overall`(ok/degraded/fail)、`steps[].{name,status,actions[].{path,action,branch}}`、`warnings[]`、`failure{file,reason,recovery}`、`hints`；shell 脚本 stdout=单份 JSON、stderr=中文摘要
+- 异常体系: 失败关闭——任何失败先写报告再以非零退出，目标项目保持原样；恢复归档 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`；退出码 0=成功(含 degraded)/1=失败/2=用法错误/77=PyYAML 缺失
+- 日志体系: stdout 仅放单份 JSON（机器可读），stderr 放中文人类摘要；报告与日志禁止输出 API Key/Token 等私密值
+- 分层/目录组织: `cadence-init/skills/<skill>/{SKILL.md, scripts/, references/, tests/}` 源 → `~/.agents/skills/<skill>` 安装投影；`openspec/` 变更管理；`cadence/` 项目产物（`legacy/` 归档、`project-rules/` 用户规则）
 
 ### 1.4 兼容性边界
 
@@ -115,11 +115,7 @@
 
 ### 4.1 当前工程调用链（事实）
 
-`[按项目填写，例如 页面 -> hooks -> API 客户端 -> BFF]`
-
-或
-
-`[按项目填写，例如 controller -> service -> repository -> db]`
+`SKILL.md（编排契约） -> Agent 定位并调用 scripts/<skill>.py|.sh（dry-run 零写入探测 -> apply 原子发布） -> 受管文件原位更新 + cadence/legacy/ 归档 -> mktemp JSON 报告（项目根外） -> Agent 解读报告并向用户汇报实际动作`
 
 ### 4.2 本次变更落点
 

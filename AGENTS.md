@@ -2,11 +2,11 @@
 
 本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
 
-<!-- cadence-managed:openspec-superpowers-routing:v4:start -->
-Cadence L0 路由内核 v4
+<!-- cadence-managed:openspec-superpowers-routing:v5:start -->
+Cadence L0 路由内核 v5
 ## OpenSpec 与 Superpowers 任务路由
 
-Skill 调用：Claude/Kimi 原生调用；Codex/pi 清单选择后将用途并入首段回执，并立即全文读取对应 SKILL.md。首段输出路由回执；Skill 调用后才读仓库规则或用仓库工具。
+Skill 调用：Claude/Kimi 原生调用；Codex/pi/omp 清单选择后将用途并入首段回执，并立即全文读取对应 SKILL.md（omp 经 `skill://`，Codex/pi 直接读文件）。首段输出路由回执；Skill 调用后才读仓库规则或用仓库工具。
 
 | 阶段信号 | 必调 Skill（均先 `using-superpowers`） | 门禁 |
 |---|---|---|
@@ -35,7 +35,7 @@ Skill 调用：Claude/Kimi 原生调用；Codex/pi 清单选择后将用途并�
 产物自动提交开关：完成 design/plan 文档或实现类产物（代码、测试、配置）写入后读取入口“产物自动提交（design/plan/code）”开关，`关闭` 时禁止 `git commit`、只汇报路径；CLAUDE.md 为准、不一致按 `关闭`。
 
 阶段切换必须重新路由：新任务、只读转修改、契约获批、apply 前、上下文恢复后、完工声明前。
-<!-- cadence-managed:openspec-superpowers-routing:v4:end -->
+<!-- cadence-managed:openspec-superpowers-routing:v5:end -->
 
 ## 强制规则
 
@@ -98,8 +98,6 @@ Skill 调用：Claude/Kimi 原生调用；Codex/pi 清单选择后将用途并�
 
 <!-- cadence-managed:codex-rules-inline:v1:start -->
 ## Cadence 规则内联投影（源 .claude/rules/，rule-config 生成，勿手改）
-- code-reading.md 工具优先级：codegraph → ast-grep outline；Grep、Glob、Bash、Bash、Bash 受限（条件：project_type=coding AND codegraph_enabled）
-- mcp-servers.md 工具优先级：Context7；WebSearch、WebFetch 受限（条件：context7_configured）
 - README.md：框架内置规则目录
 - code-reading.md：代码阅读规则
 - code-usage.md：代码使用规则

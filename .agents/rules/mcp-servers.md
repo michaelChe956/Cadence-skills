@@ -1,0 +1,1 @@
+../../.claude/rules/mcp-servers.md
