@@ -51,7 +51,8 @@ def _stage1_pre_check(cwd: Path) -> dict:
 
 
 def _stage1_rule_config(cwd: Path) -> None:
-    """rule-config：规则清单 / L0 v4 / 权限区 / codex 内联区。"""
+    """rule-config：规则清单（frontmatter）/ L0 v5 / 权限区 / codex 内联区 /
+    omp 桥（.agents/rules 软链 + .omp/AGENTS.md 受管活引用）。"""
     # mock 安装也复刻 OpenSpec 四端投影锚点，供 stage1 断言消费；pre-check 本身不写盘。
     (cwd / ".claude" / "commands" / "opsx").mkdir(parents=True, exist_ok=True)
     for base, prefix, suffix, count in (
@@ -72,12 +73,28 @@ def _stage1_rule_config(cwd: Path) -> None:
     rules = cwd / ".claude" / "rules"
     rules.mkdir(parents=True, exist_ok=True)  # 先建目录再写文件
     for name in RULES_FILES:
-        (rules / name).write_text("# rule\n", encoding="utf-8")
+        # 共享 frontmatter 分桶契约（support-omp-client）：description 必备
+        (rules / name).write_text(
+            "---\ndescription: mock 规则（冒烟用）\n---\n# rule\n",
+            encoding="utf-8")
+    # S11 omp 桥：.agents/rules 文件级软链（README 亦在清单外规则集中，mock 清单
+    # 无 README；桥集合==规则集合）+ .omp/AGENTS.md 受管两行活引用
+    bridge = cwd / ".agents" / "rules"
+    bridge.mkdir(parents=True, exist_ok=True)
+    for name in RULES_FILES:
+        target = bridge / name
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        os.symlink(f"../../.claude/rules/{name}", target)
+    (cwd / ".omp").mkdir(parents=True, exist_ok=True)
+    (cwd / ".omp" / "AGENTS.md").write_text(
+        "<!-- cadence-managed:omp-context:v1 -->\n"
+        "@../.claude/CLAUDE.md\n@../AGENTS.md\n", encoding="utf-8")
     claude_md = cwd / "CLAUDE.md"
-    v4_block = (
-        "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->\n"
-        "Cadence L0 路由内核 v4\n"
-        "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->")
+    v5_block = (
+        "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->\n"
+        "Cadence L0 路由内核 v5\n"
+        "<!-- cadence-managed:openspec-superpowers-routing:v5:end -->")
     old_text = claude_md.read_text(encoding="utf-8") if claude_md.is_file() else ""
     m = V3_BLOCK_RE.search(old_text)
     if m:
@@ -88,9 +105,9 @@ def _stage1_rule_config(cwd: Path) -> None:
         legacy.mkdir(parents=True, exist_ok=True)
         (legacy / "CLAUDE.md.v3.md").write_text(old_text, encoding="utf-8")
         (legacy.parent / ".gitignore").write_text("*\n", encoding="utf-8")
-        claude_md.write_text(old_text.replace(m.group(0), v4_block), encoding="utf-8")
+        claude_md.write_text(old_text.replace(m.group(0), v5_block), encoding="utf-8")
     else:
-        claude_md.write_text(v4_block + "\n", encoding="utf-8")
+        claude_md.write_text(v5_block + "\n", encoding="utf-8")
     (cwd / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"deny": [
         "@@cadence-managed:permission-gate:v1:start@@", "Grep", "Glob", "Bash(grep:*)",
         "@@cadence-managed:permission-gate:v1:end@@"]}}, ensure_ascii=False, indent=2),
