@@ -84,8 +84,8 @@
 
 ### ci-trigger-gating.md
 CI 触发门禁：纯文档变更不触发任何工作流；仅安装脚本、测试、Skills 源
-（`cadence-init/**`）、规则（`.claude/rules/**`）与工作流自身的变更触发 CI。
-含 `[skip ci]` 的使用边界与触发集合维护约定。
+（`cadence-init/**`，含 rule-config 规则模板）与工作流自身的变更触发 CI。
+`.claude/rules/` 等生成投影不单独触发。含 `[skip ci]` 使用边界与触发集合维护约定。
 
 ## 💡 提示
 

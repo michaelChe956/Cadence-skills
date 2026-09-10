@@ -1,6 +1,6 @@
 # CI 触发门禁（CI Trigger Gating）
 
-> **目的**：CI 只为「会影响安装、Skills、规则与测试代码的变更」付费；纯文档变更不触发任何工作流，节省公共与 self-hosted runner 资源。
+> **目的**：CI 只为「会影响安装、Skills 源与测试代码的变更」付费；纯文档变更不触发任何工作流，节省公共与 self-hosted runner 资源。
 > **背景**：2026-09-10 五端文档口径修正（README/readmes 四类→五端）触发了完整 CI，属于纯文档改动的无效消耗。此后以工作流 paths 过滤为机制保障，本规则为语义约定。
 
 ## 🔴 快速判断表（先查这里）
@@ -9,15 +9,15 @@
 |---------|----------|------|
 | `install.sh`、`tests/**`、`eval/**`、`.github/workflows/**`（代码/测试/编排） | ✅ 触发 | ci.yml / eval.yml paths |
 | `cadence-init/**`（Skills 源：SKILL.md、references、scripts、规则模板） | ✅ 触发 | ci.yml paths（eval.yml 另按其清单） |
-| `.claude/rules/**`（框架规则） | ✅ 触发 | ci.yml paths |
+| `.claude/rules/**`（`/rule-config` 生成的受管投影，drift 会被权威覆盖） | ❌ 不触发 | CI 不消费；规则模板源在 `cadence-init/skills/rule-config/references/rules/**`，经上一行覆盖 |
 | 文档：`README.md`、`readmes/**`、`cadence/**`（designs/plans/reports/analysis-docs 等）、`openspec/**`、`CLAUDE.md`、`AGENTS.md`、`LICENSE` | ❌ 不触发 | 不在 paths 集合内 |
 | `.codex/**`、`.pi/**`、`.claude/skills/**` 等 OpenSpec/客户端投影目录 | ❌ 不触发 | CI 不消费投影；源头变更经 `cadence-init/**` 覆盖 |
 
-**记忆口诀：动「安装脚本、Skills 源、规则、测试与编排代码」必触发；动「说明文字」不触发。**
+**记忆口诀：动「安装脚本、Skills 源（含规则模板）、测试与编排代码」必触发；动「说明文字与生成投影」不触发。**
 
 ## 机制（以工作流声明为准，本表是语义摘要）
 
-- `ci.yml`（ShellCheck / 隔离集成测试 / 13×3 链接矩阵 / rule-config pytest）：push 与 pull_request 均带 paths 过滤，触发集合 = `install.sh`、`tests/**`、`cadence-init/**`、`.claude/rules/**`、`.github/workflows/ci.yml`。
+- `ci.yml`（ShellCheck / 隔离集成测试 / 13×3 链接矩阵 / rule-config pytest）：push 与 pull_request 均带 paths 过滤，触发集合 = `install.sh`、`tests/**`、`cadence-init/**`、`.github/workflows/ci.yml`。
 - `eval.yml`（Tier-0 单测 / Tier-1 五端 Docker 夜测）：既有 paths 过滤（`eval/**`、四个初始化 Skill 目录、工作流自身），本规则不改变它。
 
 ## 提交约定
