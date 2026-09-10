@@ -4,7 +4,7 @@
 
 Cadence 当前不提供独立的 Command 文件。项目能力由 `cadence-init` 下的 Skills 提供，Skill 名称就是调用入口；Commands 文档目录仅用于说明如何找到和使用这些 Skills。
 
-`skill-creator` 是实际存在的 Skill，直接调用 `/skill-creator`，不是独立 Command。安装仓库、三层软链和四类 Agent 的消费路径以根 README 的网络安装章节为准。
+`skill-creator` 是实际存在的 Skill，直接调用 `/skill-creator`，不是独立 Command。安装仓库、三层软链和五端 Agent 的消费路径以根 README 的网络安装章节为准。
 
 ## 可直接调用的 Skills
 

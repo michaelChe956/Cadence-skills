@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-Cadence 是面向 Claude Code、pi、Codex 和 Kimi Code 的 Agent Skills 协作系统。它把需求澄清、设计、计划、实现、测试、评审和调试等工作组织为可复用的 Skills，并为 Java 与 Vue/React 存量项目提供 Schema 4.0 KnowledgeBase 能力。
+Cadence 是面向 Claude Code、pi、Codex、Kimi Code 和 omp（oh-my-pi）五端的 Agent Skills 协作系统。它把需求澄清、设计、计划、实现、测试、评审和调试等工作组织为可复用的 Skills，并为 Java 与 Vue/React 存量项目提供 Schema 4.0 KnowledgeBase 能力。
 
 当前仓库内的 `cadence-init` 插件版本为 `0.0.4`。Cadence 的安装、更新和卸载由仓库根目录的 `install.sh` 负责；Skills 以 Git 仓库为源，通过三层 skill 级软链供不同 Agent 消费，不依赖插件市场注册。
 
@@ -104,7 +104,7 @@ test -f ~/.claude/skills/pre-check/SKILL.md
 bash ~/.agents/Cadence-skills/install.sh --help
 ```
 
-四类 Agent 的消费路径如下。pi 和 Kimi Code 消费共享层，Claude Code 消费个人层，Codex 可见共享层并提供兼容投影。`~/.pi/agent/skills` 属于 Superpowers 或 pi 自身的目录，不是本安装脚本创建的 Cadence 层。
+五端 Agent 的消费路径如下。Claude Code 消费个人层，Codex 可见共享层并提供兼容投影，pi、Kimi Code 和 omp 都直接消费共享层 `~/.agents/skills/`。
 
 | Agent | 消费路径 | 验证命令 |
 | --- | --- | --- |
@@ -112,6 +112,9 @@ bash ~/.agents/Cadence-skills/install.sh --help
 | pi | `~/.agents/skills/` | `ls ~/.agents/skills/` |
 | Codex | `~/.agents/skills/`；兼容层 `~/.codex/skills/skills/` | `ls ~/.agents/skills/`、`ls ~/.codex/skills/skills/` |
 | Kimi Code | `~/.agents/skills/` | `ls ~/.agents/skills/` |
+| omp（oh-my-pi） | `~/.agents/skills/` | `ls ~/.agents/skills/` |
+
+安装脚本只为上表列出的三个目录创建软链：omp 与 pi 同类，按 agentskills.io 标准扫描共享层 `~/.agents/skills/`，因此不需要也不会创建 `.omp/skills` 软链；`~/.pi/agent/skills` 属于 Superpowers 或 pi 自身的目录，同样不是本安装脚本创建的 Cadence 层。
 
 ### 更新
 
@@ -260,7 +263,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 - **镜像轮换与快进更新**：固定镜像顺序、无直连兜底，更新拒绝强制覆盖本地历史。
 - **用户文件保护**：仅识别精确的受管链接；冲突、非 Git 目录和旧残留均提示用户处理。
 - **Schema 4.0 KnowledgeBase**：同时保留代码、数据模型、配置快照和变更包证据，按任务画像渐进检索。
-- **四类 Agent 消费**：Claude Code、pi、Codex、Kimi Code 共享同一套仓库源和 Skill 名称。
+- **五端 Agent 消费**：Claude Code、pi、Codex、Kimi Code、omp 共享同一套仓库源和 Skill 名称。
 
 ## Skill Creator
 
@@ -276,7 +279,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 
 1. Fork 本仓库并创建功能分支。
 2. 使用 `/skill-creator` 创建或维护 Skill，确保目录名、front matter 的 `name` 和 `SKILL.md` 一致。
-3. 更新用户文档时同步检查 13 个 Skill 名称、四类 Agent 路径和安装脚本契约。
+3. 更新用户文档时同步检查 13 个 Skill 名称、五端 Agent 路径和安装脚本契约。
 4. 运行 ShellCheck、安装/更新/卸载验证和文档定向断言后提交 Pull Request。
 
 ## 许可证

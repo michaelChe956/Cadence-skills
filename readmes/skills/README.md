@@ -2,7 +2,7 @@
 
 ## Skills 总览（13 个）
 
-Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex 和 Kimi Code 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供 `~/.codex/skills/skills/` 兼容投影。
+Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex、Kimi Code 和 omp 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供 `~/.codex/skills/skills/` 兼容投影。
 
 ### KnowledgeBase Skills（7 个）
 
@@ -32,7 +32,7 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | `legacy-bootstrap` | 使用兼容流程为 legacy 项目建立 Cadence 项目认知 | — |
 | `skill-creator` | 创建、校验、打包和优化 Skill | [指南](skill-creator.md) |
 
-## 四类 Agent 的消费路径
+## 五端 Agent 的消费路径
 
 | Agent | 消费路径 | 说明 |
 | --- | --- | --- |
@@ -40,8 +40,9 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | pi | `~/.agents/skills/` | 读取共享层 |
 | Codex | `~/.agents/skills/`；兼容投影 `~/.codex/skills/skills/` | 优先共享层，同时提供兼容层 |
 | Kimi Code | `~/.agents/skills/` | 读取共享层 |
+| omp（oh-my-pi） | `~/.agents/skills/` | 读取共享层 |
 
-三层链接由根目录 `install.sh` 维护。`~/.pi/agent/skills` 是 Superpowers 或 pi 自身的目录，不属于 Cadence 安装脚本创建的层。
+三层链接由根目录 `install.sh` 维护。omp 与 pi 一样消费共享层，安装脚本不创建 `.omp/skills` 软链；`~/.pi/agent/skills` 是 Superpowers 或 pi 自身的目录，不属于 Cadence 安装脚本创建的层。
 
 ## 快速导航
 

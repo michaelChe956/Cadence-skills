@@ -82,6 +82,11 @@
 清理/所有权判定/卸载逻辑、软链层结构或新增 agent 层，必须走五步真机流程
 （快照 → dry-run → 实装 → diff → 四 agent 留档）；skill 内容与文档改动 CI 即可。
 
+### ci-trigger-gating.md
+CI 触发门禁：纯文档变更不触发任何工作流；仅安装脚本、测试、Skills 源
+（`cadence-init/**`）、规则（`.claude/rules/**`）与工作流自身的变更触发 CI。
+含 `[skip ci]` 的使用边界与触发集合维护约定。
+
 ## 💡 提示
 
 - 只创建您需要的规则文档，不必全部创建

@@ -2,7 +2,22 @@ name: CI
 
 on:
   push:
+    # 触发集合见 cadence/project-rules/ci-trigger-gating.md：
+    # 代码（install.sh/tests/工作流自身）、Skills 源（cadence-init）、规则（.claude/rules）。
+    # 纯文档变更（README/readmes/cadence/openspec 等）不触发 CI。
+    paths:
+      - "install.sh"
+      - "tests/**"
+      - "cadence-init/**"
+      - ".claude/rules/**"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths:
+      - "install.sh"
+      - "tests/**"
+      - "cadence-init/**"
+      - ".claude/rules/**"
+      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
