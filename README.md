@@ -166,7 +166,7 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 1. `/pre-check`：检查并补齐 npx、uvx、ast-grep、codegraph、OpenSpec 及相关工具。
 2. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
 3. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
-4. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板。
+4. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板（需求文档、设计文档、代码开发规范、测试规范四类）。
 5. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
 
 `/pre-check` 的运行时工具安装、Superpowers 目录及其同步边界，和 Cadence 的 Git 仓库与三层 skill 链接是两套独立机制，不要混称。
@@ -183,6 +183,30 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 ```
 
 需要 Playwright 时应明确提出启用要求。
+
+### 大陆镜像与工具升级（pre-check）
+
+`/pre-check` 内置两套下载源：`default` 通用源与 `cn` 大陆镜像（淘宝 npm 镜像 `registry.npmmirror.com`、清华 pypi 镜像、GitHub 加速代理 clone Superpowers），可按网络环境切换。
+
+直接用自然语言告诉 Agent 即可，不需要记命令参数：
+
+```text
+/pre-check 用大陆镜像
+/pre-check 并升级这些工具
+/pre-check 用大陆镜像跑并升级工具
+```
+
+Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜像只在本次调用内生效，不写入 `~/.npmrc`、uv 或 git 全局配置。
+
+`--upgrade` 只升级已就绪且落后的工具，范围是 `ast-grep`、`codegraph`、OpenSpec（npm 系）与 `uv` 本体；`npx`/Node.js、`pi-mcp-adapter` 与 `uvx` 临时包不升级。版本口径：用哪个源就以哪个源的 latest 为准。`check` 模式仅探测不安装，不支持 `--upgrade`。
+
+### 规则配置与产物提交开关（rule-config）
+
+`/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读五项自检（L0 版本/规则哈希/权限投影/内联漂移/软链解析，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
+
+入口文件规范化：`CLAUDE.md` / `AGENTS.md` 中的 `## 强制规则` 章节会被规范化生成或修复（权威条目重排编号、清理已退役规则残留、用户自有内容逐字保留）；L0 旧版内核确定性升级，重跑幂等零变更。
+
+产物自动提交开关：初始化后入口文件 `## 项目配置` 章节会出现一行 `- **产物自动提交（design/plan/code）**：关闭`。默认关闭时，Agent 写完设计文档、实施计划或实现类产物后不会自动 `git commit`，只汇报产物路径；把该行的值改为 `开启` 即启用自动提交（仅精确值 `开启` 有效，其余值按关闭处理）。读取以 CLAUDE.md 为准、AGENTS.md 为兜底，双入口不一致按关闭处理。修改后无需重跑初始化。
 
 ## 13 个 Skills
 
@@ -244,6 +268,14 @@ Cadence 当前不提供独立 Command 文件。所有能力均由 Skills 提供�
 8. `MiniMax`
 
 这是静态配置事实，不表示安装脚本会额外注册 server。`/mcp-configuration` 负责目标项目的 MCP 配置与客户端交接；真实 API Key 应由用户在本地按安全要求替换，不要提交密钥。
+
+`/mcp-configuration` 的实际能力（定义文件 `cadence-init/skills/mcp-configuration/SKILL.md`）：
+
+- 创建或保守合并项目根 `.mcp.json`，写入智普/MiniMax API Key 占位配置；
+- 同步 stdio 与 HTTP（streamable_http）server 到 `.codex/config.toml`（要求 codex-cli >= 0.44，旧版本会忽略 HTTP 块）；
+- pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），Kimi Code 原生复用 `.mcp.json`，都不维护第二份配置；
+- 仅 Coding 项目按 stdio 兜底补齐 CodeGraph MCP，非 Coding 项目跳过；
+- 默认补齐 `.gitignore`：`.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/`（精确一行，已存在不重复追加）。
 
 Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers/specs/`、`docs/superpowers/plans/` 仅作为历史或对照路径，不是当前 Cadence 产物目录。
 
