@@ -43,7 +43,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 ### Requirement: 有操作的任务必须输出路由回执
 
-对于需要读取仓库、创建或修改文件、调用 OpenSpec 命令、执行命令或声称完成的任务，系统 SHALL 要求 Agent 通过客户端原生机制选择 `using-superpowers` 和当前阶段全部必调 Skill，并将包含阶段、change、Plan、Skill 与用途的简短路由回执作为首个用户可见段落；系统 MUST 要求回执先于仓库规则读取和仓库工具调用。L0 路由内核对客户端调用方式差异 MUST 仅保留中性短说明（Claude/Kimi 使用原生 Skill 调用；Codex/pi 从清单显式选择后全文读取对应 `SKILL.md` 作为调用），MUST NOT 包含静默要求、引导句禁令、事件间隙约束或重试静默等不可验证的姿态类条款。
+对于需要读取仓库、创建或修改文件、调用 OpenSpec 命令、执行命令或声称完成的任务,系统 SHALL 要求 Agent 通过客户端原生机制选择 `using-superpowers` 和当前阶段全部必调 Skill,并将包含阶段、change、Plan、Skill 与用途的简短路由回执作为首个用户可见段落;系统 MUST 要求回执先于仓库规则读取和仓库工具调用。L0 路由内核对客户端调用方式差异 MUST 仅保留中性短说明(Claude/Kimi 使用原生 Skill 调用;Codex/pi/omp 从清单显式选择后全文读取对应 `SKILL.md` 作为调用,omp 经 `skill://`),MUST NOT 包含静默要求、引导句禁令、事件间隙约束或重试静默等不可验证的姿态类条款。
 
 #### Scenario: 开始实施已有 change
 
@@ -60,9 +60,15 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 #### Scenario: L0 内核不含姿态类条款
 
-- **WHEN** 比对 L0 路由内核 v3 模板全文
+- **WHEN** 比对 L0 路由内核当前版本模板全文
 - **THEN** 模板包含客户端调用方式的中性短说明
 - **AND** 不包含"保持静默""禁止输出引导句""事件之间""重试静默"类姿态条款
+
+#### Scenario: omp 会话按中性短说明调用 Skill
+
+- **WHEN** omp 会话进入需要必调 Skill 的阶段
+- **THEN** 它从 Skill 清单选择后全文读取对应 `skill://<名>` 作为调用,用途并入首段回执
+- **AND** Skill 未读完前不得读取仓库规则或使用仓库工具
 
 ### Requirement: 路由门禁必须失败关闭
 系统 MUST 要求 Agent 在必调 Skill 不可用、强制 OpenSpec 未确认、已有 change 缺少 Plan、实施发现契约变化或缺少完成证据时停止当前阶段，而不是静默降级或模拟已完成的流程。

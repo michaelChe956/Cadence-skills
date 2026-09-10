@@ -1,3 +1,11 @@
+---
+description: Playwright CLI 使用规范
+paths:
+  - "web/**"
+  - "e2e/**"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+---
 ## Playwright CLI 使用规则
 
 > **浏览器自动化工具规范**

@@ -31,7 +31,7 @@ L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "age
 L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v4 为当前版本；v3/v2/v1 为受支持旧版本，v0 为合成样本）
+# L0 受管区块标记（v5 为当前版本；v4/v3/v2/v1 为受支持旧版本，v0 为合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
 V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
@@ -297,7 +297,7 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V4_START + " " + L0_SOURCE[len(V4_START):]
+        source_with_leading_space = V5_START + " " + L0_SOURCE[len(V5_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
 
@@ -320,20 +320,20 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
         v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
         out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertNotIn("旧路由", out)
 
     def test_broken_nested_begin_preserves_user_section(self):
         """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
         broken = (
-            V4_START + "\nbroken\n\n## 用户章节\nx\n\n"
-            + V4_START + "\nfull\n" + V4_END
+            V5_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + V5_START + "\nfull\n" + V5_END
         )
         out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
         self.assertNotIn("full", out)
@@ -346,8 +346,8 @@ class TestL0V2Migration(unittest.TestCase):
         )
         self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
         out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
 
@@ -355,14 +355,14 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
         overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
         out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         for user_text in ("A", "X", "Y", "B"):
             self.assertIn(user_text, out)
 
     def test_orphan_current_marker_emits_l0_dedup(self):
         """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
-        current_with_orphan = L0_SOURCE + "\n\n" + V4_START + "\n残留用户内容\n"
+        current_with_orphan = L0_SOURCE + "\n\n" + V5_START + "\n残留用户内容\n"
         out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
         warning = next(w for w in warns if w["code"] == "L0_DEDUP")
         self.assertEqual(warning["detail"]["orphan_markers"], 1)
@@ -370,10 +370,10 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_mixed_markers_not_broken_residue(self):
         """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
-        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V4_START + "\n残留单侧\n"
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V5_START + "\n残留单侧\n"
         out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
 
     def test_current_pair_with_old_residue_is_not_skip(self):
         """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
@@ -382,12 +382,12 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_duplicate_current_blocks_deduped(self):
         """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
-        first = V4_START + "\n首个当前块\n" + V4_END
-        second = V4_START + "\n重复当前块\n" + V4_END
+        first = V5_START + "\n首个当前块\n" + V5_END
+        second = V5_START + "\n重复当前块\n" + V5_END
         dup = first + "\n\n## 中间\n\n" + second
         out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
         self.assertIn("首个当前块", out)
         self.assertNotIn("重复当前块", out)
@@ -411,6 +411,10 @@ L0_V3_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
                 / "l0-history" / "agent-routing-kernel-v3.md").read_text()
 V4_START = "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->"
 V4_END = "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->"
+V5_START = "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->"
+V5_END = "<!-- cadence-managed:openspec-superpowers-routing:v5:end -->"
+L0_V4_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "l0-history" / "agent-routing-kernel-v4.md").read_text()
 
 
 class TestL0V3Migration(unittest.TestCase):
@@ -430,8 +434,8 @@ class TestL0V3Migration(unittest.TestCase):
         self.assertNotEqual(drifted, L0_V2_SOURCE)
         self.assertEqual(rc.l0_block(drifted, L0_SOURCE), "drift")
         out, _ = rc._normalize_l0_to_single_block("# 头\n\n" + drifted + "\n\n## 用户\nx\n", L0_SOURCE)
-        self.assertEqual(out.count(V4_START), 1)
-        self.assertEqual(out.count(V4_END), 1)
+        self.assertEqual(out.count(V5_START), 1)
+        self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户", out)
         self.assertNotIn("v2:start", out)
 
@@ -450,35 +454,44 @@ class TestL0V4Migration(unittest.TestCase):
         """ut-l0-v4-history-source：脚本加载冻结 v3 内核全文用于升级前比对。"""
         self.assertEqual(rc.L0_OLD_SOURCES["v3"], L0_V3_SOURCE)
 
-    def test_current_version_is_v4(self):
-        """ut-l0-v4-current：当前版本升为 v4，v3 进入可升级旧版本清单。"""
-        self.assertEqual(rc.L0_CURRENT_VERSION, "v4")
-        self.assertEqual(rc.L0_OLD_VERSIONS, ["v3", "v2", "v1", "v0"])
+    def test_v4_history_source_loaded(self):
+        """ut-l0-v5-history-v4：脚本加载冻结 v4 内核全文（v5 升级前比对）。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v4"], L0_V4_SOURCE)
+
+    def test_current_version_is_v5(self):
+        """ut-l0-v5-current：当前版本升为 v5，v4 进入可升级旧版本清单。"""
+        self.assertEqual(rc.L0_CURRENT_VERSION, "v5")
+        self.assertEqual(rc.L0_OLD_VERSIONS, ["v4", "v3", "v2", "v1", "v0"])
+
+    def test_verbatim_v4_pair_is_upgrade(self):
+        """ut-l0-v5-upgrade-v4：完整 v4 规范块对 v5 源判 upgrade（非 drift），两模式同动作。"""
+        self.assertEqual(rc.l0_block(L0_V4_SOURCE, L0_SOURCE), "upgrade")
 
     def test_verbatim_v3_pair_is_upgrade(self):
         """ut-l0-v4-upgrade：完整 v3 规范块对 v4 源判 upgrade（非 drift），两模式同动作。"""
         self.assertEqual(rc.l0_block(L0_V3_SOURCE, L0_SOURCE), "upgrade")
 
     def test_kernel_is_v4_with_visible_version_line(self):
-        """ut-l0-v4-visible-line：内核标记为 v4，标记后首行为可见文本版本行。
+        """ut-l0-v5-visible-line：内核标记为 v5，标记后首行为可见文本版本行。
 
         Claude Code 注入上下文时剥离 HTML 注释（2026-09-02 实验），版本必须
         以可见文本存在，回执才能自报版本。
         """
         kernel = L0_SOURCE
-        self.assertTrue(kernel.startswith(V4_START))
-        self.assertTrue(kernel.rstrip("\n").endswith(V4_END))
+        self.assertTrue(kernel.startswith(V5_START))
+        self.assertTrue(kernel.rstrip("\n").endswith(V5_END))
         lines = kernel.splitlines()
-        self.assertEqual(lines[1], "Cadence L0 路由内核 v4")
+        self.assertEqual(lines[1], "Cadence L0 路由内核 v5")
+        self.assertIn("Codex/pi/omp", kernel)  # v5：omp 客户端语义（skill:// 全文读取）
         self.assertNotIn("v3:start", kernel)
         self.assertNotIn("v3:end", kernel)
-        self.assertLessEqual(len(kernel.encode("utf-8")), 2688)
+        self.assertLessEqual(len(kernel.encode("utf-8")), 2750)
 
-    def test_kernel_is_v4_and_slim(self):
-        """ut-kernel-v4：内核标记为 v4 且体量 ≤2688 字节（v3 上限 2560 + 可见版本行余量）。"""
+    def test_kernel_is_v5_and_slim(self):
+        """ut-kernel-v5：内核标记为 v5 且体量 ≤2750 字节（v4 2571 + omp 语义行余量）。"""
         kernel = L0_SOURCE
-        self.assertTrue(kernel.startswith(V4_START))
-        self.assertLessEqual(len(kernel.encode("utf-8")), 2688)
+        self.assertTrue(kernel.startswith(V5_START))
+        self.assertLessEqual(len(kernel.encode("utf-8")), 2750)
         self.assertIn("产物自动提交", kernel)
         for banned in ("保持静默", "引导句", "事件之间", "重试"):
             self.assertNotIn(banned, kernel)
@@ -1059,7 +1072,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v4",
+            "cadence-managed:openspec-superpowers-routing:v5",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -3407,8 +3420,8 @@ class TestEndToEndRegression(unittest.TestCase):
             (7, "代码阅读规则"),
         ):
             self.assertIn(f"### {number}. {title}", agents)
-        self.assertIn(V4_START, agents)
-        self.assertIn(V4_END, agents)
+        self.assertIn(V5_START, agents)
+        self.assertIn(V5_END, agents)
         self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
         self.assertIn("产物自动提交（design/plan/code）**：关闭", agents)
         self.assertNotIn("serena-usage.md", agents)
@@ -3473,8 +3486,8 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertIn("### 1. 语言规则", claude)
         self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
         self.assertNotIn("playwright.md", claude)
-        self.assertIn(V4_START, claude)
-        self.assertIn(V4_END, claude)
+        self.assertIn(V5_START, claude)
+        self.assertIn(V5_END, claude)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
@@ -4152,11 +4165,11 @@ class TestVerifyCommand(unittest.TestCase):
             code, 0, json.dumps(report.get("checks"), ensure_ascii=False))
         names = [c["name"] for c in report["checks"]]
         self.assertEqual(names, ["l0_version", "rules_hash", "permission_gate",
-                                 "codex_inline", "symlink_resolution"])
+                                 "codex_inline", "symlink_resolution", "omp_assets"])
         self.assertTrue(all(c["status"] == "ok" for c in report["checks"]))
 
     def test_outdated_l0_reports_and_exit_one(self):
-        """ut-verify-outdated：L0 v3 报“版本过时（当前 v3，最新 v4）”且退出 1。"""
+        """ut-verify-outdated：L0 v3 报“版本过时（当前 v3，最新 v5）”且退出 1。"""
         (self.root / "CLAUDE.md").write_text(
             "# CLAUDE.md\n\n" + L0_V3_SOURCE + "\n\n## 强制规则\n- x\n",
             encoding="utf-8")
@@ -4172,7 +4185,7 @@ class TestVerifyCommand(unittest.TestCase):
         l0 = next(c for c in report["checks"] if c["name"] == "l0_version")
         self.assertEqual(l0["status"], "drift")
         for item in l0["items"]:
-            self.assertIn("L0 版本过时（当前 v3，最新 v4）", item["detail"])
+            self.assertIn("L0 版本过时（当前 v3，最新 v5）", item["detail"])
 
     def test_not_generated_not_drift_for_fresh_project(self):
         """ut-verify-not-generated：从未 apply 的项目③④报未生成，不误报漂移。"""
@@ -4205,7 +4218,7 @@ class TestVerifyCommand(unittest.TestCase):
         self.assertEqual(payload["overall"], "drift")
         names = {c["name"] for c in payload["checks"]}
         self.assertEqual(names, {"l0_version", "rules_hash", "permission_gate",
-                                 "codex_inline", "symlink_resolution"})
+                                 "codex_inline", "symlink_resolution", "omp_assets"})
         rules_check = next(c for c in payload["checks"] if c["name"] == "rules_hash")
         self.assertEqual(rules_check["status"], "drift")
         inline_check = next(c for c in payload["checks"] if c["name"] == "codex_inline")
@@ -4278,6 +4291,242 @@ class TestSubagentFallbackChainRule(unittest.TestCase):
             (refs / "mcp-servers.md").read_text(encoding="utf-8"))
         self.assertEqual(entries, [])
 
+
+class TestRuleTemplatesFrontmatter(unittest.TestCase):
+    """共享 frontmatter 分桶契约（omp-client-support / managed-rule-lifecycle delta）。"""
+
+    TEMPLATES = (
+        "language.md", "code-usage-coding.md", "code-usage-noncoding.md",
+        "code-reading-coding.md", "code-reading-noncoding.md",
+        "document-storage.md", "markdown-format.md", "mcp-servers.md",
+        "playwright.md", "openspec-superpowers-workflow.md",
+    )
+
+    def _text(self, name: str) -> str:
+        return (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / name).read_text(encoding="utf-8")
+
+    def test_all_rule_templates_have_frontmatter_with_description(self):
+        """ut-fm-contract：每个规则模板含 frontmatter 且 description 非空。"""
+        for name in self.TEMPLATES:
+            with self.subTest(name=name):
+                m = re.match(r"^---\n(.*?\n)---\n", self._text(name), re.S)
+                self.assertIsNotNone(m, f"{name} 缺 frontmatter")
+                self.assertRegex(m.group(1), r"description: \S")
+
+    def test_language_resident_bucket(self):
+        """ut-fm-language：常驻桶——alwaysApply 且无 paths。"""
+        fm = re.match(r"^---\n(.*?\n)---\n", self._text("language.md"), re.S).group(1)
+        self.assertIn("alwaysApply: true", fm)
+        self.assertNotIn("paths:", fm)
+
+    def test_behavioral_bucket_never_match_glob_and_no_framework_agents(self):
+        """ut-fm-behavioral：行为路由桶——永不匹配 glob;框架模板不携带任何
+        agent 限定(子代理默认可见全部规则、自行按需读取;agent 过滤能力仅由
+        eval 测试 fixture 验证,不入框架)。"""
+        for name in ("openspec-superpowers-workflow.md",
+                     "code-usage-noncoding.md", "code-reading-noncoding.md"):
+            with self.subTest(name=name):
+                self.assertIn("zz-cadence-behavioral", self._text(name))
+        for name in self.TEMPLATES:
+            with self.subTest(no_agents=name):
+                fm = re.match(r"^---\n(.*?\n)---\n", self._text(name), re.S)
+                self.assertIsNotNone(fm, name)
+                self.assertNotIn("agents:", fm.group(1), name)
+
+    def test_conditional_buckets_have_nonempty_paths(self):
+        """ut-fm-conditional：条件/媒体桶——非空 paths glob。"""
+        for name in ("code-usage-coding.md", "code-reading-coding.md",
+                     "document-storage.md", "markdown-format.md",
+                     "playwright.md", "mcp-servers.md"):
+            with self.subTest(name=name):
+                fm = re.match(r"^---\n(.*?\n)---\n", self._text(name), re.S).group(1)
+                self.assertRegex(fm, r'paths:\n(\s*#[^\n]*\n)?\s+- "')
+
+    def test_readme_template_unchanged_no_frontmatter(self):
+        """ut-fm-readme：README 模板不加 frontmatter（目录页常驻，不桥接）。"""
+        self.assertFalse(self._text("README.md").startswith("---\n"))
+
+
+class TestS11OmpBridge(unittest.TestCase):
+    """S11 omp 桥：软链集合管理 + .omp/AGENTS.md 受管活引用（omp-client-support）。"""
+
+    def _project(self, rule_names=("code-usage.md", "language.md")):
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        rules = root / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "README.md").write_text("# 目录页\n", encoding="utf-8")
+        for n in rule_names:
+            (rules / n).write_text(f"---\ndescription: {n}\n---\n# {n}\n",
+                                   encoding="utf-8")
+        self.addCleanup(tmp.cleanup)
+        return root
+
+    def _run(self, root):
+        report: dict = {"steps": []}
+        plan: dict = {}
+        rc.step_s11_omp_bridge(root, None, plan, report)
+        return report
+
+    def _actions(self, report):
+        return next(s["actions"] for s in report["steps"]
+                    if s["name"] == rc.STEP_OMP_BRIDGE)
+
+    def test_creates_symlinks_for_all_rules_except_readme(self):
+        """ut-s11-create：按规则集合创建软链，README 除外。"""
+        root = self._project()
+        self._run(root)
+        bridge = root / ".agents" / "rules"
+        self.assertEqual(sorted(p.name for p in bridge.iterdir()),
+                         ["code-usage.md", "language.md"])
+        for n in ("code-usage.md", "language.md"):
+            p = bridge / n
+            self.assertTrue(p.is_symlink(), n)
+            self.assertEqual(os.readlink(p), f"../../.claude/rules/{n}")
+            self.assertEqual(p.read_text(encoding="utf-8"),
+                             (root / ".claude" / "rules" / n).read_text(encoding="utf-8"))
+    def test_idempotent_second_run_no_actions(self):
+        """ut-s11-idempotent：集合一致时二次运行动作为空、零写入。"""
+        root = self._project()
+        self._run(root)
+        omp_md = root / ".omp" / "AGENTS.md"
+        before = omp_md.read_text(encoding="utf-8")
+        mtime = omp_md.stat().st_mtime_ns
+        report = self._run(root)
+        self.assertEqual(self._actions(report), [])
+        self.assertEqual(omp_md.read_text(encoding="utf-8"), before)
+        self.assertEqual(omp_md.stat().st_mtime_ns, mtime)
+
+
+    def test_repairs_mistargeted_symlink(self):
+        """ut-s11-repair：指向非规则源的软链被重定向。"""
+        root = self._project(("code-usage.md",))
+        bridge = root / ".agents" / "rules"
+        bridge.mkdir(parents=True)
+        os.symlink("../../elsewhere.md", bridge / "code-usage.md")
+        self._run(root)
+        self.assertEqual(os.readlink(bridge / "code-usage.md"),
+                         "../../.claude/rules/code-usage.md")
+
+    def test_removes_orphan_pointing_to_retired_rule(self):
+        """ut-s11-remove：指向已退役规则的孤儿软链被删除。"""
+        root = self._project(("code-usage.md",))
+        bridge = root / ".agents" / "rules"
+        bridge.mkdir(parents=True)
+        os.symlink("../../.claude/rules/retired.md", bridge / "retired.md")
+        self._run(root)
+        self.assertFalse((bridge / "retired.md").exists())
+
+    def test_keeps_unrelated_user_file_with_warning(self):
+        """ut-s11-user-file：非管线文件逐字保留 + warning。"""
+        root = self._project(("code-usage.md",))
+        bridge = root / ".agents" / "rules"
+        bridge.mkdir(parents=True)
+        (bridge / "my-own.md").write_text("用户内容\n", encoding="utf-8")
+        report = self._run(root)
+        self.assertEqual((bridge / "my-own.md").read_text(encoding="utf-8"),
+                         "用户内容\n")
+        self.assertTrue(any(w["code"] == rc.OMP_WARNING_USER_FILE
+                            for w in report.get("warnings", [])))
+
+    def test_conflict_same_name_regular_file_backed_up_then_replaced(self):
+        """ut-s11-conflict：同名普通文件归档后替换为软链 + warning。"""
+        root = self._project(("code-usage.md",))
+        bridge = root / ".agents" / "rules"
+        bridge.mkdir(parents=True)
+        (bridge / "code-usage.md").write_text("手工内容\n", encoding="utf-8")
+        report = self._run(root)
+        p = bridge / "code-usage.md"
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(os.readlink(p), "../../.claude/rules/code-usage.md")
+        legacy = list((root / "cadence" / "legacy").rglob("code-usage.md"))
+        self.assertTrue(legacy, "cadence/legacy 无归档")
+        self.assertEqual(legacy[0].read_text(encoding="utf-8"), "手工内容\n")
+        self.assertTrue(any(w["code"] == rc.OMP_WARNING_USER_FILE
+                            for w in report.get("warnings", [])))
+
+    def test_materializes_when_symlink_unavailable(self):
+        """ut-s11-materialize：symlink 失败降级物化副本 + warning，不失败关闭。"""
+        root = self._project(("code-usage.md",))
+        real_symlink = os.symlink
+        with mock.patch.object(os, "symlink",
+                               side_effect=OSError("no symlink support")):
+            report = self._run(root)
+        p = root / ".agents" / "rules" / "code-usage.md"
+        self.assertFalse(p.is_symlink())
+        self.assertIn("code-usage", p.read_text(encoding="utf-8"))
+        self.assertTrue(any(w["code"] == rc.OMP_WARNING_MATERIALIZED
+                            for w in report.get("warnings", [])))
+        _ = real_symlink  # 保持引用可读
+
+    def test_replaces_manual_omp_agents_md_with_backup(self):
+        """ut-s11-omp-md-replace：手工过渡文件归档后替换为受管活引用。"""
+        root = self._project(("code-usage.md",))
+        (root / ".omp").mkdir()
+        (root / ".omp" / "AGENTS.md").write_text(
+            "## CodeGraph\n\n旧过渡文件副本\n\n@../AGENTS.md\n", encoding="utf-8")
+        report = self._run(root)
+        self.assertEqual((root / ".omp" / "AGENTS.md").read_text(encoding="utf-8"),
+                         rc.OMP_AGENTS_MD_BODY)
+        legacy = list((root / "cadence" / "legacy").rglob("AGENTS.md"))
+        self.assertTrue(legacy)
+        self.assertIn("旧过渡文件副本", legacy[0].read_text(encoding="utf-8"))
+        self.assertTrue(any(b["file"].endswith(".omp/AGENTS.md")
+                            for b in report.get("backups", [])))
+
+    def test_creates_omp_agents_md_when_missing(self):
+        """ut-s11-omp-md-create：缺失时创建受管活引用。"""
+        root = self._project(("code-usage.md",))
+        report = self._run(root)
+        self.assertEqual((root / ".omp" / "AGENTS.md").read_text(encoding="utf-8"),
+                         rc.OMP_AGENTS_MD_BODY)
+        actions = self._actions(report)
+        self.assertIn({"path": ".omp/AGENTS.md", "action": "managed-write"}, actions)
+
+    def test_verify_omp_assets_drift_and_ok(self):
+        """ut-s11-verify：verify 第⑥项——桥缺失/受管不一致判 drift，收敛判 ok。"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            rules = root / ".claude" / "rules"
+            rules.mkdir(parents=True)
+            (rules / "language.md").write_text(
+                "---\ndescription: x\n---\n# y\n", encoding="utf-8")
+            report: dict = {}
+            rc.run_verify(root, report)
+            omp = next(c for c in report["checks"]
+                       if c["name"] == "omp_assets")
+            self.assertEqual(omp["status"], "drift")
+            self.assertEqual(omp["items"][0]["status"], "drift")
+            # 收敛后判 ok
+            rc.step_s11_omp_bridge(root, None, {}, report)
+            report2: dict = {}
+            rc.run_verify(root, report2)
+            omp2 = next(c for c in report2["checks"]
+                        if c["name"] == "omp_assets")
+            self.assertEqual(omp2["status"], "ok")
+            self.assertEqual([i["status"] for i in omp2["items"]],
+                             ["ok", "ok"])
+            # 篡改 .omp/AGENTS.md 判 drift
+            (root / ".omp" / "AGENTS.md").write_text("tampered\n",
+                                                     encoding="utf-8")
+            report3: dict = {}
+            rc.run_verify(root, report3)
+            omp3 = next(c for c in report3["checks"]
+                        if c["name"] == "omp_assets")
+            self.assertEqual(omp3["status"], "drift")
+
+    def test_bridge_actions_pure_function_shapes(self):
+        """ut-s11-actions-shapes：_bridge_actions 纯函数各分支。"""
+        root = self._project(("code-usage.md", "language.md"))
+        rules_dir = root / ".claude" / "rules"
+        # 目录不存在 → 全 create
+        actions, warns = rc._bridge_actions(rules_dir, root / ".agents" / "rules")
+        self.assertEqual(actions, [("create", "code-usage.md"),
+                                   ("create", "language.md")])
+        self.assertEqual(warns, [])
 
 if __name__ == "__main__":
     unittest.main()

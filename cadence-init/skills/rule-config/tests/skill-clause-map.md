@@ -407,3 +407,22 @@
 - 纯 Agent 行为约束（提问规则 IA-R、密钥占位符 IA-05、裸 token 解析 PM-01、逐条提问时机）按 design D6 第 3 条纳入静态检查（`sc-`）与人工验收，不伪造自动化断言。
 - 与现有 22 个生命周期用例的关系：现有 `verify-managed-lifecycle.sh` 用例（actual-entry-idempotent、l0-drift-*、l0-broken-markers、l0-backup-barrier、l1、apply-normal、yaml-errors、openspec-success、apply-remove、publish-fail 等）按 Task 2 迁移到本表 `it-`/`ut-` 命名；本表新增缺口用例以 §3.2 为准。原 `instructions-fail` 用例已随 design D4 删除（临时 Change 与四类 `openspec instructions` 验证废止，由结构预检取代），对应的 `tests/fixtures/instrumented-openspec.sh` fixture 已删除并标记废止。
 - 已知演进点：OS-N10 与 OS-06 的 instructions 验证条款已随 design D4 删除并标记废止（本表对应行现为“已废止”状态，保持行 ID 用于对账可追溯）。
+
+## OR. omp 桥条款对账（2026-09-09，change support-omp-client）
+
+> 依据：`references/merge-semantics.md` §11.8（OR-01~07）+ SKILL.md 概述 S11 句与 warnings code 清单。
+> 测试 ID 与 `TestS11OmpBridge`/`TestRuleTemplatesFrontmatter`（test_rule_config.py）逐一对账。
+
+| 行 ID | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言 |
+|---|---|---|---|---|---|---|
+| OR-01 | 应有软链缺失→创建（源=规则集减 README） | 两模式 | step_s11_omp_bridge / _bridge_actions | inline tmp | ut-s11-create / ut-s11-actions-shapes | 软链集合==规则集合减 README,相对路径 `../../.claude/rules/<名>` |
+| OR-02 | 断链/指向非规则源软链→重定向修复 | 两模式 | _apply_bridge_action | inline tmp | ut-s11-repair | readlink 等于规范相对路径 |
+| OR-03 | 孤儿软链(源退役)→删除 | 两模式 | _apply_bridge_action | inline tmp | ut-s11-remove | 孤儿条目消失 |
+| OR-04 | 非管线用户文件→逐字保留+warning | 两模式 | _bridge_actions | inline tmp | ut-s11-user-file | 内容不变+`OMP_BRIDGE_USER_FILE_KEPT` |
+| OR-05 | symlink 不可用→物化副本+warning | 两模式 | _apply_bridge_action | inline tmp(mock os.symlink) | ut-s11-materialize | 副本内容==源+`OMP_BRIDGE_MATERIALIZED`,不失败关闭 |
+| OR-06 | `.omp/AGENTS.md` 受管活引用(缺失/旧内容/不一致) | 两模式 | step_s11_omp_bridge | inline tmp | ut-s11-omp-md-create / ut-s11-omp-md-replace | 整文件==受管两行活引用;旧内容归档 cadence/legacy |
+| OR-07 | 与规则同名普通文件→归档后软链替换+warning | 两模式 | _apply_bridge_action | inline tmp | ut-s11-conflict | 归档副本内容可回滚+软链就位+warning |
+| OR-幂等 | 集合一致+受管一致→零写入 | 两模式 | step_s11_omp_bridge | inline tmp | ut-s11-idempotent | actions 为空,文件 mtime 不变 |
+| FM | 模板共享 frontmatter 分桶契约(10 源模板) | 两模式 | references/rules/*.md | inline | ut-fm-contract / ut-fm-language / ut-fm-behavioral / ut-fm-conditional / ut-fm-readme | description 全员;language 常驻桶;行为路由桶永不匹配 glob 且框架不携带任何 agents 限定;README 不加 |
+
+**对账声明**：S11 步骤已注册 STEP_ORDER/STEP_FUNCS(`s11_omp_bridge` 尾位);PRUNE_DIRS 与 SKILL.md find 块双向增 `.omp`(sc-prune-dirs-contract 延续覆盖);L0 升 v5 断言层同步见 `ut-l0-v5-current`/`ut-l0-v5-upgrade-v4`/`ut-l0-v5-visible-line`/`ut-kernel-v5` 与 eval `test_stage1_assertions`(l0.v5)。

@@ -1,10 +1,23 @@
-<!-- cadence-tools:start -->
-cadence-tools:
-  - preferred: [codegraph, "ast-grep outline"]
-    fallback: [Grep, Glob, "Bash(grep:*)", "Bash(rg:*)", "Bash(find:*)"]
-    when: project_type=coding AND codegraph_enabled
-<!-- cadence-tools:end -->
-
+---
+description: 代码阅读规则——CodeGraph 与 ast-grep 优先（coding）
+paths:
+  - "**/*.rs"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+  - "**/*.py"
+  - "**/*.go"
+  - "**/*.java"
+  - "**/*.c"
+  - "**/*.cpp"
+  - "**/*.cs"
+  - "**/*.swift"
+  - "**/*.kt"
+  - "**/*.php"
+  - "**/*.rb"
+  - "**/*.vue"
+---
 ## 代码阅读规则
 > **适用范围**：本项目 project_type=coding 时生效；非编码项目仅在用户显式启用 CodeGraph 开关的场景下参考 CodeGraph 相关条目。
 

@@ -1,5 +1,6 @@
 """eval/tests/test_stage1_assertions.py —— 阶段一产物断言表（tasks 1.2 断言部分）。"""
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,12 +14,21 @@ def _installed_workspace(root: Path) -> None:
     rules = root / ".claude" / "rules"
     rules.mkdir(parents=True, exist_ok=True)  # 先建目录再写文件（否则 helper 自身报错）
     for name in gen.expected_rules_files():
-        (rules / name).write_text("# rule\n", encoding="utf-8")
+        (rules / name).write_text(
+            "---\ndescription: 测试规则占位\n---\n\n# 规则正文\n", encoding="utf-8")
+    # omp 桥接资产（Change A 产物形态）：.agents/rules 软链 + .omp/AGENTS.md 受管正文
+    bridge = root / ".agents" / "rules"
+    bridge.mkdir(parents=True, exist_ok=True)
+    for name in gen.expected_rules_files():
+        os.symlink(f"../../.claude/rules/{name}", bridge / name)
+    omp = root / ".omp"
+    omp.mkdir(parents=True, exist_ok=True)
+    (omp / "AGENTS.md").write_text(asrt.OMP_AGENTS_MD_BODY, encoding="utf-8")
     claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").exists() else ""
     (root / "CLAUDE.md").write_text(
-        "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->\n"
-        "Cadence L0 路由内核 v4\n" + claude +
-        "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->\n", encoding="utf-8")
+        "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->\n"
+        "Cadence L0 路由内核 v5\n" + claude +
+        "<!-- cadence-managed:openspec-superpowers-routing:v5:end -->\n", encoding="utf-8")
     deny_doc = {"permissions": {"deny": [
         "UserDeny",
         "@@cadence-managed:permission-gate:v1:start@@",
@@ -65,11 +75,11 @@ class TestStage1Assertions(unittest.TestCase):
         return results
 
     def test_fresh_all_green(self):
-        """ut-s1-fresh：全新变体全绿（清单/L0v4/权限区/内联区/verify=0）。"""
+        """ut-s1-fresh：全新变体全绿（清单/L0v5/权限区/内联区/verify=0）。"""
         _installed_workspace(self.root)
         names = [r.name for r in self._all_ok()]
         for expect in ("pre-check.report", "pre-check.zero-change", "rules.manifest",
-                       "l0.v4", "gate.region", "codex.inline", "verify.exit0",
+                       "l0.v5", "gate.region", "codex.inline", "verify.exit0",
                        "mcp.valid", "mcp.codex-consistent", "mcp.gitignore",
                        "prx.placed", "prx.not-rules"):
             self.assertIn(expect, names)
@@ -225,6 +235,80 @@ class TestStage1VariantAssertions(unittest.TestCase):
         results = asrt.assert_stage1("fresh", self.root, 0, dict(TEXTS),
                                      {"rules_before": before})
         self.assertFalse(next(r for r in results if r.name == "prx.not-rules").ok)
+
+
+class TestStage1RuleAssetAssertions(unittest.TestCase):
+    """四条净新增确定性断言：rules.frontmatter / omp.symlinks / omp.agents-md / agents-md.budget。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "fixture"
+        self.root.mkdir()
+
+    def _by_name(self):
+        return {r.name: r for r in
+                asrt.assert_stage1("fresh", self.root, 0, dict(TEXTS))}
+
+    def test_rule_assets_all_green_with_readme_exempt(self):
+        """ut-s1-assets-green：完整正例四条全绿；README.md 无 frontmatter 也豁免两集合。"""
+        _installed_workspace(self.root)
+        # README 是仓库自有文档：无 frontmatter 不判红，也不要求 .agents/rules 软链
+        (self.root / ".claude" / "rules" / "README.md").write_text(
+            "# 规则索引说明，无 frontmatter\n", encoding="utf-8")
+        by = self._by_name()
+        for name in ("rules.frontmatter", "omp.symlinks", "omp.agents-md",
+                     "agents-md.budget"):
+            self.assertTrue(by[name].ok, f"{name}: {by[name].detail}")
+
+    def test_rules_frontmatter_missing_description_fails(self):
+        """ut-s1-frontmatter-bad：规则文件缺 frontmatter description → 判红并指明文件名。"""
+        _installed_workspace(self.root)
+        (self.root / ".claude" / "rules" / "language.md").write_text(
+            "# 语言规则\n\n正文无 frontmatter 围栏。\n", encoding="utf-8")
+        a = self._by_name()["rules.frontmatter"]
+        self.assertFalse(a.ok)
+        self.assertIn("language.md", a.detail)
+
+    def test_omp_symlinks_missing_link_fails(self):
+        """ut-s1-symlinks-bad：.agents/rules 缺一条软链 → 集合不符判红。"""
+        _installed_workspace(self.root)
+        (self.root / ".agents" / "rules" / "language.md").unlink()
+        self.assertFalse(self._by_name()["omp.symlinks"].ok)
+
+    def test_omp_symlinks_plain_file_fails(self):
+        """ut-s1-symlinks-plain：软链被普通文件顶替（OR-07 形态）→ 判红。"""
+        _installed_workspace(self.root)
+        link = self.root / ".agents" / "rules" / "language.md"
+        link.unlink()
+        link.write_text("用户自留普通文件\n", encoding="utf-8")
+        a = self._by_name()["omp.symlinks"]
+        self.assertFalse(a.ok)
+        self.assertIn("language.md", a.detail)
+
+    def test_omp_agents_md_unmanaged_content_fails(self):
+        """ut-s1-omp-md-bad：.omp/AGENTS.md 非受管正文（逐字比对）→ 判红。"""
+        _installed_workspace(self.root)
+        (self.root / ".omp" / "AGENTS.md").write_text("<!-- cadence-managed:omp-context:v1 -->\n"
+                                                      "@../.claude/CLAUDE.md\n自写内容\n",
+                                                      encoding="utf-8")
+        self.assertFalse(self._by_name()["omp.agents-md"].ok)
+
+    def test_agents_md_budget_exceeded_fails(self):
+        """ut-s1-budget-bad：AGENTS.md 超 200 行预算 → 判红并报行数。"""
+        _installed_workspace(self.root)
+        (self.root / "AGENTS.md").write_text(
+            "\n".join(f"第 {i} 行" for i in range(1, 202)) + "\n", encoding="utf-8")
+        a = self._by_name()["agents-md.budget"]
+        self.assertFalse(a.ok)
+        self.assertIn("201", a.detail)
+
+    def test_agents_md_budget_boundary_200_ok(self):
+        """ut-s1-budget-edge：恰好 200 行在预算内（边界不判红）。"""
+        _installed_workspace(self.root)
+        (self.root / "AGENTS.md").write_text(
+            "\n".join(f"第 {i} 行" for i in range(1, 201)) + "\n", encoding="utf-8")
+        self.assertTrue(self._by_name()["agents-md.budget"].ok)
 
 
 if __name__ == "__main__":

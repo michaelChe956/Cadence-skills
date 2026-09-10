@@ -59,13 +59,56 @@ EOF
 git add -A && git commit -qm 'init'
 echo "project created: $THEME module"
 """
+# claude 端专属:InstructionsLoaded hook 注入脚本——绝不混入五端共享的
+# PROJECT_INIT_SCRIPT。hook 把每次装载事件追加写 loaded.log(stage1 安装会话
+# 与探针会话都会写),夜测在 stage1 后截断、探针后读取,得到确定性的
+# session_start 常载清单(不依赖模型自报)。
+# .claude/settings.json 可能已存在 → 容器内 python3 保守合并 hooks 键,
+# 绝不整文件覆盖(rule-config 的权限投影同为区块级合并,该 hook 可存活)。
+CLAUDE_HOOK_INIT_SCRIPT = r"""
+set -e
+mkdir -p /home/tester/project/.claude
+touch /home/tester/project/loaded.log
+python3 - << 'PYEOF'
+import json
+from pathlib import Path
 
-def create_test_project(c: Container, theme: str = "users") -> None:
-    """在容器内创建测试项目：基础项目 + P7 真截图 + 预置真 key MCP。"""
+settings = Path("/home/tester/project/.claude/settings.json")
+doc = {}
+if settings.exists():
+    try:
+        doc = json.loads(settings.read_text())
+    except ValueError:
+        doc = {}
+if not isinstance(doc, dict):
+    doc = {}
+entry = {"hooks": [{"type": "command",
+                    "command": "cat >> /home/tester/project/loaded.log"}]}
+bucket = doc.setdefault("hooks", {}).setdefault("InstructionsLoaded", [])
+if entry not in bucket:
+    bucket.append(entry)
+settings.write_text(json.dumps(doc, ensure_ascii=False, indent=2))
+PYEOF
+"""
+
+# (claude 端 CLAUDE_HOOK_INIT_SCRIPT 为唯一端专属注入;omp 端无注入——
+# 2026-09-10 用户裁决:agent 限定是 omp 原生能力,由用户在项目规则中自行
+# 添加 agents: 字段,框架与 eval 均不预置、不测试。)
+
+
+def create_test_project(c: Container, theme: str = "users",
+                        agent: Optional[str] = None) -> None:
+    """在容器内创建测试项目：基础项目 + P7 真截图 + 预置真 key MCP。
+
+    agent=="claude" 时额外预置 InstructionsLoaded hook(常载审计数据源);
+    其余端不注入。
+    """
     c.exec(PROJECT_INIT_SCRIPT, timeout=30)
     c.copy_in(str(REPO_ROOT / "eval/docker/assets/error_screenshot.jpg"),
               "/home/tester/project/assets/error.png")
     _preset_mcp_real_keys(c)
+    if agent == "claude":
+        c.exec(CLAUDE_HOOK_INIT_SCRIPT, timeout=30)
 
 
 def _preset_mcp_real_keys(c: Container) -> None:
@@ -216,16 +259,19 @@ def _cli_command(agent: str) -> str:
         "codex": "codex exec --json -s danger-full-access",
         "pi": "pi -p",
         "kimi": "kimi -p",
+        "omp": "omp -p",
     }.get(agent, "claude -p")
 
 
 # 各端无头权限 flag：claude 跳权限确认；codex 由 -s danger-full-access 控制（无额外 flag）；
-# pi 无权限门；kimi -p 模式本身自动执行（--auto 与 -p 互斥，实测报错）
+# pi 无权限门；kimi -p 模式本身自动执行（--auto 与 -p 互斥，实测报错）；
+# omp -p 默认自动批准工具（无权限弹窗）
 _PERMISSION_FLAG = {
     "claude": "--dangerously-skip-permissions",
     "codex": "",
     "pi": "",
     "kimi": "",
+    "omp": "",
 }
 
 

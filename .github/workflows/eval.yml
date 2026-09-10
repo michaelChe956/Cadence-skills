@@ -49,7 +49,7 @@ jobs:
             --golden eval/transcripts/golden-verdicts.json
 
   eval-tier1-docker:
-    name: Tier-1 Docker 四端夜测（self-hosted，PR 触发）
+    name: Tier-1 Docker 五端夜测（self-hosted，PR 触发）
     if: >-
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
@@ -79,18 +79,19 @@ jobs:
           podman image exists localhost/cadence-test:latest \
             || podman build -t cadence-test:latest eval/docker/
 
-      - name: 四端 Docker 夜测并发（全新容器×端：安装→四命令→探针→评分→销毁）
+      - name: 五端 Docker 夜测并发（全新容器×端：安装→四命令→探针→评分→销毁；
+          omp 考场故障走 degrade 记录不拦 CI）
         run: |
           set -euo pipefail
           cd "${GITHUB_WORKSPACE}"
           declare -A pids
-          for agent in codex pi kimi claude; do
-            PYTHONPATH=. python3 eval/docker/night.py "${agent}" P1,P3,P5 \
+          for agent in codex pi kimi claude omp; do
+            PYTHONPATH=. python3 eval/docker/night.py "${agent}" P1,P3,P5,R1,R2 \
               > "night-${agent}.log" 2>&1 &
             pids["${agent}"]=$!
           done
           fail=0
-          for agent in codex pi kimi claude; do
+          for agent in codex pi kimi claude omp; do
             if wait "${pids["${agent}"]}"; then
               echo "::group::夜测 ${agent} ✔"
               tail -3 "night-${agent}.log"

@@ -147,5 +147,34 @@ class TestScoreRun(unittest.TestCase):
         self.assertEqual(result["verdict"], "FAIL")
 
 
+class TestTextAssertionKinds(unittest.TestCase):
+    """text_contains / text_lacks：最终输出文本锚点断言（R 组探针接线）。"""
+
+    def test_text_contains_hit_and_miss(self):
+        """ut-asr-tc：text_contains 锚点命中→PASS；缺失→FAIL 且 fail_reason 具名。"""
+        probe = {"id": "T1", "assertions": [{"kind": "text_contains",
+                                             "pattern": "调用链"}]}
+        ok = asr.score_run("t1", probe,
+                           _traj([], final_text="已梳理 orders 模块调用链与入口。"))
+        self.assertEqual(ok["verdict"], "PASS")
+
+        miss = asr.score_run("t2", probe, _traj([], final_text="done"))
+        self.assertEqual(miss["verdict"], "FAIL")
+        self.assertIn("text_contains", miss["fail_reason"])
+
+    def test_text_lacks_forbidden_string(self):
+        """ut-asr-tl：text_lacks 禁止串未出现→PASS；出现→FAIL 且 fail_reason 具名。"""
+        probe = {"id": "T2", "assertions": [{"kind": "text_lacks",
+                                             "pattern": "TODO"}]}
+        ok = asr.score_run("t3", probe,
+                           _traj([], final_text="结论完整，无遗留。"))
+        self.assertEqual(ok["verdict"], "PASS")
+
+        hit = asr.score_run("t4", probe,
+                            _traj([], final_text="TODO: 之后补齐"))
+        self.assertEqual(hit["verdict"], "FAIL")
+        self.assertIn("text_lacks", hit["fail_reason"])
+
+
 if __name__ == "__main__":
     unittest.main()

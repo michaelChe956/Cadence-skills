@@ -24,13 +24,15 @@ KnowledgeBase Skills 只在目标项目授权范围内读取证据；它们不�
 
 CI 之外用 Docker 容器化夜测做端到端验证：每端一个全新容器（安装 CLI → 认证 → install.sh → 四命令 → 探针 → 评分落盘 → 销毁）。首夜基线（2026-09-08/09，每端 2 轮）：
 
-| 探针 | claude | codex | pi | kimi |
-|---|---|---|---|---|
-| P1 检索优先级 | 2/2 · 141s | 2/2 · 116s | 2/2 · 78s | 2/2 · 141s |
-| P3 时序合规 | 2/2 · 137s | 2/2 · 89s | 2/2 · 85s | 2/2 · 260s |
-| P5 产物目录 | 2/2 · 282s | 2/2 · 238s | 2/2 · 162s | 2/2 · 190s |
+| 探针 | claude | codex | pi | kimi | omp |
+|---|---|---|---|---|---|
+| P1 检索优先级 | 2/2 · 141s | 2/2 · 116s | 2/2 · 78s | 2/2 · 141s | 1/1 · 62s |
+| P3 时序合规 | 2/2 · 137s | 2/2 · 89s | 2/2 · 85s | 2/2 · 260s | 1/1 · 91s |
+| P5 产物目录 | 2/2 · 282s | 2/2 · 238s | 2/2 · 162s | 2/2 · 190s | 1/1 · 128s |
 
-四端 24/24 全 PASS，安装产物一致（skills=28 / superpowers=14 / rules=7）。透视脚本：`python3 eval/docker/report_matrix.py`。
+五端 32/32 全 PASS（omp 为 change `support-omp-client` 首轮：8/8,基线首轮建立）,安装产物一致（skills=28 / superpowers=14 / rules=7）。透视脚本：`python3 eval/docker/report_matrix.py`（考场端级故障时输出降级注记）。
+
+规则加载 R 组（change `rules-progressive-load-probes` 首轮,2026-09-10）：R1 索引可见/R2 正文按需 五端各 1/1 全绿;(R3 agent 过滤验收已按 2026-09-10 用户裁决撤销——`agents:` 为 omp 原生能力,用户在项目规则自行添加,框架与 eval 不涉);stage1 四条确定性断言(rules.frontmatter/omp.symlinks/omp.agents-md/agents-md.budget)五端全绿;claude 常载 hook 审计 PASS(仅常驻桶+目录页+入口)。评分消费探针断言 spec,无「无断言分支即 PASS」假绿路径。
 
 ## 安装前提
 

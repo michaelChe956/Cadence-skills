@@ -178,7 +178,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v4:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v4:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v5:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v5:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -334,6 +334,15 @@ mk_converged_rules() {  # mk_converged_rules <target-root> [coding]
   fi
   cp "$code_usage_source" "$rules/code-usage.md"
   cp "$code_reading_source" "$rules/code-reading.md"
+  # S11 收敛态：.agents/rules 软链桥 + .omp/AGENTS.md 受管活引用
+  # （support-omp-client：收敛 fixture 必须包含新步骤产物，零写入断言才成立）
+  mkdir -p "$target/.agents/rules" "$target/.omp"
+  for f in language.md document-storage.md markdown-format.md mcp-servers.md \
+           openspec-superpowers-workflow.md code-usage.md code-reading.md; do
+    ln -sfn "../../.claude/rules/$f" "$target/.agents/rules/$f"
+  done
+  printf '%s\n' '<!-- cadence-managed:omp-context:v1 -->' \
+    '@../.claude/CLAUDE.md' '@../AGENTS.md' > "$target/.omp/AGENTS.md"
 }
 
 # fixture：从仓库真实入口复制（带漂移注入）。
@@ -655,10 +664,10 @@ before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -1423,7 +1432,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1463,8 +1472,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v4:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass
