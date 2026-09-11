@@ -178,3 +178,79 @@ class TestTextAssertionKinds(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMcpCalledRequiresSuccess(unittest.TestCase):
+    """ut-asr-mcp-ok：mcp_called 只认非错误调用——失败的调用尝试不算真实使用。
+
+    背景（2026-09-11 M 组实测）：MCP 启动失败时模型仍会尝试调用（记录为
+    is_error=True 的 function_call），旧实现按名字匹配误判 PASS，导致
+    透视表呈现与 agent 原话相反的结论。
+    """
+
+    def _mcp_traj(self, is_error):
+        traj = ifmt.IntermediateTrajectory(agent="codex")
+        traj.tool_calls = [
+            ifmt.ToolCall(index=0, tool="mcp__web_search_prime__web_search_prime",
+                          raw_tool="function_call", args_digest="query=glm",
+                          is_error=is_error),
+            ifmt.ToolCall(index=1, tool="Bash", raw_tool="command_execution",
+                          args_digest="curl example.com", is_error=False),
+        ]
+        traj.final_text = "改用 curl 完成任务"
+        return traj
+
+    def test_failed_call_not_counted(self):
+        ok = asr._check_assertion(
+            {"kind": "mcp_called", "server": "web-search-prime"},
+            self._mcp_traj(is_error=True), None, None, None)
+        self.assertFalse(ok, "失败的 MCP 调用尝试不得判为已调用")
+
+    def test_successful_call_counted(self):
+        ok = asr._check_assertion(
+            {"kind": "mcp_called", "server": "web-search-prime"},
+            self._mcp_traj(is_error=False), None, None, None)
+        self.assertTrue(ok)
+
+
+class TestDockerNightMcpCalledWiring(unittest.TestCase):
+    """ut-night-mcp：docker 通道 _score_probe_text 对 mcp_called 的三态判定。
+
+    背景（2026-09-11 M 组假绿）：该通道曾静默忽略 mcp_called——rc=0 即 PASS。
+    修复后：无 transcript=无法验证（FAIL）；transcript 中仅失败调用=FAIL；
+    存在非错误调用=PASS。
+    """
+
+    def _m1_result(self, traj=None, traj_error=None):
+        r = {"returncode": 0, "final_text": "搜索完成，总结如下", "duration_s": 1.0}
+        if traj is not None:
+            r["_traj"] = traj
+        if traj_error:
+            r["_traj_error"] = traj_error
+        return r
+
+    def _traj_with(self, is_error):
+        from eval import ifmt
+        t = ifmt.IntermediateTrajectory(agent="codex")
+        t.tool_calls = [ifmt.ToolCall(
+            index=0, tool="mcp__web_search_prime__web_search_prime",
+            raw_tool="function_call", args_digest="q=glm", is_error=is_error)]
+        t.final_text = "done"
+        return t
+
+    def test_no_transcript_is_honest_fail(self):
+        from eval.docker.night import _score_probe_text
+        score = _score_probe_text("codex", "M1", self._m1_result(traj_error="copy 失败"))
+        self.assertEqual(score["behavior"], "FAIL")
+        self.assertIn("无法验证", score["failures"][0])
+
+    def test_failed_only_call_is_fail(self):
+        from eval.docker.night import _score_probe_text
+        score = _score_probe_text("codex", "M1", self._m1_result(traj=self._traj_with(True)))
+        self.assertEqual(score["behavior"], "FAIL")
+        self.assertIn("真实未使用", score["failures"][0])
+
+    def test_successful_call_passes(self):
+        from eval.docker.night import _score_probe_text
+        score = _score_probe_text("codex", "M1", self._m1_result(traj=self._traj_with(False)))
+        self.assertEqual(score["behavior"], "PASS")

@@ -62,6 +62,8 @@ def _probe_group(pid: str) -> str:
         return "R 组（规则加载）"
     if pid.startswith("D"):
         return "D 组（devbox 技能行为）"
+    if pid.startswith("M"):
+        return "M 组（HTTP MCP 兼容观测 · 非门禁）"
     return "其他"
 
 
@@ -71,7 +73,9 @@ def _probe_label(pid: str) -> str:
     if pid == "resident":
         return "claude 常载审计（session_start 仅常驻桶+目录页+入口）"
     if pid in _PROBE_NAMES:
-        return f"{pid} {_PROBE_NAMES[pid]}"
+        name = _PROBE_NAMES[pid]
+        advisory = "（观测·不计门禁）" if pid.startswith("M") else ""
+        return f"{pid} {name}{advisory}"
     return f"{pid}（已撤销 · 历史记录）"
 
 def main() -> int:
