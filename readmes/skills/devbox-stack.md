@@ -55,7 +55,7 @@ agent 执行：`app run backend -- mvn spring-boot:run`（后台启动+pid 管�
 1. **唯一入口**：中间件操作一律走 `stack` 命令——未经 skill 的裸 docker 操作不会被模板同步与 `stack report` 识别
 2. **目录优先**：官方目录（mysql/redis/rabbitmq/minio，持续扩充）内的服务用 `stack enable`；`stack add` 是逃生通道，用后反馈固化
 3. **高危确认**：`stack rm <名> --purge` 会连数据卷删除，必须二次确认
-4. **反馈闭环**：定期把 `CHANGES.md` / `stack report` 发给维护者，高频自加项升级为官方目录项
+4. **反馈闭环**：定期把 `CHANGES.md` / `stack report` 发给维护者，高频自加项升级为官方目录项；也可直接提 [Issue](https://github.com/michaelChe956/Cadence-devbox/issues) 点菜或按 [贡献清单](https://github.com/michaelChe956/Cadence-devbox/blob/main/devbox/README.md#42-用户想增加中间件怎么办两条路推荐-a) 提 PR
 
 ## 常见问题
 
