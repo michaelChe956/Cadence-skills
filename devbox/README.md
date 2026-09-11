@@ -3,15 +3,22 @@
 > 版本：第一期（2026-09-11）｜ 镜像压缩体积 872MB ｜ 内置：claude 2.1.247 / codex 0.153.4 / pi 0.85.0 / omp 18.1.17（bun 1.4.2）/ kimi（官方安装器）+ JDK21 + Maven 3.9.16 + Node 24.21.0 + uv 0.12.11 + mysql/redis/rabbitmq/minio 编排
 > 完整设计见 `cadence/designs/2026-09-11_方案设计_Cadence-skills一体化开发环境容器devbox_v1.0.md`
 
-## 1. 镜像获取（二选一）
+## 1. 镜像获取（三选一）
 
-**路线 A：国内镜像仓库（推荐，待推送）**
+**路线 A：GHCR 公开仓库（推荐，已可用）**
 
 ```powershell
-docker pull registry.cn-hangzhou.aliyuncs.com/<命名空间>/cadence-devbox:latest
+docker pull ghcr.io/michaelche956/cadence-devbox:latest
+# 国内加速（Docker Desktop 已配 daocloud 镜像源时）：
+docker pull docker.m.daocloud.io/ghcr.io/michaelche956/cadence-devbox:latest
+docker tag docker.m.daocloud.io/ghcr.io/michaelche956/cadence-devbox:latest ghcr.io/michaelche956/cadence-devbox:latest
 ```
 
-**路线 B：离线 tar（当前可用）**
+tag 策略：`latest`（滚动）/ `1.0.0`（当前里程碑）/ `YYYY.WW`（周版，二期 CI 起提供）。
+
+**路线 B：国内 ACR（待开通，开通后此处回填地址）**
+
+**路线 C：离线 tar**
 
 从维护者处拿到 `devbox-image.tar.gz` 后：
 
