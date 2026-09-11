@@ -105,7 +105,7 @@ jobs:
             test -f "$codex_root/$skill/SKILL.md"
             link_checks=$((link_checks + 3))
           done
-          test "$link_checks" -eq $((13 * 3))
+          test "$link_checks" -eq $((${#skills[@]} * 3))   # 随技能数自动伸缩（此前硬编码 13*3）
 
           test -L "$shared_root/$third_party_name"
           test -L "$claude_root/$third_party_name"
