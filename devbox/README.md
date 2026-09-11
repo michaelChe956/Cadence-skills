@@ -9,12 +9,9 @@
 
 ```powershell
 docker pull ghcr.io/michaelche956/cadence-devbox:latest
-# 国内加速（Docker Desktop 已配 daocloud 镜像源时）：
-docker pull docker.m.daocloud.io/ghcr.io/michaelche956/cadence-devbox:latest
-docker tag docker.m.daocloud.io/ghcr.io/michaelche956/cadence-devbox:latest ghcr.io/michaelche956/cadence-devbox:latest
 ```
 
-tag 策略：`latest`（滚动）/ `1.0.0`（当前里程碑）/ `YYYY.WW`（周版，二期 CI 起提供）。
+tag 策略：`latest`（滚动）/ `1.0.0`（当前里程碑）/ `YYYY.WW`（周版，二期 CI 起提供）。已验证匿名可拉；公共加速镜像（daocloud/南大）不覆盖 GHCR 个人包，国内若直连慢用路线 C。
 
 **路线 B：国内 ACR（待开通，开通后此处回填地址）**
 
