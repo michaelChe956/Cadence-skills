@@ -63,7 +63,7 @@ jobs:
             find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
               -printf '%h\n' | sed 's#^.*/##' | sort -u
           )
-          test "${#skills[@]}" -eq 13
+          test "${#skills[@]}" -eq 14   # 13 基线 + devbox-stack（2026-09-11 新增）
 
           for skill in "${skills[@]}"; do
             source_skill="$GITHUB_WORKSPACE/cadence-init/skills/$skill"
