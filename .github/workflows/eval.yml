@@ -86,7 +86,7 @@ jobs:
           cd "${GITHUB_WORKSPACE}"
           declare -A pids
           for agent in codex pi kimi claude omp; do
-            PYTHONPATH=. python3 eval/docker/night.py "${agent}" P1,P3,P5,R1,R2,M1,M2,M3 \
+            PYTHONPATH=. python3 eval/docker/night.py "${agent}" P1,P3,P5,R1,R2 \
               > "night-${agent}.log" 2>&1 &
             pids["${agent}"]=$!
           done

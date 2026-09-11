@@ -60,10 +60,6 @@ def _probe_group(pid: str) -> str:
         return "P 组（规则遵循）"
     if pid.startswith("R"):
         return "R 组（规则加载）"
-    if pid.startswith("D"):
-        return "D 组（devbox 技能行为）"
-    if pid.startswith("M"):
-        return "M 组（HTTP MCP 兼容观测 · 非门禁）"
     return "其他"
 
 
@@ -73,9 +69,7 @@ def _probe_label(pid: str) -> str:
     if pid == "resident":
         return "claude 常载审计（session_start 仅常驻桶+目录页+入口）"
     if pid in _PROBE_NAMES:
-        name = _PROBE_NAMES[pid]
-        advisory = "（观测·不计门禁）" if pid.startswith("M") else ""
-        return f"{pid} {name}{advisory}"
+        return f"{pid} {_PROBE_NAMES[pid]}"
     return f"{pid}（已撤销 · 历史记录）"
 
 def main() -> int:
@@ -102,8 +96,6 @@ def main() -> int:
         dur = float(r.get("duration_s") or 0)
         a, p = r.get("agent", "?"), r.get("probe_id", "?")
         cell[(a, p)].append((verdict, dur))
-        if verdict == "NOT_MOUNTED":
-            continue  # 未挂载=观测不计：不进端健康度分母（非客户端缺陷）
         agent_pass[a][1] += 1
         if verdict == "PASS":
             agent_pass[a][0] += 1
@@ -131,7 +123,7 @@ def main() -> int:
           f"{'⚠️' if degrades else '—'} |")
 
     # --- 矩阵：分组 + 状态符号 ---
-    print("\n### 结果矩阵（✅ 全过 · ⚠️ 部分过 · ❌ 全挂 · ⊘ 未挂载（观测不计）· — 未跑；格=通过数/轮次）")
+    print("\n### 结果矩阵（✅ 全过 · ⚠️ 部分过 · ❌ 全挂 · — 未跑；格=通过数/轮次）")
     print("| 探针 | " + " | ".join(used_agents) + " |")
     print("|---|" + "---|" * len(used_agents))
     current_group = None
@@ -144,14 +136,8 @@ def main() -> int:
         for a in used_agents:
             runs = cell.get((a, p), [])
             n = len(runs)
-            nm = sum(1 for v, _ in runs if v == "NOT_MOUNTED")
-            if n == 0:
-                cols.append("—")
-            elif nm == n:
-                cols.append(f"⊘ 未挂载 {n}/{n}")
-            else:
-                ok = sum(1 for v, _ in runs if v == "PASS")
-                cols.append(f"{_cell_symbol(ok, n)} {ok}/{n}")
+            ok = sum(1 for v, _ in runs if v == "PASS")
+            cols.append("—" if n == 0 else f"{_cell_symbol(ok, n)} {ok}/{n}")
         print(f"| {_probe_label(p)} | " + " | ".join(cols) + " |")
 
     # --- 均时参考（中位数，抗重试长尾） ---

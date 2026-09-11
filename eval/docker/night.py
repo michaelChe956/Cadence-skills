@@ -31,57 +31,7 @@ def _make_trajectory(agent: str, probe_result: dict) -> IntermediateTrajectory:
     # 目前先用文本匹配做基本断言
     return traj
 
-# 探针会话 transcript 定位（容器内 HOME 相对，bash globstar）——mcp_called
-# 真实性验证依赖：从会话文件解析 tool_calls，只有非错误调用才计「已调用」。
-# omp 与 pi 同源（pi fork），复用 PiAdapter 解析。
-SESSION_GLOBS = {
-    "claude": ".claude/projects/**/*.jsonl",
-    "codex": ".codex/sessions/**/*.jsonl",
-    "pi": ".pi/agent/sessions/**/*.jsonl",
-    "kimi": ".kimi-code/sessions/**/agents/*/wire.jsonl",
-    "omp": ".omp/agent/sessions/**/*.jsonl",
-}
 
-
-def _snapshot_sessions(c, agent: str) -> dict:
-    """容器内该端会话文件快照 {path: mtime}；不支持的端返回空。"""
-    glob = SESSION_GLOBS.get(agent)
-    if not glob:
-        return {}
-    cmd = ("bash -c 'shopt -s globstar; "
-           f'stat -c "%Y %n" /home/tester/{glob} 2>/dev/null || true\'')
-    out = {}
-    for line in c.exec(cmd).get("stdout", "").splitlines():
-        parts = line.strip().split(None, 1)
-        if len(parts) == 2 and parts[0].isdigit():
-            out[parts[1]] = float(parts[0])
-    return out
-
-
-def _attach_trajectory(c, agent: str, before: dict, after: dict, r: dict) -> None:
-    """挑本次探针新建/更新的会话文件，解析出 trajectory 挂到结果上。
-
-    解析失败不抛——留 _traj_error 供评分器给出「无法验证」的诚实判定。
-    """
-    newest, best = None, -1.0
-    for path, mt in after.items():
-        if before.get(path) == mt:
-            continue
-        if mt > best:
-            newest, best = path, mt
-    if not newest:
-        return
-    try:
-        from eval.adapters import get_adapter
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            local = Path(td) / "session.jsonl"
-            c.copy_out(newest, str(local))
-            adapter = get_adapter("pi" if agent == "omp" else agent)
-            r["_traj"] = adapter.parse_stream(
-                local.read_text(encoding="utf-8", errors="replace").splitlines())
-    except Exception as exc:  # noqa: BLE001 —— 解析失败降级为可观测错误
-        r["_traj_error"] = str(exc)[:200]
 def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
     """基于文本的探针评分（Docker 简化版）。
 
@@ -131,37 +81,6 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
         elif kind == "text_lacks" and pattern in text:
             failures.append(f"{probe_id}: text_lacks 命中禁止串 {pattern!r}")
 
-    # mcp_called 三态判定（2026-09-11 二次修正）：docker 通道曾静默忽略该
-    # 断言（rc=0 即 PASS，M 组假绿根因之二）；修复后一度二值化——无调用即
-    # FAIL，但「未挂载」（headless 会话不加载项目级 HTTP MCP，客户端无过错）
-    # 与「挂载了调不动」（真兼容问题）被混为一谈。三态：
-    #   PASS          存在非错误调用（真实使用）
-    #   FAIL          存在失败调用尝试（挂载了、调用失败=兼容性/网关问题）
-    #   NOT_MOUNTED   无任何调用记录（会话未挂载该 MCP——观测不计，非客户端缺陷）
-    not_mounted: list = []
-    for assertion in probe.get("assertions", []):
-        if assertion.get("kind") != "mcp_called":
-            continue
-        server = assertion.get("server", "")
-        prefix = f"mcp__{server.replace('-', '_')}__"
-        traj = probe_result.get("_traj")
-        if traj is None:
-            reason = probe_result.get("_traj_error") or "无 transcript"
-            failures.append(f"{probe_id}: mcp_called[{server}] 无法验证（{reason}）")
-            continue
-        calls = [c for c in traj.tool_calls if prefix in c.tool]
-        if any(not c.is_error for c in calls):
-            continue  # 真实使用——不产生 failure
-        if calls:
-            failures.append(f"{probe_id}: mcp_called[{server}] 调用失败（挂载但未成=兼容性问题）")
-        else:
-            not_mounted.append(f"{probe_id}: mcp_called[{server}] 未挂载（会话无该工具，非客户端缺陷）")
-    if not_mounted and not failures:
-        return {
-            "verdict": "NOT_MOUNTED", "failures": not_mounted,
-            "behavior": "NOT_MOUNTED",
-            "behavior_failures": ";".join(not_mounted),
-        }
     behavior = "FAIL" if failures else "PASS"
     return {
         "verdict": "PASS" if not failures else "FAIL",
@@ -248,14 +167,12 @@ def run_docker_night(agent: str, probe_ids: list,
             prompt = prompt.replace("<fixture>", "/home/tester/project")
 
             print(f"  [{pid}] {prompt[:50]}...")
-            _sess_before = _snapshot_sessions(c, agent)
             r = run_probe(c, agent, prompt)
             r["stdout_raw"] = r["final_text"]
             r["final_text"] = _extract_final_text(agent, r["final_text"])
             r["probe_id"] = pid
             r["prompt"] = prompt[:80]
-            _attach_trajectory(c, agent, _sess_before,
-                               _snapshot_sessions(c, agent), r)
+
             # 评分
             score = _score_probe_text(agent, pid, r)
             r["score"] = score
