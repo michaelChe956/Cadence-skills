@@ -131,21 +131,37 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
         elif kind == "text_lacks" and pattern in text:
             failures.append(f"{probe_id}: text_lacks 命中禁止串 {pattern!r}")
 
-    # mcp_called 真实性验证（2026-09-11）：docker 通道此前静默忽略该断言——
-    # 任何 rc=0 会话即 PASS（M 组假绿根因之二）。现要求从容器 transcript
-    # 解析出的非错误调用（与 assertor 的 require_ok 修复配套）。
+    # mcp_called 三态判定（2026-09-11 二次修正）：docker 通道曾静默忽略该
+    # 断言（rc=0 即 PASS，M 组假绿根因之二）；修复后一度二值化——无调用即
+    # FAIL，但「未挂载」（headless 会话不加载项目级 HTTP MCP，客户端无过错）
+    # 与「挂载了调不动」（真兼容问题）被混为一谈。三态：
+    #   PASS          存在非错误调用（真实使用）
+    #   FAIL          存在失败调用尝试（挂载了、调用失败=兼容性/网关问题）
+    #   NOT_MOUNTED   无任何调用记录（会话未挂载该 MCP——观测不计，非客户端缺陷）
+    not_mounted: list = []
     for assertion in probe.get("assertions", []):
         if assertion.get("kind") != "mcp_called":
             continue
         server = assertion.get("server", "")
+        prefix = f"mcp__{server.replace('-', '_')}__"
         traj = probe_result.get("_traj")
         if traj is None:
             reason = probe_result.get("_traj_error") or "无 transcript"
             failures.append(f"{probe_id}: mcp_called[{server}] 无法验证（{reason}）")
             continue
-        from eval.scoring import assertor as _asr
-        if not _asr._check_assertion(assertion, traj, None, None, None):
-            failures.append(f"{probe_id}: mcp_called[{server}] 无非错误调用（真实未使用）")
+        calls = [c for c in traj.tool_calls if prefix in c.tool]
+        if any(not c.is_error for c in calls):
+            continue  # 真实使用——不产生 failure
+        if calls:
+            failures.append(f"{probe_id}: mcp_called[{server}] 调用失败（挂载但未成=兼容性问题）")
+        else:
+            not_mounted.append(f"{probe_id}: mcp_called[{server}] 未挂载（会话无该工具，非客户端缺陷）")
+    if not_mounted and not failures:
+        return {
+            "verdict": "NOT_MOUNTED", "failures": not_mounted,
+            "behavior": "NOT_MOUNTED",
+            "behavior_failures": ";".join(not_mounted),
+        }
     behavior = "FAIL" if failures else "PASS"
     return {
         "verdict": "PASS" if not failures else "FAIL",

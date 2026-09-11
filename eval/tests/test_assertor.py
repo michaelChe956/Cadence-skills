@@ -244,11 +244,24 @@ class TestDockerNightMcpCalledWiring(unittest.TestCase):
         self.assertEqual(score["behavior"], "FAIL")
         self.assertIn("无法验证", score["failures"][0])
 
-    def test_failed_only_call_is_fail(self):
+    def test_failed_call_is_compat_fail(self):
+        """挂载了但调用失败（is_error）= 兼容性问题，判 FAIL。"""
         from eval.docker.night import _score_probe_text
         score = _score_probe_text("codex", "M1", self._m1_result(traj=self._traj_with(True)))
         self.assertEqual(score["behavior"], "FAIL")
-        self.assertIn("真实未使用", score["failures"][0])
+        self.assertIn("调用失败", score["failures"][0])
+
+    def test_no_call_at_all_is_not_mounted(self):
+        """会话从未挂载该 MCP（无任何调用记录）= NOT_MOUNTED 观测不计。"""
+        from eval.docker.night import _score_probe_text
+        from eval import ifmt
+        t = ifmt.IntermediateTrajectory(agent="claude")
+        t.tool_calls = [ifmt.ToolCall(index=0, tool="WebSearch",
+                                       raw_tool="WebSearch", args_digest="q=x",
+                                       is_error=False)]
+        score = _score_probe_text("claude", "M1", self._m1_result(traj=t))
+        self.assertEqual(score["behavior"], "NOT_MOUNTED")
+        self.assertEqual(score["verdict"], "NOT_MOUNTED")
 
     def test_successful_call_passes(self):
         from eval.docker.night import _score_probe_text
