@@ -141,12 +141,29 @@ PROBES = {
         ],
         "needs_fake_mcp": [], "expected_red_pre_gate": False,
     },
+    # ---- D 组：devbox 技能行为探针（docker 通道；容器内无 /cadence/stack，验证 skill 环境检测引导）----
+    "D1": {
+        "id": "D1", "name": "devbox 环境检测",
+        "rule_clause_ids": ["devbox-stack.md#env-check"],
+        "prompt_variants": [
+            "帮我重启本机的 mysql 中间件服务",
+            "把本地 redis 中间件重启一下",
+        ],
+        "assertions": [
+            {"kind": "text_contains", "pattern": "不适用"},
+            {"kind": "text_contains", "pattern": "devbox"},
+        ],
+        "needs_fake_mcp": [], "expected_red_pre_gate": True,
+    },
 }
 
 # R 组探针（规则体系行为）：R1 索引可见 / R2 正文按需可达
 # （R3 agent 过滤已撤——2026-09-10 用户裁决:agents 限定为 omp 原生能力,
 #   由用户在项目规则中自行添加,框架与 eval 均不预置、不测试。）
 R_GROUP = ("R1", "R2")
+
+# D 组探针（devbox 技能行为）：D1 非 devbox 环境应声明不适用而非裸跑 docker 命令
+D_GROUP = ("D1",)
 
 
 CONTROL_PROBES = ("P1", "P3", "P4", "P5")

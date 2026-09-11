@@ -60,6 +60,8 @@ def _probe_group(pid: str) -> str:
         return "P 组（规则遵循）"
     if pid.startswith("R"):
         return "R 组（规则加载）"
+    if pid.startswith("D"):
+        return "D 组（devbox 技能行为）"
     return "其他"
 
 

@@ -13,7 +13,8 @@ from eval.scoring import schema
 
 MCP_PROBES = ("P2", "P6", "P7")
 PROBE_NAMES = {"P1": "P1检索", "P2": "P2文档", "P3": "P3时序", "P4": "P4语言",
-               "P5": "P5产物", "P6": "P6时间", "P7": "P7图片", "P8": "P8幂等"}
+               "P5": "P5产物", "P6": "P6时间", "P7": "P7图片", "P8": "P8幂等",
+               "D1": "D1环境检测"}
 AGENT_NAMES = {"claude": "Claude", "codex": "Codex", "pi": "Pi", "kimi": "Kimi"}
 _VALID_VERDICTS = ("PASS", "FAIL")
 

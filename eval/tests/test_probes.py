@@ -7,9 +7,9 @@ from eval.probes import definitions as prb
 class TestProbes(unittest.TestCase):
     def test_eight_probes_declared(self):
         """ut-prb-eight：P 组 8 探针齐备；R 组 2 探针另册（docker 通道规则体系探针）。"""
-        self.assertEqual(sorted(prb.PROBES), ["P1", "P2", "P3", "P4",
-                                              "P5", "P6", "P7", "P8",
-                                              "R1", "R2"])
+        self.assertEqual(sorted(prb.PROBES), ["D1", "P1", "P2", "P3",
+                                              "P4", "P5", "P6", "P7",
+                                              "P8", "R1", "R2"])
 
     def test_every_probe_binds_clauses(self):
         """ut-prb-clauses：每探针绑定条款 ID；cadence-tools 条款与 p1 元数据同源命名。"""
@@ -69,6 +69,15 @@ class TestProbes(unittest.TestCase):
     def test_control_probes(self):
         """ut-prb-control：对照组探针=规则相关四项。"""
         self.assertEqual(prb.CONTROL_PROBES, ("P1", "P3", "P4", "P5"))
+
+    def test_d1_devbox_env_check(self):
+        """ut-prb-d1：D1 环境检测探针——文本断言+预期门禁上线前红。"""
+        d1 = prb.PROBES["D1"]
+        self.assertEqual(d1["rule_clause_ids"], ["devbox-stack.md#env-check"])
+        kinds = [a["kind"] for a in d1["assertions"]]
+        self.assertEqual(kinds, ["text_contains", "text_contains"])
+        self.assertTrue(d1["expected_red_pre_gate"])
+        self.assertEqual(prb.D_GROUP, ("D1",))
 
 
 if __name__ == "__main__":

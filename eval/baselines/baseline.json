@@ -51,6 +51,9 @@
       "kimi": 1.0,
       "omp": 1.0,
       "pi": 1.0
+    },
+    "D1": {
+      "claude": 1.0
     }
   },
   "clause_probe": {},

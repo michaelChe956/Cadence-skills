@@ -1,6 +1,6 @@
 # Cadence Skills 使用指南
 
-## Skills 总览（13 个）
+## Skills 总览（14 个）
 
 Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex、Kimi Code 和 omp 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供 `~/.codex/skills/skills/` 兼容投影。
 
@@ -31,6 +31,12 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | --- | --- | --- |
 | `legacy-bootstrap` | 使用兼容流程为 legacy 项目建立 Cadence 项目认知 | — |
 | `skill-creator` | 创建、校验、打包和优化 Skill | [指南](skill-creator.md) |
+
+### 开发环境 Skills（1 个）
+
+| Skill | 用途 | 指南 |
+| --- | --- | --- |
+| `devbox-stack` | devbox 容器内中间件/应用的唯一运维入口（环境检测，非 devbox 自动不适用） | [指南](devbox-stack.md) |
 
 ## 五端 Agent 的消费路径
 
