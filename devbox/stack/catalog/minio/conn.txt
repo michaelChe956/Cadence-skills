@@ -1,0 +1,12 @@
+== minio（S3 协议对象存储）连接信息（容器内应用视角；宿主把主机名换为 127.0.0.1）==
+Endpoint: http://minio:9000（SDK/客户端用；Region 任意如 us-east-1）
+AK/SK   : cadence / cadence12345678（以 stack/.env 的 MINIO_ROOT_USER/PASSWORD 为准，密钥≥8 位）
+控制台  : http://127.0.0.1:9001（宿主浏览器）
+CLI     : mc alias set local http://minio:9000 cadence cadence12345678
+
+# Spring Boot application-dev.yaml 片段（aws-sdk v2 / s3 starter）
+minio:
+  endpoint: http://minio:9000
+  access-key: ${MINIO_ROOT_USER:cadence}
+  secret-key: ${MINIO_ROOT_PASSWORD:cadence12345678}
+  bucket: app-files

@@ -1,0 +1,120 @@
+name: cadence
+
+# 唯一 compose 定义：宿主安装器与容器内 stack 命令共用同一项目。
+# 布局：<安装目录>/cadence-box.yaml + <安装目录>/stack/（本文件、catalog、.env、data）。
+# 不变量：services 必须是最后一个顶层键，供 stack add 纯文本追加。
+
+volumes:
+  # 状态卷（external:true 防止 down -v 误删；由安装器预创建）
+  cadence-claude: { external: true }
+  cadence-codex: { external: true }
+  cadence-pi: { external: true }
+  cadence-kimi: { external: true }
+  cadence-agents: { external: true }
+  cadence-omp: { external: true }
+  # 缓存卷
+  cadence-m2: { external: true }
+  cadence-npm: { external: true }
+  cadence-npm-global: { external: true }
+  cadence-uv: { external: true }
+  cadence-pip: { external: true }
+  cadence-gradle: { external: true }
+  # 中间件数据卷
+  cadence-mysql-data: { external: true }
+  cadence-redis-data: { external: true }
+  cadence-rabbitmq-data: { external: true }
+  cadence-minio-data: { external: true }
+
+services:
+  devbox:
+    image: ${CADENCE_DEVBOX_IMAGE:-cadence-devbox:1.0.0}
+    init: true
+    command: ["sleep", "infinity"]
+    environment:
+      - CADENCE_STACK_DIR=/cadence/stack
+      - CHOKIDAR_USEPOLLING=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ".:/cadence/stack"
+      - "../cadence-box.yaml:/cadence/auth.yaml:ro"
+      - "${CADENCE_WORKSPACE:?请在 stack/.env 设置 CADENCE_WORKSPACE（宿主代码父目录绝对路径）}:/workspace"
+      - cadence-claude:/home/dev/.claude
+      - cadence-codex:/home/dev/.codex
+      - cadence-pi:/home/dev/.pi/agent
+      - cadence-kimi:/home/dev/.kimi-code
+      - cadence-agents:/home/dev/.agents
+      - cadence-omp:/home/dev/.omp
+      - cadence-m2:/home/dev/.m2
+      - cadence-npm:/home/dev/.npm
+      - cadence-npm-global:/home/dev/.npm-global
+      - cadence-uv:/home/dev/.cache/uv
+      - cadence-pip:/home/dev/.cache/pip
+      - cadence-gradle:/home/dev/.gradle
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:8080:8080"
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-cadence123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+    volumes:
+      - cadence-mysql-data:/var/lib/mysql
+      - ./catalog/mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - cadence-redis-data:/data
+      - ./catalog/redis/conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    profiles: ["mq"]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    volumes:
+      - cadence-rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: ["storage"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cadence}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cadence12345678}
+    volumes:
+      - cadence-minio-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
