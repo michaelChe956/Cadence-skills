@@ -8,7 +8,7 @@
 **路线 A：GHCR 公开仓库（推荐，已可用）**
 
 ```powershell
-docker pull ghcr.io/michaelche956/cadence-devbox:latest
+docker pull ghcr.io/michaelche956/cadence-devbox:latest    # podman 同命令：docker→podman
 ```
 
 tag 策略：`latest`（滚动）/ `1.0.0`（当前里程碑）/ `YYYY.WW`（周版，二期 CI 起提供）。已验证匿名可拉；公共加速镜像（daocloud/南大）不覆盖 GHCR 个人包，国内若直连慢用路线 C。
@@ -109,7 +109,67 @@ stack conn mysql            # 标准 JDBC/连接串（可直接抄进 applicatio
 ls /workspace               # 你的全部仓库已可见
 ```
 
+### 2.5 Linux + podman 环境（维护者/高级用户）
+
+> 本节命令全部在本机 Arch Linux + podman 6.1.1 实测通过（一期验收环境）。
+
+**一次性准备**：
+
+```bash
+# 1. 组件（Arch 示例；Debian/Ubuntu 用 apt 装 podman，compose 用 uv：uv tool install podman-compose）
+sudo pacman -S podman
+uv tool install podman-compose
+# 2. rootless podman 必配：cgroup 走 cgroupfs（不配则 start/restart 报 systemd dbus 错）
+mkdir -p ~/.config/containers
+printf '[engine]\ncgroup_manager = "cgroupfs"\n' > ~/.config/containers/containers.conf
+# 3. user socket（docker.sock 运维通道依赖）
+systemctl --user enable --now podman.socket
+# 4. 镜像源（~/.config/containers/registries.conf 已配过可跳过）
+printf 'unqualified-search-registries = ["docker.m.daocloud.io", "docker.io"]\n' >> ~/.config/containers/registries.conf
+```
+
+**布局与卷**（等同 §2.2 的 bash 版，安装目录以 `~/cadence` 为例）：
+
+```bash
+mkdir -p ~/cadence/stack ~/cadence/ws && cd ~/cadence
+cp <仓库>/devbox/compose.yaml stack/
+cp -r <仓库>/devbox/stack/catalog <仓库>/devbox/stack/docker-compose.no-sock.yml stack/
+cp <仓库>/devbox/cadence-box.yaml.example cadence-box.yaml && vi cadence-box.yaml   # 填真实 key
+cat > stack/.env <<EOF
+CADENCE_WORKSPACE=$HOME/cadence/ws
+CADENCE_DEVBOX_IMAGE=ghcr.io/michaelche956/cadence-devbox:latest
+COMPOSE_PROFILES=
+EOF
+for v in cadence-claude cadence-codex cadence-pi cadence-kimi cadence-agents cadence-omp cadence-m2 cadence-npm cadence-npm-global cadence-uv cadence-pip cadence-gradle cadence-mysql-data cadence-redis-data cadence-rabbitmq-data cadence-minio-data; do podman volume create $v; done
+```
+
+**启动拓扑（podman 与 Docker Desktop 的关键差异）**：rootless podman 下 compose 直起 devbox 服务时 bind 挂载无写权（userns 映射）——**中间件走 podman-compose、devbox 单独 `podman run --userns=keep-id`**（实测拓扑）：
+
+```bash
+cd ~/cadence/stack
+podman-compose -f compose.yaml up -d mysql redis          # 中间件（按 .env 的 PROFILES 增减）
+podman run -d --name devbox --network cadence_default --userns=keep-id \
+  -v ~/cadence/cadence-box.yaml:/cadence/auth.yaml:ro \
+  -v ~/cadence/stack:/cadence/stack \
+  -v ~/cadence/ws:/workspace \
+  -v "$XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock" \
+  -p 127.0.0.1:3000:3000 -p 127.0.0.1:8080:8080 \
+  ghcr.io/michaelche956/cadence-devbox:latest
+podman logs devbox | tail -3            # 应见「就绪」
+podman exec -it devbox bash             # 进入容器
+```
+
+**podman 已知差异**（Docker Desktop 不存在）：
+
+| 差异 | 说明 |
+|---|---|
+| `--userns=keep-id` 必需 | 否则容器内 dev 用户对 bind 挂载无写权 |
+| rabbitmq 可能起不来 | rootless 命名卷权限（`.erlang.cookie eacces`）；mysql/redis/minio 正常，rabbitmq 留 Docker Desktop 或手动处理卷属主 |
+| stack 命令 | 全部可用（status/restart/logs 已按 label 直连 docker API 适配双运行时） |
+
 ## 3. 日常使用
+
+> podman 用户：表内 `docker compose` → `podman-compose -f compose.yaml`、`docker compose exec devbox bash` → `podman exec -it devbox bash`、`docker compose restart/stop` → `podman restart devbox` / `podman-compose down`。
 
 | 场景 | 操作 |
 |---|---|
