@@ -22,8 +22,9 @@
 
 ## Impact
 
-- 新增 `devbox/`：Dockerfile、versions.env、render-auth.py、entrypoint.sh、stack/（stack-lib.sh、stack.sh、catalog/）、compose.yaml、install.ps1、cadence-box.yaml.example、README.md
+> **2026-09-11 v1.7 修订**：产物线已拆分至独立仓库 [Cadence-devbox](https://github.com/michaelche956/Cadence-devbox)（`devbox/` 与 `tests/devbox/` 迁出）；本仓库保留 devbox-stack skill（skills 投影体系）与全部决策文档。
+
+- ~~新增 `devbox/`~~ → **已迁出至 Cadence-devbox 仓库**（Dockerfile、versions.env、render-auth.py、entrypoint.sh、stack/、compose.yaml、install.ps1、cadence-box.yaml.example、README.md 及 tests/devbox/ 46 项测试与独立 CI）
 - 新增 `cadence-init/skills/devbox-stack/`：SKILL.md（install.sh 按既有 find 机制自动发现投影，`install.sh` 本身零改动）
-- 新增 `tests/devbox/`：4 个测试文件共 37 项，命令统一 `uv run --with pytest --with pyyaml python -m pytest tests/devbox/ -v`
-- 不动主线：不改 README.md 主文档、不改 install.sh、不改既有 skills；仓库仍以 markdown/yaml 文档为主
-- 需求源：`cadence/designs/2026-09-11_方案设计_Cadence-skills一体化开发环境容器devbox_v1.0.md`（v1.6）；实施契约：`cadence/plans/2026-09-11_计划文档_实施_devbox第一期_v1.0.md`（Contract 1–7）
+- 不动主线：不改 README.md 主文档、不改 install.sh、不改既有 skills
+- 需求源：`cadence/designs/2026-09-11_方案设计_Cadence-skills一体化开发环境容器devbox_v1.0.md`（v1.7，含分仓决策）

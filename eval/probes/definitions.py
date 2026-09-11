@@ -208,13 +208,6 @@ D_GROUP = ("D1",)
 # M 组探针（HTTP MCP 兼容观测·advisory）：失败=兼容性观测数据，非门禁、不进基线
 M_GROUP = ("M1", "M2", "M3")
 
-# R 组探针（规则体系行为）：R1 索引可见 / R2 正文按需可达
-# （R3 agent 过滤已撤——2026-09-10 用户裁决:agents 限定为 omp 原生能力,
-#   由用户在项目规则中自行添加,框架与 eval 均不预置、不测试。）
-R_GROUP = ("R1", "R2")
-
-# D 组探针（devbox 技能行为）：D1 非 devbox 环境应声明不适用而非裸跑 docker 命令
-D_GROUP = ("D1",)
 
 
 CONTROL_PROBES = ("P1", "P3", "P4", "P5")
