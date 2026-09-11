@@ -226,6 +226,7 @@ agents:               # 各端用哪个 provider、哪个模型
 
 ## 修订记录
 
+- 2026-09-11 v1.7：**产物线拆分独立仓库** [Cadence-devbox](https://github.com/michaelChe956/Cadence-devbox)——`devbox/` 实现与 `tests/devbox/` 迁出（CI/发布节奏/镜像构建与文档型仓库解耦）；本仓库保留 devbox-stack skill（skills 投影体系）、全部决策文档与 OpenSpec change；运行时口径改为 **podman 三平台统一**（Windows/macOS/Linux），Docker Desktop 路线移除。镜像已发布 `ghcr.io/michaelche956/cadence-devbox`（public）。
 - 2026-09-11 v1.6：新增 4.8 devbox-stack skill——agent 对中间件/app 的唯一运维入口（9 组命令+catalog 预设+CHANGES.md 唯一写入口+环境检测）；核心命令进第一期，预估改 4–6 天。
 - 2026-09-11 v1.5：追加软件改为分层机制——维护者固化（菜单制/已验证目录）为主路径，agent 自加为逃生通道；Cadence 规则装「中间件追加协议」（先查目录→自加留痕 CHANGES.md→引导反馈）；模板同步以 CHANGES.md 判断用户改动。
 - 2026-09-11 v1.4：4.7 补「追加软件三条路径」（中间件=agent 当场改 stack；轻工具=容器内装落卷；重型运行时=进镜像发版）与「stack 模板版本同步」机制（/opt/cadence/stack ↔ 宿主 /cadence/stack，未改自动同步/已改提示合并）。
