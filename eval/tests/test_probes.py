@@ -7,7 +7,8 @@ from eval.probes import definitions as prb
 class TestProbes(unittest.TestCase):
     def test_eight_probes_declared(self):
         """ut-prb-eight：P 组 8 探针齐备；R 组 2 探针另册（docker 通道规则体系探针）。"""
-        self.assertEqual(sorted(prb.PROBES), ["P1", "P2", "P3", "P4",
+        self.assertEqual(sorted(prb.PROBES), ["D1", "M1", "M2", "M3",
+                                              "P1", "P2", "P3", "P4",
                                               "P5", "P6", "P7", "P8",
                                               "R1", "R2"])
 
@@ -70,6 +71,25 @@ class TestProbes(unittest.TestCase):
         """ut-prb-control：对照组探针=规则相关四项。"""
         self.assertEqual(prb.CONTROL_PROBES, ("P1", "P3", "P4", "P5"))
 
+    def test_d1_devbox_env_check(self):
+        """ut-prb-d1：D1 环境检测探针——文本断言+预期门禁上线前红。"""
+        d1 = prb.PROBES["D1"]
+        self.assertEqual(d1["rule_clause_ids"], ["devbox-stack.md#env-check"])
+        kinds = [a["kind"] for a in d1["assertions"]]
+        self.assertEqual(kinds, ["text_contains", "text_contains"])
+        self.assertTrue(d1["expected_red_pre_gate"])
+        self.assertEqual(prb.D_GROUP, ("D1",))
+
+
+    def test_m_group_advisory_probes(self):
+        """ut-prb-m：M 组三探针——advisory 非门禁；断言 mcp_called 且 server 与 .mcp.json 键一致。"""
+        self.assertEqual(prb.M_GROUP, ("M1", "M2", "M3"))
+        expected = {"M1": "web-search-prime", "M2": "web-reader", "M3": "zread"}
+        for pid, server in expected.items():
+            probe = prb.PROBES[pid]
+            self.assertTrue(probe.get("advisory"), pid)
+            self.assertEqual(probe["assertions"],
+                             [{"kind": "mcp_called", "server": server}], pid)
 
 if __name__ == "__main__":
     unittest.main()

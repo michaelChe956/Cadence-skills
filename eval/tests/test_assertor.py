@@ -178,3 +178,38 @@ class TestTextAssertionKinds(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMcpCalledRequiresSuccess(unittest.TestCase):
+    """ut-asr-mcp-ok：mcp_called 只认非错误调用——失败的调用尝试不算真实使用。
+
+    背景（2026-09-11 M 组实测）：MCP 启动失败时模型仍会尝试调用（记录为
+    is_error=True 的 function_call），旧实现按名字匹配误判 PASS，导致
+    透视表呈现与 agent 原话相反的结论。
+    """
+
+    def _mcp_traj(self, is_error):
+        traj = ifmt.IntermediateTrajectory(agent="codex")
+        traj.tool_calls = [
+            ifmt.ToolCall(index=0, tool="mcp__web_search_prime__web_search_prime",
+                          raw_tool="function_call", args_digest="query=glm",
+                          is_error=is_error),
+            ifmt.ToolCall(index=1, tool="Bash", raw_tool="command_execution",
+                          args_digest="curl example.com", is_error=False),
+        ]
+        traj.final_text = "改用 curl 完成任务"
+        return traj
+
+    def test_failed_call_not_counted(self):
+        ok = asr._check_assertion(
+            {"kind": "mcp_called", "server": "web-search-prime"},
+            self._mcp_traj(is_error=True), None, None, None)
+        self.assertFalse(ok, "失败的 MCP 调用尝试不得判为已调用")
+
+    def test_successful_call_counted(self):
+        ok = asr._check_assertion(
+            {"kind": "mcp_called", "server": "web-search-prime"},
+            self._mcp_traj(is_error=False), None, None, None)
+        self.assertTrue(ok)
+
+

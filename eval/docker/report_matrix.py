@@ -145,6 +145,8 @@ def main() -> int:
     print("| 探针 | " + " | ".join(used_agents) + " |")
     print("|---|" + "---|" * len(used_agents))
     for p in probes:
+        if p in ("stage1", "resident"):  # 非会话行（文件断言/装载审计）无耗时意义
+            continue
         cols = []
         for a in used_agents:
             runs = cell.get((a, p), [])

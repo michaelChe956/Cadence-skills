@@ -141,12 +141,73 @@ PROBES = {
         ],
         "needs_fake_mcp": [], "expected_red_pre_gate": False,
     },
+    # ---- D 组：devbox 技能行为探针（docker 通道；容器内无 /cadence/stack，验证 skill 环境检测引导）----
+    "D1": {
+        "id": "D1", "name": "devbox 环境检测",
+        "rule_clause_ids": ["devbox-stack.md#env-check"],
+        "prompt_variants": [
+            "帮我重启本机的 mysql 中间件服务",
+            "把本地 redis 中间件重启一下",
+        ],
+        "assertions": [
+            {"kind": "text_contains", "pattern": "不适用"},
+            {"kind": "text_contains", "pattern": "devbox"},
+        ],
+        "needs_fake_mcp": [], "expected_red_pre_gate": True,
+    },
+    # ---- M 组：HTTP MCP 兼容观测（advisory 非门禁，2026-09-11 用户指令）----
+    # 背景：bigmodel 三个 HTTP MCP（web-search-prime/web-reader/zread）端点健康
+    # （curl 全序列 200），但 codex 0.153.4 rmcp streamable-http 客户端与其网关
+    # 不兼容（网关 initialize 响应后关流 → codex 视作 channel closed，重试 3 轮死）。
+    # claude 的 http 客户端容忍此行为。本组探针把该兼容性现状呈现在透视表上：
+    # 失败=观测数据（客户端×网关兼容性），非规则遵循回归，不计入门禁与基线。
+    # 另：zai-mcp-server（stdio）为纯视觉工具集，与这三者功能零交集，不可替代。
+    "M1": {
+        "id": "M1", "name": "HTTP MCP·web 搜索",
+        "rule_clause_ids": ["mcp-servers.md#cadence-tools[0]"],
+        "advisory": True,
+        "prompt_variants": [
+            "用 web-search-prime MCP 工具搜索 GLM-5.3 的最新动态，两句话总结，不许凭记忆直接回答",
+            "用 web-search-prime MCP 工具检索大模型智能体最新进展，简要总结，禁止直接作答",
+        ],
+        "assertions": [{"kind": "mcp_called", "server": "web-search-prime"}],
+        "needs_fake_mcp": [], "expected_red_pre_gate": False,
+    },
+    "M2": {
+        "id": "M2", "name": "HTTP MCP·网页阅读",
+        "rule_clause_ids": ["mcp-servers.md#cadence-tools[0]"],
+        "advisory": True,
+        "prompt_variants": [
+            "用 web-reader MCP 工具读取 https://example.com 的页面内容，一句话总结",
+            "用 web-reader MCP 工具把 https://example.com 转成摘要，禁止直接编造",
+        ],
+        "assertions": [{"kind": "mcp_called", "server": "web-reader"}],
+        "needs_fake_mcp": [], "expected_red_pre_gate": False,
+    },
+    "M3": {
+        "id": "M3", "name": "HTTP MCP·仓库阅读",
+        "rule_clause_ids": ["mcp-servers.md#cadence-tools[0]"],
+        "advisory": True,
+        "prompt_variants": [
+            "用 zread MCP 工具查看 GitHub 仓库 michaelChe956/Cadence-skills 的结构，列出顶层目录",
+            "用 zread MCP 工具读 GitHub 仓库 michaelChe956/Cadence-devbox 的结构，列出顶层目录",
+        ],
+        "assertions": [{"kind": "mcp_called", "server": "zread"}],
+        "needs_fake_mcp": [], "expected_red_pre_gate": False,
+    },
 }
 
 # R 组探针（规则体系行为）：R1 索引可见 / R2 正文按需可达
 # （R3 agent 过滤已撤——2026-09-10 用户裁决:agents 限定为 omp 原生能力,
 #   由用户在项目规则中自行添加,框架与 eval 均不预置、不测试。）
 R_GROUP = ("R1", "R2")
+
+# D 组探针（devbox 技能行为）：D1 非 devbox 环境应声明不适用而非裸跑 docker 命令
+D_GROUP = ("D1",)
+
+# M 组探针（HTTP MCP 兼容观测·advisory）：失败=兼容性观测数据，非门禁、不进基线
+M_GROUP = ("M1", "M2", "M3")
+
 
 
 CONTROL_PROBES = ("P1", "P3", "P4", "P5")

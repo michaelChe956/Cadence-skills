@@ -22,10 +22,14 @@ CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 ROAM_HEADS = ("ls", "find", "dir")
 
 
-def tool_used(traj, pattern: str) -> bool:
-    """只看真实工具调用事件（tool 名或参数摘要）；朗读规则文本不算使用。"""
+def tool_used(traj, pattern: str, require_ok: bool = False) -> bool:
+    """只看真实工具调用事件（tool 名或参数摘要）；朗读规则文本不算使用。
+    require_ok=True 时仅计非错误调用——失败的调用尝试≠真实使用
+    （2026-09-11 M 组实测：MCP 启动失败时模型仍会尝试调用并记为
+    is_error=True，旧实现按名字匹配误判 mcp_called PASS）。"""
     rx = re.compile(pattern)
-    return any(rx.search(c.tool) or rx.search(c.args_digest)
+    return any((not require_ok or not c.is_error)
+               and (rx.search(c.tool) or rx.search(c.args_digest))
                for c in traj.tool_calls)
 
 
@@ -137,7 +141,7 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
     if kind == "mcp_called":
         server = spec["server"]
         prefix = f"mcp__{server.replace('-', '_')}__"
-        in_traj = tool_used(traj, re.escape(prefix))
+        in_traj = tool_used(traj, re.escape(prefix), require_ok=True)
         in_log = fake_mcp_log is not None and any(
             entry.get("server") == server for entry in fake_mcp_log)
         return in_traj or in_log  # stdout 缺事件时以 fake server 调用记录为准
