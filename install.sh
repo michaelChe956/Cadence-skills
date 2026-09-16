@@ -155,8 +155,11 @@ is_managed_link() {
   esac
 }
 
+# 动作字段用 \x1f（单元分隔符）连接：tab 属 IFS 空白类字符，连续 tab 会塌缩，
+# 空 target 字段会让 reason 错位、末变量落空（macOS bash 3.2 下触发 unbound）
+ACTION_SEP=$'\x1f'
 add_action() {
-  PLAN_ACTIONS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4")
+  PLAN_ACTIONS+=("$1${ACTION_SEP}$2${ACTION_SEP}$3${ACTION_SEP}$4")
 }
 
 plan_ensure_dir() {
@@ -269,7 +272,8 @@ plan_sync_links() {
 
 execute_action() {
   local action="$1" type path target reason temp_link replaced_atomically
-  IFS=$'\t' read -r type path target reason <<< "$action"
+  type='' path='' target='' reason=''
+  IFS="$ACTION_SEP" read -r type path target reason <<< "$action" || true
     printf 'ACTION %s path=%s target=%s reason=%s\n' "$type" "$path" "$target" "$reason"
 
   case "$type" in
@@ -385,7 +389,8 @@ print_plan() {
   local action type path target reason
   while IFS= read -r action; do
     [[ -n "$action" ]] || continue
-    IFS=$'\t' read -r type path target reason <<< "$action"
+    type='' path='' target='' reason=''
+    IFS="$ACTION_SEP" read -r type path target reason <<< "$action" || true
     printf 'DRY-RUN %s path=%s target=%s reason=%s\n' "$type" "$path" "$target" "$reason"
   done < <(printf '%s\n' ${PLAN_ACTIONS[@]+"${PLAN_ACTIONS[@]}"} | sort)
 }
