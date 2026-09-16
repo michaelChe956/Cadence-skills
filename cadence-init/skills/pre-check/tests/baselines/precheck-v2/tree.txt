@@ -1,21 +1,24 @@
 file project .agents/skills/openspec-execute/SKILL.md 6981db09abfb229d1b9e0b38393bc98cb4c0382e593e06dfd57f083fc671e0f3
 file project .claude/commands/opsx/propose.md d7d594165ab5e7a84036cdb7e419304129a982458f130c8376c996ae500ade9d
 file project .claude/skills/openspec-brainstorm/SKILL.md 7f6a97f361227cd46f388ecd8f84b46cb2a795ef08b6acc62da291a3058b5ad2
-file project .kimi-code/skills/openspec-brainstorm/SKILL.md 67393cdd0f12a69e38ec2fe31496ac36aa6f08da4c0a49e1d80a0b73102f3b87
-file project .kimi-code/skills/openspec-execute/SKILL.md 72a01163ea630b5f39d1d76554d075628c5fcedf34d80f38ea5f02a347b377df
-file project .kimi-code/skills/openspec-plan/SKILL.md dbf154c6a0d636838936063522b5bdd605a0e1091770871a7032acb5ff700b98
-file project .kimi-code/skills/openspec-review/SKILL.md cbba00049aab2f3c2adf29dc6a417a816d488379558b1f9d9ace49d8d9b7240a
-file project .kimi-code/skills/openspec-verify/SKILL.md 56b3c2b9f4e166c04ab1b537638dfaf95e6339dcdc3252da6f20f8a65eeca38a
-file project .pi/prompts/opsx-brainstorm.md dc5397b685e6602a1655b11c872c994791c978bfe3435d3385c11e3b894d76b3
-file project .pi/prompts/opsx-execute.md a1365f02b97b0206c42be11ccbcb29ac834a1dbed631d073c0e572d302b05ce3
-file project .pi/prompts/opsx-plan.md a1cc41a0f54619f6de5013f5a179683ab469346fe08ca399e204e138b99d8dcb
-file project .pi/prompts/opsx-review.md 618a36196bc7ceef3583e472479105d86725d82b7516e9e881a289ab788d5c77
-file project .pi/prompts/opsx-verify.md d74bc0a0b134b1eec79c7f0efd0684a582efa513de1fdffdf0c37fc4a29ac5e5
-file project .pi/skills/openspec-brainstorm/SKILL.md 767f715c9cd351de112e1a8bd37204fd3401c8ed23461331e9c9794a77f46580
-file project .pi/skills/openspec-execute/SKILL.md 2459a45d3b61780ea56e233ae9c5e535562466ccf8f1ffba5b390d4a2de42ca5
-file project .pi/skills/openspec-plan/SKILL.md e25122d387b9a42bb1bbf47c7be7d6664b85b205996f06d0e2071c0a65d98697
-file project .pi/skills/openspec-review/SKILL.md 516e59b5830829664a554f2f7f76eca23150fdf3ea0e6a3b5d695fb937641b4a
-file project .pi/skills/openspec-verify/SKILL.md 8a01409d0c72eaa300b8ca36758fcd7219c3e6d1f9f40004fa4c24486aa652ed
+file project .kimi-code/skills/openspec-brainstorm/SKILL.md 81273f00bd39b0df8efe50e0cfba05df709efb196eee56ac5c9122e35d6e5ad8
+file project .kimi-code/skills/openspec-execute/SKILL.md c1027b98a232e62aa54dbd0ea7a501b542d6b4eb81913a22aa9322a81cf5942f
+file project .kimi-code/skills/openspec-plan/SKILL.md ccdcf578f129170c7ebbe6d11cfd22112c189062893125239320788eb9d11bf3
+file project .kimi-code/skills/openspec-review/SKILL.md e27a39f24d9f2f4f84f8e4533f831d70a92fb6aba42f6cb8e02fd75ed696e694
+file project .kimi-code/skills/openspec-update-change/SKILL.md 1e05b10f559269f5ea6719c29bec5fade11b08153c6012093dba04ceb97679fe
+file project .kimi-code/skills/openspec-verify/SKILL.md b2177f98a17556380b8a77c943df7ec5879cbd7edc670a2636b8e65d2f4d636a
+file project .pi/prompts/opsx-brainstorm.md 36d4bcdcbba225954026b8f5662f85c3524bc77b55c3c0e44b4763dffef41fa4
+file project .pi/prompts/opsx-execute.md 1fa3fed302caa654d743936b27d11290aa9350e55a8f11accd9b1747fa49af39
+file project .pi/prompts/opsx-plan.md fddc895a8b8f042b5fbea8111003d2dd7464087d113b6123f52cca13ad1a26a7
+file project .pi/prompts/opsx-review.md 607ad0921ecd1953531193e70f1cae3e17fa2c96eac136b1fa140aecbd880237
+file project .pi/prompts/opsx-update-change.md f5ca5b3ca4b1c1e48b395c8d62afe8f9470aadd6d1601c9ebaf4fa34e3593586
+file project .pi/prompts/opsx-verify.md 53ac6907a6cf94a435fb10330289620e530897a489953ed6a105fe4bbd7f7515
+file project .pi/skills/openspec-brainstorm/SKILL.md 02c41d41bda1504a6e42bb84e83f1c09a1c139a9fd4e4ca9fd292e6f82fdfa50
+file project .pi/skills/openspec-execute/SKILL.md 12521c8b897fe514ab1f1b1e0e6dc03ec3238f0f33375986c8a1be27c9b4e36d
+file project .pi/skills/openspec-plan/SKILL.md 0d5db735e32dc9a8a75f838897d3cf8f6c55b8658657824657668189362f53c1
+file project .pi/skills/openspec-review/SKILL.md df656df4edb902f0927e231f0b8773f32840bb3a5496ab4041d795d82bf5c375
+file project .pi/skills/openspec-update-change/SKILL.md 2957042bed63fbe8a502cb0e87633742e8e94ffc4a5b258e5cc02f2adb0962c5
+file project .pi/skills/openspec-verify/SKILL.md c7703ec283a9ff3401d812fe465bad43b29c7dbc2dbfd2422468f4c3590cf923
 file project project-sentinel.txt 90b30e730c4edd07fd1b6fb608f96eff54b15176be453802d0742602a978ce5a
 file home .agents/superpowers/skills/brainstorming/SKILL.md 06424afda6b6c536d757b831449615a422e4af6a4afeed4332e700987983a96d
 file home .agents/superpowers/skills/creating-skills/SKILL.md 1d656b52f82b50ced24f7978128162cdb17d2d3ecc88369a6dcf3fbf4688cc55
@@ -32,62 +35,62 @@ file home .agents/superpowers/skills/using-superpowers/SKILL.md c1e1106d461d9b4c
 file home .agents/superpowers/skills/verification-before-completion/SKILL.md cc1ab70bb4f70a999d51477c1e8ab6581925157d622cc6a3e298d86335e3fe7a
 file home .agents/superpowers/skills/writing-plans/SKILL.md 36bcd2fc5c866a2909134423b206aa28814f1ad4c4f0333e95829f38c44f28de
 file home home-sentinel.txt f8636c7e6109f3f0acba4a7d9e40657b8fc8516ed1ab7949fe7012cd3b5cd3b8
-link .agents/skills brainstorming readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming
-link .agents/skills creating-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills
-link .agents/skills dispatching-parallel-agents readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents
-link .agents/skills executing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans
-link .agents/skills finishing-a-development-branch readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch
-link .agents/skills receiving-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review
-link .agents/skills requesting-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review
-link .agents/skills subagent-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development
-link .agents/skills systematic-debugging readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging
-link .agents/skills test-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development
-link .agents/skills testing-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills
-link .agents/skills using-superpowers readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers
-link .agents/skills verification-before-completion readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion
-link .agents/skills writing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans
-link .codex/skills/skills brainstorming readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming
-link .codex/skills/skills creating-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills
-link .codex/skills/skills dispatching-parallel-agents readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents
-link .codex/skills/skills executing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans
-link .codex/skills/skills finishing-a-development-branch readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch
-link .codex/skills/skills receiving-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review
-link .codex/skills/skills requesting-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review
-link .codex/skills/skills subagent-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development
-link .codex/skills/skills systematic-debugging readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging
-link .codex/skills/skills test-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development
-link .codex/skills/skills testing-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills
-link .codex/skills/skills using-superpowers readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers
-link .codex/skills/skills verification-before-completion readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion
-link .codex/skills/skills writing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans
-link .claude/skills brainstorming readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming
-link .claude/skills creating-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills
-link .claude/skills dispatching-parallel-agents readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents
-link .claude/skills executing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans
-link .claude/skills finishing-a-development-branch readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch
-link .claude/skills receiving-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review
-link .claude/skills requesting-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review
-link .claude/skills subagent-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development
-link .claude/skills systematic-debugging readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging
-link .claude/skills test-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development
-link .claude/skills testing-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills
-link .claude/skills using-superpowers readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers
-link .claude/skills verification-before-completion readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion
-link .claude/skills writing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans
-link .pi/agent/skills brainstorming readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/brainstorming
-link .pi/agent/skills creating-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/creating-skills
-link .pi/agent/skills dispatching-parallel-agents readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/dispatching-parallel-agents
-link .pi/agent/skills executing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/executing-plans
-link .pi/agent/skills finishing-a-development-branch readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/finishing-a-development-branch
-link .pi/agent/skills receiving-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/receiving-code-review
-link .pi/agent/skills requesting-code-review readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/requesting-code-review
-link .pi/agent/skills subagent-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/subagent-driven-development
-link .pi/agent/skills systematic-debugging readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/systematic-debugging
-link .pi/agent/skills test-driven-development readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/test-driven-development
-link .pi/agent/skills testing-skills readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/testing-skills
-link .pi/agent/skills using-superpowers readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/using-superpowers
-link .pi/agent/skills verification-before-completion readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/verification-before-completion
-link .pi/agent/skills writing-plans readlink=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans resolved=/tmp/precheck-baseline.6DuGHL/home/.agents/superpowers/skills/writing-plans
-git origin /tmp/precheck-baseline.6DuGHL/remote.git
+link .agents/skills brainstorming readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming
+link .agents/skills creating-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills
+link .agents/skills dispatching-parallel-agents readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents
+link .agents/skills executing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans
+link .agents/skills finishing-a-development-branch readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch
+link .agents/skills receiving-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review
+link .agents/skills requesting-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review
+link .agents/skills subagent-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development
+link .agents/skills systematic-debugging readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging
+link .agents/skills test-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development
+link .agents/skills testing-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills
+link .agents/skills using-superpowers readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers
+link .agents/skills verification-before-completion readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion
+link .agents/skills writing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans
+link .codex/skills/skills brainstorming readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming
+link .codex/skills/skills creating-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills
+link .codex/skills/skills dispatching-parallel-agents readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents
+link .codex/skills/skills executing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans
+link .codex/skills/skills finishing-a-development-branch readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch
+link .codex/skills/skills receiving-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review
+link .codex/skills/skills requesting-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review
+link .codex/skills/skills subagent-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development
+link .codex/skills/skills systematic-debugging readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging
+link .codex/skills/skills test-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development
+link .codex/skills/skills testing-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills
+link .codex/skills/skills using-superpowers readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers
+link .codex/skills/skills verification-before-completion readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion
+link .codex/skills/skills writing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans
+link .claude/skills brainstorming readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming
+link .claude/skills creating-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills
+link .claude/skills dispatching-parallel-agents readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents
+link .claude/skills executing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans
+link .claude/skills finishing-a-development-branch readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch
+link .claude/skills receiving-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review
+link .claude/skills requesting-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review
+link .claude/skills subagent-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development
+link .claude/skills systematic-debugging readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging
+link .claude/skills test-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development
+link .claude/skills testing-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills
+link .claude/skills using-superpowers readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers
+link .claude/skills verification-before-completion readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion
+link .claude/skills writing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans
+link .pi/agent/skills brainstorming readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/brainstorming
+link .pi/agent/skills creating-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/creating-skills
+link .pi/agent/skills dispatching-parallel-agents readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/dispatching-parallel-agents
+link .pi/agent/skills executing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/executing-plans
+link .pi/agent/skills finishing-a-development-branch readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/finishing-a-development-branch
+link .pi/agent/skills receiving-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/receiving-code-review
+link .pi/agent/skills requesting-code-review readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/requesting-code-review
+link .pi/agent/skills subagent-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/subagent-driven-development
+link .pi/agent/skills systematic-debugging readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/systematic-debugging
+link .pi/agent/skills test-driven-development readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/test-driven-development
+link .pi/agent/skills testing-skills readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/testing-skills
+link .pi/agent/skills using-superpowers readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/using-superpowers
+link .pi/agent/skills verification-before-completion readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/verification-before-completion
+link .pi/agent/skills writing-plans readlink=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans resolved=<ISOLATION_ROOT>/home/.agents/superpowers/skills/writing-plans
+git origin <ISOLATION_ROOT>/remote.git
 git branch main
-git head abb4ed1440491a276b9ca0eab7194bd3f92514b2
+git head 9aaa1499993346a6eb1d07939211a0eca2e5b370
