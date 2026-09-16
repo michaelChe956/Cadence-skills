@@ -1321,12 +1321,10 @@ emit_report() {
 
 # --- 主流程：固定五阶段顺序；required phase 统一实施 no-interrupt 屏障 ---
 run_required_phase "base-tools" do_base_tools || exit $?
-run_required_phase "openspec" do_openspec_phase || exit $?
-run_required_phase "superpowers-git" do_superpowers_git_phase || exit $?
-run_required_phase "superpowers-links" do_superpowers_links_phase || exit $?
-run_required_phase "verify" do_verify_phase || exit $?
-
 # 升级钩子：仅 UPGRADE=1 时执行；仅升级已 ready 的工具。
+# 前置于 openspec phase：投影布局随 CLI 版本变化（如 openspec 1.7.0 写 .codex/skills，
+# 1.13.0 写 .agents/skills），必须先升级到新版 CLI 再执行 init/update 与四端校验；
+# 否则 --no-interrupt 下 phase 失败先于升级发生，--upgrade 永不可达（自愈死锁）。
 if [ "$UPGRADE" = "1" ]; then
   log "${C_BLU}⬆️  升级模式（来源：当前 mirror）${C_NC}"
   upgrade_npm_tool "ast-grep" "@ast-grep/cli" ast-grep --version
@@ -1334,6 +1332,10 @@ if [ "$UPGRADE" = "1" ]; then
   upgrade_npm_tool "openspec" "@fission-ai/openspec" openspec --version
   upgrade_uv
 fi
+run_required_phase "openspec" do_openspec_phase || exit $?
+run_required_phase "superpowers-git" do_superpowers_git_phase || exit $?
+run_required_phase "superpowers-links" do_superpowers_links_phase || exit $?
+run_required_phase "verify" do_verify_phase || exit $?
 
 # 汇总输出
 _OVERALL="$(compute_overall)"
