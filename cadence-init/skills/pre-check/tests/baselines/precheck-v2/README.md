@@ -14,6 +14,13 @@
 - 隔离根目录：仓库外临时目录（本次为 `/tmp/precheck-baseline.6DuGHL`，脚本结束自动删除）
 - 真实 HOME、真实 API Key、真实网络：均未使用
 
+## v2.1 重冻结（2026-09-16 人工勘误）
+
+- 起因：#94（544bc53c）将脚本四端就绪判据升为 pi 6 skills + 6 prompts、kimi 6 skills（对齐真实 OpenSpec 投影形态），`fake-openspec.sh` init 同步写 6 投影，但本基线与集成 fixture 预置停留在 5 投影形态——集成验收自 #94 合并起持续失败（多出 3 条 update-change、既有条目 hash 漂移），属基线与替身失配，非实现回归。
+- 处置：集成 fixture 预置升级为 6 投影完成态（写入模板与 `fake-openspec.sh` init 一致），并以当前实现在隔离环境重冻结 tree.txt（96 行：pi 26 = 6 skills + 6 prompts + 14 软链；kimi 6；update-change ×3）。重冻结复用 integration 隔离流程产出（首跑零写入、overall=success），不经 capture-baseline.sh（其固定 27e87e2 旧脚本，保留作历史行为基准）。
+- 口径变化：v2 以 27e87e2 旧脚本为行为基准；v2.1 起以当前实现为基准。「预置即完成态、首跑零写入」的断言语义不变。
+- 验证：integration PASS（含二跑幂等）、tests/test.sh 3 pass 0 fail。
+
 ## Fixture 配置
 
 - 项目根：临时 `project/`，预置四端 OpenSpec 投影：Claude/Codex、Pi 的 5 个 `openspec-*/SKILL.md` + 5 个 `opsx-*.md`、Kimi 的 5 个 `openspec-*/SKILL.md`。

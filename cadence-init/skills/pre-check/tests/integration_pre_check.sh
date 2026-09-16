@@ -44,11 +44,13 @@ mkdir -p "$PROJECT/.claude/commands/opsx" "$PROJECT/.claude/skills/openspec-brai
 printf '%s\n' '# fixture propose' > "$PROJECT/.claude/commands/opsx/propose.md"
 printf '%s\n' '# fixture skill' > "$PROJECT/.claude/skills/openspec-brainstorm/SKILL.md"
 printf '%s\n' '# fixture execute' > "$PROJECT/.agents/skills/openspec-execute/SKILL.md"
-for _name in brainstorm plan execute review verify; do
+# 6 投影完成态（含 update-change）：与脚本四端就绪判据（pi 6+6、kimi 6）及
+# fake-openspec init 写入模板保持一致，首跑预期零写入、overall=success。
+for _name in execute plan review verify brainstorm update-change; do
   mkdir -p "$PROJECT/.pi/skills/openspec-$_name" "$PROJECT/.kimi-code/skills/openspec-$_name"
-  printf '# pi %s\n' "$_name" > "$PROJECT/.pi/skills/openspec-$_name/SKILL.md"
-  printf '# pi prompt %s\n' "$_name" > "$PROJECT/.pi/prompts/opsx-$_name.md"
-  printf '# kimi %s\n' "$_name" > "$PROJECT/.kimi-code/skills/openspec-$_name/SKILL.md"
+  printf 'pi openspec skill %s\n' "$_name" > "$PROJECT/.pi/skills/openspec-$_name/SKILL.md"
+  printf 'pi openspec %s\n' "$_name" > "$PROJECT/.pi/prompts/opsx-$_name.md"
+  printf 'kimi openspec %s\n' "$_name" > "$PROJECT/.kimi-code/skills/openspec-$_name/SKILL.md"
 done
 printf '%s\n' 'project non-target sentinel' > "$PROJECT/project-sentinel.txt"
 
