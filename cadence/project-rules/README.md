@@ -87,6 +87,12 @@ CI 触发门禁：纯文档变更不触发任何工作流；仅安装脚本、�
 （`cadence-init/**`，含 rule-config 规则模板）与工作流自身的变更触发 CI。
 `.claude/rules/` 等生成投影不单独触发。含 `[skip ci]` 使用边界与触发集合维护约定。
 
+### three-platform-gating.md
+三端兼容门禁：任何可执行内容（脚本、CI、测试 fixture、文档示例命令）必须同时
+兼容 Linux、macOS Intel、macOS Apple Silicon。bash 层以 macOS 自带 bash 3.2 为
+基线（禁 `declare -A`/`mapfile` 等），工具层禁 GNU 专用参数（`mv -T`/`sed -i`/
+`readlink -f` 等），并附 bash:3.2 容器验证固定方法。
+
 ## 💡 提示
 
 - 只创建您需要的规则文档，不必全部创建

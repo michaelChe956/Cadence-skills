@@ -15,13 +15,25 @@ readonly CODEX_ROOT="$HOME/.codex/skills/skills"
 
 : "$REPOSITORY_URL"
 
+# bash 3.2 兼容（macOS 自带）：不用 declare -A；
+# 空数组展开用 ${arr[@]+"${arr[@]}"} 防 set -u 报未绑定变量
 DRY_RUN=0
 PLAN_ACTIONS=()
-declare -A PLANNED_DIRS=()
+PLANNED_DIRS=()
 
 log() { printf '[cadence] %s\n' "$*"; }
 warn() { printf '[cadence][警告] %s\n' "$*" >&2; }
 fail() { printf '[cadence][错误] %s\n' "$*" >&2; return 1; }
+
+# 集合查找辅助：关联数组替代品，元素量级为几十个技能名，线性查找足够
+list_has() {
+  local needle="$1" item
+  shift
+  for item in "$@"; do
+    [[ "$item" == "$needle" ]] && return 0
+  done
+  return 1
+}
 
 clone_with_rotation() {
   if [[ -e "$REPO_DIR" || -L "$REPO_DIR" ]]; then
@@ -39,7 +51,12 @@ clone_with_rotation() {
     rm -rf -- "$staging_root/repo"
     log "尝试镜像：$url"
     if git clone "$url" "$staging_root/repo"; then
-      mv -T -- "$staging_root/repo" "$REPO_DIR"
+      # 极窄竞态下 REPO_DIR 可能被并发创建：mv 会把 repo 嵌套移入而非报错，落位后校验兜底
+      mv -- "$staging_root/repo" "$REPO_DIR"
+      if [[ -d "$REPO_DIR/repo" ]]; then
+        fail "检测到 $REPO_DIR 被并发创建导致嵌套安装，请删除该目录后重新运行"
+        return 1
+      fi
       rmdir "$staging_root"
       log "已从镜像安装到：$REPO_DIR"
       return 0
@@ -145,8 +162,8 @@ add_action() {
 plan_ensure_dir() {
   local path="$1" parent
   parent="$(dirname -- "$path")"
-  if [[ ! -d "$parent" && -z "${PLANNED_DIRS[$parent]+present}" ]]; then
-    PLANNED_DIRS["$parent"]=1
+  if [[ ! -d "$parent" ]] && ! list_has "$parent" ${PLANNED_DIRS[@]+"${PLANNED_DIRS[@]}"}; then
+    PLANNED_DIRS+=("$parent")
     add_action "ENSURE-DIR" "$parent" "-" "链接父目录不存在"
   fi
 }
@@ -203,7 +220,7 @@ plan_remove_link() {
 plan_sync_links() {
   local skill_file skill_dir skill_name layer_root entry entry_name
   local -a layer_roots=("$SHARED_ROOT" "$CLAUDE_ROOT" "$CODEX_ROOT")
-  declare -A expected_skills=()
+  local -a expected_skills=()
 
   [[ -d "$SOURCE_ROOT" ]] || {
     add_action "SKIP-WARN" "$SOURCE_ROOT" "-" "仓库缺少 skills 源目录"
@@ -213,18 +230,18 @@ plan_sync_links() {
   while IFS= read -r -d '' skill_file; do
     skill_dir="${skill_file%/SKILL.md}"
     skill_name="${skill_dir##*/}"
-    expected_skills["$skill_name"]=1
+    expected_skills+=("$skill_name")
     sync_one_link "$SHARED_ROOT/$skill_name" "$skill_dir"
     sync_one_link "$CLAUDE_ROOT/$skill_name" "$SHARED_ROOT/$skill_name"
     sync_one_link "$CODEX_ROOT/$skill_name" "$SHARED_ROOT/$skill_name"
   done < <(find "$SOURCE_ROOT" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' -print0)
 
-  declare -A orphan_names=()
+  local -a orphan_names=()
   if [[ -d "$SHARED_ROOT" ]]; then
     while IFS= read -r -d '' entry; do
       entry_name="${entry##*/}"
-      if is_managed_link "$entry" && [[ -z "${expected_skills[$entry_name]+present}" ]]; then
-        orphan_names["$entry_name"]=1
+      if is_managed_link "$entry" && ! list_has "$entry_name" ${expected_skills[@]+"${expected_skills[@]}"}; then
+        orphan_names+=("$entry_name")
       fi
     done < <(find "$SHARED_ROOT" -mindepth 1 -maxdepth 1 -type l -print0)
   fi
@@ -233,7 +250,8 @@ plan_sync_links() {
     [[ -d "$layer_root" ]] || continue
     while IFS= read -r -d '' entry; do
       entry_name="${entry##*/}"
-      if [[ -n "${expected_skills[$entry_name]+present}" || -n "${orphan_names[$entry_name]+present}" ]]; then
+      if list_has "$entry_name" ${expected_skills[@]+"${expected_skills[@]}"} ||
+         list_has "$entry_name" ${orphan_names[@]+"${orphan_names[@]}"}; then
         continue
       fi
       if ! is_managed_link "$entry"; then
@@ -242,7 +260,7 @@ plan_sync_links() {
     done < <(find "$layer_root" -mindepth 1 -maxdepth 1 -type l -print0)
   done
 
-  for entry_name in "${!orphan_names[@]}"; do
+  for entry_name in ${orphan_names[@]+"${orphan_names[@]}"}; do
     plan_remove_link "$CLAUDE_ROOT/$entry_name"
     plan_remove_link "$CODEX_ROOT/$entry_name"
     plan_remove_link "$SHARED_ROOT/$entry_name"
@@ -250,7 +268,7 @@ plan_sync_links() {
 }
 
 execute_action() {
-  local action="$1" type path target reason temp_link
+  local action="$1" type path target reason temp_link replaced_atomically
   IFS=$'\t' read -r type path target reason <<< "$action"
     printf 'ACTION %s path=%s target=%s reason=%s\n' "$type" "$path" "$target" "$reason"
 
@@ -277,8 +295,20 @@ execute_action() {
           temp_link="${path}.cadence-tmp.$$.$RANDOM"
         done
         ln -s -- "$target" "$temp_link"
-        mv -T -- "$temp_link" "$path"
-        log "已原子替换受管软链：$path -> $target"
+        # 优先 mv -T 原子替换（GNU）；BSD mv 无 -T、部分实现拒绝软链到目录目标，
+        # 失败时清理临时链接并用 ln -sfn 落地（unlink+建链，窗口极短）
+        replaced_atomically=0
+        if mv -T -- "$temp_link" "$path" 2>/dev/null; then
+          replaced_atomically=1
+        else
+          rm -f -- "$temp_link"
+          ln -sfn -- "$target" "$path"
+        fi
+        if (( replaced_atomically )); then
+          log "已原子替换受管软链：$path -> $target"
+        else
+          log "已替换受管软链（非原子回退）：$path -> $target"
+        fi
       fi
       ;;
     REMOVE)
@@ -311,7 +341,7 @@ execute_action() {
 
 execute_plan() {
   local action
-  for action in "${PLAN_ACTIONS[@]}"; do
+  for action in ${PLAN_ACTIONS[@]+"${PLAN_ACTIONS[@]}"}; do
     execute_action "$action"
   done
 }
@@ -357,7 +387,7 @@ print_plan() {
     [[ -n "$action" ]] || continue
     IFS=$'\t' read -r type path target reason <<< "$action"
     printf 'DRY-RUN %s path=%s target=%s reason=%s\n' "$type" "$path" "$target" "$reason"
-  done < <(printf '%s\n' "${PLAN_ACTIONS[@]}" | sort)
+  done < <(printf '%s\n' ${PLAN_ACTIONS[@]+"${PLAN_ACTIONS[@]}"} | sort)
 }
 
 print_visibility() {
