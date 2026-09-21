@@ -5,6 +5,8 @@
 - Schema 版本：`4.0`
 - 输入根：`cadence/knowledge-base/user-input/`
 - Base Info：`cadence/knowledge-base/user-input/base-info.md`
+- product.md（可选）：`cadence/knowledge-base/user-input/product.md` / 未提供
+- 业务知识证据（可选）：test_sources / adr_sources / git_history 的声明范围或`未声明`
 - Git 仓库与分支：
 - 基线提交：
 - 初始化判定：首次初始化 / 未完成初始化续跑 / 已完成知识库 / 显式重新初始化

@@ -28,7 +28,8 @@ cadence/knowledge-base/user-input/
 ├── middleware-scope.md
 ├── api-scope.md
 ├── page-scope.md
-└── database-ddl.sql（可选）
+├── database-ddl.sql（可选）
+└── product.md（可选）
 ```
 
 用户输入和外部配置快照只读，不得覆盖、补写、复制或迁入知识库。
@@ -52,7 +53,7 @@ cadence/knowledge-base/user-input/
 ## 工作流程
 
 1. 读取目标项目适用的代理规则，定位唯一输入入口。
-2. 在读取六领域输入前检查目标目录 `cadence/knowledge-base/`，并按以下唯一顺序判定初始化生命周期。固定产物包括 `manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`domain-glossary.md`、`open-questions.md` 和 `change-history.md`。
+2. 在读取六领域输入前检查目标目录 `cadence/knowledge-base/`，并按以下唯一顺序判定初始化生命周期。固定产物包括 `manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`business/`、`capabilities/`、`domain-glossary.md`、`open-questions.md` 和 `change-history.md`。
    1. 未发现任何固定产物：判定为首次初始化。
    2. 任一固定产物存在，但 Manifest 缺失、不可解析、缺少版本字段或版本不是 `4.0`：立即停止，不覆盖、不迁移、不删除；报告现有产物和 Manifest 状态。
    3. Manifest 为 `4.0`：先执行“初始化状态不变量门禁”。整个初始化块缺失时只进入兼容 `global-validation` 分支；块存在但损坏或矛盾时，普通请求停止且不修改，只有明确的重新初始化请求可进入独立二次破坏性授权流程；完整合法时才读取 `status` 判定普通后续分支。
@@ -65,7 +66,7 @@ cadence/knowledge-base/user-input/
 4. 数据模型为 `全量` 或 `指定` 时，确认至少一种可定位结构证据；DDL 可缺省，其他证据有效时继续，没有任何结构证据时停止或要求改为 `不适用`。显式重新初始化的结构证据门禁失败时保留旧 KnowledgeBase，不清理任何路径。
 5. 配置为 `全量` 或 `指定` 时，确认来源是锁定发布批次的不可变快照且外部目录可读。配置仓库必须固定到明确提交、标签或导出快照，不得使用持续变化的工作目录。校验范围摘要、纳入文件数量或清单摘要、服务摘要和文件规则摘要完整且相互一致；同一 `snapshot_id` 不得映射到不同环境或不同外部目录。清理前完成首次最终快照指纹计算并核对输入声明，确认指纹前置条件成立；后续分析结束时再次计算，任一指纹不一致、范围摘要不一致或目录内容变化时停止，且不得连接配置中心或远程环境补取。
 6. 显式重新初始化时，根据已通过的六领域、数据模型证据和配置快照门禁在内存中锁定待写 `input-inventory.md` 内容及全部引用来源；紧邻清理动作前必须锁定输入清单或重新核对输入未漂移。只有全部扫描前门禁通过、二次授权仍覆盖实际清理范围、输入清单已锁定或重新核对无漂移时，才允许清理旧固定产物。任一输入、证据、快照、范围摘要、指纹前置条件或授权发生变化时停止并保留旧 KnowledgeBase。
-7. 首次初始化或已通过第 6 步清理门禁的显式重新初始化生成 `input-inventory.md` 与 `manifest.yaml`；未完成初始化续跑时核对并复用现有文件。只接受 `schema_version: "4.0"`，不兼容、不迁移其他版本；首次写入前根据 `scope.api`、`scope.pages` 适用性初始化合法的 `skipped_stages`，不得先写入与适用性矛盾的空跳过列表。首次建立时 `generated_at` 写入本次生成时间，显式重新初始化时写入新知识库的首次生成时间；`open_questions.blocking/high/medium/low` 按待确认文档维护可审计计数。
+7. 首次初始化或已通过第 6 步清理门禁的显式重新初始化生成 `input-inventory.md` 与 `manifest.yaml`；未完成初始化续跑时核对并复用现有文件。Manifest 结构必须完整对齐 `assets/manifest-template.yaml`：`documents` 域必须包含全部登记键 `core/interfaces/pages/services/data_models/configurations/business/capabilities`（未产出领域为空列表，不得缺键），`evidence` 域必须包含 `business_knowledge_sources`。只接受 `schema_version: "4.0"`，不兼容、不迁移其他版本；首次写入前根据 `scope.api`、`scope.pages` 适用性初始化合法的 `skipped_stages`，不得先写入与适用性矛盾的空跳过列表。首次建立时 `generated_at` 写入本次生成时间，显式重新初始化时写入新知识库的首次生成时间；`open_questions.blocking/high/medium/low` 按待确认文档维护可审计计数。
 8. 以 Manifest 的 `scope.projects`、`scope.data_models`、`scope.configurations`、`scope.middleware`、`scope.api` 和 `scope.pages` 作为领域 Skills 的唯一授权范围。
 9. 初始化或核对固定目录，然后严格执行下列 REQUIRED 子 Skill/阶段顺序。Skill 名只用于调用，Manifest 只登记对应阶段 ID。每个阶段完成后立即将字符串阶段 ID 写入 `coverage.initialization.completed_stages`；不适用领域写入 `coverage.initialization.skipped_stages`。已经在 Manifest 登记为完成，且文档、索引和证据一致的阶段直接复用，不重复扫描。
    1. 调用 `knowledge-base-base-info`，阶段 ID 为 `base-info`：始终执行或验证完成，消费工程、数据模型、配置和中间件范围。
@@ -94,6 +95,8 @@ cadence/knowledge-base/
 ├── evidence/
 │   ├── source-index.md
 │   └── traceability-matrix.md
+├── business/
+├── capabilities/
 ├── domain-glossary.md
 ├── open-questions.md
 └── change-history.md
@@ -120,6 +123,8 @@ cadence/knowledge-base/
   2. 配置为全量或指定时：每个服务配置文档元数据中的`来源文件键数`等于`文档收录键数`。
   3. Pages 适用且 selected 含路由/菜单级条目时：每条点名路由存在 `PAGE-*`+`ROUTE-*` 实体与单页面文档；页面文档的 API 引用不得为零链接（`../interfaces/` 链接或 `API-CANDIDATE-*` 候选条目链接）。
   4. 模板节结构符合性：在占位符检查外增加节序比对——接口主文件 11 节、参数报文 5 节、服务配置文档 10 节、页面文档含第 3/4 节；自创节结构判 `failed`。
+  5. 追溯矩阵符合性：`evidence/traceability-matrix.md` 存在时，表头列数与列名等于 `knowledge-base-base-info` 的 `assets/traceability-matrix-template.md` 六列，逐行关系类型属于 `knowledge-base-base-info` 的 `assets/relation-types.md` 词表枚举；任一不符判 `failed`。
+  6. 关系图等值：`evidence/relation-graph.yaml` 存在时，图边数等于 `evidence/traceability-matrix.md` 数据行数，图节点 ID 集等于 Manifest 各 documents 域登记实体与矩阵两端 ID 的并集；任一不符判 `failed`。
 - 全局验收通过时，将 `coverage.initialization.global_validation` 写为 `passed`，将 `coverage.initialization.status` 写为 `complete`，并填写 `coverage.initialization.completed_at`。
 - 任一全局检查失败时，将 `coverage.initialization.global_validation` 写为 `failed`，保持 `coverage.initialization.status: in_progress` 和空 `completed_at`；只报告缺失项、影响和继续初始化入口，不要求删除现有 Schema 4.0 产物。
 

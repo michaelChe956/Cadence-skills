@@ -1,0 +1,18 @@
+schema: kb-relation-graph/1.0
+derived_from: evidence/traceability-matrix.md
+nodes:
+  - {id: API-user-basic, kind: api, label: 查询用户基本信息, doc: interfaces/API-user-basic.md}
+  - {id: API-account-query, kind: api, label: 查询账户信息, doc: interfaces/API-account-query.md}
+  - {id: TABLE-user, kind: table, label: 用户表, doc: data-models/TABLE-user.md}
+  - {id: TABLE-user-account, kind: table, label: 账户表, doc: data-models/TABLE-user-account.md}
+  - {id: SERVICE-order-service, kind: service, label: 订单服务, doc: services/SERVICE-order-service.md}
+  - {id: EVENT-order-paid, kind: event, label: 订单已支付, doc: interfaces/EVENT-order-paid.md}
+  - {id: JOB-account-reconcile, kind: job, label: 账户对账, doc: interfaces/JOB-account-reconcile.md}
+  - {id: CAP-USER-ALL-INFO, kind: capability, label: 全部用户信息, doc: capabilities/CAP-USER-ALL-INFO.md}
+edges:
+  - {type: READS, from: API-user-basic, to: TABLE-user, evidence: "user-service/src/main/resources/mapper/UserMapper.xml:4"}
+  - {type: PRODUCES, from: SERVICE-order-service, to: EVENT-order-paid, evidence: "order-service/.../OrderEventProducer.java:24"}
+  - {type: CONSUMES, from: SERVICE-order-service, to: EVENT-order-paid, evidence: "order-service/.../OrderEventListener.java:19"}
+  - {type: INVOLVES, from: JOB-account-reconcile, to: TABLE-user-account, evidence: "account-service/.../ReconcileJob.java:16"}
+  - {type: COMPOSES, from: CAP-USER-ALL-INFO, to: API-user-basic, evidence: "capabilities/CAP-USER-ALL-INFO.md#3"}
+  - {type: COMPOSES, from: CAP-USER-ALL-INFO, to: API-account-query, evidence: "capabilities/CAP-USER-ALL-INFO.md#3"}

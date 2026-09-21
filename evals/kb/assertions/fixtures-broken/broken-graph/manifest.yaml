@@ -1,0 +1,11 @@
+schema_version: "4.0"
+generated_at: "2026-09-20T00:00:00"
+documents:
+  core: []
+  interfaces: []
+  pages: []
+  services: []
+  data_models: []
+  configurations: []
+  business: ["business/README.md"]
+  capabilities: ["capabilities/CAP-USER-ALL-INFO.md"]

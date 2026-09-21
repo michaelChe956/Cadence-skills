@@ -1,0 +1,12 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: account-service
+  datasource:
+    url: jdbc:mysql://10.20.31.14:3306/demo_account?useSSL=false
+    username: acct_admin
+    password: Pr0d@Acct#2026
+reconcile:
+  enabled: true
+  retry-times: 3

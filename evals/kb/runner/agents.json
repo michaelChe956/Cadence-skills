@@ -1,0 +1,118 @@
+{
+  "claude": {
+    "enabled": true,
+    "install": "npm install -g @anthropic-ai/claude-code",
+    "binary_from": null,
+    "cmd": [
+      "claude",
+      "-p",
+      "--dangerously-skip-permissions",
+      "--output-format",
+      "stream-json",
+      "--verbose"
+    ],
+    "prompt_arg": true,
+    "capture": "stdout",
+    "auth_files": [
+      [
+        "~/.claude/settings.json",
+        "/home/tester/.claude/settings.json"
+      ],
+      [
+        "~/.claude/.credentials.json",
+        "/home/tester/.claude/.credentials.json"
+      ]
+    ]
+  },
+  "codex": {
+    "enabled": true,
+    "install": "npm install -g @openai/codex",
+    "binary_from": null,
+    "cmd": [
+      "codex",
+      "exec",
+      "--skip-git-repo-check",
+      "--json"
+    ],
+    "prompt_arg": true,
+    "capture": "stdout",
+    "auth_files": [
+      [
+        "~/.codex/auth.json",
+        "/home/tester/.codex/auth.json"
+      ],
+      [
+        "~/.codex/config.toml",
+        "/home/tester/.codex/config.toml"
+      ],
+      [
+        "~/.codex/models.json",
+        "/home/tester/.codex/models.json"
+      ]
+    ]
+  },
+  "pi": {
+    "enabled": true,
+    "install": "npm install -g @earendil-works/pi-coding-agent",
+    "binary_from": null,
+    "cmd": [
+      "pi",
+      "-p"
+    ],
+    "prompt_arg": true,
+    "capture": "stdout",
+    "auth_files": [
+      [
+        "~/.pi/agent/auth.json",
+        "/home/tester/.pi/agent/auth.json"
+      ],
+      [
+        "~/.pi/agent/models.json",
+        "/home/tester/.pi/agent/models.json"
+      ],
+      [
+        "~/.pi/agent/settings.json",
+        "/home/tester/.pi/agent/settings.json"
+      ]
+    ],
+    "strip_packages_from": "/home/tester/.pi/agent/settings.json"
+  },
+  "kimi": {
+    "enabled": true,
+    "install": null,
+    "binary_from": [
+      "~/.kimi-code/bin/kimi",
+      "/home/tester/.npm-global/bin/kimi"
+    ],
+    "cmd": [
+      "kimi",
+      "--skills-dir",
+      "/home/tester/.kimi-code/skills",
+      "-p"
+    ],
+    "prompt_arg": true,
+    "capture": "stdout",
+    "auth_files": [
+      [
+        "~/.kimi-code/credentials",
+        "/home/tester/.kimi-code/credentials"
+      ],
+      [
+        "~/.kimi-code/config.toml",
+        "/home/tester/.kimi-code/config.toml"
+      ],
+      [
+        "~/.kimi-code/device_id",
+        "/home/tester/.kimi-code/device_id"
+      ],
+      [
+        "~/.kimi-code/region",
+        "/home/tester/.kimi-code/region"
+      ],
+      [
+        "~/.kimi-code/oauth",
+        "/home/tester/.kimi-code/oauth"
+      ]
+    ]
+  }
+}

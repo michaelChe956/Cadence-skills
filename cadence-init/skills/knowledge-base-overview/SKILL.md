@@ -16,6 +16,8 @@ description: "Use when 需要将 Schema 4.0 KnowledgeBase 的基础信息、接�
 - 生成术语表时使用 `assets/domain-glossary-template.md`。
 - 生成待确认清单时使用 `assets/open-questions-template.md`。
 - 生成项目规则时使用 `assets/knowledge-base-usage-template.md`。
+- 生成业务规则卡时使用 `assets/rule-card-template.md`；生成业务流程文档时使用 `assets/flow-template.md`。
+- 生成组合能力文档时使用 `assets/capability-composition-template.md`。
 - 需要参考完整用法时读取 `references/demo.md`。
 
 ## 前置输入
@@ -33,6 +35,9 @@ description: "Use when 需要将 Schema 4.0 KnowledgeBase 的基础信息、接�
 - `cadence/knowledge-base/evidence/`
 - `cadence/knowledge-base/change-history.md`
 - `cadence/knowledge-base/open-questions.md`
+- `cadence/knowledge-base/user-input/product.md`（可选，缺失记`未提供`）
+- Manifest `evidence.business_knowledge_sources`（测试/ADR/git 三源声明与限制）
+- `user-input/api-scope.md` 的"能力组合诉求"表（可选）与 `interfaces/README.md`"能力组合"分区
 - 用户提供的术语、架构和业务流程资料
 
 Manifest 不存在或 Schema 不是 4.0 时停止并引导使用 `knowledge-base-bootstrap`。缺少某个适用领域文档时，不得把概览技能变成重复的全仓分析技能；记录缺失并引导执行对应领域技能。不适用领域按 Manifest 跳过。
@@ -77,7 +82,8 @@ Update 上下文之外不得使用上述暂存例外或伪造 `execution_context
 - 系统包含哪些仓库、服务和前端应用
 - 系统明确不负责什么
 - 主要外部系统和中间件
-- 当前分析分支、基线和覆盖范围
+- 项目定位优先引用 `user-input/product.md` 的表述并标注 `[用户提供]`；未提供时记`未提供`，不凭推测补写
+- 知识库 Git 基线与各领域最后核验时间：数据模型取各表文档元数据`最后核验时间`的最大值；暂无该字段的领域（如接口、页面、服务、配置）填`未采集`，不凭推测补日期。
 
 无法由用户资料或代码证据确认的业务定位必须标记为推断。
 
@@ -98,11 +104,9 @@ change-history.md
 open-questions.md
 ```
 
-一级入口下面可以链接到服务、接口、页面、表、配置和证据子文档，但不得把子文档明细复制到 README。
-
 ### 3. 整理核心业务流程
 
-优先选择三到五条对项目最重要且证据充分的流程，使用稳定 ID 串联：
+全部业务流程以 `business/flows/FLOW-*.md` 实体承载（数量不设上限，但每条必须有可定位证据支撑）；README 只保留三到五条最重要流程的导航摘要。核心流程使用稳定 ID 串联：
 
 ```text
 PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
@@ -122,6 +126,25 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 - 来源、证据和可信度
 
 用户提供的行业解释优先标记 `[用户提供]`；仅从代码命名提取的候选标记 `[合理推断]`。
+
+### 4.5 生成业务域（business/）
+
+1. 读取 `evidence.business_knowledge_sources` 与 product.md；两者皆缺时只生成 `business/README.md`（记`未提供`）并跳过以下步骤。
+2. 按源优先级生成规则卡与流程文档：用户资料与 product.md > 测试断言 > ADR > 既有文档寄生规则迁移 > git 历史意图（仅 ai-draft）。
+3. 迁移既有 API/表文档中的寄生规则时保留原文，仅在原位置追加指向 `RULE-*` 的链接；迁移条目初始状态为 `ai-draft`。
+
+4. 每条陈述挂可定位证据；仅 ref 型证据或纯代码推断的业务语义必须 `ai-draft` 并登记待确认，不得推测补齐。
+5. 生成 `business/README.md`：规则/流程清单（稳定 ID、名称、条目状态、链接）与 ai-draft/confirmed 计数摘要。
+
+### 4.6 生成组合能力层（capabilities/）
+
+1. 读取 api-scope"能力组合诉求"表与 api 阶段核实的聚合端点结果；两者皆无时只生成 `capabilities/README.md`（记`未提供`）并跳过以下步骤。
+2. 用户诉求通道：诉求行的来源能力 ID 均已由 api 核实存在且契约锚点齐备时，按模板生成 `CAP-*.md`（状态 proposed），登记 `CAP --COMPOSES--> API` 边；JOIN_KEY 证据不完整时边与组合均标待确认。
+3. 已有实现通道：api 发现的聚合端点（其主文件已登记实际调用的多个能力）反向建立 CAP，关联 implementation_api_ids，映射链齐备时可 verified。
+4. 会话推导的组合候选不生成实体，只进会话输出与待确认清单。
+5. 生成 `capabilities/README.md`：CAP 清单（ID、名称、状态、输入 API、明细链接）与 proposed/verified/retired 计数。
+6. `interfaces/README.md` 增"能力组合"分区（仅导航字段：ID/名称/状态/明细链接），由本节同批写入。
+7. 把本节产生的 `CAP --COMPOSES--> API`、`API --JOIN_KEY--> API`、`API --PROVIDES_FIELD--> 字段域` 行写入 `evidence/traceability-matrix.md`，并在同一次原子写入中重建 `evidence/relation-graph.yaml` 的对应节点与边（严格派生，禁止手工编辑）。
 
 ### 5. 生成常见修改场景
 
@@ -160,8 +183,12 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 - `cadence/knowledge-base/domain-glossary.md`
 - `cadence/knowledge-base/open-questions.md`
 - `cadence/project-rules/knowledge-base-usage.md`
+- `cadence/knowledge-base/business/README.md`
+- `cadence/knowledge-base/business/rules/RULE-*.md`、`cadence/knowledge-base/business/flows/FLOW-*.md`（有证据支撑时）
+- `cadence/knowledge-base/capabilities/README.md` 与 `capabilities/CAP-*.md`（有诉求或聚合端点时）
+- `cadence/knowledge-base/evidence/traceability-matrix.md`（本节横向边）与 `evidence/relation-graph.yaml`（同批重建对应条目，禁止手工编辑；仅有组合或业务域产出时）
 
-`README.md` 作为 Coding Agent 首选入口，保持短小，只提供项目摘要、读取顺序、覆盖范围和一级导航，不复制字段清单、全部配置键或领域文档正文。
+`README.md` 作为 Coding Agent 首选入口，保持短小，只提供项目摘要、读取顺序、覆盖范围、一级导航和陈旧度摘要（知识库 Git 基线与各领域最后核验时间），不复制字段清单、全部配置键或领域文档正文。
 
 在 Update 上下文中，本节全部“生成或更新”动作只写入 Update 专属暂存结果，不得修改持久文件。
 
@@ -195,6 +222,8 @@ PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE
 登记：
 
 - 概览、术语、待确认和项目规则文档
+- 业务域文档（规则卡、流程文档）登记到 `documents.business`
+- 组合能力文档登记到 `documents.capabilities`
 - 当前分支与基线
 - 执行模式和覆盖范围
 - `open_questions.blocking`、`open_questions.high`、`open_questions.medium`、`open_questions.low` 四级待确认项数量
@@ -250,7 +279,10 @@ verification.md
 
 - Coding Agent 能从 README 导航到全部适用的核心文档；接口或页面不适用时能从无链接条目看到原因。
 - README 直接提供 Schema 4.0 的十个稳定一级条目；适用领域使用链接，接口或页面不适用时使用无链接说明，且只保留摘要和导航。
+- README 暴露知识库 Git 基线与各领域最后核验时间：数据模型取表文档元数据最大值，暂无该字段的领域填`未采集`，不逐文档复制明细，不凭推测补日期。
+- capabilities/ 域已按两通道规则生成：CAP 文档含状态机、输入清单、JOIN_KEY 证据与实现关联；无诉求且无聚合端点时仅有`未提供`README；接口索引"能力组合"分区与 CAP 文档一致。
 - 核心流程支持 `PAGE → API → SERVICE/MODULE → TABLE → CONFIGURATION/MIDDLEWARE` 稳定链路和证据。
+- business/ 域已生成：有证据的规则与流程分别成卡（元数据含条目状态、证据可定位），README 提供 FLOW/RULE 清单与计数；寄生规则迁移未删除原正文。
 - 常见修改场景覆盖原有七类以及页面或路由、消息或异步任务、鉴权或权限、服务或模块新增，并提供稳定 ID、服务文档和验证入口导航。
 - 术语区分用户定义与代码推断。
 - 待确认项按优先级整理。

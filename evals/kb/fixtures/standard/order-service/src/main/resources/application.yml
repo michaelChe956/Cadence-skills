@@ -1,0 +1,9 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: order-service
+  rabbitmq:
+    host: mq.internal.demo.local
+    username: order_mq
+    password: Mq_2026_Order

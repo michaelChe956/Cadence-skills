@@ -16,6 +16,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 开发指南使用 `assets/development-guide-template.md`。
 - 数据模型依次使用 `assets/data-model-index-template.md`、`assets/schema-data-model-template.md` 和 `assets/table-data-model-template.md`。
 - 配置知识依次使用 `assets/configuration-index-template.md` 和 `assets/service-configuration-template.md`。
+- 生成或更新关系矩阵前读取 `assets/traceability-matrix-template.md` 与 `assets/relation-types.md`。
 - 需要查看证据降级与冲突示例时读取 `references/demo.md`。
 
 ## 前置输入
@@ -55,7 +56,7 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 没有 DDL 时仍生成字段级文档，但不得把代码映射当成实际数据库结构，不得推断实际索引、默认值、主外键、唯一约束或可空性。
 - 字段清单的证据状态只允许 `DDL 已确认`、`迁移已确认`、`代码可推导`、`用户提供`、`来源冲突`、`待确认`。
 - 同名字段不能单独证明外键或表关系；只有显式约束、明确 ORM 映射、SQL 连接语义或用户资料可以作为关系证据，并保留来源。
-- 为数据库、Schema、逻辑表、服务、API、页面和配置组生成稳定 ID，并用稳定 ID 建立关系。
+- 为数据库、Schema、逻辑表、服务、API、页面和配置组生成稳定 ID（EVENT/JOB 稳定 ID 由 `knowledge-base-api` 在接口阶段生成），并用稳定 ID 建立关系。
 - Properties、YAML、运行时 XML、Nginx 配置和缓存文件属于配置证据；Mapper XML 归入数据模型；日志配置归入可观测性。
 - 部署、发布和启动脚本只作为配置来源、加载顺序与部署方式的只读证据，禁止执行，不能把脚本内容当作已生效配置。
 - 相同内容的配置文件合并分析并记录全部适用服务、环境、Profile 和来源位置。同名但内容或适用范围不同的文件不得合并。
@@ -81,7 +82,10 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 
 - 确认仓库、服务、模块、前后端入口和生成代码目录。
 - 记录 Manifest 基线、Git 提交、纳入范围、排除范围和未覆盖对象。
+
 - 为仓库、服务和模块生成稳定 ID，例如 `REPO-commerce`、`SERVICE-order-service` 和 `MODULE-order-core`。
+
+base-information.md 的项目定位描述优先引用 `user-input/product.md` 表述并标注 `[用户提供]`；未提供时记`未提供`，不凭推测补写业务目标。
 
 ### 2. 分析技术栈与工程方式
 
@@ -118,7 +122,8 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 2. 按分析指南合并 DDL、迁移、Entity、Mapper、SQL、配置和用户资料，逐字段记录已知属性、代码映射、证据状态和证据位置。
 3. 为每张逻辑表生成稳定 ID，例如 `TABLE-order`，并只生成一个逻辑表文档。
 4. 生成 `data-models/README.md`、每数据库或 Schema 的 `README.md`、每张逻辑表的字段级文档。
-5. 将所有数据模型文档登记到 Manifest 的 `documents.data_models`，将冲突和未覆盖范围写入 `open-questions.md`。
+5. 生成或更新每张逻辑表文档时，填写元数据 `证据基线`（本次分析的 Git 基线提交）与 `最后核验时间`（本次分析日期）；两字段为必填，为空视为文档不完整。
+6. 将所有数据模型文档登记到 Manifest 的 `documents.data_models`，将冲突和未覆盖范围写入 `open-questions.md`。
 
 ### 5. 生成配置快照知识
 
@@ -161,6 +166,13 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 横切机制 → 配置与实现位置
 
 详细来源写入 `cadence/knowledge-base/evidence/source-index.md`，关系写入 `cadence/knowledge-base/evidence/traceability-matrix.md`。
+
+矩阵落盘与词表门禁：
+
+1. 关系行一律按 `assets/traceability-matrix-template.md` 的六列结构写入，证据状态只允许 `已确认`、`来源冲突`、`待确认`；`已失效` 仅由 knowledge-base-update 删除流程产生，base-info 与其他初始化领域不得写入。
+2. 关系类型只允许取 `assets/relation-types.md` 词表枚举值；不命中词表的关系不得写入矩阵，登记 `open-questions.md` 待确认。
+3. 横向类型（`COMPOSES`、`JOIN_KEY`、`PROVIDES_FIELD`）自 2b 起启用，唯一合法写入方为组合层（knowledge-base-overview）；base-info 仍只写纵向类型。
+4. base-info 首次建立矩阵时同步首建 `evidence/relation-graph.yaml`（矩阵的机读投影，严格派生：与矩阵同批写入、禁止手工编辑、每边保留证据位置）；图固定含 `derived_from: evidence/traceability-matrix.md`、`nodes`（id/kind/label/status/doc 引用；被 Update 删除的实体保留墓碑节点：id/kind/label/doc 不变、`status: deleted`、可加 `deleted_evidence`）与 `edges`（type/from/to/evidence 证据位置；指向已删除实体的失效边保留，可加 `invalid: true`），节点 ID 取矩阵两端 ID 与各 documents 域所登记实体稳定 ID；后续领域与 Update 的矩阵写入必须同批重建图的对应条目。
 
 ### 9. 输出
 
@@ -210,6 +222,8 @@ description: "Use when 需要为 Java 与 Vue/React 存量项目分析技术栈�
 - 配置为 `全量` 或 `指定` 时，授权范围摘要完整且一致，`evidence.configuration_snapshots.baseline.fingerprint` 存在且非空，并满足 `首次计算指纹 == 分析结束指纹 == evidence.configuration_snapshots.baseline.fingerprint`。Manifest 保存授权的最终快照指纹、来源元数据和 `scope_summary`、纳入文件数量或清单摘要、服务摘要、文件规则摘要；KnowledgeBase 未保存重复文件哈希、敏感值哈希或原始快照副本。
 - Manifest 的 `generated_at` 已保留为首次生成时间；`open_questions.blocking/high/medium/low` 与 `open-questions.md` 的未解决条目完全一致，并与受影响文档原子写入。
 - 每张逻辑表都有字段清单、证据状态、证据位置、读写服务以及已发现的 Mapper/SQL 映射。
+- 每张逻辑表文档元数据的 `证据基线` 与 `最后核验时间` 非空。
+- 关系矩阵按 `assets/traceability-matrix-template.md` 六列结构生成，全部关系类型属于 `assets/relation-types.md` 词表枚举。
 - 实际索引、默认值和数据库约束只有在证据支持时记录；来源冲突和未覆盖对象已进入待确认项。
 - 已完成或不适用的 API、页面、服务、配置和逻辑表按领域状态建立稳定 ID 关联；不适用领域只关联状态与原因，不创建虚假实体 ID。API/Pages 适用但尚未执行时只要求固定的机器可判定阶段状态，BaseInfo 不得提前扫描、判空或生成未经验证的 API/Page ID；最终关联由对应阶段原子补齐为已验证链接或带非空原因与可定位证据的合法空结果，并由 `global-validation` 验收。分片物理表没有被重复建模。
 - 开发指南中的命令均有来源，配置变更验证方式不执行部署、发布或启动脚本，全部输出未包含明文敏感值和敏感内部地址。

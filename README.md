@@ -20,7 +20,7 @@ Cadence Skills 会根据任务意图自动触发，也可以用裸 Skill 名手�
 KnowledgeBase Skills 只在目标项目授权范围内读取证据；它们不会替代业务代码、数据库迁移、部署或发布流程。
 
 
-## 夜测验证状态
+## 五端夜测验证状态（`eval/`）
 
 CI 之外用 Docker 容器化夜测做端到端验证：每端一个全新容器（安装 CLI → 认证 → install.sh → 四命令 → 探针 → 评分落盘 → 销毁）。首夜基线（2026-09-08/09，每端 2 轮）：
 
@@ -33,6 +33,49 @@ CI 之外用 Docker 容器化夜测做端到端验证：每端一个全新容器
 五端 32/32 全 PASS（omp 为 change `support-omp-client` 首轮：8/8,基线首轮建立）,安装产物一致（skills=28 / superpowers=14 / rules=7）。透视脚本：`python3 eval/docker/report_matrix.py`（考场端级故障时输出降级注记）。
 
 规则加载 R 组（change `rules-progressive-load-probes` 首轮,2026-09-10）：R1 索引可见/R2 正文按需 五端各 1/1 全绿;(R3 agent 过滤验收已按 2026-09-10 用户裁决撤销——`agents:` 为 omp 原生能力,用户在项目规则自行添加,框架与 eval 不涉);stage1 四条确定性断言(rules.frontmatter/omp.symlinks/omp.agents-md/agents-md.budget)五端全绿;claude 常载 hook 审计 PASS(仅常驻桶+目录页+入口)。评分消费探针断言 spec,无「无断言分支即 PASS」假绿路径。
+
+## KnowledgeBase 评测（`evals/kb/`）
+
+`eval/` 验证「Agent 能否按 Skills 干活」，`evals/kb/` 验证「KnowledgeBase 本身是否值得建」——两层评测分工独立。
+
+### 技术层：建库流程与产物断言
+
+- 入口 `python3 evals/kb/run.py --agent <端> --variant full`；容器内由 `runner/kb_runner.py` 依序跑六个建库阶段，再执行探针 P1–P9。
+- 结构断言在 `assertions/`（`named.py` / `tier0.py` / `negative.py`，含正例、反例与 `selftest.py` 自检）。
+- 失败容器默认保留，`--resume` 可续跑；`--restore-kb <归档目录>` 用已有知识库跳过建库阶段。
+
+### 价值层：同端配对实验（`kb` vs `nokb`）
+
+唯一变量是**环境**而不是话术——两臂提问逐字相同：
+
+| 臂 | 工作目录差异 |
+| --- | --- |
+| `--arm kb` | 含 `cadence/knowledge-base/` 与根 `AGENTS.md`（KB 导航区块） |
+| `--arm nokb` | 无 `cadence/`、无 `AGENTS.md` |
+
+其余条件全部一致：同一 agent 与 model、同一源码快照与 git 历史、同一案例题面、同一超时；每个案例都从干净快照重建并开新会话。
+
+- 案例集：`cases.py`，5 场景 7 案例 25 检查项；判据为声明式 `require_all` / `require_any` / `require_groups` / `forbid`，输出 `pass`/`fail`/`unknown` 与理由。
+- 报告：`python3 evals/kb/value_report.py --batch <批次> --compare B1,B2`；判据在渲染时用最新版本**重新判定**，因此修正判据可回溯历史批次，无需重跑实验。
+- 规模：`--fixture {standard,large}`，`large` 由 `fixtures/gen_large.py` 生成（12 个噪声服务、同名类、同义业务词），生成时会校验**不污染案例答案**。
+
+```bash
+# 1) 无 KB 臂
+python3 evals/kb/run.py --agent pi --variant full --fixture large --no-build \
+  --arm nokb --batch B4 --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
+
+# 2) 有 KB 臂（必须同批次号，且顺序执行——容器名固定，不能并发）
+python3 evals/kb/run.py --agent pi --variant full --fixture large --no-build \
+  --arm kb --batch B4 --restore-kb /opt/repo/evals/kb/results/<归档>/knowledge-base \
+  --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
+
+# 3) 生成价值报告
+python3 evals/kb/value_report.py --batch B4 --compare B1,B2
+```
+
+已建立基线（pi / glm-5.3，standard 与 172 文件 large 两档）：机械判据两档均 25/25 **持平**，KB 的可测收益是**证据密度**（引用文件与行号定位显著更多），代价是约 2× 耗时——即当前设计下强 agent 用 grep 足以覆盖答案，KB 价值需在更弱 agent 或更大规模上验证。
+
+完整协议、验收标准与复测前建议加固项见 [`evals/kb/VALUE-TEST-PLAN.md`](evals/kb/VALUE-TEST-PLAN.md)。评测产物落在 `evals/kb/results/`，属运行产物，不入库。
 
 ## 安装前提
 
@@ -296,6 +339,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 - **用户文件保护**：仅识别精确的受管链接；冲突、非 Git 目录和旧残留均提示用户处理。
 - **Schema 4.0 KnowledgeBase**：同时保留代码、数据模型、配置快照和变更包证据，按任务画像渐进检索。
 - **五端 Agent 消费**：Claude Code、pi、Codex、Kimi Code、omp 共享同一套仓库源和 Skill 名称。
+- **可审计的 KB 价值评测**：同端配对实验把「有无知识库」做成唯一变量，判据声明式、答案原文留档、报告可回溯重判，结论不靠关键词命中冒充业务价值。
 
 ## Skill Creator
 
@@ -313,6 +357,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 2. 使用 `/skill-creator` 创建或维护 Skill，确保目录名、front matter 的 `name` 和 `SKILL.md` 一致。
 3. 更新用户文档时同步检查 13 个 Skill 名称、五端 Agent 路径和安装脚本契约。
 4. 运行 ShellCheck、安装/更新/卸载验证和文档定向断言后提交 Pull Request。
+5. 改动 KnowledgeBase 能力时，同步更新 `evals/kb/cases.py` 案例集与 `VALUE-TEST-PLAN.md` 基线，并按配对实验复测。
 
 ## 许可证
 

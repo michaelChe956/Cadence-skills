@@ -224,7 +224,8 @@ PAGE/ROUTE → API → SERVICE/MODULE → TABLE/CONFIGURATION
 - `cadence/knowledge-base/pages/` 下单页面能力文档
 - `cadence/knowledge-base/services/<SERVICE-ID>.md` 中的页面导航区块
 - `cadence/knowledge-base/evidence/source-index.md`
-- `cadence/knowledge-base/evidence/traceability-matrix.md`
+- `cadence/knowledge-base/evidence/traceability-matrix.md`（按 `knowledge-base-base-info` 的 `assets/traceability-matrix-template.md` 六列格式追加行，关系类型只允许 `knowledge-base-base-info` 的 `assets/relation-types.md` 词表枚举值，横向类型仅由组合层（knowledge-base-overview 通道）写入，本阶段仍限纵向类型）
+- `cadence/knowledge-base/evidence/relation-graph.yaml`（与矩阵同一次原子写入重建受影响条目，禁止手工编辑）
 - `cadence/knowledge-base/manifest.yaml`
 - `cadence/knowledge-base/open-questions.md`
 
