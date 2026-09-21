@@ -122,6 +122,9 @@ def install_skills():
     r = sh(f"bash {HOME}/.agents/Cadence-skills/install.sh", timeout=300)
     if r.returncode != 0:
         print("install.sh 失败:", (r.stdout + r.stderr)[-300:]); sys.exit(3)
+    # 隔离：harness 随仓库克隆进入 agent 可读的 skills 目录，其中 evals/kb/cases.py 含案例判据
+    # （评分口径）、results/ 含历史 KB 归档。两个臂都不应看到，装完 skill 即清除。
+    shutil.rmtree(dst / "evals", ignore_errors=True)
 
 
 # ---------- 1. prepare ----------
