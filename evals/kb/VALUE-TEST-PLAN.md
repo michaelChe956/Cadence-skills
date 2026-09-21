@@ -59,7 +59,7 @@ python3 evals/kb/run.py --agent <同一端> --variant full \
 ## 五、报告生成
 
 ```bash
-python3 evals/kb/value_report.py --batch <批次号> --compare B1,B2,B3 \
+python3 evals/kb/value_report.py --batch <批次号> --compare B1,B2 \
   --out evals/kb/results/report-value-<批次号>.md
 ```
 

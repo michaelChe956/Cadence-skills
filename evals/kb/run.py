@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """kb-eval 宿主机入口：podman 独立容器考场（与夜测零耦合）。
 
+隔离：evals/kb/results/**（历史 KB 归档与往期结果）不进入容器；
+      --restore-kb 取宿主路径（兼容 /opt/repo/... 写法），只读单独挂到 /mnt/kb-restore。
+
 用法：
   python3 evals/kb/run.py --agent claude --variant full [--fast] [--model X] [--no-build]
 
@@ -32,7 +35,6 @@ def main():
     ap.add_argument("--model", default="")
     ap.add_argument("--no-build", action="store_true")
     ap.add_argument("--restore-kb", default="")
-    ap.add_argument("--no-kb", action="store_true")
     ap.add_argument("--arm", default="", choices=["", "kb", "nokb"])
     ap.add_argument("--cases", default="")
     ap.add_argument("--batch", default="")
@@ -69,14 +71,35 @@ def main():
             argv += ["-v", f"{host_bin}:/mnt/kimi-bin:ro"]
         else:
             print(f"警告：二进制不存在 {host_bin}")
+    # 隔离：历史 KB 归档（evals/kb/results/**）不得进入容器——否则无 KB 臂能直接读到
+    # 同 fixture 的知识库（overlay 会把它解包进 agent 的工作目录，/opt/repo 下亦可见）。
+    # 两个入口都堵：overlay 打包排除 + 用空目录覆盖 /opt/repo 下的该路径。
+    EXCLUDE_RESULTS = "evals/kb/results"
+    empty_results = Path("/tmp/kb-eval-empty-results")
+    empty_results.mkdir(exist_ok=True)
+
+    def _skip_results(ti):
+        return None if ti.name.startswith(EXCLUDE_RESULTS) else ti
+
     # overlay：工作树实态（含未提交改动与新文件）打包挂入，容器内覆盖 git clone
     # （clone 只含已提交对象；本仓库产物自动提交关闭，技能最新文本未提交）
     import tarfile
     overlay = Path(f"/tmp/kb-eval-overlay-{a.agent}.tar")
     with tarfile.open(overlay, "w") as tf:
         for item in ["cadence-init", "evals", "install.sh"]:
-            tf.add(REPO / item, arcname=item)
+            tf.add(REPO / item, arcname=item, filter=_skip_results)
     argv += ["-v", f"{overlay}:/mnt/overlay.tar:ro"]
+    argv += ["-v", f"{empty_results}:/opt/repo/{EXCLUDE_RESULTS}:ro"]
+
+    # KB 归档（--restore-kb）单独显式挂载：它位于 results/ 之下，不能靠仓库挂载暴露
+    if a.restore_kb:
+        src = Path(a.restore_kb).expanduser()
+        if str(src).startswith("/opt/repo/"):  # 兼容容器内路径写法
+            src = REPO / str(src)[len("/opt/repo/"):]
+        src = src.resolve()
+        if not src.is_dir():
+            sys.exit("--restore-kb 不是宿主目录：" + str(src))
+        argv += ["-v", f"{src}:/mnt/kb-restore:ro"]
     argv += [IMAGE, "sleep", "infinity"]
     r = sh(argv)
     if r.returncode != 0:
@@ -89,11 +112,9 @@ def main():
     if a.model:
         inner += f" --model {a.model}"
     if a.restore_kb:
-        inner += f" --restore-kb {a.restore_kb}"
+        inner += " --restore-kb /mnt/kb-restore"
     if a.probes:
         inner += f" --probes {a.probes}"
-    if a.no_kb:
-        inner += " --no-kb"
     if getattr(a, "arm", ""):
         inner += f" --arm {a.arm}"
     if getattr(a, "cases", ""):
