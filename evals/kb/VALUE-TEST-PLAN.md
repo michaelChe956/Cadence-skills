@@ -47,7 +47,7 @@ python3 evals/kb/run.py --agent <pi|codex|claude|kimi> --variant full \
   --fixture large --no-build --arm nokb --batch <批次号> \
   --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
 
-# ② 有 KB 臂（--restore-kb 必须是容器内可见的绝对路径）
+# ② 有 KB 臂（--restore-kb 收宿主路径；写 /opt/repo/... 会自动换算为宿主对应位置）
 python3 evals/kb/run.py --agent <同一端> --variant full \
   --fixture large --no-build --arm kb --batch <批次号> \
   --restore-kb /opt/repo/evals/kb/results/<KB 归档目录>/knowledge-base \
