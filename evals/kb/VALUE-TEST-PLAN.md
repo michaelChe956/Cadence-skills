@@ -22,7 +22,7 @@
 3. **同一 prompt**：案例题面来自 `evals/kb/cases.py`，两臂共用，**禁止维护两套 prompt**。
 4. **同一超时/轮次**：`--timeout-min`、`--max-turns` 两臂相同。
 5. **每案例独立新会话 + 干净快照**：`setup_arms()` 每案例从 `BASE` 重建工作目录。
-6. **KB 指纹留档**：`--restore-kb` 指向的 KB 目录，记录其 `manifest.yaml` 的版本/指纹。
+6. **KB 指纹留档**：`--restore-kb` 指向的 KB 快照，记录其 `manifest.yaml` 的版本/指纹与所在快照目录名；快照入库于 `evals/kb/fixtures/kb-archive/`，改动 KB 建库类 skill 或 fixture 后必须重新生成（见该目录 `PROVENANCE.md`）。
 
 环境差异（唯一变量）：
 - `arm=kb`：工作目录含 `cadence/knowledge-base/` + 根 `AGENTS.md`（KB 导航区块）
@@ -47,10 +47,10 @@ python3 evals/kb/run.py --agent <pi|codex|claude|kimi> --variant full \
   --fixture large --no-build --arm nokb --batch <批次号> \
   --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
 
-# ② 有 KB 臂（--restore-kb 收宿主路径；写 /opt/repo/... 会自动换算为宿主对应位置）
+# ② 有 KB 臂（--restore-kb 收宿主路径，写 /opt/repo/... 会自动换算；入库快照见 fixtures/kb-archive/）
 python3 evals/kb/run.py --agent <同一端> --variant full \
   --fixture large --no-build --arm kb --batch <批次号> \
-  --restore-kb /opt/repo/evals/kb/results/<KB 归档目录>/knowledge-base \
+  --restore-kb evals/kb/fixtures/kb-archive/standard-codex-full-20260920 \
   --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
 ```
 

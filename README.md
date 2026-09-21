@@ -42,7 +42,7 @@ CI 之外用 Docker 容器化夜测做端到端验证：每端一个全新容器
 
 - 入口 `python3 evals/kb/run.py --agent <端> --variant full`；容器内由 `runner/kb_runner.py` 依序跑六个建库阶段，再执行探针 P1–P9。
 - 结构断言在 `assertions/`（`named.py` / `tier0.py` / `negative.py`，含正例、反例与 `selftest.py` 自检）。
-- 失败容器默认保留，`--resume` 可续跑；`--restore-kb <归档目录>` 用已有知识库跳过建库阶段。
+- 失败容器默认保留，`--resume` 可续跑；`--restore-kb <KB 快照目录>` 用已有知识库跳过建库阶段（入库快照见 `evals/kb/fixtures/kb-archive/`，溯源与重生成条件见其 `PROVENANCE.md`）。
 
 ### 价值层：同端配对实验（`kb` vs `nokb`）
 
@@ -66,7 +66,7 @@ python3 evals/kb/run.py --agent pi --variant full --fixture large --no-build \
 
 # 2) 有 KB 臂（必须同批次号，且顺序执行——容器名固定，不能并发）
 python3 evals/kb/run.py --agent pi --variant full --fixture large --no-build \
-  --arm kb --batch B4 --restore-kb /opt/repo/evals/kb/results/<归档>/knowledge-base \
+  --arm kb --batch B4 --restore-kb evals/kb/fixtures/kb-archive/standard-codex-full-20260920 \
   --cases S1-A,S1-B,S2-A,S3-A,S4-A,S5-A,S5-B --timeout-min 15
 
 # 3) 生成价值报告

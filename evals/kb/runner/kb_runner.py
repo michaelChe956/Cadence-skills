@@ -30,8 +30,10 @@ SKILLS_INSTALLED = HOME / ".agents/Cadence-skills/cadence-init/skills"
 STAGES = ["bootstrap", "base-info", "api", "pages", "overview", "global-validation"]
 
 
-def sh(cmd, cwd=None, timeout=120):
-    return subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+def sh(cmd, cwd=None, timeout=120, env=None):
+    run_env = {**os.environ, **env} if env else None
+    return subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True,
+                          timeout=timeout, env=run_env)
 
 
 def load_results():
@@ -150,12 +152,16 @@ def prepare(variant):
             continue
         (shutil.copytree if item.is_dir() else shutil.copy2)(item, PROJECT / item.name)
     # F7：init=30 天（错误值）→ fix=7 天（真实 diff）
+    # 提交时间固定：否则每次 prepare 造出的 commit hash 都不同，知识库 manifest 记录的
+    # baseline_commit 与新一次运行的 HEAD 对不上，agent 会白白花注意力核对「基线漂移」。
+    GIT_FIXED_DATE = "2026-01-01T00:00:00+00:00"
+    git_fixed = {"GIT_AUTHOR_DATE": GIT_FIXED_DATE, "GIT_COMMITTER_DATE": GIT_FIXED_DATE}
     export = PROJECT / "order-service/src/main/java/com/demo/order/service/ExportService.java"
     export.write_text(export.read_text(encoding="utf-8").replace("RETENTION_DAYS = 7", "RETENTION_DAYS = 30"), encoding="utf-8")
     sh("git init -q -b main && git config user.email t@t && git config user.name t && "
-       "git add -A && git commit -qm 'init: demo 商城初始版本'", cwd=PROJECT)
+       "git add -A && git commit -qm 'init: demo 商城初始版本'", cwd=PROJECT, env=git_fixed)
     export.write_text(export.read_text(encoding="utf-8").replace("RETENTION_DAYS = 30", "RETENTION_DAYS = 7"), encoding="utf-8")
-    sh("git add -A && git commit -qm '修复：导出文件保留期应为 7 天（原误配 30 天）'", cwd=PROJECT)
+    sh("git add -A && git commit -qm '修复：导出文件保留期应为 7 天（原误配 30 天）'", cwd=PROJECT, env=git_fixed)
     repo_init = sh("git rev-list --max-parents=0 HEAD", cwd=PROJECT).stdout.strip()
     # 配置快照（只读+指纹）
     snap_dir = SNAP / "baseline-config"
