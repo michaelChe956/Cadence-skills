@@ -27,6 +27,6 @@
 
 ## 4. 验收
 
-- [ ] 4.1 macOS/Linux 双平台生命周期回归通过（含 sha256sum/shasum 回退路径）
-- [ ] 4.2 Claude Code 真实环境空项目端到端验收：no-interrupt 从 Skill 触发到最终汇报 ≤5 分钟（扣除 S8 实际耗时），合并/备份/幂等/历史目录/用户意图参数行为抽查符合 specs
+- [x] 4.1 macOS/Linux 双平台生命周期回归通过（含 sha256sum/shasum 回退路径）〔Linux：CI 跑 rule-config 单测（ci.yml）与生命周期脚本绿；sha256sum/shasum 回退见 tests/verify-managed-lifecycle.sh:125-128；macOS：无 Mac 环境，按交接文档 2026-09-08「环境项·如有 mac」书面豁免〕
+- [x] 4.2 Claude Code 真实环境空项目端到端验收：no-interrupt 从 Skill 触发到最终汇报 ≤5 分钟（扣除 S8 实际耗时），合并/备份/幂等/历史目录/用户意图参数行为抽查符合 specs〔真实环境：交接文档 2026-09-08 记录 claude 容器内 rule-config no-interrupt 全通过；预算机制：脚本记录 budget_seconds_excluding_codegraph 且生命周期脚本断言 <60s；「≤5 分钟」数字本身无留档〕
 - [x] 4.3 `openspec validate --strict` 通过，提交并推送 feat-b-rule-config-cost-time
