@@ -179,6 +179,9 @@ API → SERVICE/MODULE → TABLE → 字段/Mapper/SQL
 API → SERVICE/MODULE → CONFIGURATION → 配置键/生效条件
 ```
 
+消息生产/消费能力必须生成 `EVENT-<业务事件名>` 稳定 ID，定时任务、批处理和异步作业能力必须生成 `JOB-<作业名>` 稳定 ID，登记于能力主文件元数据；追溯矩阵按 `SERVICE/MODULE --PRODUCES--> EVENT`、`SERVICE/MODULE --CONSUMES--> EVENT`、`JOB --INVOLVES--> API/SERVICE/TABLE/CONFIGURATION` 登记关系边。
+
+
 - `SERVICE/MODULE` 优先使用 Base Info 关系矩阵中的稳定 ID；矩阵缺失时记录代码符号和 `待确认`，不得跳过证据缺口。
 - `TABLE` 必须使用 `data-models/` 中的稳定 ID 并链接字段级表文档；同时记录读写类型、涉及字段、Mapper/SQL、表字段证据状态和端到端映射状态。
 - API 模型字段与表字段的关系必须由请求/响应映射、Assembler、Entity、Mapper 或 SQL 逐跳证明；字段同名不能作为关联依据。
@@ -187,6 +190,8 @@ API → SERVICE/MODULE → CONFIGURATION → 配置键/生效条件
 - `CONFIGURATION` 必须链接 `configurations/` 中的服务配置实体，记录配置组稳定 ID、配置键、环境、绑定、生效条件和证据状态。
 - 只有直接影响请求、响应、副作用、路由、鉴权、中间件或外部系统的配置才进入 API 文档。仅因同属服务、文件中出现或名称相似的配置不得关联。
 - 只有配置键或默认值、但缺少绑定与生效条件时标记 `待确认`，不得断言配置已生效。
+
+api-scope 声明"能力组合诉求"时，api 阶段必须核实每个来源能力 ID 的存在性、契约锚点（参数报文文件位置）、鉴权要求，并按 JOIN_KEY 纪律核实连接键字段的端到端映射链（复用本节字段映射证据口径）；核实结果供 overview 生成 CAP 使用，api 不生成组合实体。发现工程内聚合端点（单个 API 实现调用多个既有能力）时，在该端点主文件登记其聚合的能力 ID 清单，供 overview 反向建立 CAP。
 
 ### 4. 核实数据库证据
 
@@ -242,7 +247,8 @@ cadence/knowledge-base/interfaces/{标识}_{接口名称}_{API名称}_参数与�
 - `services/<SERVICE-ID>.md` 中的 API 导航区块
 - `manifest.yaml`
 - `evidence/source-index.md`
-- `evidence/traceability-matrix.md`
+- `evidence/traceability-matrix.md`（按 `knowledge-base-base-info` 的 `assets/traceability-matrix-template.md` 六列格式追加行，关系类型只允许 `knowledge-base-base-info` 的 `assets/relation-types.md` 词表枚举值，横向类型仅由组合层（knowledge-base-overview 通道）写入，本阶段仍限纵向类型）
+- `evidence/relation-graph.yaml`（与矩阵同一次原子写入重建受影响条目，禁止手工编辑）
 - `open-questions.md`
 
 完成当前模式授权范围内每个服务的完整 API 分析后，必须在同一次原子写入中更新范围内 `services/<SERVICE-ID>.md` 的 API 导航区块：发现接口的服务，将 `阶段状态：待后续阶段补齐（api）` 替换为已验证的 API 稳定 ID 和接口主文件相对链接；经完整范围分析确认无接口的服务，将其替换为唯一空结果 `阶段状态：已验证为空（api）`，并在同一导航区块记录非空 `原因` 和可定位 `证据`。两种结果都必须与接口文档、索引、证据和 Manifest 原子写入。未分析、证据不足或无法确认时不得使用 `已验证为空（api）`，必须保留待补状态并进入待确认，且阶段不得完成。

@@ -8,7 +8,7 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 
 ## 初始化生命周期与重新初始化授权
 
-在校验六领域输入前检查整个 `cadence/knowledge-base/`，不能只检查 Manifest。检测集合为：`manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`domain-glossary.md`、`open-questions.md`、`change-history.md`。
+在校验六领域输入前检查整个 `cadence/knowledge-base/`，不能只检查 Manifest。检测集合为：`manifest.yaml`、`input-inventory.md`、`README.md`、`base-information.md`、`development-guide.md`、`interfaces/`、`pages/`、`services/`、`data-models/`、`configurations/`、`evidence/`、`business/`、`capabilities/`、`domain-glossary.md`、`open-questions.md`、`change-history.md`。
 
 按以下顺序得到唯一判定：
 
@@ -77,6 +77,23 @@ Manifest 只允许 `schema_version: "4.0"`。`scope.projects`、`scope.data_mode
 | 页面 | `page-scope.md` | 定义前端应用、页面、路由和权限范围 |
 
 `database-ddl.sql` 是数据模型的可选证据，不是独立领域，也不是继续执行的硬前置。
+
+### 可选输入：业务目标与业务知识证据
+
+`product.md`（产品目的/目标用户/关键特性/业务目标，各节允许`未提供`）与 `base-info.md` 中的"业务知识证据"章节均为可选输入：缺失时记`未提供`、不阻断初始化、不产生待确认项。
+
+业务知识证据在 `base-info.md` 中声明三个键：
+
+```yaml
+## 业务知识证据（可选）
+test_sources: []      # 测试证据：目录或文件清单（scope.projects 授权范围内）
+adr_sources: []       # 存量 ADR：目录或文件清单
+git_history:
+  enabled: false      # git 历史意图挖掘默认关闭
+  range: ""           # 启用时必须为本地可解析的 起点提交..结束提交
+```
+
+校验规则：声明路径越出 `scope.projects` 授权范围、或 git range 无法在本地解析时，停止该证据源并登记待确认，不阻断其他领域与其他证据源。测试与 ADR 证据使用当前 HEAD 行号定位（`文件:行号`）；git 历史意图使用 ref 型证据 `文件:行号@<commit>`，ref 型证据只能支撑 `ai-draft` 业务知识条目，不得单独支撑 `confirmed`。
 
 ## 状态与扫描前校验
 
@@ -168,7 +185,13 @@ Manifest 的 `evidence.configuration_snapshots.baseline` 保存最终快照指�
 - 配置快照基线写入 `evidence.configuration_snapshots.baseline`，并保留可审计范围摘要。
 - 首次初始化时 `update.last_change_package` 为空对象，`update.processed_packages` 为空列表。
 - `documents.data_models` 和 `documents.configurations` 分别登记领域文档。
+- 业务知识证据来源写入 `evidence.business_knowledge_sources`（test_sources、adr_sources、git_history 的路径、范围与限制）。
+- `business/` 始终保留并生成 `README.md`；无业务知识证据与 product.md 时以`未提供`说明占位。
+- 业务域文档（规则卡、流程文档）登记到 `documents.business`。
 - `coverage.initialization` 只使用 `status`、`completed_stages`、`skipped_stages`、`global_validation` 和 `completed_at` 跟踪初始化进度。
+- `capabilities/` 始终保留并生成 `README.md`；无组合诉求且无聚合端点时以`未提供`说明占位。
+- 组合能力文档登记到 `documents.capabilities`。
+- `evidence/relation-graph.yaml` 与追溯矩阵在同一次原子写入中重建受影响条目（严格派生，禁止手工编辑）。
 - `generated_at` 记录本次新知识库的首次生成时间；`open_questions.blocking`、`high`、`medium`、`low` 按新生成的待确认文档初始化，并在后续流程中按实际待确认项更新。
 
 只生成 Schema 4.0，不读取、兼容或迁移其他版本知识库。

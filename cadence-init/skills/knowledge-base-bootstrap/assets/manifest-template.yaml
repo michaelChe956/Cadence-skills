@@ -54,6 +54,12 @@ evidence:
     mappers: []
     sql: []
     manual: []
+  business_knowledge_sources:
+    test_sources: []
+    adr_sources: []
+    git_history:
+      enabled: false
+      range: ""
   configuration_snapshots:
     baseline:
       snapshot_id: ""
@@ -78,6 +84,8 @@ documents:
   services: []
   data_models: []
   configurations: []
+  business: []
+  capabilities: []
 coverage:
   initialization:
     status: "in_progress"
