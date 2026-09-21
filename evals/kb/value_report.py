@@ -283,7 +283,7 @@ def build(batch_id, nokb, kb):
 
 def compare_section(batches):
     """跨批次（代码规模）对比：质量、耗时、证据密度。"""
-    rows, dens = [], []
+    rows, dens, stats = [], [], []
     for b in batches:
         bid, nokb, kb = load_batch(b)
         if not (nokb and kb):
@@ -301,14 +301,21 @@ def compare_section(batches):
         size = nokb.get("fixture_files") or "—"
         rows.append(f"| `{bid}` | {nfile} ({size}) | {pn}/{tot} | {pk}/{tot} | "
                     f"{dn/60:.1f}m | {dk/60:.1f}m | {dk/dn:.2f}× | {nf} → {kf} ({(kf/nf if nf else 0):.1f}×) |")
+        stats.append((bid, pn, pk, tot))
     if not rows:
         return []
+    gained = [f"`{b}` 无 KB {n}/{t_} → 有 KB {k}/{t_}" for b, n, k, t_ in stats if k > n]
+    tied = [b for b, n, k, _ in stats if k == n]
+    if gained:
+        verdict = ("**已有批次出现质量提升**：" + "；".join(gained)
+                   + f"；其余 {len(tied)} 批持平（{'、'.join('`'+b+'`' for b in tied)}）。")
+    else:
+        verdict = ("**各批机械判据均持平**：现用题集下无 KB 端不存在「找不到/漏掉」，"
+                   "差异只体现在证据密度与耗时。")
     return ["## 附：代码规模对比（同 agent、同案例、同判据）", "",
             "| 批次 | fixture (文件数) | 无 KB 通过 | 有 KB 通过 | 无 KB 耗时 | 有 KB 耗时 | 耗时倍数 | 证据文件数 |",
             "|------|------------------|-----------|-----------|-----------|-----------|---------|-----------|",
-            *rows, "",
-            "**规模放大未改变质量结论**：两批机械判据均满分，说明无 KB 端在本题集上不存在「找不到/漏掉」；"
-            "规模增大只体现为耗时代价放大。", ""]
+            *rows, "", verdict, ""]
 
 
 def main():
