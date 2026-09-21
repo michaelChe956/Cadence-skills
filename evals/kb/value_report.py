@@ -325,7 +325,8 @@ def main():
     content = build(batch_id, nokb, kb)
     if a.compare:
         content += "\n" + "\n".join(compare_section(a.compare.split(",")))
-    out = Path(a.out) if a.out else RESULTS / f"report-value-{batch_id}.md"
+    out = Path(a.out) if a.out else Path(__file__).resolve().parent / "reports" / f"report-value-{batch_id}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
     print(f"价值报告 → {out}")
     print(content[:1200])

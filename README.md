@@ -75,7 +75,7 @@ python3 evals/kb/value_report.py --batch B4 --compare B1,B2
 
 已建立基线（pi / glm-5.3，standard 与 172 文件 large 两档）：机械判据两档均 25/25 **持平**，KB 的可测收益是**证据密度**（引用文件与行号定位显著更多），代价是约 2× 耗时——即当前设计下强 agent 用 grep 足以覆盖答案，KB 价值需在更弱 agent 或更大规模上验证。
 
-完整协议、验收标准与复测前建议加固项见 [`evals/kb/VALUE-TEST-PLAN.md`](evals/kb/VALUE-TEST-PLAN.md)。评测产物落在 `evals/kb/results/`，属运行产物，不入库。
+完整协议、验收标准与复测前建议加固项见 [`evals/kb/VALUE-TEST-PLAN.md`](evals/kb/VALUE-TEST-PLAN.md)；各批次价值报告入库于 `evals/kb/reports/`，运行产物落在 `evals/kb/results/`（不入库）。
 
 ## 安装前提
 

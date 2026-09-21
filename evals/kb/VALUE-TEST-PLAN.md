@@ -60,12 +60,14 @@ python3 evals/kb/run.py --agent <同一端> --variant full \
 
 ```bash
 python3 evals/kb/value_report.py --batch <批次号> --compare B1,B2 \
-  --out evals/kb/results/report-value-<批次号>.md
+  --out evals/kb/reports/report-value-<批次号>.md
 ```
 
-产物目录：`evals/kb/results/exp/<批次号>/<agent>-{kb,nokb}/`
+产物目录：`evals/kb/results/exp/<批次号>/<agent>-{kb,nokb}/`（运行产物，不入库）
 - `value-{kb,nokb}-results.json`：结构化结果（prompt/回答/耗时/usage/检查项）
 - `transcripts/<案例>.log`：原始回答全文（人工复核用）
+
+价值报告入库于 `evals/kb/reports/`（`value_report.py` 默认输出该目录）；历史批次的结论以该目录报告为准。
 
 ## 六、案例集与判据
 
