@@ -1,0 +1,790 @@
+derived_from: evidence/traceability-matrix.md
+generated_at_baseline: 1f867b9fcdf95f2e11808454898f333d7d512e90
+nodes:
+  - id: SERVICE-INDEX
+    kind: INDEX
+    label: 服务索引
+    status: 已生成
+    doc: services/README.md
+  - id: SERVICE-user-service
+    kind: SERVICE
+    label: user-service
+    status: 已识别
+    doc: services/SERVICE-user-service.md
+  - id: SERVICE-account-service
+    kind: SERVICE
+    label: account-service
+    status: 已识别
+    doc: services/SERVICE-account-service.md
+  - id: SERVICE-order-service
+    kind: SERVICE
+    label: order-service
+    status: 已识别
+    doc: services/SERVICE-order-service.md
+  - id: SERVICE-web-portal
+    kind: SERVICE
+    label: web-portal
+    status: 已识别
+    doc: services/SERVICE-web-portal.md
+  - id: MODULE-user-basic
+    kind: MODULE
+    label: 用户基本信息查询链路
+    status: 已确认
+    doc: services/SERVICE-user-service.md
+  - id: MODULE-account-core
+    kind: MODULE
+    label: 账户查询链路
+    status: 已确认
+    doc: services/SERVICE-account-service.md
+  - id: MODULE-account-reconcile
+    kind: MODULE
+    label: 每日对账定时任务
+    status: 待确认
+    doc: services/SERVICE-account-service.md
+  - id: MODULE-order-core
+    kind: MODULE
+    label: 订单状态机与读写
+    status: 已确认
+    doc: services/SERVICE-order-service.md
+  - id: MODULE-order-export
+    kind: MODULE
+    label: 订单导出
+    status: 已确认
+    doc: services/SERVICE-order-service.md
+  - id: MODULE-order-event
+    kind: MODULE
+    label: 订单事件收发
+    status: 已确认
+    doc: services/SERVICE-order-service.md
+  - id: MODULE-web-portal-app
+    kind: MODULE
+    label: 前端应用装配与路由
+    status: 已确认
+    doc: services/SERVICE-web-portal.md
+  - id: MODULE-web-portal-api
+    kind: MODULE
+    label: 前端请求封装
+    status: 已确认
+    doc: services/SERVICE-web-portal.md
+  - id: MODULE-web-portal-views
+    kind: MODULE
+    label: 前端页面视图
+    status: 已确认
+    doc: services/SERVICE-web-portal.md
+  - id: DM-INDEX
+    kind: INDEX
+    label: 数据模型总索引
+    status: 已生成
+    doc: data-models/README.md
+  - id: DB-demo_user
+    kind: DATABASE
+    label: demo_user
+    status: DDL 已确认
+    doc: data-models/DB-demo_user/README.md
+  - id: DB-demo_account
+    kind: DATABASE
+    label: demo_account
+    status: DDL 已确认
+    doc: data-models/DB-demo_account/README.md
+  - id: DB-demo_order
+    kind: DATABASE
+    label: demo_order
+    status: DDL 已确认
+    doc: data-models/DB-demo_order/README.md
+  - id: TABLE-t_user
+    kind: TABLE
+    label: t_user
+    status: DDL 已确认
+    doc: data-models/DB-demo_user/TABLE-t_user.md
+  - id: TABLE-t_user_account
+    kind: TABLE
+    label: t_user_account
+    status: DDL 已确认
+    doc: data-models/DB-demo_account/TABLE-t_user_account.md
+  - id: TABLE-t_order
+    kind: TABLE
+    label: t_order
+    status: DDL 已确认
+    doc: data-models/DB-demo_order/TABLE-t_order.md
+  - id: TABLE-t_export_file
+    kind: TABLE
+    label: t_export_file
+    status: 待确认
+    doc: data-models/DB-demo_order/TABLE-t_export_file.md
+  - id: CONFIG-INDEX
+    kind: INDEX
+    label: 配置知识索引
+    status: 已生成
+    doc: configurations/README.md
+  - id: CONFIG-SERVICE-user-service
+    kind: CONFIGURATION_DOC
+    label: user-service 配置文档
+    status: 已生成
+    doc: configurations/SERVICE-user-service.md
+  - id: CONFIG-SERVICE-account-service
+    kind: CONFIGURATION_DOC
+    label: account-service 配置文档
+    status: 已生成
+    doc: configurations/SERVICE-account-service.md
+  - id: CONFIG-SERVICE-order-service
+    kind: CONFIGURATION_DOC
+    label: order-service 配置文档
+    status: 已生成
+    doc: configurations/SERVICE-order-service.md
+  - id: CONFIGGROUP-user-datasource
+    kind: CONFIGURATION
+    label: 用户库数据源配置组
+    status: 存在
+    doc: configurations/SERVICE-user-service.md
+  - id: CONFIGGROUP-account-datasource
+    kind: CONFIGURATION
+    label: 账户库数据源配置组
+    status: 存在
+    doc: configurations/SERVICE-account-service.md
+  - id: CONFIGGROUP-account-reconcile
+    kind: CONFIGURATION
+    label: 对账任务配置组
+    status: 待确认
+    doc: configurations/SERVICE-account-service.md
+  - id: CONFIGGROUP-order-datasource
+    kind: CONFIGURATION
+    label: 订单库数据源配置组
+    status: 缺失
+    doc: configurations/SERVICE-order-service.md
+  - id: CONFIGGROUP-order-rabbitmq
+    kind: CONFIGURATION
+    label: RabbitMQ 连接配置组
+    status: 存在
+    doc: configurations/SERVICE-order-service.md
+  - id: MIDDLEWARE-mysql
+    kind: MIDDLEWARE
+    label: MySQL
+    status: 已装配（开发）
+    doc: configurations/README.md
+  - id: MIDDLEWARE-rabbitmq
+    kind: MIDDLEWARE
+    label: RabbitMQ
+    status: 已装配（开发）
+    doc: configurations/README.md
+  - id: CODE-UserEntity
+    kind: CODE
+    label: com.demo.user.entity.UserEntity
+    status: 已确认
+    doc: data-models/DB-demo_user/TABLE-t_user.md
+  - id: CODE-UserMapperXml-selectById
+    kind: CODE
+    label: UserMapper.xml#selectById
+    status: 已确认
+    doc: data-models/DB-demo_user/TABLE-t_user.md
+  - id: CODE-AccountEntity
+    kind: CODE
+    label: com.demo.account.entity.AccountEntity
+    status: 已确认
+    doc: data-models/DB-demo_account/TABLE-t_user_account.md
+  - id: CODE-AccountMapperXml-selectByUserId
+    kind: CODE
+    label: AccountMapper.xml#selectByUserId
+    status: 来源冲突
+    doc: data-models/DB-demo_account/TABLE-t_user_account.md
+  - id: CODE-OrderEntity
+    kind: CODE
+    label: com.demo.order.entity.OrderEntity
+    status: 已确认
+    doc: data-models/DB-demo_order/TABLE-t_order.md
+  - id: CODE-OrderMapperXml-selectById
+    kind: CODE
+    label: OrderMapper.xml#selectById
+    status: 已确认
+    doc: data-models/DB-demo_order/TABLE-t_order.md
+  - id: CODE-OrderMapperXml-updateStatus
+    kind: CODE
+    label: OrderMapper.xml#updateStatus
+    status: 已确认
+    doc: data-models/DB-demo_order/TABLE-t_order.md
+  - id: CONCERN-frontend-request-wrapper
+    kind: CONCERN
+    label: 前端统一请求封装
+    status: 已确认
+    doc: services/SERVICE-web-portal.md
+  - id: CONCERN-scheduled-reconcile
+    kind: CONCERN
+    label: 定时调度与重试
+    status: 待确认
+    doc: services/SERVICE-account-service.md
+  - id: CONCERN-annotation-driven-messaging
+    kind: CONCERN
+    label: 注解驱动消息调用
+    status: 已确认
+    doc: services/SERVICE-order-service.md
+  - id: API-user-basic
+    kind: API
+    label: 查询用户基本信息
+    status: 已声明、已实现、已装配、已暴露
+    doc: interfaces/API-user-basic_查询用户基本信息_queryBasic.md
+  - id: API-order-export
+    kind: API
+    label: 订单导出
+    status: 已声明、已实现（存根）、已装配、已暴露
+    doc: interfaces/API-order-export_订单导出_export.md
+  - id: API-account-query
+    kind: API
+    label: 账户信息查询接口
+    status: 已实现、已装配、已暴露
+    doc: interfaces/API-account-query_账户信息查询_queryAccount.md
+  - id: API-order-ship
+    kind: API
+    label: 订单发货接口
+    status: 已实现、已装配、已暴露
+    doc: interfaces/API-order-ship_订单发货_ship.md
+  - id: EVENT-order-paid
+    kind: EVENT
+    label: 订单已支付事件
+    status: 代码存在但不可达
+    doc: interfaces/EVENT-order-paid_订单已支付事件.md
+  - id: JOB-reconcile
+    kind: JOB
+    label: 每日账户对账任务
+    status: 代码存在但不可达
+    doc: interfaces/JOB-reconcile_每日账户对账任务.md
+  - id: FILE-order-export-file
+    kind: FILE
+    label: 订单导出文件
+    status: 状态未知
+    doc: interfaces/FILE-order-export-file_订单导出文件.md
+  - id: PAGE-INDEX
+    kind: INDEX
+    label: 页面能力索引
+    status: 已生成
+    doc: pages/README.md
+  - id: PAGE-user-list
+    kind: PAGE
+    label: 用户列表
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-user-list.md
+  - id: PAGE-order-manage
+    kind: PAGE
+    label: 订单管理
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-order-manage.md
+  - id: PAGE-account-query
+    kind: PAGE
+    label: 账户查询
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-account-query.md
+  - id: API-account-query-参数与报文
+    kind: API_CONTRACT
+    label: 账户信息查询 参数与报文
+    status: 已生成
+    doc: interfaces/API-account-query_账户信息查询_queryAccount_参数与报文.md
+  - id: API-order-export-参数与报文
+    kind: API_CONTRACT
+    label: 订单导出 参数与报文
+    status: 已生成
+    doc: interfaces/API-order-export_订单导出_export_参数与报文.md
+  - id: API-order-ship-参数与报文
+    kind: API_CONTRACT
+    label: 订单发货 参数与报文
+    status: 已生成
+    doc: interfaces/API-order-ship_订单发货_ship_参数与报文.md
+  - id: API-user-basic-参数与报文
+    kind: API_CONTRACT
+    label: 查询用户基本信息 参数与报文
+    status: 已生成
+    doc: interfaces/API-user-basic_查询用户基本信息_queryBasic_参数与报文.md
+  - id: BIZ-INDEX
+    kind: INDEX
+    label: 业务域索引
+    status: 已生成
+    doc: business/README.md
+  - id: CAP-INDEX
+    kind: INDEX
+    label: 组合能力索引
+    status: 已生成
+    doc: capabilities/README.md
+  - id: CAP-user-full-info
+    kind: CAPABILITY
+    label: 全部用户信息
+    status: proposed
+    doc: capabilities/CAP-user-full-info.md
+  - id: CONFIGGROUP-order-server
+    kind: CONFIGGROUP
+    label: 订单服务端口与应用名
+    status: 已确认
+    doc: configurations/SERVICE-order-service.md
+  - id: FIELD-account-info
+    kind: FIELD_DOMAIN
+    label: 账户信息字段域
+    status: 待确认
+    doc: capabilities/CAP-user-full-info.md
+  - id: FIELD-user-profile
+    kind: FIELD_DOMAIN
+    label: 用户基本信息字段域
+    status: 已确认
+    doc: capabilities/CAP-user-full-info.md
+  - id: FLOW-account-query
+    kind: FLOW
+    label: 账户信息查询流程
+    status: confirmed
+    doc: business/flows/FLOW-account-query.md
+  - id: FLOW-account-reconcile
+    kind: FLOW
+    label: 每日账户对账流程
+    status: ai-draft
+    doc: business/flows/FLOW-account-reconcile.md
+  - id: FLOW-order-export
+    kind: FLOW
+    label: 订单导出流程
+    status: ai-draft
+    doc: business/flows/FLOW-order-export.md
+  - id: FLOW-order-paid-event
+    kind: FLOW
+    label: 订单已支付事件处理流程
+    status: ai-draft
+    doc: business/flows/FLOW-order-paid-event.md
+  - id: FLOW-order-ship
+    kind: FLOW
+    label: 订单发货流程
+    status: confirmed
+    doc: business/flows/FLOW-order-ship.md
+  - id: FLOW-user-basic-query
+    kind: FLOW
+    label: 用户基本信息查询流程
+    status: confirmed
+    doc: business/flows/FLOW-user-basic-query.md
+  - id: INTERFACES-INDEX
+    kind: INDEX
+    label: 接口能力索引
+    status: 已生成
+    doc: interfaces/README.md
+  - id: KB-CHANGE-HISTORY
+    kind: DOC
+    label: 知识库变更历史
+    status: 已生成
+    doc: change-history.md
+  - id: KB-GLOSSARY
+    kind: DOC
+    label: 领域术语表
+    status: 已生成
+    doc: domain-glossary.md
+  - id: KB-OPEN-QUESTIONS
+    kind: DOC
+    label: 待确认清单
+    status: 已生成
+    doc: open-questions.md
+  - id: KB-README
+    kind: DOC
+    label: 知识库入口
+    status: 已生成
+    doc: README.md
+  - id: ROUTE-web-portal-accounts
+    kind: ROUTE
+    label: /accounts
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-account-query.md
+  - id: ROUTE-web-portal-orders
+    kind: ROUTE
+    label: /orders
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-order-manage.md
+  - id: ROUTE-web-portal-users
+    kind: ROUTE
+    label: /users
+    status: 已装配（可达性待确认）
+    doc: pages/PAGE-user-list.md
+  - id: RULE-account-balance-non-negative
+    kind: RULE
+    label: 账户余额不可为负
+    status: ai-draft
+    doc: business/rules/RULE-account-balance-non-negative.md
+  - id: RULE-order-export-retention
+    kind: RULE
+    label: 订单导出文件保留 7 天
+    status: ai-draft
+    doc: business/rules/RULE-order-export-retention.md
+  - id: RULE-order-ship-constraint
+    kind: RULE
+    label: 订单发货状态约束
+    status: confirmed
+    doc: business/rules/RULE-order-ship-constraint.md
+  - id: RULE-order-status-transition
+    kind: RULE
+    label: 订单状态迁移链
+    status: ai-draft
+    doc: business/rules/RULE-order-status-transition.md
+edges:
+  - type: IMPLEMENTED_BY
+    from: CONCERN-annotation-driven-messaging
+    to: MODULE-order-event
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:13-19
+  - type: IMPLEMENTED_BY
+    from: CONCERN-frontend-request-wrapper
+    to: MODULE-web-portal-api
+    evidence: web-portal/src/api/request.js:3
+  - type: IMPLEMENTED_BY
+    from: CONCERN-scheduled-reconcile
+    to: CONFIGGROUP-account-reconcile
+    evidence: account-service/src/main/resources/application.yml:10-12
+  - type: IMPLEMENTED_BY
+    from: CONCERN-scheduled-reconcile
+    to: MODULE-account-reconcile
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:14
+  - type: BINDS
+    from: CONFIGGROUP-account-datasource
+    to: DB-demo_account
+    evidence: account-service/src/main/resources/application.yml:6-9
+  - type: BINDS
+    from: CONFIGGROUP-order-datasource
+    to: DB-demo_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-9
+  - type: BINDS
+    from: CONFIGGROUP-user-datasource
+    to: DB-demo_user
+    evidence: user-service/src/main/resources/application.yml:6-9
+  - type: DEPENDS_ON
+    from: MODULE-account-core
+    to: MIDDLEWARE-mysql
+    evidence: account-service/pom.xml:16
+  - type: READS
+    from: MODULE-account-core
+    to: TABLE-t_user_account
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: DEPENDS_ON
+    from: MODULE-order-core
+    to: MIDDLEWARE-mysql
+    evidence: order-service/pom.xml:16
+  - type: READS
+    from: MODULE-order-core
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-6
+  - type: WRITES
+    from: MODULE-order-core
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:7-9
+  - type: DEPENDS_ON
+    from: MODULE-order-event
+    to: MIDDLEWARE-rabbitmq
+    evidence: order-service/pom.xml:17
+  - type: DEPENDS_ON
+    from: MODULE-user-basic
+    to: MIDDLEWARE-mysql
+    evidence: user-service/pom.xml:16
+  - type: READS
+    from: MODULE-user-basic
+    to: TABLE-t_user
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7
+  - type: CONTAINS
+    from: SERVICE-account-service
+    to: MODULE-account-core
+    evidence: account-service/src/main/java/com/demo/account/controller/AccountController.java:7-22
+  - type: CONTAINS
+    from: SERVICE-account-service
+    to: MODULE-account-reconcile
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:11-17
+  - type: CONTAINS
+    from: SERVICE-order-service
+    to: MODULE-order-core
+    evidence: order-service/src/main/java/com/demo/order/service/OrderService.java:9-41
+  - type: CONTAINS
+    from: SERVICE-order-service
+    to: MODULE-order-export
+    evidence: order-service/src/main/java/com/demo/order/controller/ExportController.java:5-13
+  - type: CONTAINS
+    from: SERVICE-order-service
+    to: MODULE-order-event
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21
+  - type: CONTAINS
+    from: SERVICE-user-service
+    to: MODULE-user-basic
+    evidence: user-service/src/main/java/com/demo/user/controller/UserBasicController.java:7-22
+  - type: CONTAINS
+    from: SERVICE-web-portal
+    to: MODULE-web-portal-api
+    evidence: web-portal/src/api/index.js:1-4
+  - type: CONTAINS
+    from: SERVICE-web-portal
+    to: MODULE-web-portal-app
+    evidence: web-portal/src/main.js:8-16
+  - type: CONTAINS
+    from: SERVICE-web-portal
+    to: MODULE-web-portal-views
+    evidence: web-portal/src/views/UserList.vue:1-13
+  - type: MAPS_TO
+    from: TABLE-t_order
+    to: CODE-OrderEntity
+    evidence: order-service/src/main/java/com/demo/order/entity/OrderEntity.java:3-11
+  - type: MAPS_TO
+    from: TABLE-t_order
+    to: CODE-OrderMapperXml-selectById
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-6
+  - type: MAPS_TO
+    from: TABLE-t_order
+    to: CODE-OrderMapperXml-updateStatus
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:7-9
+  - type: MAPS_TO
+    from: TABLE-t_user
+    to: CODE-UserEntity
+    evidence: user-service/src/main/java/com/demo/user/entity/UserEntity.java:4-9
+  - type: MAPS_TO
+    from: TABLE-t_user
+    to: CODE-UserMapperXml-selectById
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7
+  - type: MAPS_TO
+    from: TABLE-t_user_account
+    to: CODE-AccountEntity
+    evidence: account-service/src/main/java/com/demo/account/entity/AccountEntity.java:3-12
+  - type: MAPS_TO
+    from: TABLE-t_user_account
+    to: CODE-AccountMapperXml-selectByUserId
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:4-7
+  - type: READS
+    from: API-account-query
+    to: TABLE-t_user_account
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: READS
+    from: API-order-ship
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-6
+  - type: WRITES
+    from: API-order-ship
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:7-9
+  - type: READS
+    from: API-user-basic
+    to: TABLE-t_user
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7
+  - type: INVOLVES
+    from: JOB-reconcile
+    to: CONFIGGROUP-account-reconcile
+    evidence: account-service/src/main/resources/application.yml:10-12
+  - type: INVOLVES
+    from: JOB-reconcile
+    to: SERVICE-account-service
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:11-17
+  - type: CONSUMES
+    from: SERVICE-order-service
+    to: EVENT-order-paid
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:13-19
+  - type: PRODUCES
+    from: SERVICE-order-service
+    to: EVENT-order-paid
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21
+  - type: CONSUMED_BY
+    from: TABLE-t_order
+    to: PAGE-order-manage
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-9；web-portal/src/views/OrderPage.vue:10
+  - type: CONSUMED_BY
+    from: TABLE-t_user
+    to: PAGE-user-list
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7；web-portal/src/views/UserList.vue:4
+  - type: CONSUMED_BY
+    from: TABLE-t_user_account
+    to: PAGE-account-query
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:4-7；web-portal/src/views/AccountPage.vue:4
+  - type: JOIN_KEY
+    from: API-account-query
+    to: API-user-basic
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7；account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: PROVIDES_FIELD
+    from: API-account-query
+    to: FIELD-account-info
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: PROVIDES_FIELD
+    from: API-user-basic
+    to: FIELD-user-profile
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7
+  - type: COMPOSES
+    from: CAP-user-full-info
+    to: API-account-query
+    evidence: user-input/api-scope.md:19-21；account-service/src/main/java/com/demo/account/controller/AccountController.java:26-30
+  - type: COMPOSES
+    from: CAP-user-full-info
+    to: API-user-basic
+    evidence: user-input/api-scope.md:19-21；user-service/src/main/java/com/demo/user/controller/UserBasicController.java:26-30
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: API-account-query
+    evidence: account-service/src/main/java/com/demo/account/controller/AccountController.java:26-30
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: CONFIGGROUP-account-datasource
+    evidence: account-service/src/main/resources/application.yml:6-9
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: MIDDLEWARE-mysql
+    evidence: account-service/pom.xml:16
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: MODULE-account-core
+    evidence: account-service/src/main/java/com/demo/account/service/AccountService.java:17-20
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: PAGE-account-query
+    evidence: web-portal/src/views/AccountPage.vue:12
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: ROUTE-web-portal-accounts
+    evidence: web-portal/src/main.js:6,13
+  - type: INVOLVES
+    from: FLOW-account-query
+    to: TABLE-t_user_account
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: CONFIGGROUP-account-reconcile
+    evidence: account-service/src/main/resources/application.yml:10-12
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: JOB-reconcile
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: MIDDLEWARE-mysql
+    evidence: account-service/pom.xml:16
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: MODULE-account-reconcile
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: SERVICE-account-service
+    evidence: account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59
+  - type: INVOLVES
+    from: FLOW-account-reconcile
+    to: TABLE-t_user_account
+    evidence: db/init.sql:15-22
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: API-order-export
+    evidence: order-service/src/main/java/com/demo/order/controller/ExportController.java:36-44
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: CONFIGGROUP-order-server
+    evidence: order-service/src/main/resources/application.yml:1-5
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: MODULE-order-export
+    evidence: order-service/src/main/java/com/demo/order/service/ExportService.java:5-11
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: PAGE-order-manage
+    evidence: web-portal/src/views/OrderPage.vue:5,11
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: ROUTE-web-portal-orders
+    evidence: web-portal/src/main.js:5,12
+  - type: INVOLVES
+    from: FLOW-order-export
+    to: TABLE-t_export_file
+    evidence: db/init.sql:35-40
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: CONFIGGROUP-order-rabbitmq
+    evidence: order-service/src/main/resources/application.yml:6-9
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: EVENT-order-paid
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: MIDDLEWARE-rabbitmq
+    evidence: order-service/pom.xml:17
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: MODULE-order-core
+    evidence: order-service/src/main/java/com/demo/order/service/OrderService.java:37-41
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: MODULE-order-event
+    evidence: order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:31-41
+  - type: INVOLVES
+    from: FLOW-order-paid-event
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:7-9
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: API-order-ship
+    evidence: order-service/src/main/java/com/demo/order/controller/OrderController.java:26-30
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: CONFIGGROUP-order-server
+    evidence: order-service/src/main/resources/application.yml:1-5
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: MIDDLEWARE-mysql
+    evidence: order-service/pom.xml:16
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: MODULE-order-core
+    evidence: order-service/src/main/java/com/demo/order/service/OrderService.java:25-35
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: PAGE-order-manage
+    evidence: web-portal/src/views/OrderPage.vue:4,10
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: ROUTE-web-portal-orders
+    evidence: web-portal/src/main.js:5,12
+  - type: INVOLVES
+    from: FLOW-order-ship
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:4-9
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: API-user-basic
+    evidence: user-service/src/main/java/com/demo/user/controller/UserBasicController.java:26-30
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: CONFIGGROUP-user-datasource
+    evidence: user-service/src/main/resources/application.yml:6-9
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: MIDDLEWARE-mysql
+    evidence: user-service/pom.xml:16
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: MODULE-user-basic
+    evidence: user-service/src/main/java/com/demo/user/service/UserBasicService.java:17-20
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: PAGE-user-list
+    evidence: web-portal/src/views/UserList.vue:12
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: ROUTE-web-portal-users
+    evidence: web-portal/src/main.js:4,11
+  - type: INVOLVES
+    from: FLOW-user-basic-query
+    to: TABLE-t_user
+    evidence: user-service/src/main/resources/mapper/UserMapper.xml:4-7
+  - type: INVOLVES
+    from: RULE-account-balance-non-negative
+    to: API-account-query
+    evidence: account-service/src/main/resources/mapper/AccountMapper.xml:5-7
+  - type: INVOLVES
+    from: RULE-account-balance-non-negative
+    to: TABLE-t_user_account
+    evidence: db/init.sql:19,22
+  - type: INVOLVES
+    from: RULE-order-export-retention
+    to: FILE-order-export-file
+    evidence: order-service/src/main/java/com/demo/order/service/ExportService.java:9-10
+  - type: INVOLVES
+    from: RULE-order-export-retention
+    to: TABLE-t_export_file
+    evidence: db/init.sql:39
+  - type: INVOLVES
+    from: RULE-order-ship-constraint
+    to: API-order-ship
+    evidence: order-service/src/main/java/com/demo/order/service/OrderService.java:25-35
+  - type: INVOLVES
+    from: RULE-order-ship-constraint
+    to: TABLE-t_order
+    evidence: order-service/src/main/resources/mapper/OrderMapper.xml:7-9
+  - type: INVOLVES
+    from: RULE-order-status-transition
+    to: MODULE-order-core
+    evidence: order-service/src/main/java/com/demo/order/entity/OrderStatus.java:3-9
+  - type: INVOLVES
+    from: RULE-order-status-transition
+    to: TABLE-t_order
+    evidence: order-service/src/main/java/com/demo/order/entity/OrderStatus.java:3-9

@@ -1,0 +1,103 @@
+# 追溯矩阵
+
+| 来源稳定 ID | 关系类型 | 目标稳定 ID | 关系证据（文件:行号） | 证据状态 | 详情链接 |
+|------------|----------|------------|----------------------|----------|----------|
+| API-account-query | READS | TABLE-t_user_account | account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 已确认 | interfaces/API-account-query_账户信息查询_queryAccount.md#7.1 |
+| API-order-ship | READS | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:4-6 | 已确认 | interfaces/API-order-ship_订单发货_ship.md#7.1 |
+| API-order-ship | WRITES | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:7-9 | 已确认 | interfaces/API-order-ship_订单发货_ship.md#7.1 |
+| API-user-basic | READS | TABLE-t_user | user-service/src/main/resources/mapper/UserMapper.xml:4-7 | 已确认 | interfaces/API-user-basic_查询用户基本信息_queryBasic.md#7.1 |
+| CONCERN-annotation-driven-messaging | IMPLEMENTED_BY | MODULE-order-event | order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:13-19 | 已确认 | services/SERVICE-order-service.md#横切机制 |
+| CONCERN-frontend-request-wrapper | IMPLEMENTED_BY | MODULE-web-portal-api | web-portal/src/api/request.js:3 | 已确认 | services/SERVICE-web-portal.md#横切机制 |
+| CONCERN-scheduled-reconcile | IMPLEMENTED_BY | CONFIGGROUP-account-reconcile | account-service/src/main/resources/application.yml:10-12 | 待确认 | configurations/SERVICE-account-service.md#5 |
+| CONCERN-scheduled-reconcile | IMPLEMENTED_BY | MODULE-account-reconcile | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:14 | 已确认 | services/SERVICE-account-service.md#横切机制 |
+| CONFIGGROUP-account-datasource | BINDS | DB-demo_account | account-service/src/main/resources/application.yml:6-9 | 已确认 | configurations/SERVICE-account-service.md#6 |
+| CONFIGGROUP-order-datasource | BINDS | DB-demo_order | order-service/src/main/resources/mapper/OrderMapper.xml:4-9 | 待确认 | configurations/SERVICE-order-service.md#6 |
+| CONFIGGROUP-user-datasource | BINDS | DB-demo_user | user-service/src/main/resources/application.yml:6-9 | 已确认 | configurations/SERVICE-user-service.md#6 |
+| JOB-reconcile | INVOLVES | CONFIGGROUP-account-reconcile | account-service/src/main/resources/application.yml:10-12 | 待确认 | interfaces/JOB-reconcile_每日账户对账任务.md#7.2 |
+| JOB-reconcile | INVOLVES | SERVICE-account-service | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:11-17 | 已确认 | interfaces/JOB-reconcile_每日账户对账任务.md#5 |
+| MODULE-account-core | DEPENDS_ON | MIDDLEWARE-mysql | account-service/pom.xml:16 | 已确认 | services/SERVICE-account-service.md#中间件 |
+| MODULE-account-core | READS | TABLE-t_user_account | account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 已确认 | data-models/DB-demo_account/TABLE-t_user_account.md#7 |
+| MODULE-order-core | DEPENDS_ON | MIDDLEWARE-mysql | order-service/pom.xml:16 | 已确认 | services/SERVICE-order-service.md#中间件 |
+| MODULE-order-core | READS | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:4-6 | 已确认 | data-models/DB-demo_order/TABLE-t_order.md#7 |
+| MODULE-order-core | WRITES | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:7-9 | 已确认 | data-models/DB-demo_order/TABLE-t_order.md#7 |
+| MODULE-order-event | DEPENDS_ON | MIDDLEWARE-rabbitmq | order-service/pom.xml:17 | 已确认 | services/SERVICE-order-service.md#中间件 |
+| MODULE-user-basic | DEPENDS_ON | MIDDLEWARE-mysql | user-service/pom.xml:16 | 已确认 | services/SERVICE-user-service.md#中间件 |
+| MODULE-user-basic | READS | TABLE-t_user | user-service/src/main/resources/mapper/UserMapper.xml:4-7 | 已确认 | data-models/DB-demo_user/TABLE-t_user.md#7 |
+| SERVICE-account-service | CONTAINS | MODULE-account-core | account-service/src/main/java/com/demo/account/controller/AccountController.java:7-22 | 已确认 | services/SERVICE-account-service.md#模块与入口 |
+| SERVICE-account-service | CONTAINS | MODULE-account-reconcile | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:11-17 | 已确认 | services/SERVICE-account-service.md#模块与入口 |
+| SERVICE-order-service | CONSUMES | EVENT-order-paid | order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:13-19 | 已确认 | interfaces/EVENT-order-paid_订单已支付事件.md#8.2 |
+| SERVICE-order-service | CONTAINS | MODULE-order-core | order-service/src/main/java/com/demo/order/service/OrderService.java:9-41 | 已确认 | services/SERVICE-order-service.md#模块与入口 |
+| SERVICE-order-service | CONTAINS | MODULE-order-export | order-service/src/main/java/com/demo/order/controller/ExportController.java:5-13 | 已确认 | services/SERVICE-order-service.md#模块与入口 |
+| SERVICE-order-service | CONTAINS | MODULE-order-event | order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21 | 已确认 | services/SERVICE-order-service.md#模块与入口 |
+| SERVICE-order-service | PRODUCES | EVENT-order-paid | order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21 | 已确认 | interfaces/EVENT-order-paid_订单已支付事件.md#8.2 |
+| SERVICE-user-service | CONTAINS | MODULE-user-basic | user-service/src/main/java/com/demo/user/controller/UserBasicController.java:7-22 | 已确认 | services/SERVICE-user-service.md#模块与入口 |
+| SERVICE-web-portal | CONTAINS | MODULE-web-portal-api | web-portal/src/api/index.js:1-4 | 已确认 | services/SERVICE-web-portal.md#模块与入口 |
+| SERVICE-web-portal | CONTAINS | MODULE-web-portal-app | web-portal/src/main.js:8-16 | 已确认 | services/SERVICE-web-portal.md#模块与入口 |
+| SERVICE-web-portal | CONTAINS | MODULE-web-portal-views | web-portal/src/views/UserList.vue:1-13 | 已确认 | services/SERVICE-web-portal.md#模块与入口 |
+| TABLE-t_order | CONSUMED_BY | PAGE-order-manage | order-service/src/main/resources/mapper/OrderMapper.xml:4-9；web-portal/src/views/OrderPage.vue:10 | 待确认 | pages/PAGE-order-manage.md#42-页面字段与数据模型影响 |
+| TABLE-t_order | MAPS_TO | CODE-OrderEntity | order-service/src/main/java/com/demo/order/entity/OrderEntity.java:3-11 | 已确认 | data-models/DB-demo_order/TABLE-t_order.md#6 |
+| TABLE-t_order | MAPS_TO | CODE-OrderMapperXml-selectById | order-service/src/main/resources/mapper/OrderMapper.xml:4-6 | 已确认 | data-models/DB-demo_order/TABLE-t_order.md#6 |
+| TABLE-t_order | MAPS_TO | CODE-OrderMapperXml-updateStatus | order-service/src/main/resources/mapper/OrderMapper.xml:7-9 | 已确认 | data-models/DB-demo_order/TABLE-t_order.md#6 |
+| TABLE-t_user | CONSUMED_BY | PAGE-user-list | user-service/src/main/resources/mapper/UserMapper.xml:4-7；web-portal/src/views/UserList.vue:4 | 已确认 | pages/PAGE-user-list.md#42-页面字段与数据模型影响 |
+| TABLE-t_user | MAPS_TO | CODE-UserEntity | user-service/src/main/java/com/demo/user/entity/UserEntity.java:4-9 | 已确认 | data-models/DB-demo_user/TABLE-t_user.md#6 |
+| TABLE-t_user | MAPS_TO | CODE-UserMapperXml-selectById | user-service/src/main/resources/mapper/UserMapper.xml:4-7 | 已确认 | data-models/DB-demo_user/TABLE-t_user.md#6 |
+| TABLE-t_user_account | CONSUMED_BY | PAGE-account-query | account-service/src/main/resources/mapper/AccountMapper.xml:4-7；web-portal/src/views/AccountPage.vue:4 | 待确认 | pages/PAGE-account-query.md#42-页面字段与数据模型影响 |
+| TABLE-t_user_account | MAPS_TO | CODE-AccountEntity | account-service/src/main/java/com/demo/account/entity/AccountEntity.java:3-12 | 已确认 | data-models/DB-demo_account/TABLE-t_user_account.md#6 |
+| TABLE-t_user_account | MAPS_TO | CODE-AccountMapperXml-selectByUserId | account-service/src/main/resources/mapper/AccountMapper.xml:4-7 | 来源冲突 | data-models/DB-demo_account/TABLE-t_user_account.md#6 |
+
+> 本文件所有行只使用 `assets/relation-types.md` 词表枚举。表间候选关联（`user_id` 同源、`order_id` 关联）无对应词表枚举，登记在 `data-models/README.md` 与 `open-questions.md`（Q-M5），不写入本矩阵。
+> 阶段写入边界：`base-info` 写入纵向关系；`api`、`pages` 仅追加纵向关系（横向类型由其拒绝）；`overview` 由组合层与业务域追加横向关系（`COMPOSES`、`JOIN_KEY`、`PROVIDES_FIELD`）及业务实体关系（`INVOLVES`），见本文件末尾段落。
+> 未写入矩阵的 API/文件链路：`API-order-export`（无数据访问代码，`t_export_file` 读写待确认）、`FILE-order-export-file`（无实现）、`JOB-reconcile` 对 `TABLE-t_user_account` 的推断关系（无代码证据），均登记 `open-questions.md`（Q-H2、Q-M4、Q-M9）。
+> 页面阶段按 `TABLE → PAGE` 方向追加 `CONSUMED_BY`（页面经已匹配 API、接口主文件与 Mapper/SQL 证据消费逻辑表）：`TABLE-t_user → PAGE-user-list`（已确认）、`TABLE-t_user_account → PAGE-account-query`（待确认，响应字段隐式映射 Q-M3）、`TABLE-t_order → PAGE-order-manage`（待确认，页面仅触发状态写入、不展示订单字段）。`TABLE-t_export_file` 无读写实现且页面未消费，不写入。关系类型词表未提供 `PAGE → API`、`ROUTE → PAGE` 枚举，页面-API-路由关系只写入 `pages/` 文档与 `services/<SERVICE-ID>.md` 页面导航区块，登记 Q-L6。
+| API-account-query | JOIN_KEY | API-user-basic | user-service/src/main/resources/mapper/UserMapper.xml:4-7；account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 待确认 | capabilities/CAP-user-full-info.md#7-连接键证据join_key-纪律 |
+| API-account-query | PROVIDES_FIELD | FIELD-account-info | account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 待确认 | interfaces/API-account-query_账户信息查询_queryAccount_参数与报文.md |
+| API-user-basic | PROVIDES_FIELD | FIELD-user-profile | user-service/src/main/resources/mapper/UserMapper.xml:4-7 | 已确认 | interfaces/API-user-basic_查询用户基本信息_queryBasic_参数与报文.md |
+| CAP-user-full-info | COMPOSES | API-account-query | user-input/api-scope.md:19-21；account-service/src/main/java/com/demo/account/controller/AccountController.java:26-30 | 待确认 | capabilities/CAP-user-full-info.md#3-输入能力清单 |
+| CAP-user-full-info | COMPOSES | API-user-basic | user-input/api-scope.md:19-21；user-service/src/main/java/com/demo/user/controller/UserBasicController.java:26-30 | 待确认 | capabilities/CAP-user-full-info.md#3-输入能力清单 |
+| FLOW-account-query | INVOLVES | API-account-query | account-service/src/main/java/com/demo/account/controller/AccountController.java:26-30 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | CONFIGGROUP-account-datasource | account-service/src/main/resources/application.yml:6-9 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | MIDDLEWARE-mysql | account-service/pom.xml:16 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | MODULE-account-core | account-service/src/main/java/com/demo/account/service/AccountService.java:17-20 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | PAGE-account-query | web-portal/src/views/AccountPage.vue:12 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | ROUTE-web-portal-accounts | web-portal/src/main.js:6,13 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-query | INVOLVES | TABLE-t_user_account | account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 已确认 | business/flows/FLOW-account-query.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | CONFIGGROUP-account-reconcile | account-service/src/main/resources/application.yml:10-12 | 待确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | JOB-reconcile | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59 | 已确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | MIDDLEWARE-mysql | account-service/pom.xml:16 | 已确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | MODULE-account-reconcile | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59 | 已确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | SERVICE-account-service | account-service/src/main/java/com/demo/account/job/ReconcileJob.java:49-59 | 已确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-account-reconcile | INVOLVES | TABLE-t_user_account | db/init.sql:15-22 | 待确认 | business/flows/FLOW-account-reconcile.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | API-order-export | order-service/src/main/java/com/demo/order/controller/ExportController.java:36-44 | 已确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | CONFIGGROUP-order-server | order-service/src/main/resources/application.yml:1-5 | 已确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | MODULE-order-export | order-service/src/main/java/com/demo/order/service/ExportService.java:5-11 | 待确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | PAGE-order-manage | web-portal/src/views/OrderPage.vue:5,11 | 已确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | ROUTE-web-portal-orders | web-portal/src/main.js:5,12 | 已确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-export | INVOLVES | TABLE-t_export_file | db/init.sql:35-40 | 待确认 | business/flows/FLOW-order-export.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | CONFIGGROUP-order-rabbitmq | order-service/src/main/resources/application.yml:6-9 | 已确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | EVENT-order-paid | order-service/src/main/java/com/demo/order/mq/OrderEventProducer.java:10-21 | 已确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | MIDDLEWARE-rabbitmq | order-service/pom.xml:17 | 已确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | MODULE-order-core | order-service/src/main/java/com/demo/order/service/OrderService.java:37-41 | 待确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | MODULE-order-event | order-service/src/main/java/com/demo/order/mq/OrderEventListener.java:31-41 | 已确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-paid-event | INVOLVES | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:7-9 | 已确认 | business/flows/FLOW-order-paid-event.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | API-order-ship | order-service/src/main/java/com/demo/order/controller/OrderController.java:26-30 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | CONFIGGROUP-order-server | order-service/src/main/resources/application.yml:1-5 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | MIDDLEWARE-mysql | order-service/pom.xml:16 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | MODULE-order-core | order-service/src/main/java/com/demo/order/service/OrderService.java:25-35 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | PAGE-order-manage | web-portal/src/views/OrderPage.vue:4,10 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | ROUTE-web-portal-orders | web-portal/src/main.js:5,12 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-order-ship | INVOLVES | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:4-9 | 已确认 | business/flows/FLOW-order-ship.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | API-user-basic | user-service/src/main/java/com/demo/user/controller/UserBasicController.java:26-30 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | CONFIGGROUP-user-datasource | user-service/src/main/resources/application.yml:6-9 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | MIDDLEWARE-mysql | user-service/pom.xml:16 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | MODULE-user-basic | user-service/src/main/java/com/demo/user/service/UserBasicService.java:17-20 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | PAGE-user-list | web-portal/src/views/UserList.vue:12 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | ROUTE-web-portal-users | web-portal/src/main.js:4,11 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| FLOW-user-basic-query | INVOLVES | TABLE-t_user | user-service/src/main/resources/mapper/UserMapper.xml:4-7 | 已确认 | business/flows/FLOW-user-basic-query.md#3-步骤链 |
+| RULE-account-balance-non-negative | INVOLVES | API-account-query | account-service/src/main/resources/mapper/AccountMapper.xml:5-7 | 已确认 | business/rules/RULE-account-balance-non-negative.md#4-证据 |
+| RULE-account-balance-non-negative | INVOLVES | TABLE-t_user_account | db/init.sql:19,22 | 待确认 | business/rules/RULE-account-balance-non-negative.md#4-证据 |
+| RULE-order-export-retention | INVOLVES | FILE-order-export-file | order-service/src/main/java/com/demo/order/service/ExportService.java:9-10 | 待确认 | business/rules/RULE-order-export-retention.md#4-证据 |
+| RULE-order-export-retention | INVOLVES | TABLE-t_export_file | db/init.sql:39 | 待确认 | business/rules/RULE-order-export-retention.md#4-证据 |
+| RULE-order-ship-constraint | INVOLVES | API-order-ship | order-service/src/main/java/com/demo/order/service/OrderService.java:25-35 | 已确认 | business/rules/RULE-order-ship-constraint.md#4-证据 |
+| RULE-order-ship-constraint | INVOLVES | TABLE-t_order | order-service/src/main/resources/mapper/OrderMapper.xml:7-9 | 已确认 | business/rules/RULE-order-ship-constraint.md#4-证据 |
+| RULE-order-status-transition | INVOLVES | MODULE-order-core | order-service/src/main/java/com/demo/order/entity/OrderStatus.java:3-9 | 已确认 | business/rules/RULE-order-status-transition.md#4-证据 |
+| RULE-order-status-transition | INVOLVES | TABLE-t_order | order-service/src/main/java/com/demo/order/entity/OrderStatus.java:3-9 | 已确认 | business/rules/RULE-order-status-transition.md#4-证据 |
