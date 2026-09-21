@@ -32,7 +32,6 @@ def main():
     ap.add_argument("--model", default="")
     ap.add_argument("--no-build", action="store_true")
     ap.add_argument("--restore-kb", default="")
-    ap.add_argument("--no-kb", action="store_true")
     ap.add_argument("--arm", default="", choices=["", "kb", "nokb"])
     ap.add_argument("--cases", default="")
     ap.add_argument("--batch", default="")
@@ -92,8 +91,6 @@ def main():
         inner += f" --restore-kb {a.restore_kb}"
     if a.probes:
         inner += f" --probes {a.probes}"
-    if a.no_kb:
-        inner += " --no-kb"
     if getattr(a, "arm", ""):
         inner += f" --arm {a.arm}"
     if getattr(a, "cases", ""):

@@ -459,76 +459,6 @@ def run_probes(cfg, budget, fast, resume, probe_subset=None):
 
 
 
-# ---------- 对照组（--no-kb：测 KB 价值差） ----------
-
-CONTROL_PROMPTS = {'P1': '我要对外提供全部用户信息，现有哪些能力可组合？限制是什么？', 'P2': '订单取消后还能发货吗？', 'P3': None, 'P4': None, 'P5': '给用户表加一个最后登录时间字段 last_login_at，更新相关接口', 'P6': '测试反馈账户余额出现了负数，排查一下哪里没拦住', 'P7': "想给订单加一种'货到付款'支付方式，评估一下影响面", 'P8': '运营要一份用户全景报表（基本信息+账户+订单），设计数据获取方案', 'P9': None}
-
-VALUE_GAPS = {'P1': [('引用CAP组合实体', 'CAP-', False), ('引用知识库术语', 'knowledge-base|知识库', False), ('识别JOIN_KEY限制', '待确认|JOIN_KEY', False)], 'P2': [('引用RULE规则卡', 'RULE-', False), ('引用证据位置', ':\\d+|行号|line', False)], 'P5': [('先查知识库影响面', 'data-models|interfaces|知识库|TABLE-|API-', False), ('影响面完整性', 'PAGE-|前端|web-portal', False)], 'P6': [('引用表注释规则', '余额不可为负|RULE-', False), ('引用DDL证据位置', 'init\\.sql|DDL|:\\d+', False)], 'P7': [('引用状态机实体', 'OrderStatus|状态机|状态流转|FLOW-', False), ('引用受影响表', 't_order|TABLE-', False)], 'P8': [('引用组合能力', 'CAP-|组合能力', False), ('引用多接口端点', '/api/user|/api/account|/api/order', True), ('识别证据缺口', '待确认|证据不足|需确认', False)]}
-
-PROBE_DESC = {
-    "P1": "组合查询", "P2": "规则检索", "P5": "字段变更Coding",
-    "P6": "余额Debug", "P7": "影响评估", "P8": "方案设计",
-}
-
-
-def _control_asserts(pid, txt):
-    """对照组价值差距断言：返回 (gaps_found, details)。gap = 有 KB 时能做到但无 KB 做不到的事。"""
-    gaps = []
-    for name, pattern, expect_present in VALUE_GAPS.get(pid, []):
-        import re as _re
-        found = bool(_re.search(pattern, txt, _re.I))
-        if expect_present and not found:
-            gaps.append(f"❌ {name}（应命中但未命中）")
-        elif not expect_present and not found:
-            gaps.append(f"✅ 价值差距：{name}（无 KB 时缺失）")
-        else:
-            gaps.append(f"— {name}（无 KB 仍可命中）")
-    return gaps
-
-
-def _run_control_group(cfg, budget, args):
-    """对照组：prepare 后删 KB → 跑 6 个可跑探针 → 记录价值差距 + token/耗时。"""
-    kb = PROJECT / "cadence/knowledge-base"
-    if kb.exists():
-        shutil.rmtree(kb)
-    res = load_results()
-    res.update({"mode": "control", "stages": {}, "probes": {}})
-    save_results(res)
-    print("═" * 50)
-    print("  对照组模式（--no-kb）：知识库已移除")
-    print("═" * 50)
-
-    (RESULTS / "transcripts").mkdir(parents=True, exist_ok=True)
-    for pid, prompt_text in CONTROL_PROMPTS.items():
-        if prompt_text is None:
-            res = load_results()
-            res["probes"][pid] = {"ok": None, "skipped": True,
-                                  "reason": "对照组不适用（依赖知识库产物）"}
-            save_results(res)
-            print(f"[{pid}] ⏸ 跳过（{PROBE_DESC.get(pid, pid)}：需知识库产物）")
-            continue
-        t0 = time.time()
-        full_prompt = f"你在 {PROJECT} 工作。任务：{prompt_text}\n完成后输出完整回答。"
-        r = run_cli(cfg, full_prompt, PROJECT, budget["timeout_min"] * 60)
-        (RESULTS / "transcripts" / f"{pid}.log").write_text(
-            r["stdout"] + "\n" + r["stderr"], encoding="utf-8")
-        gaps = _control_asserts(pid, r["stdout"])
-        usage = parse_usage(r["stdout"])
-        res = load_results()
-        res["probes"][pid] = {
-            "ok": None, "control": True, "gaps": gaps,
-            "duration_s": round(time.time() - t0, 1),
-            "transcript": f"transcripts/{pid}.log", "usage": usage,
-        }
-        save_results(res)
-        gap_count = sum(1 for g in gaps if g.startswith("✅"))
-        print(f"[{pid}] {gap_count}/{len(gaps)} 价值差距 ({res['probes'][pid]['duration_s']}s)")
-
-    # 汇总
-    report()
-    print("\n对照组完成。价值报告：python3 /opt/repo/evals/kb/pivot.py --value")
-    sys.exit(0)
-
 # ---------- 4. 报告 ----------
 
 def report():
@@ -577,8 +507,6 @@ def main():
                     help="价值实验配对臂（kb=提供知识库环境 / nokb=无知识库）")
     ap.add_argument("--cases", default="", help="价值实验案例子集（如 S2-A,S4-A 或 S2,S4）")
     ap.add_argument("--batch", default="", help="价值实验批次标识")
-    ap.add_argument("--no-kb", action="store_true",
-                    help="对照组模式：不建知识库，agent 直接读裸代码跑探针（测 KB 价值差）")
     ap.add_argument("--max-turns", type=int, default=40)
     ap.add_argument("--timeout-min", type=int, default=20)
     a = ap.parse_args()
@@ -622,8 +550,6 @@ def main():
         save_results(res)
     else:
         print("resume：跳过 prepare")
-    if a.no_kb:
-        _run_control_group(cfg, budget, a)
     if a.restore_kb:
         src = Path(a.restore_kb)
         dst = PROJECT / "cadence/knowledge-base"
