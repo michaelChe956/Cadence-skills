@@ -1,0 +1,9 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/demo_user?useSSL=false
+    username: demo_user
+    password: Dev_Only_123
