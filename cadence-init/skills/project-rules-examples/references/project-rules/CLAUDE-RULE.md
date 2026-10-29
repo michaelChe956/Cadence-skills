@@ -3,8 +3,8 @@
 > **🔴 强制规则**
 >
 > - 用户自定义规则**只能**存放在 `cadence/project-rules/` 目录
-> - **禁止**在 `.claude/rules/` 目录中添加用户自定义规则
-> - **禁止**直接修改 `.claude/rules/` 目录下的框架内置规则文件
+> - **禁止**修改或新增 `.claude/rules/` 下的框架内置规则文件
+> - 覆盖框架规则时写入 `.claude/rules/user-<框架文件名>.md`（优先级高于同名框架文件）
 > - 框架内置规则由维护者管理，详见 `.claude/rules/README.md`
 
 - **规则目录**：`cadence/project-rules/`
