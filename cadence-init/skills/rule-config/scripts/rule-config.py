@@ -32,6 +32,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
 
+# 共享合并库与脚本同目录；skill 以目录为安装单元，直接加入 sys.path。
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from cadence_merge import normalize_title, split_blocks  # noqa: E402
+import cadence_state  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # 依赖探测：PyYAML 缺失时构造 failed 报告后退出 77（XC-06）。
 # 必须在任何业务逻辑之前；main() 入口已在更早处记录 T0。
@@ -289,21 +296,31 @@ RULE7_TEXT_NONCODING = "- **文档阅读遵循结构化定向原则** → 详见
 RULE6_BLOCK_CLAUDE = (
     "### 6. 项目个性化规则（强制规则）\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
-    "- 禁止在 `rules/` 目录中添加用户自定义规则\n"
-    "- 禁止直接修改 `rules/` 目录下的框架内置规则文件\n"
+    "- **禁止修改 `.claude/rules/` 下的 7 个框架规则文件**\n"
+    "- 用户覆盖写入 `.claude/rules/user-<框架文件名>.md`\n"
     "- 详见 `cadence/project-rules/README.md`"
 )
 RULE6_BLOCK_AGENTS = (
     "### 6. 项目个性化规则\n"
     "- **用户自定义规则只能存放在 `cadence/project-rules/` 目录**\n"
-    "- 禁止在 `.claude/rules/` 目录中添加用户自定义规则\n"
-    "- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件\n"
+    "- **禁止修改 `.claude/rules/` 下的 7 个框架规则文件**\n"
+    "- 用户覆盖写入 `.claude/rules/user-<框架文件名>.md`\n"
     "- 详见 `cadence/project-rules/README.md`"
 )
 RULE6_BLOCK_CLAUDE_BODY = "\n".join(RULE6_BLOCK_CLAUDE.splitlines()[1:])
 RULE6_BLOCK_AGENTS_BODY = "\n".join(RULE6_BLOCK_AGENTS.splitlines()[1:])
 
 RETIRED_RULE_FILES: list[str] = ["serena-usage.md"]
+RETIRED_ENTRY_LINES: set[str] = {
+    "- 禁止在 `rules/` 目录中添加用户自定义规则",
+    "- 禁止直接修改 `rules/` 目录下的框架内置规则文件",
+    "- 禁止在 `.claude/rules/` 目录中添加用户自定义规则",
+    "- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件",
+    "- **禁止**在 `.claude/rules/` 目录中添加用户自定义规则",
+    "- **禁止**直接修改 `.claude/rules/` 目录下的框架内置规则文件",
+    "- **各 MCP 工具及相关自动化工具的使用必须遵循项目规范** → 详见 `.claude/rules/mcp-servers.md`",
+}
+USER_OVERRIDE_MARKER = "> **用户覆盖（优先级高于上方框架条目，rule-config 保留）**"
 
 # 权威规则清单。每项依次为身份 marker、标题、CLAUDE.md 正文和 AGENTS.md 正文。
 # 规则 2 的占位符在渲染时按 project_type 替换；规则 6 的正文复用既有块。
@@ -654,7 +671,8 @@ def atomic_write(path: Path, content) -> None:
         raise PublishError(f"原子写入失败：{path}（{exc}）") from exc
 
 
-def ensure_gitignore_line(root: Path, line: str, comment: str) -> str:
+def ensure_gitignore_line(root: Path, line: str, comment: str,
+                          report: Optional[dict] = None) -> str:
     """行级幂等追加一行到 root/.gitignore（S7/S9）。
 
     语义（与 SKILL.md `grep -qxF '...' || printf ...` 等价）：
@@ -673,12 +691,20 @@ def ensure_gitignore_line(root: Path, line: str, comment: str) -> str:
     if gi.is_file():
         try:
             existing = gi.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            existing = ""
+        except (OSError, UnicodeDecodeError) as exc:
+            raise PublishError(f"无法读取 .gitignore（{exc}）；拒绝覆盖") from exc
         for raw in existing.splitlines():
             if raw.rstrip("\r") == line:
                 return "skipped"
-        # 追加：comment + line
+        # 追加：comment + line；写前归档
+        if report is not None:
+            try:
+                backup_path = backup_file(gi, root)
+            except BackupError as exc:
+                raise PublishError(f".gitignore 写入前备份失败：{exc}") from exc
+            report.setdefault("backups", []).append({
+                "file": str(gi), "backup": str(backup_path),
+            })
         ensure_parent(gi)
         atomic_write(gi, existing.rstrip("\n") + "\n\n" + comment + "\n" + line + "\n")
         return "added"
@@ -968,9 +994,8 @@ def merge_permission_gate(settings_text, managed_entries):
       * settings_text 为 None（文件不存在）→ 新建仅含受管区的文档；
       * JSON 不可解析/结构非预期 → (None, [{"kind": ...}])，调用方保守跳过
         整个权限写入并在报告标明（no-interrupt 保守语义）；
-      * 用户显式 allow 的工具不降级为 deny：作用域感知判定
-        `_allow_conflicts` 命中的受管 deny 条目保守跳过并记录
-        {"kind": "allow-conflict", ...}；
+      * 用户显式 allow 的工具仍按安全单元框架优先写入受管 deny；作用域感知
+        判定 `_allow_conflicts` 命中时记录 {"kind": "allow-overridden", ...}；
       * 区块外用户条目逐字保留、顺序不变；受管区整体重写为当前重算结果；
       * 无任何可应用拦截条目时不生成受管区（含清除旧残留区）。
     """
@@ -1012,12 +1037,11 @@ def merge_permission_gate(settings_text, managed_entries):
             continue
         if _allow_conflicts(item, allow_entries):
             skipped.append({
-                "kind": "allow-conflict",
+                "kind": "allow-overridden",
                 "entry": item,
                 "tool": _bare_tool_name(item),
-                "detail": "用户已显式 allow，保守跳过该 deny 写入",
+                "detail": "用户显式 allow 与受管 deny 冲突；按安全单元框架优先写入 deny",
             })
-            continue
         if item not in applied:
             applied.append(item)
     deny_entries = [i for i in applied if not i.startswith("❌")]
@@ -2003,12 +2027,27 @@ def compute_plan(root: Path, intents: Intents) -> dict:
             text = ""
         state = l0_block(text, kernel_source) if kernel_source else "insert"
         if state == "skip":
+            existing_rule_files = {
+                p.name for p in rules_dir.glob("*.md")
+            }
+            composed = text
+            if kernel_source:
+                composed, _warnings = _compose_entry(
+                    text, kernel_source, state="skip",
+                    project_type=final_project_type,
+                    entry_name=entry_name,
+                    existing_rule_files=existing_rule_files,
+                )
+            changed = composed != text
             s4["assets"].append({
                 "path": entry_name,
                 "action": "skip",
                 "conflict": None,
-                "backup_needed": False,
+                "backup_needed": changed,
+                "existing_rule_files": sorted(existing_rule_files),
             })
+            if changed:
+                _append_backup_need(plan, entry_path)
         # insert/upgrade/dedup 为「两模式同动作」确定性动作：无标记直接插入；
         # 合法旧版升级和重复当前版本归并均经备份屏障后执行，不产 decision 冲突。
         # 只有 drift/broken 需要显式 replace/keep 决策。
@@ -2017,12 +2056,11 @@ def compute_plan(root: Path, intents: Intents) -> dict:
                 "path": entry_name,
                 "action": state,
                 "conflict": state,
-                # insert 不改原内容无需备份；upgrade/dedup 确定性重写现有入口，
-                # 均纳入全局备份屏障。
-                "backup_needed": state in ("upgrade", "dedup"),
+                # 三种动作都会改变既有入口字节：insert 插入 L0，upgrade/dedup
+                # 重写既有区块，统一纳入全局备份屏障。
+                "backup_needed": True,
             })
-            if state in ("upgrade", "dedup"):
-                _append_backup_need(plan, entry_path)
+            _append_backup_need(plan, entry_path)
         else:
             # drift/broken → 两模式确定性替换/归并（屏障归档后执行），不产决策冲突
             s4["assets"].append({
@@ -2432,6 +2470,15 @@ def step_s2_locate_templates(root: Path, intents: Intents, plan: dict, report: d
     report["templates"] = plan["templates"]
 
 
+def _nonempty_lines(text: str) -> set[str]:
+    return {line for line in text.splitlines() if line.strip()}
+
+
+def _is_line_subset(existing: str, template: str) -> bool:
+    """当前文件非空行是否全部存在于模板中（纯旧版、无用户新增）。"""
+    return _nonempty_lines(existing) <= _nonempty_lines(template)
+
+
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S3 执行（Task 6 实现）。
 
@@ -2490,15 +2537,18 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
         if action == "create":
             ensure_parent(target)
             atomic_write(target, template_text)
+            cadence_state.record_rule_base(root, asset["path"], template_text)
             actions_log.append({"path": asset["path"], "action": "created"})
             continue
         if action == "skip" or conflict is None:
+            if target.exists() and _safe_read(target) == template_text:
+                cadence_state.record_rule_base(root, asset["path"], template_text)
             actions_log.append({"path": asset["path"], "action": "skipped"})
             continue
 
         # 冲突资产（conflict 非空）。
 
-        if is_l1:
+        if is_l1 and False:  # L1 也走 unified overlay 分支；保留旧分支仅历史对账
             # --- L1 独立分支：绝不调 merge_markdown，结果绝不含「项目补充」 ---
             # 两模式统一：备份已由全局屏障完成；直接写当前模板（upgrade/replace 均替换）。
             atomic_write(target, template_text)
@@ -2507,20 +2557,73 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 "branch": f"l1-authoritative-{conflict}",
             })
         else:
-            # --- 框架受管规则文件：两模式统一权威全覆盖（不调 merge_markdown；屏障已归档）---
+            # --- 框架受管规则文件：用户差异抽取到 overlay，文件本身保持纯净 ---
             existing_text = _safe_read(target)
             if existing_text == template_text:
+                cadence_state.record_rule_base(root, asset["path"], template_text)
                 actions_log.append({
                     "path": asset["path"],
                     "action": "unchanged",
                     "branch": "authoritative-idempotent",
                 })
                 continue
+            rel = f".claude/rules/{target_name}"
+            base_text = cadence_state.get_rule_base(root, rel)
+            if base_text is None and _is_line_subset(existing_text or "", template_text):
+                # 纯旧版：当前文件所有行都在新模板中，没有用户新增，直接升级。
+                atomic_write(target, template_text)
+                cadence_state.record_rule_base(root, rel, template_text)
+                actions_log.append({
+                    "path": asset["path"], "action": "overwritten",
+                    "branch": "old-version-subset",
+                })
+                continue
+            base_origin = "manifest" if base_text is not None else "template-fallback"
+            if base_text is None:
+                base_text = template_text
+                report.setdefault("warnings", []).append({
+                    "code": "BASE_MISSING",
+                    "file": rel,
+                    "message": "无历史基线，按当前模板保守抽取用户差异",
+                    "detail": {},
+                })
+                report.setdefault("pending", []).append({
+                    "asset": rel,
+                    "reason": "base-missing",
+                    "detail": "overlay 抽取以当前模板为保守基线",
+                })
+            overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+            existing_overlay = _safe_read(overlay_target)
+            new_overlay, overlay_changed = cadence_state.merge_overlay(
+                existing_overlay, target_name, base_text, existing_text or "",
+                base_origin,
+            )
+            if overlay_changed and new_overlay is not None:
+                if overlay_target.exists():
+                    overlay_backup = backup_file(overlay_target, root)
+                    report.setdefault("backups", []).append({
+                        "file": str(overlay_target),
+                        "backup": str(overlay_backup),
+                    })
+                    if existing_overlay is None:
+                        report.setdefault("warnings", []).append({
+                            "code": "OVERLAY_UNREADABLE_ARCHIVED",
+                            "file": str(overlay_target),
+                            "message": "overlay 无法按 UTF-8 读取，已归档后重建",
+                            "detail": {},
+                        })
+                atomic_write(overlay_target, new_overlay)
+                actions_log.append({
+                    "path": f".claude/rules/{overlay_target.name}",
+                    "action": "overlay-extracted",
+                    "branch": base_origin,
+                })
             atomic_write(target, template_text)
+            cadence_state.record_rule_base(root, rel, template_text)
             actions_log.append({
                 "path": asset["path"],
                 "action": "overwritten",
-                "branch": "authoritative-overwrite",
+                "branch": "overlay-extracted",
             })
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
@@ -2610,6 +2713,108 @@ def _record_step_conflicts(report: dict, step_name: str, conflicts: list) -> Non
 
 
 
+def _known_framework_lines() -> set[str]:
+    """收集已知框架文本行，供 loss guard 判定删除是否可归属。"""
+    known: set[str] = set()
+    rules_root = SKILL_DIR / "references" / "rules"
+    for path in rules_root.rglob("*.md"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        known.update(line for line in text.splitlines() if line.strip())
+    for entry in ("CLAUDE.md", "AGENTS.md"):
+        for ptype in ("coding", "non-coding"):
+            try:
+                rendered = render_mandatory_section(entry, ptype, set())
+            except Exception:
+                continue
+            known.update(line for line in rendered.splitlines() if line.strip())
+    return known
+
+
+def _managed_lines_from_entry(existing: str, entry_name: str = "CLAUDE.md") -> set[str]:
+    """返回入口中框架受管区的原始行：L0 区块与规范 H3 条目。"""
+    managed: set[str] = set()
+    lines = existing.splitlines()
+    # L0 受管区块
+    begin = next((i for i, line in enumerate(lines) if line.strip() == L0_BEGIN), None)
+    end = next((i for i, line in enumerate(lines) if line.strip() == L0_END), None)
+    if begin is not None and end is not None and begin < end:
+        known_l0 = _known_l0_lines(_load_kernel_source())
+        managed.update(
+            line for line in lines[begin:end + 1] if line in known_l0
+        )
+    # ## 强制规则 内的规范 H3 条目
+    h2 = [i for i, line in enumerate(lines) if line.strip() == "## 强制规则"]
+    if h2:
+        start = h2[0]
+        end_idx = _fence_aware_section_end(lines, start)
+        canonical_keys = {
+            normalize_title(title) for _markers, title, _c, _a
+            in _canonical_rules_for(set())
+        }
+        playwright_key = normalize_title(CANONICAL_RULE_PLAYWRIGHT[1])
+        playwright_body = (
+            CANONICAL_RULE_PLAYWRIGHT[2]
+            if entry_name == "CLAUDE.md" else CANONICAL_RULE_PLAYWRIGHT[3]
+        )
+        playwright_lines = {
+            line for line in playwright_body.splitlines() if line.strip()
+        }
+        seen_managed: set[str] = set()
+        for block in split_blocks("\n".join(lines[start + 1:end_idx]), level=3):
+            if block.key.lower() in {playwright_key.lower(), "playwright"}:
+                body_nonblank = [line for line in block.body_lines if line.strip()]
+                if not body_nonblank or all("playwright.md" in line for line in body_nonblank):
+                    managed.update(line for line in block.raw_lines if line.strip())
+                continue
+            if block.key in canonical_keys:
+                if block.key in seen_managed:
+                    continue  # 重复同名块属于用户内容，不得算作受管区
+                seen_managed.add(block.key)
+                managed.update(line for line in block.raw_lines if line.strip())
+                continue
+            if "serena" in block.key.lower():
+                managed.update(line for line in block.raw_lines if line.strip())
+    return managed
+
+
+def _assert_no_user_loss(existing: str, candidate: str, entry_name: str) -> None:
+    """任何被删除的非空行必须属于已知框架文本或受管区，否则失败关闭。"""
+    if not existing or existing == candidate:
+        return
+    before = existing.splitlines()
+    after = set(candidate.splitlines())
+    removed = [line for line in before if line.strip() and line not in after]
+    if not removed:
+        return
+    known = _known_framework_lines()
+    known.update(RETIRED_ENTRY_LINES)
+    managed = _managed_lines_from_entry(existing, entry_name)
+    unaccounted = [
+        line for line in removed
+        if line not in known
+        and line not in managed
+    ]
+    if unaccounted:
+        preview = " | ".join(unaccounted[:3])
+        raise PublishError(
+            f"loss guard 拦截：{entry_name} 有 {len(unaccounted)} 行无法归属，"
+            f"拒绝静默删除；示例：{preview}"
+        )
+
+
+def _record_pending_from_warnings(report: dict, warnings: list[dict], entry_name: str) -> None:
+    for warning in warnings:
+        if warning.get("code") == "UNIT_CONFLICT_USER_WINS":
+            report.setdefault("pending", []).append({
+                "asset": entry_name,
+                "reason": "user-override",
+                "detail": warning.get("detail", {}),
+            })
+
+
 def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S4 执行（Task 6 实现）：双入口统一预检 + 单次写入。
 
@@ -2655,7 +2860,9 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
+            _record_pending_from_warnings(report, warnings, entry_name)
             if composed != existing:
+                _assert_no_user_loss(existing, composed, entry_name)
                 atomic_write(entry_path, composed)
                 actions_log.append({"path": entry_name, "action": "updated", "branch": "skip-backfill"})
             else:
@@ -2686,6 +2893,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
                 entry_name=entry_name, existing_rule_files=existing_rule_files,
             )
             report.setdefault("warnings", []).extend(warnings)
+            _record_pending_from_warnings(report, warnings, entry_name)
+            _assert_no_user_loss(existing, composed, entry_name)
             atomic_write(entry_path, composed)
             actions_log.append({"path": entry_name, "action": "updated", "branch": action})
             continue
@@ -2697,6 +2906,8 @@ def step_s4_entry_files(root: Path, intents: Intents, plan: dict, report: dict) 
             entry_name=entry_name, existing_rule_files=existing_rule_files,
         )
         report.setdefault("warnings", []).extend(warnings)
+        _record_pending_from_warnings(report, warnings, entry_name)
+        _assert_no_user_loss(existing, composed, entry_name)
         atomic_write(entry_path, composed)
         actions_log.append({"path": entry_name, "action": "updated", "branch": f"authoritative-{state}"})
 
@@ -2840,6 +3051,13 @@ def _l0_marker_line_range(text: str, event: dict) -> tuple[int, int]:
     return start, len(text) if end == -1 else end + 1
 
 
+def _known_l0_lines(l0_source: str) -> set[str]:
+    known: set[str] = set()
+    for text in [l0_source, *L0_OLD_SOURCES.values()]:
+        known.update(line for line in text.splitlines() if line.strip())
+    return known
+
+
 def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[dict]]:
     """将混合版本、重复或残留标记收敛为一个当前版本 L0 区块。
 
@@ -2860,6 +3078,13 @@ def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[
     # 只剥离它的首尾 marker 行以保留全部内部用户文本，避免删除范围重叠。
     kept_pair = current_pairs[0] if current_pair_count > 1 else None
     pairs_to_remove = [pair for pair in pairs if pair != kept_pair]
+    known_l0 = _known_l0_lines(l0_source)
+    user_lines: list[str] = []
+    for begin, end in pairs_to_remove:
+        body = text[begin["end"]:end["start"]]
+        for line in body.splitlines():
+            if line.strip() and line not in known_l0 and line not in user_lines:
+                user_lines.append(line)
     orphan_ranges = [
         _l0_marker_line_range(text, event) for event in orphans
     ]
@@ -2882,6 +3107,22 @@ def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[
     normalized = _remove_l0_ranges(text, ranges)
     normalized = _insert_l0_block(normalized, l0_source)
     warnings: list[dict] = []
+    if user_lines:
+        end_pos = normalized.find(L0_END)
+        insert_at = normalized.find("\n", end_pos)
+        if insert_at == -1:
+            insert_at = len(normalized)
+        block = (
+            "\n<!-- cadence-user-l0-extra:start -->\n"
+            + "\n".join(user_lines)
+            + "\n<!-- cadence-user-l0-extra:end -->\n"
+        )
+        normalized = normalized[:insert_at + 1] + block + normalized[insert_at + 1:]
+        warnings.append({
+            "code": "L0_USER_LINES_RELOCATED",
+            "message": "L0 区块内的用户行已迁到区块外保留",
+            "detail": {"lines": user_lines},
+        })
     if current_pair_count > 1 or current_orphan_count:
         warnings.append({
             "code": "L0_DEDUP",
@@ -2936,7 +3177,7 @@ def _split_into_blocks(lines: list[str]) -> list[tuple[str, list[str]]]:
     return blocks
 
 
-def _normalize_mandatory_rules(
+def _normalize_mandatory_rules_legacy(
     text: str, entry_name: str, project_type: str,
     existing_rule_files: set[str],
 ) -> tuple[str, list[dict]]:
@@ -2952,7 +3193,9 @@ def _normalize_mandatory_rules(
 
     def finish(result_lines: list[str]) -> str:
         rendered = "\n".join(result_lines)
-        return rendered + "\n" if trailing_newline else rendered
+        if trailing_newline and not rendered.endswith("\n"):
+            rendered += "\n"
+        return rendered
     h2_idx = [i for i, line in enumerate(lines) if line.strip() == "## 强制规则"]
     if not h2_idx:
         section_lines = render_mandatory_section(
@@ -2976,12 +3219,7 @@ def _normalize_mandatory_rules(
             "detail": {"count": len(h2_idx)},
         })
     start = h2_idx[0]
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        stripped = lines[i].strip()
-        if stripped.startswith("## ") or stripped.startswith("# "):
-            end = i
-            break
+    end = _fence_aware_section_end(lines, start)
 
     canonical_rules = {title: markers for markers, title, _c, _a in rules}
     rebuilt = render_mandatory_section(
@@ -3049,9 +3287,252 @@ def _normalize_mandatory_rules(
     return finish(result), warnings_out
 
 
+def _fence_aware_section_end(lines: list[str], start: int) -> int:
+    """返回从 start+1 起下一个 H1/H2 的行号；围栏内的 # 不算标题。"""
+    fence: tuple[str, int] | None = None
+    for i in range(start + 1, len(lines)):
+        line = lines[i]
+        match = re.match(r"^\s*(```+|~~~+)", line)
+        if fence is None and match:
+            fence = (match.group(1)[0], len(match.group(1)))
+            continue
+        if fence is not None:
+            if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= fence[1]:
+                fence = None
+            continue
+        stripped = line.strip()
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            return i
+    return len(lines)
+
+
+def _normalize_mandatory_rules(
+    text: str, entry_name: str, project_type: str,
+    existing_rule_files: set[str],
+) -> tuple[str, list[dict]]:
+    """将首个 ``## 强制规则`` 章节收敛到权威规则清单。
+
+    归属按 H3 标题判定，不再用路径 marker 子串。受管条目以最新规范正文
+    重建，条目内用户追加行逐字保留；用户 H3 整块保留。缺失的规范条目在
+    末尾补回。这样既保证框架最新，又不删除用户内容。
+    """
+    warnings_out: list[dict] = []
+    lines = text.splitlines()
+    trailing_newline = text.endswith("\n")
+
+    def finish(result_lines: list[str]) -> str:
+        rendered = "\n".join(result_lines)
+        if trailing_newline and not rendered.endswith("\n"):
+            rendered += "\n"
+        return rendered
+
+    h2_idx = [i for i, line in enumerate(lines) if line.strip() == "## 强制规则"]
+    if not h2_idx:
+        section_lines = render_mandatory_section(
+            entry_name, project_type, existing_rule_files
+        ).splitlines()
+        end_marker_idx = next(
+            (i for i, line in enumerate(lines) if line.strip() == L0_END), None
+        )
+        if end_marker_idx is None:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.extend(section_lines)
+        else:
+            lines[end_marker_idx + 1:end_marker_idx + 1] = [""] + section_lines
+        return finish(lines), warnings_out
+
+    if len(h2_idx) > 1:
+        warnings_out.append({
+            "code": "DUPLICATE_H2", "file": entry_name,
+            "message": "存在多个 ## 强制规则，仅规范化首个",
+            "detail": {"count": len(h2_idx)},
+        })
+    start = h2_idx[0]
+    end = _fence_aware_section_end(lines, start)
+
+    rules = _canonical_rules_for(existing_rule_files)
+    canonical: dict[str, tuple[int, str, str]] = {}
+    for number, (_markers, title, claude_text, agents_text) in enumerate(rules, 1):
+        body = claude_text if entry_name == "CLAUDE.md" else agents_text
+        if body == "{RULE2}":
+            body = RULE2_TEXT_CODING if project_type == "coding" else RULE2_TEXT_NONCODING
+        elif body == "{RULE7}":
+            body = RULE7_TEXT_CODING if project_type == "coding" else RULE7_TEXT_NONCODING
+        canonical[normalize_title(title)] = (number, title, body)
+
+    rebuilt = render_mandatory_section(
+        entry_name, project_type, existing_rule_files
+    ).splitlines()
+    first_rule = next(
+        (i for i, line in enumerate(rebuilt) if line.startswith("### 1.")),
+        len(rebuilt),
+    )
+    canonical_preamble = rebuilt[1:first_rule]
+    standard_preamble = {line for line in canonical_preamble if line.strip()}
+    canonical_body_lines = {
+        line
+        for _number, _title, body in canonical.values()
+        for line in body.splitlines()
+        if line.strip()
+    }
+    # 旧版入口可能保留另一项目类型的规则 2/7 文案；这些是已知框架文本，
+    # 不应作为用户内容重复保留。
+    canonical_body_lines.update({
+        RULE2_TEXT_CODING, RULE2_TEXT_NONCODING,
+        RULE7_TEXT_CODING, RULE7_TEXT_NONCODING,
+    })
+    canonical_body_lines.update(RETIRED_ENTRY_LINES)
+
+    section_lines = lines[start + 1:end]
+    first_h3 = next(
+        (i for i, line in enumerate(section_lines) if line.startswith("### ")),
+        len(section_lines),
+    )
+    user_preamble = [
+        line for line in section_lines[:first_h3]
+        if line.strip()
+        and line not in standard_preamble
+        and line not in canonical_body_lines
+    ]
+
+    blocks = split_blocks("\n".join(section_lines), level=3)
+    out_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    user_block_count = 1 if user_preamble else 0
+    extra_count = 0
+    duplicate_canonical = False
+
+    def append_block(target: list[str], block_lines: list[str]) -> None:
+        trimmed = list(block_lines)
+        while trimmed and not trimmed[-1].strip():
+            trimmed.pop()
+        if target and target[-1].strip():
+            target.append("")
+        target.extend(trimmed)
+        target.append("")
+
+    for block in blocks:
+        block_text = "\n".join(block.raw_lines)
+        if any(retired in block_text for retired in RETIRED_RULE_FILES) \
+                and "serena" in block.key.lower():
+            continue
+        playwright_key = normalize_title(CANONICAL_RULE_PLAYWRIGHT[1])
+        playwright_body = (
+            CANONICAL_RULE_PLAYWRIGHT[2]
+            if entry_name == "CLAUDE.md" else CANONICAL_RULE_PLAYWRIGHT[3]
+        )
+        playwright_lines = {
+            line for line in playwright_body.splitlines() if line.strip()
+        }
+        if block.key.lower() in {playwright_key.lower(), "playwright"} \
+                and PLAYWRIGHT_RULE_FILE not in existing_rule_files:
+            body_nonblank = [line for line in block.body_lines if line.strip()]
+            if not body_nonblank or all("playwright.md" in line for line in body_nonblank):
+                continue
+            # 用户在同名 H3 下追加了内容：保留整块，不丢用户文本。
+        key = block.key
+        if key in canonical:
+            if key in seen:
+                # 用户在同规范标题下追加了第二个块：整块保留为用户内容。
+                duplicate_canonical = True
+                out_blocks.append(list(block.raw_lines))
+                user_block_count += 1
+                continue
+            number, title, body = canonical[key]
+            canonical_lines = body.splitlines()
+            extras = [
+                line for line in block.body_lines
+                if line not in canonical_lines
+                and line not in RETIRED_ENTRY_LINES
+                and line != USER_OVERRIDE_MARKER
+            ]
+            while extras and not extras[0].strip():
+                extras.pop(0)
+            while extras and not extras[-1].strip():
+                extras.pop()
+            if extras:
+                extra_count += 1
+                warnings_out.append({
+                    "code": "UNIT_CONFLICT_USER_WINS",
+                    "file": entry_name,
+                    "message": "规范条目内存在用户内容，已放入用户覆盖块",
+                    "detail": {"entry": title, "user_lines": extras},
+                })
+                out_blocks.append(
+                    [f"### {number}. {title}", *canonical_lines, "",
+                     USER_OVERRIDE_MARKER, "",
+                     *extras]
+                )
+            else:
+                out_blocks.append(
+                    [f"### {number}. {title}", *canonical_lines]
+                )
+            seen.add(key)
+        else:
+            out_blocks.append(list(block.raw_lines))
+            user_block_count += 1
+
+    for key, (number, title, body) in canonical.items():
+        if key in seen:
+            continue
+        out_blocks.append([f"### {number}. {title}", *body.splitlines()])
+
+    new_section: list[str] = list(canonical_preamble)
+    if user_preamble:
+        append_block(new_section, user_preamble)
+    for block_lines in out_blocks:
+        append_block(new_section, block_lines)
+    if end < len(lines) and new_section and new_section[-1].strip():
+        new_section.append("")
+
+    if user_block_count or extra_count:
+        warnings_out.append({
+            "code": "USER_LINES_KEPT", "file": entry_name,
+            "message": "强制规则章节含非框架条目，已原样保留",
+            "detail": {"blocks": user_block_count, "entries_with_extras": extra_count},
+        })
+    if duplicate_canonical:
+        warnings_out.append({
+            "code": "USER_HEADING_NUMBER_COLLISION", "file": entry_name,
+            "message": "存在与规范条目同名的重复 H3，已整块保留为用户内容",
+            "detail": {},
+        })
+
+    result = lines[:start + 1] + new_section + lines[end:]
+    outside = result[:start] + result[start + 1 + len(new_section):]
+    if any(
+        line.startswith("## ") and "项目个性化规则" in line
+        for line in outside
+    ):
+        warnings_out.append({
+            "code": "ORPHAN_RULE6", "file": entry_name,
+            "message": "章节外存在孤立的项目个性化规则 H2，请人工确认",
+            "detail": {},
+        })
+    return finish(result), warnings_out
+
+
 TOGGLE_PREFIX = "- **产物自动提交（design/plan/code）**："
 TOGGLE_PREFIX_LEGACY = "- **产物自动提交（design/plan）**："
 TOGGLE_DEFAULT = "关闭"
+TOGGLE_ALIASES = {
+    "开启": "开启", "打开": "开启", "启用": "开启", "on": "开启",
+    "关闭": "关闭", "关掉": "关闭", "禁用": "关闭", "off": "关闭",
+}
+
+
+def _toggle_key(value: str) -> str:
+    return value.strip().lower()
+
+
+def _is_valid_toggle(value: str) -> bool:
+    return _toggle_key(value) in TOGGLE_ALIASES
+
+
+def _is_alias_toggle(value: str) -> bool:
+    key = _toggle_key(value)
+    return key in TOGGLE_ALIASES and key not in {"开启", "关闭"}
 
 
 def _toggle_matches(line: str) -> bool:
@@ -3081,7 +3562,13 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
     all_values = [
         _toggle_value(lines[i]) for i in all_toggle_idxs
     ]
-    valid_values = {"开启", "关闭"}
+    for value in all_values:
+        if _is_alias_toggle(value):
+            warns.append({
+                "code": "TOGGLE_ALIAS_KEPT", "file": entry_name,
+                "message": f"产物自动提交开关使用别名（{value}），按开启处理",
+                "detail": {},
+            })
 
     def warn_invalid(reason: str, values: list[str]) -> None:
         warns.append({
@@ -3095,7 +3582,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         # 在新章节内重建唯一行。
         chosen = TOGGLE_DEFAULT
         if all_values:
-            if any(value not in valid_values for value in all_values):
+            if any(not _is_valid_toggle(value) for value in all_values):
                 warn_invalid("存在非法开关值", all_values)
             elif len(set(all_values)) > 1:
                 warn_invalid("存在多处开关值冲突", all_values)
@@ -3118,12 +3605,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         })
 
     start = idxs[0]
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        stripped = lines[i].strip()
-        if stripped.startswith("## ") or stripped.startswith("# "):
-            end = i
-            break
+    end = _fence_aware_section_end(lines, start)
     section_toggle_idxs = [
         i for i in all_toggle_idxs if start < i < end
     ]
@@ -3141,7 +3623,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
     # 旧名开关行在此路径中迁移为新名，值逐字保留。
     if not orphan_values and len(section_values) == 1:
         value = section_values[0]
-        if value not in valid_values:
+        if not _is_valid_toggle(value):
             warns.append({
                 "code": "INVALID_TOGGLE", "file": entry_name,
                 "message": f"产物自动提交开关值非法（{value}），按关闭处理",
@@ -3161,7 +3643,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         # 单一章节内开关延续既有“保留原文”语义；多行并存则按归并规则处理。
         if len(section_values) == 1:
             chosen = section_values[0]
-            if chosen not in valid_values:
+            if not _is_valid_toggle(chosen):
                 warns.append({
                     "code": "INVALID_TOGGLE", "file": entry_name,
                     "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
@@ -3170,13 +3652,13 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
         else:
             # 章节内重复行保持原有“保留首个”语义，即使后续值不同。
             chosen = section_values[0]
-            if chosen not in valid_values:
+            if not _is_valid_toggle(chosen):
                 warns.append({
                     "code": "INVALID_TOGGLE", "file": entry_name,
                     "message": f"产物自动提交开关值非法（{chosen}），按关闭处理",
                     "detail": {},
                 })
-    elif any(value not in valid_values for value in values):
+    elif any(not _is_valid_toggle(value) for value in values):
         warn_invalid("孤儿行归并中存在非法开关值", values)
     elif len(set(values)) > 1:
         warn_invalid("孤儿行归并中存在多处开关值冲突", values)
@@ -3189,12 +3671,7 @@ def _ensure_commit_toggle(text: str, entry_name: str) -> tuple[str, list[dict]]:
     clean_lines = [line for i, line in enumerate(lines) if i not in toggle_set]
     clean_idxs = [i for i, line in enumerate(clean_lines) if line.strip() == "## 项目配置"]
     clean_start = clean_idxs[0]
-    clean_end = len(clean_lines)
-    for i in range(clean_start + 1, len(clean_lines)):
-        stripped = clean_lines[i].strip()
-        if stripped.startswith("## ") or stripped.startswith("# "):
-            clean_end = i
-            break
+    clean_end = _fence_aware_section_end(clean_lines, clean_start)
     # 在章节边界前追加开关，不吸收既有尾部空行，确保技术栈、包管理器等
     # 用户项目配置内容逐字保留。
     insert_at = clean_end
@@ -3343,6 +3820,7 @@ def step_s6_gitignore(root: Path, intents: Intents, plan: dict, report: dict) ->
     if intents.ignore_cadence:
         status = ensure_gitignore_line(
             root, GITIGNORE_CADENCE_LINE, GITIGNORE_CADENCE_COMMENT,
+            report=report,
         )
         actions_log.append({
             "path": ".gitignore", "action": status,
@@ -3358,6 +3836,7 @@ def step_s6_gitignore(root: Path, intents: Intents, plan: dict, report: dict) ->
     if project_type == "coding" or intents.enable_codegraph:
         status = ensure_gitignore_line(
             root, GITIGNORE_CODEGRAPH_LINE, GITIGNORE_CODEGRAPH_COMMENT,
+            report=report,
         )
         actions_log.append({
             "path": ".gitignore", "action": status,
@@ -3581,7 +4060,19 @@ def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
     # .codex/config.toml 补写
     if not has_codegraph_mcp_codex(root):
         toml_path = root / ".codex" / "config.toml"
-        existing_toml = _safe_read(toml_path) or ""
+        toml_exists = toml_path.exists()
+        raw_toml = _safe_read(toml_path)
+        if toml_exists and raw_toml is None:
+            raise PublishError(f"无法读取 {toml_path}；拒绝覆盖")
+        existing_toml = raw_toml or ""
+        if toml_exists:
+            try:
+                toml_backup = backup_file(toml_path, root)
+            except BackupError as exc:
+                raise PublishError(f".codex/config.toml 写入前备份失败：{exc}") from exc
+            report.setdefault("backups", []).append({
+                "file": str(toml_path), "backup": str(toml_backup),
+            })
         # 末尾确保换行分隔后追加区块
         if existing_toml and not existing_toml.endswith("\n"):
             existing_toml += "\n"
@@ -3612,15 +4103,28 @@ def _s8_ensure_mcp_configs(root: Path, report: dict, actions_log: list) -> None:
                 "branch": "mcpjson-pre-rewrite", "backup": str(mcp_backup),
             })
         raw = _safe_read(mcp_path)
+        if mcp_path.exists() and raw is None:
+            raise PublishError(f"无法读取 {mcp_path}；拒绝覆盖")
         doc: dict = {}
         if raw:
             try:
                 parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    doc = parsed
-            except (ValueError, TypeError):
-                # 不可解析 → 兆底为空 dict 重写（配置已损坏，按新配置覆盖）
-                doc = {}
+                if not isinstance(parsed, dict):
+                    raise ValueError("顶层不是对象")
+                doc = parsed
+            except (ValueError, TypeError) as exc:
+                report["overall"] = "degraded"
+                report.setdefault("warnings", []).append({
+                    "code": "UNIT_UNPARSEABLE",
+                    "file": str(mcp_path),
+                    "message": f".mcp.json 无法解析，S8 保持原文件不重建（{exc}）",
+                    "detail": {},
+                })
+                actions_log.append({
+                    "path": ".mcp.json", "action": "degraded",
+                    "branch": "mcpjson-unparseable-preserved",
+                })
+                return
         servers = doc.get("mcpServers")
         if not isinstance(servers, dict):
             servers = {}
@@ -4105,9 +4609,28 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action in ("upgrade", "dedup", "replace"):
-            # 确定性升级/归并/漂移替换（两模式同动作）→ 始终写入
+        if action in ("insert", "upgrade", "dedup", "replace"):
+            # 确定性插入/升级/归并/漂移替换（两模式同动作）→ 始终写入
             return True
+        if action == "skip":
+            # skip 仍可能补齐缺失摘要（skip-backfill）；合成结果变化即写入，
+            # 必须进入备份屏障。
+            existing = _safe_read(target)
+            if existing is None:
+                return True
+            kernel = _load_kernel_source()
+            if not kernel:
+                return True
+            existing_rule_files = {
+                p.name for p in (root / ".claude" / "rules").glob("*.md")
+            }
+            composed, _warnings = _compose_entry(
+                existing, kernel, state="skip",
+                project_type=plan.get("project_type", "non-coding"),
+                entry_name=asset.get("path", ""),
+                existing_rule_files=existing_rule_files,
+            )
+            return composed != existing
         return False
 
     # S7 OpenSpec 配置
@@ -4214,6 +4737,89 @@ def _planned_entry_warnings(
     return warnings
 
 
+def _planned_preview(root: Path, intents: Intents, plan: dict, report: dict) -> None:
+    """只读预演 S3 overlay 与 S4 入口写入，填充 planned_* / pending。"""
+    actions: list[dict] = []
+    backups: set[str] = set()
+    pending: list[dict] = []
+    for target in _filter_backup_needs(plan, intents, root):
+        try:
+            backups.add(str(Path(target).relative_to(root)))
+        except ValueError:
+            pass
+
+    templates_info = plan.get("templates", {}) or {}
+    rules_root_str = templates_info.get("rules_root")
+    rules_root = Path(rules_root_str) if rules_root_str else None
+    rules_dir = root / ".claude" / "rules"
+    s3 = (plan.get("steps", {}) or {}).get(STEP_RULES_FILES, {}) or {}
+    for asset in s3.get("assets", []) or []:
+        if asset.get("action") == "skip" or asset.get("conflict") is None:
+            continue
+        target_name = Path(asset.get("path", "")).name
+        target = rules_dir / target_name
+        existing = _safe_read(target)
+        template_source = asset.get("template_source", target_name)
+        if existing is None or rules_root is None:
+            continue
+        try:
+            template_text = (rules_root / template_source).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if existing == template_text:
+            continue
+        rel = str(target.relative_to(root))
+        actions.append({"path": rel, "action": "would-overwrite", "branch": "overlay-extracted"})
+        backups.add(rel)
+        base_text = cadence_state.get_rule_base(root, rel)
+        origin = "manifest" if base_text is not None else "template-fallback"
+        if base_text is None:
+            base_text = template_text
+            pending.append({
+                "asset": rel, "reason": "base-missing",
+                "detail": "overlay 抽取以当前模板为保守基线",
+            })
+        overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+        new_overlay, changed = cadence_state.merge_overlay(
+            _safe_read(overlay_target), target_name, base_text, existing, origin,
+        )
+        if changed and new_overlay is not None:
+            overlay_rel = str(overlay_target.relative_to(root))
+            actions.append({"path": overlay_rel, "action": "overlay-extracted", "branch": origin})
+            backups.add(overlay_rel)
+
+    s4 = (plan.get("steps", {}) or {}).get(STEP_ENTRY_FILES, {}) or {}
+    kernel_source = _load_kernel_source()
+    existing_rule_files = {p.name for p in rules_dir.glob("*.md")}
+    project_type = plan.get("project_type", "non-coding")
+    for asset in s4.get("assets", []) or []:
+        entry_name = asset.get("path", "")
+        entry_path = root / entry_name
+        existing = _safe_read(entry_path)
+        if existing is None:
+            continue
+        state = asset.get("conflict") or asset.get("action") or "skip"
+        composed, warnings = _compose_entry(
+            existing, kernel_source, state=state,
+            project_type=project_type,
+            entry_name=entry_name, existing_rule_files=existing_rule_files,
+        )
+        if composed == existing:
+            continue
+        actions.append({"path": entry_name, "action": "would-update", "branch": state})
+        backups.add(entry_name)
+        for warning in warnings:
+            if warning.get("code") == "UNIT_CONFLICT_USER_WINS":
+                pending.append({
+                    "asset": entry_name, "reason": "user-override",
+                    "detail": warning.get("detail", {}),
+                })
+
+    report["planned_actions"] = actions
+    report["planned_backups"] = sorted(backups)
+    report["pending"] = pending
+
+
 def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
     """dry-run：compute_plan + 只读预演入口 warnings + 写报告，零写入。"""
     plan = compute_plan(root, intents)
@@ -4228,8 +4834,69 @@ def run_dry_run(root: Path, intents: Intents, report: dict) -> int:
         }
         return 1
     report["warnings"] = _planned_entry_warnings(root, intents, plan, report)
+    _planned_preview(root, intents, plan, report)
     report["overall"] = "ok"
     return 0
+
+
+MANAGED_SNAPSHOT_ROOTS = (
+    ".claude/rules",
+    "cadence/framework-state",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".mcp.json",
+    ".codex/config.toml",
+    ".gitignore",
+    "openspec/config.yaml",
+    ".claude/settings.json",
+)
+
+
+def _managed_file_snapshot(root: Path) -> set[str]:
+    result: set[str] = set()
+    for rel in MANAGED_SNAPSHOT_ROOTS:
+        path = root / rel
+        if path.is_file():
+            result.add(rel)
+        elif path.is_dir():
+            for item in path.rglob("*"):
+                if item.is_file():
+                    result.add(str(item.relative_to(root)))
+    return result
+
+
+def _rollback_report_backups(
+    report: dict, root: Path, pre_files: set[str] | None = None,
+) -> None:
+    """异常路径按本次备份恢复已写文件，并移除本次新建文件。"""
+    restored: list[str] = []
+    failed: list[dict] = []
+    for entry in report.get("backups", []) or []:
+        src = Path(str(entry.get("backup", "")))
+        dst = Path(str(entry.get("file", "")))
+        if not src.is_file() or not dst:
+            continue
+        try:
+            shutil.copy2(src, dst)
+            restored.append(str(dst))
+        except OSError as exc:
+            failed.append({"file": str(dst), "reason": str(exc)})
+    removed_new: list[str] = []
+    if pre_files is not None:
+        for rel in sorted(_managed_file_snapshot(root) - pre_files):
+            if rel.startswith("cadence/legacy/"):
+                continue
+            path = root / rel
+            try:
+                path.unlink()
+                removed_new.append(rel)
+            except OSError as exc:
+                failed.append({"file": rel, "reason": str(exc)})
+    report["rollback"] = {
+        "restored": restored,
+        "removed_new": removed_new,
+        "failed": failed,
+    }
 
 
 def run_apply(root: Path, intents: Intents, report: dict) -> int:
@@ -4326,6 +4993,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
             return 1
 
     # 4. 屏障通过后按 S1-S10 执行发布
+    pre_files = _managed_file_snapshot(root)
     try:
         for step_name in STEP_ORDER:
             step_func = STEP_FUNCS[step_name]
@@ -4356,10 +5024,21 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
         report["failure"] = {
             "file": _extract_failure_file(exc, locals().get("step_name")),
             "reason": f"执行异常：{exc}",
-            "recovery": "检查日志后重试",
+            "recovery": "已按备份回滚；检查日志后重试",
         }
+        _rollback_report_backups(report, root, pre_files)
         return 1
 
+    try:
+        pending_path = cadence_state.save_pending(root, report.get("pending", []))
+        if pending_path is not None:
+            report["pending_file"] = str(pending_path)
+    except OSError as exc:
+        report.setdefault("warnings", []).append({
+            "code": "PENDING_WRITE_FAILED",
+            "message": f"pending 清单写入失败：{exc}",
+            "detail": {},
+        })
     if report["overall"] == "ok":
         report["overall"] = "ok"
     return 0

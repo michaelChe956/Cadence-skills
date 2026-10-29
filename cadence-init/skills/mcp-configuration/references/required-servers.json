@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "source": "cadence-init/skills/mcp-configuration/SKILL.md（§5 MCP 配置文件创建 / §6 同步 MCP 配置到 Codex）",
+  "note": "默认 server 单一数据源。API Key 一律为占位符，真实密钥由用户本地替换，禁止写入本文件。",
+  "servers": [
+    {
+      "name": "time",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "command": "uvx",
+        "args": ["mcp-server-time", "--local-timezone=Asia/Shanghai"]
+      }
+    },
+    {
+      "name": "context7",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@upstash/context7-mcp"],
+        "env": {}
+      }
+    },
+    {
+      "name": "sequential-thinking",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        "env": {}
+      }
+    },
+    {
+      "name": "codegraph",
+      "applies_to": ["coding"],
+      "config": {
+        "type": "stdio",
+        "command": "codegraph",
+        "args": ["serve", "--mcp"],
+        "env": {}
+      }
+    },
+    {
+      "name": "zai-mcp-server",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@z_ai/mcp-server"],
+        "env": {
+          "Z_AI_API_KEY": "your_zhipu_api_key",
+          "Z_AI_MODE": "ZHIPU"
+        }
+      }
+    },
+    {
+      "name": "web-search-prime",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "http",
+        "url": "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp",
+        "headers": {
+          "Authorization": "Bearer your_zhipu_api_key"
+        }
+      }
+    },
+    {
+      "name": "web-reader",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "http",
+        "url": "https://open.bigmodel.cn/api/mcp/web_reader/mcp",
+        "headers": {
+          "Authorization": "Bearer your_zhipu_api_key"
+        }
+      }
+    },
+    {
+      "name": "zread",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "type": "http",
+        "url": "https://open.bigmodel.cn/api/mcp/zread/mcp",
+        "headers": {
+          "Authorization": "Bearer your_zhipu_api_key"
+        }
+      }
+    },
+    {
+      "name": "MiniMax",
+      "applies_to": ["coding", "non-coding"],
+      "config": {
+        "command": "uvx",
+        "args": ["minimax-coding-plan-mcp", "-y"],
+        "env": {
+          "MINIMAX_API_KEY": "your_minimax_api_key",
+          "MINIMAX_API_HOST": "https://api.minimaxi.com"
+        }
+      }
+    }
+  ]
+}

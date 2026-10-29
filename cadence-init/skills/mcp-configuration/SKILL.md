@@ -7,7 +7,7 @@ description: "配置 MCP：创建 .mcp.json 配置文件并交接 Codex 与 .git
 
 ## 概述
 
-配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`。该受管文件将由随后的 `rule-config` 生成，此时尚不存在，跳过本步骤继续。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
+配置 MCP 服务器：创建 `.mcp.json` 配置文件、同步 Codex `.codex/config.toml`。合并动作由本 Skill 自带的确定性脚本 `scripts/mcp-config.py` 执行（默认 server 数据源 `references/required-servers.json`），重复执行安全、幂等、不丢用户配置。该受管文件将由随后的 `rule-config` 生成，此时尚不存在，跳过本步骤继续。pi 无原生 MCP，由 `/pre-check` 全局安装的 pi-mcp-adapter 扩展直接读取 `.mcp.json`（含 HTTP 类型 server），无需同步第二份配置。Kimi Code 原生读取项目根 `.mcp.json`（三层加载：`~/.kimi-code/mcp.json` → `<项目根>/.mcp.json` → `<cwd>/.kimi-code/mcp.json`，后者覆盖前者），本 Skill 维护的 `.mcp.json` 即 Kimi 的 MCP 配置来源，无需同步第二份配置。默认不需要人工交互即可完成基础 MCP 初始化。
 
 ## 参数模式
 
@@ -20,92 +20,101 @@ description: "配置 MCP：创建 .mcp.json 配置文件并交接 Codex 与 .git
 ```
 
 - 命令参数包含完整 token `no-interrupt` 或 `--no-interrupt`：进入 `no-interrupt` 模式。
-- 未携带上述参数：进入普通模式，完整遵循本 Skill 修改前的补齐缺失配置、同名冲突询问或跳过策略。
-- 两种模式互斥；不得把 `no-interrupt` 深度合并规则应用到普通模式。
+- 未携带上述参数：进入普通模式。
+- 两种模式的**配置文件合并行为完全一致**：都由本 Skill 自带的确定性脚本执行（`scripts/mcp-config.py`），差异只在报告中的模式标识与提示文案。
+- MCP 配置文件的创建与合并不进入人工交互；**禁止**由模型自行做语义合并，也**禁止**解析失败后重建目标文件。
+
+### 脚本调用（唯一执行路径）
+
+```bash
+python3 scripts/mcp-config.py apply \
+  --project-root <项目根> \
+  --report <报告输出路径> \
+  [--no-interrupt]
+```
+
+- 可选 `--project-type coding|non-coding`：显式指定项目类型（默认自动检测；`codegraph` 只在 coding 项目启用）。
+- 退出码：`0` = ok / degraded，`1` = fail（归档或写入失败，零发布），`2` = 用法错误。
+- 报告 JSON 关键字段：`overall`、`steps[]`、`actions[]`、`backups[]`、`warnings[]`、`pending[]`、`overrides[]`、`failure{}`。
+- 默认 server 的单一数据源是 `references/required-servers.json`（与本文 §5 / §6 示例同源）；修改默认 server 必须同步该文件与本文示例。
 
 ### no-interrupt 通用规则
 
 - 禁止调用 `AskUserQuestion`、`request_user_input` 或等价用户提问工具。
 - 禁止等待用户输入、设置交互超时或通过推荐默认值继续。
 - 同名配置冲突必须按本节的确定性规则合并，不得保留冲突后跳过该 Server。
-- 写入前必须验证 JSON/TOML 结构并保留必要备份；备份、合并或验证失败时立即报错终止。
+- 写入前必须验证 JSON/TOML 结构并归档原文件；归档、合并或验证失败时立即报错终止。
 - 失败报告不得输出 API Key、Token、Authorization Header 等真实私密值。
 
-### no-interrupt MCP 集合合并
+### MCP 集合合并规则（脚本实现）
 
-`mcp-configuration` 定义的必需 Server、传输类型、命令、URL 和必要参数是权威配置；当前项目配置作为补充保留。
+`.mcp.json` 与 `.codex/config.toml` 共享同一套合并语义：
 
-| 场景 | 合并动作 |
-|------|----------|
-| Skill Server 缺失 | 新增 Skill Server |
-| 项目额外 Server | 保留项目 Server |
-| 同名 Server 的 `type`、`command`、`url` 冲突 | 使用 Skill 值 |
-| 同名 Server 的必要参数冲突 | Skill 必需参数作为数组前缀，再追加不重复且不改变必需语义的项目参数 |
-| 项目独有 `env`、`headers`、`http_headers` 或扩展字段 | 按键保留并合并 |
-| 内容完全重复 | 只保留一份 |
+| 场景 | 合并动作 | 报告 |
+|------|----------|------|
+| 文件不存在 | 创建全部默认 server（`codegraph` 仅 coding 项目） | `created` |
+| 默认 server 缺失 | **补回**（用户删除不是持久禁用，见裁决 D5） | `MCP_SERVER_RESTORED` |
+| 同名 server 的 `type` / `command` / `url` | **用户值优先**，框架值进 `pending` | `MCP_USER_VALUE_KEPT` |
+| 同名 server 的 `args` | 按启动器/包名去重：npx/bunx/uvx 同名包保留用户 token（含版本）；uvx 区分启动器 flag 与 server 参数；通用命令用户 args 整体优先 | `args-merged` / `MCP_ARGS_USER_KEPT` |
+| `env` / `headers` / `http_headers` | 按键合并；用户非占位值优先；用户为占位符则取框架值 | `MCP_USER_VALUE_KEPT` |
+| 项目额外 server 与扩展字段 | 保留 | — |
+| 内容完全重复 | 只保留一份 | — |
 
-Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json` 按 `mcpServers` 子项合并；`.codex/config.toml` 按 `[mcp_servers.<name>]` 配置块合并。Codex 同步 stdio Server（有 `command` 字段，写 `command`/`args`/`env`）与 HTTP Server（有 `url` 字段，写 `url` + `http_headers`，即 streamable_http 传输；要求 codex-cli >= 0.44，旧版本会忽略 HTTP 块）。
+Server 名称使用精确名称匹配，不进行大小写归一化。`.mcp.json` 按 `mcpServers` 子项合并；`.codex/config.toml` 按 `[mcp_servers.<name>]` 配置块合并，已有表块只补齐缺失项、不覆盖用户字段。Codex 同步 stdio Server（有 `command` 字段，写 `command`/`args`/`env`）与 HTTP Server（有 `url` 字段，写 `url` + `http_headers`，即 streamable_http 传输；要求 codex-cli >= 0.44，旧版本会忽略 HTTP 块）。
 
-### no-interrupt 占位符与私密值
+### 占位符与私密值
 
 - `your_zhipu_api_key`、`your_minimax_api_key` 以及 `your_*_api_key` 形式的值视为占位符。
-- Skill 占位符与项目非占位值冲突时，保留项目非占位值；这是“Skill 结构权威”的唯一值级例外。
-- Skill 非占位值与项目值冲突时，使用 Skill 值。
-- 执行报告只允许记录变量名和“已保留非占位值”，不得显示、截断显示或散列输出真实值。
+- 项目值非占位符 → 保留项目值（用户值优先）。
+- 项目值是占位符 → 取框架值（框架可能是更完整的非占位配置）。
+- 执行报告只允许记录变量名与“已保留用户值”，不得显示、截断显示或散列输出真实值。
 
-### no-interrupt 解析失败与备份
+### 解析失败与归档
 
 1. 修改现有 `.mcp.json` 或 `.codex/config.toml` 前，先完成语法解析。
-2. 无法解析时，将原文件备份为 `<原文件名>.cadence-backup-YYYYMMDDHHMMSS`。
-3. 只允许恢复能够作为完整 JSON Server 对象或完整 TOML Server 配置块独立解析成功的项目配置。
-4. 以 Skill 标准配置为基础重建目标文件，再按“MCP 集合合并”规则合并已恢复的完整配置块。
-5. 无法安全识别项目补充配置时立即报错，不覆盖原文件；备份仅用于恢复，不代表初始化成功。
-6. 合并完成后重新解析目标文件；验证失败时恢复备份并报错终止。
+2. **解析失败时不重建、不覆盖**：保持原文件原样，整体 `degraded`，框架候选写入 `pending`，报告 `UNIT_UNPARSEABLE`。
+3. 任何改变既有文件字节的写入，写入前先把原文件归档到 `cadence/legacy/<14 位时间戳>/<相对路径>`（例：`cadence/legacy/20261028200207/.mcp.json`）；归档失败 → 零写入并报错终止。
+4. 合并完成后重新解析目标文件；校验失败则不写入并报错终止。
+5. 幂等：第二次运行写集合为空、归档为空（零写入、零备份）。
 
-`no-interrupt` 模式下 `.gitignore` 使用集合合并，确保 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 生效并去重。对缓存目录只允许精确添加 `cadence/cache/mcp-availability/` 一行；已存在时不得重复追加，也不得改为忽略整个 `cadence/cache/`。如果存在对应的精确反向规则 `!.worktrees/`、`!.mcp.json`、`!.codex/config.toml` 或 `!cadence/cache/mcp-availability/`，移除该反向规则；其他项目忽略规则保持不变。
+> 旧版「`<原文件名>.cadence-backup-YYYYMMDDHHMMSS` 备份」与「解析失败后以 Skill 标准配置重建目标文件」流程已废止，禁止再使用。
 
-## 无交互默认策略
+`.gitignore` 按集合合并处理，确保 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 生效并去重。框架保护行始终放在文件尾部；保护行之后不允许任何 `!` 取反行，否则把保护行移到尾部并报 `SECURITY_UNIT_FRAMEWORK_WINS`。反向规则匹配不依赖字面量：`!.mcp.json`、`!/.mcp.json` 等变体都按受保护路径识别。显式传入 `--allow-security-override` 时反向规则保留并置于文件尾（用户胜），报高风险 `SECURITY_OVERRIDE_ALLOWED`。其他项目忽略规则保持不变。
 
-> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
+## 默认策略
+
+MCP 配置文件部分由脚本按上表执行，不再由模型逐项判断：
 
 | 项 | 默认行为 |
 |----|----------|
 | 基础 MCP | 默认配置 `time`、`context7`、`sequential-thinking` |
-| CodeGraph MCP | **仅 Coding 项目**：如果缺失，按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml`；非 Coding 项目跳过 |
-| 智普 MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
+| CodeGraph MCP | **仅 Coding 项目**：缺失时按 stdio 兜底配置补齐 `.mcp.json` 与 `.codex/config.toml`；非 Coding 项目跳过 |
+| 智普 MCP | 默认写入 API Key 占位配置（`zai-mcp-server` 与 `web-search-prime` / `web-reader` / `zread`），用户后续自行替换真实密钥 |
 | MiniMax MCP | 默认写入 API Key 占位配置，用户后续自行替换真实密钥 |
 | Codex 同步 | 默认启用，同步 stdio 与 HTTP（streamable_http）MCP |
-| 已存在配置 | 不覆盖整文件，只补缺失 server 配置块；冲突配置跳过并报告 |
+| 已存在配置 | 不覆盖整文件：逐 server 合并，用户值优先，缺失默认 server 补回 |
+| 解析失败 | 不重建、不覆盖，保持原文件，报告 `degraded` 与 `pending` |
 | `.gitignore` | 默认补齐 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/`（精确一行、已存在不重复追加） |
 
 ## 人工交互策略
 
-> 本节仅适用于未携带 `no-interrupt` 或 `--no-interrupt` 的普通模式。
-
-默认不向用户提问。只有出现以下情况才进入人工交互：
+MCP 配置文件的创建与合并**不提问**（脚本确定性执行）。只有 `.gitignore` 步骤存在与框架相反的用户规则时才需要提示：
 
 | 触发条件 | 处理方式 |
 |----------|----------|
-| `.mcp.json` 或 `.codex/config.toml` 中已有同名 MCP server 且配置不同 | 询问是否保留现有配置或追加新名称；无响应则保留现有配置并报告 |
-| 用户明确要求禁用默认 MCP（如智普或 MiniMax） | 询问要禁用的具体 server；无响应则保留默认占位配置 |
-| `.gitignore` 中存在相反规则（如显式允许 `.mcp.json`） | 询问是否调整；无响应则不修改该项 |
+| `.gitignore` 中存在相反规则（如显式允许 `.mcp.json`） | 默认移除并报 `SECURITY_UNIT_FRAMEWORK_WINS`；用户显式传 `--allow-security-override` 时保留并报高风险 |
+| 用户明确要求禁用默认 MCP（如智普或 MiniMax） | 本期不提供持久禁用：缺失默认 server 每次重跑都会补回，需要长期禁用时由用户在脚本执行后手工处理，并知悉下次重跑会被补回 |
 | 需要真实 API Key、Token 或私密信息 | 不询问真实密钥，只写占位符并提示用户自行替换 |
-
-提问规则：
-- 每次只问一个问题。
-- 问题必须给出推荐默认选项。
-- 如果运行环境支持自动超时，超时后采用推荐默认值。
-- 如果无法等待用户输入，采用保守默认：不覆盖已有配置、不删除配置、不收集真实密钥。
 
 ## 检查清单
 
 你必须为以下每个项目创建任务并按顺序完成：
 
 1. **查阅受管 MCP 规则** — 该受管文件将由随后的 `rule-config` 生成，此时尚不存在，跳过本步骤继续
-2. **创建 MCP 配置文件** — 在项目根目录创建 `.mcp.json` 配置
-3. **配置智普 MCP** — 默认写入智普 AI MCP 占位配置，包含四个专属 MCP
-4. **配置 MiniMax MCP** — 默认写入 MiniMax Token Plan MCP 占位配置
-5. **同步 MCP 配置到 Codex** — 默认同步为 Codex 的 `.codex/config.toml` 格式，stdio 与 HTTP（streamable_http）MCP 均同步
+2. **执行 MCP 合并脚本** — 运行 `python3 scripts/mcp-config.py apply --project-root <项目根> --report <报告路径> [--no-interrupt]`，完成 `.mcp.json` 创建/合并与 `.codex/config.toml` 同步
+3. **配置智普 MCP** — 由脚本写入智普 AI MCP 占位配置，包含四个专属 MCP
+4. **配置 MiniMax MCP** — 由脚本写入 MiniMax Token Plan MCP 占位配置
+5. **核对脚本报告** — 检查 `overall`、`MCP_SERVER_RESTORED`、`pending` 与 `backups`；`degraded` 时按 `pending` 提示用户手工处理
 6. **pi MCP 说明** — 说明 pi 经 pi-mcp-adapter 直接读取 `.mcp.json`（含 HTTP server），不维护第二份配置
 7. **Kimi MCP 说明** — 说明 Kimi Code 原生读取项目根 `.mcp.json`（含 stdio/HTTP/SSE），不维护第二份配置
 8. **配置 .gitignore** — 添加 `.worktrees/`、`.mcp.json`、`.codex/config.toml` 与 `cadence/cache/mcp-availability/` 到 .gitignore；缓存条目精确一行且已存在时不重复追加

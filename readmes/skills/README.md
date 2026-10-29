@@ -20,9 +20,9 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 
 | Skill | 用途 |
 | --- | --- |
-| `mcp-configuration` | 创建或维护项目 MCP 配置并交接客户端设置 |
+| `mcp-configuration` | 创建或维护项目 MCP 配置并交接客户端设置（确定性脚本 `scripts/mcp-config.py`，可重复执行） |
 | `pre-check` | 检查开发环境、基础工具和初始化前置条件 |
-| `project-rules-examples` | 创建项目个性化规则模板 |
+| `project-rules-examples` | 创建项目个性化规则模板（确定性脚本 `scripts/apply.py`，重复执行不改写人工正文） |
 | `rule-config` | 配置规则、入口文件、`cadence/` 目录和 OpenSpec 协作入口 |
 
 ### 兼容与创建 Skills（2 个）

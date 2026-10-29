@@ -134,3 +134,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pytest cadence-init/skills/rule-config/tests/test_rule_config.py -q
+
+      - name: 全部 Python 测试（unittest）
+        run: |
+          set -euo pipefail
+          for d in \
+            cadence-init/skills/rule-config/tests \
+            cadence-init/skills/project-rules-examples/tests \
+            cadence-init/skills/mcp-configuration/tests \
+            cadence-init/skills/pre-check/tests; do
+            python3 -m unittest discover -s "$d" -p 'test_*.py'
+          done
+
+      - name: project-rules 与 pre-check shell 测试
+        run: |
+          set -euo pipefail
+          bash cadence-init/skills/project-rules-examples/tests/test-apply.sh
+          bash cadence-init/skills/pre-check/scripts/test.sh

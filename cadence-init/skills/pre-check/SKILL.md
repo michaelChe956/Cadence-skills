@@ -38,7 +38,7 @@ cd "<PROJECT_ROOT>" && bash "<PRE_CHECK_SH>" run [--mirror cn] [--no-interrupt]
 
 ### 步骤 3：读取 JSON 报告并呈现
 
-读取 `overall`、原有 `steps[]` 和五项 `phases[]`，呈现 `result/action/duration_ms/created/updated/skipped/conflicts`；Superpowers phase 呈现 `origin/branch/before_revision/after_revision`。`overall=success` 且五阶段通过才报告完成；重跑以 phase `skipped`/`all-skipped` 和产物无变化证明幂等。
+读取 `overall`、原有 `steps[]`、五项 `phases[]`、顶层 `warnings[]` 与 `backups[]`，呈现 `result/action/duration_ms/created/updated/skipped/conflicts`；Superpowers phase 呈现 `origin/branch/before_revision/after_revision`。`overall=success` 且五阶段通过才报告完成；重跑以 phase `skipped`/`all-skipped` 和产物无变化证明幂等。
 
 `--no-interrupt` 任一 phase failed 或脚本非零立即停止，报告失败原因、已完成 phase 和恢复建议；普通模式也不自行执行未覆盖写入。`unsupported` 必须报告人工处理，不静默回退模型自由编排。
 
@@ -51,6 +51,12 @@ Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入。AP
 普通模式下，失败 phase 可被记录为 `partial` 并继续脚本规定的后续阶段，最终必须如实报告整体状态；这不表示成功，也不允许自行补做脚本未覆盖的写入。`--no-interrupt` 下失败立即阻断下游写入。阶段错误应说明失败原因、已完成 phase 和恢复建议。
 
 软链拓扑以解析后最终等价为准：现网直连源路径、兼容中转链均视为同一有效拓扑；已有正确链接应保持幂等，非目标用户内容不得被触碰。冲突和不可支持的布局按报告语义转人工处理。
+
+### 投影保护与 `warnings[]`
+
+`run` 模式在执行 OpenSpec 外部命令（`init`/`update`）前，对客户端投影做只读哈希快照并暂存既有文件前像：`.claude/commands/opsx/` 全量、`.claude`/`.agents`/`.codex`/`.pi`/`.kimi-code` 下的 `openspec-*` skill 目录、`.pi/prompts/opsx-*.md`。命令结束后重新快照并比较；被改写或删除的既有文件，改前内容归档到 `cadence/legacy/<14位时间戳>/<相对路径>`，并在 `warnings[]` 记录 `EXTERNAL_PROJECTION_USER_EDIT_OVERWRITTEN`（附 `path` 与 `archive`），同时在该记录的 `backups[]` 中写入 `{path, archive, reason}`。内容未变化时零归档、零警告，保持幂等；`check` 模式不执行外部命令，因此不触发保护逻辑。归档目录沿用 `rule-config` 约定：`cadence/legacy/.gitignore` 内容为 `*` 与 `!.gitignore`，同秒已有归档目录时追加 `-2`/`-3` 后缀，不覆盖既有归档。
+
+`warnings[]` 是内容级关注项：不改变 `overall` 与退出码。呈现时必须逐条告知用户，并提示可从 `archive` 路径取回被覆盖的手改内容。保护逻辑自身失败只记录 `PROJECTION_GUARD_FAILED`，绝不阻断 phase 与主流程。
 
 默认 Playwright 行为是跳过，不安装、不写入；只有用户明确提出浏览器自动化需求时才执行 opt-in。API Key 仅保留以下安全提醒：
 

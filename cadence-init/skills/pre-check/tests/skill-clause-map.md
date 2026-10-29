@@ -13,6 +13,10 @@
 | PC-OS-04 | 四端齐全时 run 模式仅执行一次 update、不执行 init；check 模式仅只读复核；无变化时 phase 记 skipped、updated=0、skipped=4 | `TestOpenSpecPhase.test_ready_projection_updates_without_init`, `TestOpenSpecPhase.test_ready_projection_check_mode_stays_readonly` | Task 2 Step 3/4 |
 | PC-OS-05 | Claude/Codex 就绪投影内容保持不变 | `TestOpenSpecPhase.test_ready_projection_content_unchanged` | Task 2 Step 4 |
 | PC-OS-06 | Pi/Kimi 投影数量不满足 sentinel 时 phase failed 且 conflicts 非零 | `TestOpenSpecPhase.test_wrong_pi_count_fails` | Task 2 Step 2/4 |
+| PC-PROJ-01 | 执行 OpenSpec 外部命令前对投影集合（`.claude/commands/opsx/`、各端 `openspec-*` skill、`.pi/prompts/opsx-*.md`）取只读哈希快照，命令结束后重新比较 | `test_projection_guard.py::test_overwritten_user_edit_is_archived_and_reported` | Task 6 |
+| PC-PROJ-02 | 被外部命令改写或删除的既有投影文件，改前内容归档到 `cadence/legacy/<14位时间戳>/<相对路径>`，并在 `warnings[]` 报 `EXTERNAL_PROJECTION_USER_EDIT_OVERWRITTEN`（含 `path`/`archive`），同时在 `backups[]` 记录归档 | `test_overwritten_user_edit_is_archived_and_reported`, `test_overwritten_nested_skill_projection_is_archived` | Task 6 |
+| PC-PROJ-03 | 投影内容未变化时零归档、零警告；`check` 模式不触发保护逻辑 | `test_unchanged_projection_creates_no_archive`, `test_no_overwrite_creates_no_archive`, `test_check_mode_does_not_run_guard` | Task 6 |
+| PC-PROJ-04 | 保护逻辑自身失败只记录 `PROJECTION_GUARD_FAILED`，不阻断 phase 与退出码 | `test_guard_failure_does_not_block_precheck` | Task 6 |
 | PC-GIT-01 | Superpowers 来源目录必须是 Git work tree；非 Git 立即失败，不做本地兜底 | `TestSuperpowersGitPhase.test_non_git_source_fails_without_local_fallback` | Task 3 |
 | PC-GIT-02 | 候选在脚本内逐项解析，最多 3 项；clone 失败逐候选报告并清理临时目录 | `test_all_clone_candidates_fail_cleans_temp` | Task 3 |
 | PC-GIT-03 | zsh 外层执行时每个候选保持独立 argv，不发生字符串拼接 | `test_candidates_are_each_argv_element_under_zsh` | Task 3 |

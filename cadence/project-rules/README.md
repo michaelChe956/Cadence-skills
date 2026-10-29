@@ -9,6 +9,7 @@
 | 目录 | 用途 | 管理者 |
 |------|------|--------|
 | `.claude/rules/` | 框架内置规则文件 | 框架维护者 |
+| `.claude/rules/user-<name>.md` | 对框架规则文件的局部覆盖，优先级高于同名框架文件 | 用户 |
 | `cadence/project-rules/` | 用户自定义规则文件 | 用户 |
 
 ### 禁止行为
@@ -20,6 +21,7 @@
 ### 正确做法
 
 - ✅ 用户自定义规则放在 `cadence/project-rules/` 目录
+- ✅ 需要覆盖框架规则时，写入 `.claude/rules/user-<框架文件名>.md`
 - ✅ 从 `examples/` 目录复制模板并修改
 - ✅ 在 `CLAUDE.md` 中添加规则引用以启用
 

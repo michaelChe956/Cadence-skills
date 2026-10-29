@@ -36,13 +36,14 @@
 
 ## 修改权限
 
-- **仅框架维护者**可以修改本目录下的文件
-- 用户自定义规则应放在 `cadence/project-rules/` 目录
-- **禁止**用户直接修改 `.claude/rules/` 目录下的文件
+- **仅框架维护者**可以修改本目录下的 7 个框架文件
+- 用户长期自定义规则应放在 `cadence/project-rules/` 目录
+- 对框架文件的局部覆盖写入 `.claude/rules/user-<框架文件名>.md` overlay；用户直接修改框架文件时，`rule-config` 会把差异抽取到该 overlay 并恢复框架文件
+- **禁止**直接修改 7 个框架文件；overlay 文件是用户可编辑的
 
 ## 从旧版迁移
 
-重新运行 `/cadence:init:rule-config` 会更新 L0 受管路由、L1 已知版本和上述框架受管规则文件。脚本以 dry-run / apply 两阶段执行，两模式均在 dry-run/apply 两阶段内完成：drift 文件先统一复制归档到 `cadence/legacy/`，归档成功后按模板权威全覆盖，不经用户决策；不执行章节合并。
+重新运行 `/cadence:init:rule-config` 会更新 L0 受管路由、L1 已知版本和上述框架受管规则文件。脚本以 dry-run / apply 两阶段执行：框架文件 drift 时先把用户差异抽取到 `.claude/rules/user-<name>.md`，原文件归档到 `cadence/legacy/`，再恢复为当前模板；不执行章节级合并。
 
 ## 相关目录
 

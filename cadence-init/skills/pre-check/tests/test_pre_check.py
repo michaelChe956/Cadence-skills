@@ -134,7 +134,7 @@ class TestFailureFastReturn(unittest.TestCase):
             with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as td:
                 report = Path(td) / "report.json"
                 proc = subprocess.run(
-                    ["bash", str(helper), str(report), "sh", "-c", "printf '{\\\"overall\\\":\\\"success\\\"}\\n'; exit $0", str(exit_code)],
+                    ["bash", str(helper), str(report), "sh", "-c", "printf '%s\\n' '{\"overall\":\"success\"}'; exit $0", str(exit_code)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -151,7 +151,7 @@ class TestFailureFastReturn(unittest.TestCase):
                 proc = subprocess.Popen(
                     [
                         "bash", str(helper), str(report), "bash", "-c",
-                        "printf '{\\\"overall\\\":\\\"success\\\"}\\n'; sleep 30",
+                        "printf '%s\\n' '{\"overall\":\"success\"}'; sleep 30",
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,

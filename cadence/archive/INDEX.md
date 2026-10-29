@@ -46,6 +46,8 @@
 | `2026-07-17_技术方案_KnowledgeBase配置与数据模型重构_v4.0.md` | `cadence/designs/2026-07-17_技术方案_KnowledgeBase配置与数据模型重构_v4.0.md` | 2026-07-20 | 未知 |
 | `2026-07-17_分析报告_KnowledgeBase-Schema4.0-Dry-Run执行记录_v1.0.md` | `cadence/analysis-docs/2026-07-17_分析报告_KnowledgeBase-Schema4.0-Dry-Run执行记录_v1.0.md` | 2026-07-20 | 未知 |
 | `2026-07-17_分析报告_KnowledgeBase-Schema4.0人工Dry-Run验收矩阵_v1.0.md` | `cadence/analysis-docs/2026-07-17_分析报告_KnowledgeBase-Schema4.0人工Dry-Run验收矩阵_v1.0.md` | 2026-07-20 | 未知 |
+| `2026-10-28_方案设计_no-interrupt四步幂等升级_v1.0.md` | `cadence/designs/2026-10-28_方案设计_no-interrupt四步幂等升级_v1.0.md` | 2026-10-29 | no-interrupt 四步幂等升级 |
+| `2026-10-28_计划文档_实施_no-interrupt四步幂等升级_v1.0.md` | `cadence/plans/2026-10-28_计划文档_实施_no-interrupt四步幂等升级_v1.0.md` | 2026-10-29 | no-interrupt 四步幂等升级 |
 | `2026-07-20_分析报告_OpenSpec与Superpowers路由脱敏证据_v1.0.md` | `cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由脱敏证据_v1.0.md` | 2026-07-20 | 未知 |
 | `2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md` | `cadence/analysis-docs/2026-07-20_分析报告_OpenSpec与Superpowers路由验收矩阵_v1.0.md` | 2026-07-20 | 未知 |
 | `2026-04-15_设计评审_Cadence-Aria_v1.0.md` | `cadence/designs-reviews/2026-04-15_设计评审_Cadence-Aria_v1.0.md` | 2026-07-20 | 未知 |

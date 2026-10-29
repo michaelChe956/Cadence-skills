@@ -7,11 +7,28 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 
 ## 概述
 
-配置 Claude Code 与 Codex 的规则：创建并维护 `.claude/rules/` 下 7 个框架受管规则文件（模板携带共享 frontmatter 分桶：`description`/`paths`/`agents`/`alwaysApply`，Claude 消费 `paths` 条件加载、omp 消费索引与 `rule://` 按需正文），内容 drift 时执行框架权威全覆盖；`code-usage.md` 按最终项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源并以固定名称落地。流程还会将 CLAUDE.md 与 AGENTS.md 的 L0 受管区块升级到当前 **v5**（受支持旧版 v0~v4），创建 `cadence/` 产物目录、迁移历史产物、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright；**S11 omp 桥**维护 `.agents/rules/` 文件级软链集合与 `.omp/AGENTS.md` 受管活引用（语义见 references/merge-semantics.md §11.8）；入口项目配置仅维护产物自动提交开关，不检测或写入技术栈。入口中的 `## 强制规则` 不再以“缺失摘要行追加”为语义，而是执行**强制规则章节规范化**：创建、清理退役引用、按权威顺序重排并替换旧文案，同时保留无法识别的用户内容。所有需备份分支先将原文件复制归档到 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，原位文件不动，再以 `atomic_write` 原子发布。
+配置 Claude Code 与 Codex 的规则：创建并维护 `.claude/rules/` 下 7 个框架受管规则文件（模板携带共享 frontmatter 分桶：`description`/`paths`/`agents`/`alwaysApply`，Claude 消费 `paths` 条件加载、omp 消费索引与 `rule://` 按需正文），内容 drift 时把用户差异抽取到 `.claude/rules/user-<name>.md` overlay，框架文件恢复为当前模板；`code-usage.md` 按最终项目类型从 `code-usage-coding.md` / `code-usage-noncoding.md` 单选来源并以固定名称落地。流程还会将 CLAUDE.md 与 AGENTS.md 的 L0 受管区块升级到当前 **v5**（受支持旧版 v0~v4），创建 `cadence/` 产物目录、迁移历史产物、保守合并 `openspec/config.yaml`，并按需配置 CodeGraph 与 Playwright；**S11 omp 桥**维护 `.agents/rules/` 文件级软链集合与 `.omp/AGENTS.md` 受管活引用（语义见 references/merge-semantics.md §11.8）；入口项目配置仅维护产物自动提交开关，不检测或写入技术栈。入口中的 `## 强制规则` 不再以“缺失摘要行追加”为语义，而是执行**强制规则章节规范化**：创建、清理退役引用、按权威顺序重排并替换旧文案，同时保留无法识别的用户内容。所有需备份分支先将原文件复制归档到 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，原位文件不动，再以 `atomic_write` 原子发布。
 
 脚本报告始终提供不影响 `overall` 的顶层 `warnings` 数组；其实际 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`、`s9-settings-unsafe`（settings.json 无法安全合并时保守跳过权限写入）、`s9-allow-conflict`（用户显式 allow 与受管 deny 冲突时保守跳过该 deny）、`OMP_BRIDGE_USER_FILE_KEPT`（`.agents/rules/` 内用户文件保留/同名归档替换）、`OMP_BRIDGE_MATERIALIZED`（symlink 不可用降级物化副本），详情见 `references/merge-semantics.md` §11.3 与 §11.8。入口首个 `## 项目配置` 章节还会确保唯一的“产物自动提交（design/plan/code）”开关：缺失时写入 `关闭`，合法用户值保留，非法值保留原文并报告 warning；既有技术栈等项目配置内容逐字保留，不由脚本检测或写入。Agent 读取时以 CLAUDE.md 为准、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`（这是读取层告警，不是脚本 `warnings` code）。
 
 全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成；另有 `verify` 子命令执行只读五项自检，支持 `--json` 并以退出码 0/1 表示通过或发现漂移，适合在变更后核验并以报告为准；需要整体撤销权限区块时使用 `--remove-permission-gate`，详情均指向报告输出。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告；当前系统无活跃冲突类型，两模式全程不经用户决策（决策文件机制休眠兜底，见 references/merge-semantics.md §11.6）；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
+
+## v2 合并语义（2026-10-28）
+
+- `.claude/rules/*.md`：7 个框架文件始终等于当前模板；用户编辑差异抽取到 `.claude/rules/user-<name>.md` overlay，overlay 优先级高于同名框架文件。
+- 入口 `## 强制规则`：按 H3 标题归属，受管条目用最新正文、条目内用户追加逐字保留；用户 H3 整块保留；不再用路径 marker 子串删除或重排用户行。
+- 备份：任何改变既有文件字节的写入都进入 `cadence/legacy` 归档；`skip-backfill` 同样备份。
+- 状态：`cadence/framework-state/` 本地保存基线（manifest + base + pending），不提交 VCS。
+- 冲突：用户内容优先；被用户挡住的框架新版写入报告 `pending[]`；无基线时报告 `BASE_MISSING`。
+- loss guard：入口写入前检查被删除行是否属于已知框架文本/受管区/退役清单；无法归属即失败关闭，不静默删除。
+- L0：旧/当前区块内无法归属为用户行的 L0 文本迁到区块外保留，报 `L0_USER_LINES_RELOCATED`；旧版本区块不再直接 fail。
+- 入口冲突：规范条目内的用户行放入固定“用户覆盖（优先级高于上方框架条目）”块，并写 `pending`/`UNIT_CONFLICT_USER_WINS`；重复规范 H3 整块保留并报 `USER_HEADING_NUMBER_COLLISION`。
+- L1：`openspec-superpowers-workflow.md` 与其他 `.claude/rules` 文件一样走 overlay，不再直接覆盖。
+- dry-run：输出 `planned_actions`、`planned_backups`、`pending`，预演 S3 overlay 与 S4 入口写入。
+- 开关：`开启/打开/启用/on` 视为开启，`关闭/关掉/禁用/off` 视为关闭；原值不改写，别名报告 `TOGGLE_ALIAS_KEPT`。
+- 安全单元（`.gitignore` 保护项、permission deny）框架优先并强警告；`.gitignore` 的反向规则由 `mcp-configuration --allow-security-override` 显式保留。
+
+以上语义覆盖本文件旧表中与之冲突的历史条款；旧表仅用于历史对账。完整设计见 `cadence/archive/designs/2026-10-28_方案设计_no-interrupt四步幂等升级_v1.0.md`。
 
 ## 参数模式
 

@@ -5,6 +5,28 @@
 > 用途：`rule-config` 脚本化提速（OpenSpec change `script-rule-config-for-speed`）后，SKILL.md 仅保留路由与触发说明；本文件作为合并语义的**权威定义**，按需加载。脚本实现（Task 4+ 的 `merge_markdown` / `merge_yaml` / `l0_block` / `classify_l1` / `precheck_openspec_structure` / `backup_file` / `atomic_write` / `sha256_file` / `step_*`）与本文件的十张表逐行对账，测试 ID 见 `tests/skill-clause-map.md`。
 > 模式取值：`普通`（未携带 `no-interrupt`/`--no-interrupt`）/ `no-interrupt`（携带上述完整 token）/ `两模式`（两种调用均适用）。两模式互斥，no-interrupt 的权威合并与禁迁移规则不得应用于普通模式。
 
+## 0. v2 语义覆盖（2026-10-28）
+
+以下条款覆盖本文件旧表中与之冲突的历史语义；旧表保留用于历史对账，实现以本节与 `SKILL.md` 的 v2 语义为准：
+
+| 主题 | v2 语义 |
+|---|---|
+| `.claude/rules` | 7 个框架文件保持纯净；用户差异抽取到 `.claude/rules/user-<name>.md` overlay；不再整文件权威覆盖 |
+| 强制规则 | 按 H3 标题归属；受管条目正文取最新模板，条目内用户追加逐字保留；用户 H3 整块保留；不再按 marker 子串删除/重排 |
+| 备份 | 任何改变既有文件字节的写入都归档到 `cadence/legacy`；`skip-backfill` 纳入备份 |
+| 开关 | `开启/打开/启用/on` 为开启，`关闭/关掉/禁用/off` 为关闭；原值不改写，别名报 `TOGGLE_ALIAS_KEPT` |
+| 基线 | `cadence/framework-state/` 本地保存 manifest/base/pending；无基线时保守保留用户内容并报 `BASE_MISSING` |
+| 冲突 | 用户内容优先；被挡住的框架新版进 `pending[]`，不静默覆盖 |
+| loss guard | 入口写入前校验被删除行归属；无法归属即失败关闭 |
+| L0 用户行 | 无法归属为框架文本的 L0 行迁到区块外保留，报 `L0_USER_LINES_RELOCATED` |
+| 入口冲突 | 条目内用户行放入“用户覆盖”块，写 `pending`/`UNIT_CONFLICT_USER_WINS`；重复规范 H3 整块保留 |
+| L1 | 与其他 `.claude/rules` 文件一样走 overlay，不再直接覆盖 |
+| dry-run | 输出 `planned_actions`/`planned_backups`/`pending`，预演 S3 overlay 与 S4 入口 |
+| project-rules | 以用户章节顺序为骨架，模板新增章节追加；不重排用户独有章节 |
+| `.gitignore` | 框架保护行保持在文件尾；其后不再允许任何 `!` 行；`--allow-security-override` 时反向规则置尾 |
+| MCP args | 按启动器/包名去重；同名包保留用户 token（含版本） |
+| 安全单元 | `.gitignore` 保护项、permission deny 框架优先并强警告；`.gitignore` 反向规则由 `mcp-configuration --allow-security-override` 显式保留 |
+
 ## 0. 八列定义与行 ID 基线
 
 十张表统一采用八列结构，列序固定为：
