@@ -323,7 +323,10 @@ class TestL0V2Migration(unittest.TestCase):
         self.assertEqual(out.count(V5_START), 1)
         self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户章节", out)
-        self.assertNotIn("旧路由", out)
+        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        self.assertNotIn("旧路由", block)
+        self.assertIn("旧路由", out)
+        self.assertTrue(any(w["code"] == "L0_USER_LINES_RELOCATED" for w in warns))
 
     def test_broken_nested_begin_preserves_user_section(self):
         """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
@@ -336,7 +339,8 @@ class TestL0V2Migration(unittest.TestCase):
         self.assertEqual(out.count(V5_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
-        self.assertNotIn("full", out)
+        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        self.assertNotIn("full", block)
 
     def test_upgrade_orphan_between_v1_pairs_preserves_user_section(self):
         """ut-l0-v2-upgrade-orphan：旧版孤儿 begin 不得跨块吞掉用户章节。"""
@@ -390,7 +394,9 @@ class TestL0V2Migration(unittest.TestCase):
         self.assertEqual(out.count(V5_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
         self.assertIn("首个当前块", out)
-        self.assertNotIn("重复当前块", out)
+        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        self.assertNotIn("重复当前块", block)
+        self.assertIn("重复当前块", out)
         self.assertIn("## 中间", out)
 
     def test_duplicate_current_blocks_classified_for_normalization(self):
@@ -1875,8 +1881,9 @@ class TestStepS4EntryFiles(unittest.TestCase):
         begin = result.index(rc.L0_BEGIN)
         end = result.index(rc.L0_END, begin) + len(rc.L0_END)
         self.assertEqual(result[begin:end].strip(), self.kernel.strip())
-        # 区块外保留用户内容（漂移内容被移除）
-        self.assertNotIn("漂移内容", result)
+        # 区块外保留用户内容（漂移行迁出区块后保留）
+        self.assertNotIn("漂移内容", result[begin:end])
+        self.assertIn("漂移内容", result)
         self.assertIn("- 用户规则", result)
         # I2：缺失摘要按 SM-02 补齐（L0 处理与摘要补全是独立动作）
         self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", result)
@@ -1901,7 +1908,8 @@ class TestStepS4EntryFiles(unittest.TestCase):
         begin = result.index(rc.L0_BEGIN)
         end = result.index(rc.L0_END, begin) + len(rc.L0_END)
         self.assertEqual(result[begin:end].strip(), self.kernel.strip())
-        self.assertNotIn("漂移内容", result)
+        self.assertNotIn("漂移内容", result[begin:end])
+        self.assertIn("漂移内容", result)
         self.assertIn("- 用户规则", result)
 
 
@@ -2131,10 +2139,10 @@ class TestSummaryDedup(unittest.TestCase):
             rc.run_apply(self.root, _intents(no_interrupt=True), report)
         section = claude.read_text(encoding="utf-8")
         self.assertEqual(
-            section.count(".claude/rules/document-storage.md"), 1
+            section.count(".claude/rules/document-storage.md"), 2
         )
         self.assertIn(standard_line, section.splitlines())
-        self.assertNotIn(custom_line, section.splitlines())
+        self.assertIn(custom_line, section.splitlines())
 
     def test_duplicate_ref_deduped(self):
         claude = self.root / "CLAUDE.md"
@@ -2153,10 +2161,10 @@ class TestSummaryDedup(unittest.TestCase):
         ):
             rc.run_apply(self.root, _intents(no_interrupt=True), report)
         section = claude.read_text(encoding="utf-8")
-        self.assertEqual(section.count("language.md"), 1)
-        self.assertNotIn(first_line, section.splitlines())
+        self.assertEqual(section.count("language.md"), 3)
+        self.assertIn(first_line, section.splitlines())
+        self.assertIn(duplicate_line, section.splitlines())
         self.assertIn("- **必须使用中文回答** → 详见 `.claude/rules/language.md`", section.splitlines())
-        self.assertNotIn(duplicate_line, section.splitlines())
 
 
 class TestNormalizeMandatoryRulesLegacy(unittest.TestCase):
@@ -2246,13 +2254,13 @@ class TestNormalizeMandatoryRulesLegacy(unittest.TestCase):
                 self.assertNotIn("### 6. 项目个性化规则（强制规则）", out)
 
     def test_multi_marker_dedup_recomputes_missing_from_result(self):
-        """删除含重复 marker 的多引用行后，补回该行承载的唯一规则引用。"""
+        """含多个 marker 的用户行保留，同时补回规范条目。"""
         combined_line = "- **组合引用** language.md + code-usage.md"
         text = rc.BASE_CLAUDE_MD.replace(rc.RULE2_TEXT_NONCODING, combined_line)
         out = rc._normalize_mandatory_rules(text, "CLAUDE.md", "non-coding", set())[0]
-        self.assertNotIn(combined_line, out.splitlines())
+        self.assertIn(combined_line, out.splitlines())
         self.assertIn(rc.RULE2_TEXT_NONCODING, out.splitlines())
-        self.assertEqual(out.count("code-usage.md"), 1)
+        self.assertEqual(out.count("code-usage.md"), 2)
 
     def test_agents_rule6_block_variant(self):
         """ut-ensure_summary-agents-rule6 / Important 1（AGENTS.md 规则 6 块文本与 CLAUDE.md 不同）"""
@@ -2268,7 +2276,7 @@ class TestNormalizeMandatoryRulesLegacy(unittest.TestCase):
         )
         out = rc._normalize_mandatory_rules(text, "AGENTS.md", "non-coding", set())[0]
         self.assertIn("### 6. 项目个性化规则\n", out)
-        self.assertIn("- 禁止在 `.claude/rules/` 目录中添加用户自定义规则", out)
+        self.assertIn("- **禁止修改 `.claude/rules/` 下的 7 个框架规则文件**", out)
 
 
 KB_AGENTS = "# KB\n\nEnglish knowledge base content.\n\n## NOTES\n\n- keep me\n"
@@ -2311,11 +2319,12 @@ class TestNormalizeMandatoryRules(unittest.TestCase):
         self.assertNotIn("### 8.", out)
 
     def test_dedup_same_ref(self):
-        """ut-norm-dedup：同规则文件多引用保留首个。"""
+        """ut-norm-user-ref：用户重复引用行保留，规范条目同时存在。"""
         text = ("## 强制规则\n\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
                 "- 重复行 `.claude/rules/language.md`\n")
         out, _ = self._norm(text)
-        self.assertEqual(out.count("language.md"), 1)
+        self.assertEqual(out.count("language.md"), 2)
+        self.assertIn("- 重复行 `.claude/rules/language.md`", out)
 
     def test_idempotent(self):
         """ut-norm-idempotent：二次运行逐字不变。"""
@@ -2353,13 +2362,13 @@ class TestNormalizeMandatoryRules(unittest.TestCase):
         self.assertNotIn("Playwright", out2)
 
     def test_user_h3_block_moved_as_whole(self):
-        """ut-norm-user-h3：用户 H3 小节整体平移到权威条目之后。"""
+        """ut-norm-user-h3：用户 H3 小节整块保留，不拆散。"""
         text = ("## 强制规则\n\n### 1. 语言规则\n- **必须使用中文回答** → 详见 `.claude/rules/language.md`\n"
                 "### 我的自定义小节\n正文第一行\n正文第二行\n")
         out, warns = self._norm(text)
         idx_custom = out.index("### 我的自定义小节")
         idx_rule7 = out.index("### 7. 代码阅读规则")
-        self.assertGreater(idx_custom, idx_rule7)
+        self.assertLess(idx_custom, idx_rule7)
         self.assertIn("正文第一行\n正文第二行", out)
 
     def test_orphan_rule6_outside_section_warns(self):
@@ -2532,8 +2541,8 @@ class TestComputePlanFinalReview(unittest.TestCase):
             a["path"]: a for a in plan["steps"][rc.STEP_ENTRY_FILES]["assets"]
         }
         self.assertEqual(assets["CLAUDE.md"]["action"], "insert")
-        self.assertEqual(assets["CLAUDE.md"]["backup_needed"], False)
-        self.assertNotIn(self.root / "CLAUDE.md", plan["backup_needs"])
+        self.assertEqual(assets["CLAUDE.md"]["backup_needed"], True)
+        self.assertIn(self.root / "CLAUDE.md", plan["backup_needs"])
 
     def test_upgrade_is_deterministic_action_with_backup(self):
         """ut-compute_plan-l0-upgrade-deterministic / 终审 I-2 + L0-04
@@ -2699,8 +2708,7 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         self.root = Path(self.tmp.name)
 
     def test_invalid_mcpjson_backed_up_before_rewrite(self):
-        """ut-s8-mcpjson-invalid-backup / codex 终审 C2
-        （无效 .mcp.json → 重写前备份存在 + 原子重写 + 原内容保留在备份中）"""
+        """无效 .mcp.json → 先备份，保持原文件不重建，整体 degraded。"""
         mcp = self.root / ".mcp.json"
         mcp.write_text("{invalid json\n", encoding="utf-8")
         report = {"backups": []}
@@ -2711,8 +2719,12 @@ class TestS8EnsureMcpConfigs(unittest.TestCase):
         )
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(encoding="utf-8"), "{invalid json\n")
-        doc = json.loads(mcp.read_text(encoding="utf-8"))
-        self.assertIn("codegraph", doc["mcpServers"])
+        self.assertEqual(mcp.read_text(encoding="utf-8"), "{invalid json\n")
+        self.assertEqual(report["overall"], "degraded")
+        self.assertTrue(any(
+            w.get("code") == "UNIT_UNPARSEABLE"
+            for w in report.get("warnings", [])
+        ))
         self.assertEqual(report["backups"][0]["file"], str(mcp))
         self.assertEqual(report["backups"][0]["backup"], str(backups[0]))
 
@@ -3733,27 +3745,27 @@ class TestPermissionGateMerge(unittest.TestCase):
         self.assertEqual(skipped[0]["kind"], "unparseable")
 
     def test_allow_not_downgraded(self):
-        """ut-gate-allow：用户显式 allow 的工具不降级为 deny，保守跳过并标明。"""
+        """安全单元框架优先：用户显式 allow 仍写入受管 deny。"""
         existing = json.dumps({
             "permissions": {"allow": ["Grep"], "deny": []},
         }, ensure_ascii=False, indent=2)
         new_text, skipped = rc.merge_permission_gate(existing, self._entries())
-        self.assertEqual([s["kind"] for s in skipped], ["allow-conflict"])
+        self.assertEqual([s["kind"] for s in skipped], ["allow-overridden"])
         self.assertEqual(skipped[0]["entry"], "Grep")
         deny = json.loads(new_text)["permissions"]["deny"]
-        self.assertNotIn("Grep", deny)
+        self.assertIn("Grep", deny)
         self.assertIn("Glob", deny)
 
     def test_all_denies_skipped_writes_no_region(self):
-        """ut-gate-all-skipped：拦截条目全部被跳过时不生成受管区。"""
+        """安全单元框架优先：全部冲突仍生成受管 deny 区。"""
         existing = json.dumps({
             "permissions": {"allow": ["Grep", "Glob", "Bash"]},
         }, ensure_ascii=False, indent=2)
         new_text, skipped = rc.merge_permission_gate(existing, self._entries())
-        # 全部被跳过→不写 deny 键：.get 消除 KeyError，断言无键/无受管标记
         deny = json.loads(new_text).get("permissions", {}).get("deny")
-        self.assertTrue(deny is None or rc.PERMISSION_GATE_BEGIN not in deny)
-        self.assertEqual([s["kind"] for s in skipped], ["allow-conflict"] * 3)
+        self.assertIsNotNone(deny)
+        self.assertIn(rc.PERMISSION_GATE_BEGIN, deny)
+        self.assertEqual([s["kind"] for s in skipped], ["allow-overridden"] * 3)
 
     def test_idempotent_rerun(self):
         """ut-gate-idempotent：同一批条目重复合并结果稳定。"""

@@ -122,6 +122,10 @@ load_mirror "$MIRROR"
 
 # JSON 步骤累积（每项一行紧凑 JSON，由报告汇总）。
 STEPS_JSON=""
+# 报告级警告累积（内容级关注项，不影响 overall/退出码）。
+WARNINGS_JSON=""
+# 报告级归档清单累积（凡写入项目既有文件前的归档都在此可见）。
+BACKUPS_JSON=""
 
 # 项目根固定为调用 cwd 的物理路径；所有阶段动作消费此根目录。
 PROJECT_ROOT="$(pwd -P)"
@@ -273,6 +277,169 @@ verify_openspec_clients() {
   client_openspec_ready claude && client_openspec_ready codex && client_openspec_ready pi && client_openspec_ready kimi
 }
 
+# --- OpenSpec 投影用户修改保护 ---
+# `openspec init/update` 会重写客户端投影（.claude/commands/opsx、.agents|.pi|.kimi-code
+# 的 openspec-* skill 等）。用户在投影上的手改会被静默覆盖。保护流程：
+#   1. 执行前枚举投影文件、取只读哈希快照，并把每个既有文件的前像暂存到临时目录
+#      （前像暂存可覆盖“外部命令删除文件”的情况）；
+#   2. 执行后重新枚举并快照；
+#   3. 对“执行前存在、执行后被改写或删除”的文件，把前像归档到
+#      `cadence/legacy/<14位时间戳>/<相对路径>`，并报告
+#      EXTERNAL_PROJECTION_USER_EDIT_OVERWRITTEN。
+# 幂等命令（update 写回相同内容）不改哈希，因此不归档、不告警。
+# 说明（裁决）：pre-check 自身从不生成投影内容，“本次 pre-check 生成的预期内容”
+# 无法离线推导；这里以“执行后内容是否等于执行前内容”判定是否被外部命令改写，
+# 即改写前的既有内容视为非本次生成（用户手改或旧 CLI 版本产物）。同时不写任何
+# 基线清单，避免给幂等路径引入额外项目写入（既有 zero-write 契约依赖此性质）。
+# guard 自身任何失败只记录 PROJECTION_GUARD_FAILED 警告，绝不阻断 pre-check。
+PROJECTION_GUARD_ACTIVE=0
+PROJECTION_GUARD_DIR=""
+PROJECTION_GUARD_PRE=""
+PROJECTION_GUARD_POST=""
+PROJECTION_GUARD_STAGE=""
+PROJECTION_GUARD_TAB="$(printf '\t')"
+
+# 单文件哈希：sha256 优先，mac/BSD 回退 shasum，再退 md5sum/cksum。
+projection_hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v md5sum >/dev/null 2>&1; then
+    md5sum "$1" 2>/dev/null | cut -d' ' -f1
+  else
+    cksum "$1" 2>/dev/null | cut -d' ' -f1
+  fi
+}
+
+# 枚举投影文件，输出相对 PROJECT_ROOT 的路径（每行一个，排序去重）。
+# 只读：仅 find/printf，不触碰文件内容。
+projection_collect_files() {
+  _pc_out="$1"
+  : > "$_pc_out" || return 1
+  if [ -d "$PROJECT_ROOT/.claude/commands/opsx" ]; then
+    ( cd "$PROJECT_ROOT" && find .claude/commands/opsx -type f -print ) >> "$_pc_out" || return 1
+  fi
+  for _pc_base in .claude/skills .agents/skills .codex/skills .pi/skills .kimi-code/skills; do
+    [ -d "$PROJECT_ROOT/$_pc_base" ] || continue
+    for _pc_dir in "$PROJECT_ROOT/$_pc_base"/openspec-*; do
+      [ -d "$_pc_dir" ] || continue
+      _pc_rel="${_pc_dir#"$PROJECT_ROOT"/}"
+      ( cd "$PROJECT_ROOT" && find "$_pc_rel" -type f -print ) >> "$_pc_out" || return 1
+    done
+  done
+  if [ -d "$PROJECT_ROOT/.pi/prompts" ]; then
+    for _pc_file in "$PROJECT_ROOT/.pi/prompts"/opsx-*.md; do
+      [ -f "$_pc_file" ] || continue
+      printf '%s\n' "${_pc_file#"$PROJECT_ROOT"/}" >> "$_pc_out" || return 1
+    done
+  fi
+  LC_ALL=C sort -u "$_pc_out" > "$_pc_out.sorted" || return 1
+  mv "$_pc_out.sorted" "$_pc_out" || return 1
+  return 0
+}
+
+# 生成 `<hash>\t<相对路径>` 快照（确定性：文件清单已排序）。
+projection_write_snapshot() {
+  _pws_list="$1"; _pws_out="$2"
+  : > "$_pws_out" || return 1
+  while IFS= read -r _pws_rel; do
+    [ -n "$_pws_rel" ] || continue
+    _pws_hash="$(projection_hash_file "$PROJECT_ROOT/$_pws_rel")"
+    [ -n "$_pws_hash" ] || return 1
+    printf '%s\t%s\n' "$_pws_hash" "$_pws_rel" >> "$_pws_out" || return 1
+  done < "$_pws_list"
+  return 0
+}
+
+# 执行外部命令前的快照 + 前像暂存；失败只告警并放弃本次保护。
+projection_guard_begin() {
+  PROJECTION_GUARD_ACTIVE=0
+  _pg_dir="$(mktemp -d "${TMPDIR:-/tmp}/cadence-projection-guard.XXXXXX" 2>/dev/null)"
+  if [ -z "$_pg_dir" ] || [ ! -d "$_pg_dir" ]; then
+    add_warning "PROJECTION_GUARD_FAILED" "投影保护临时目录创建失败，本次未保护投影" "" ""
+    return 0
+  fi
+  PROJECTION_GUARD_DIR="$_pg_dir"
+  _pg_list="$PROJECTION_GUARD_DIR/files.pre"
+  PROJECTION_GUARD_PRE="$PROJECTION_GUARD_DIR/snapshot.pre"
+  PROJECTION_GUARD_STAGE="$PROJECTION_GUARD_DIR/stage"
+  if ! projection_collect_files "$_pg_list" \
+    || ! projection_write_snapshot "$_pg_list" "$PROJECTION_GUARD_PRE" \
+    || ! mkdir -p "$PROJECTION_GUARD_STAGE"; then
+    add_warning "PROJECTION_GUARD_FAILED" "投影执行前快照失败，本次未保护投影" "" ""
+    rm -rf "$PROJECTION_GUARD_DIR"
+    PROJECTION_GUARD_DIR=""
+    return 0
+  fi
+  while IFS= read -r _pg_rel; do
+    [ -n "$_pg_rel" ] || continue
+    if ! mkdir -p "$PROJECTION_GUARD_STAGE/$(dirname "$_pg_rel")" 2>/dev/null \
+      || ! cp -p "$PROJECT_ROOT/$_pg_rel" "$PROJECTION_GUARD_STAGE/$_pg_rel" 2>/dev/null; then
+      add_warning "PROJECTION_GUARD_FAILED" "投影前像暂存失败，本次未保护投影" "$_pg_rel" ""
+      rm -rf "$PROJECTION_GUARD_DIR"
+      PROJECTION_GUARD_DIR=""
+      return 0
+    fi
+  done < "$_pg_list"
+  PROJECTION_GUARD_ACTIVE=1
+  return 0
+}
+
+# 执行外部命令后的比较与归档；失败只告警，返回值恒为 0（不阻断主流程）。
+projection_guard_finish() {
+  [ "$PROJECTION_GUARD_ACTIVE" -eq 1 ] || return 0
+  PROJECTION_GUARD_ACTIVE=0
+  _pg_post_list="$PROJECTION_GUARD_DIR/files.post"
+  PROJECTION_GUARD_POST="$PROJECTION_GUARD_DIR/snapshot.post"
+  if ! projection_collect_files "$_pg_post_list" \
+    || ! projection_write_snapshot "$_pg_post_list" "$PROJECTION_GUARD_POST"; then
+    add_warning "PROJECTION_GUARD_FAILED" "投影执行后快照失败，无法判定是否被覆盖" "" ""
+    rm -rf "$PROJECTION_GUARD_DIR"
+    PROJECTION_GUARD_DIR=""
+    return 0
+  fi
+  _pg_ts="$(date +%Y%m%d%H%M%S)"
+  # 与 rule-config 归档约定一致：同秒已有归档目录时追加 -2/-3，避免覆盖。
+  _pg_ts_base="$_pg_ts"
+  _pg_ts_seq=2
+  while [ -d "$PROJECT_ROOT/cadence/legacy/$_pg_ts" ]; do
+    _pg_ts="$_pg_ts_base-$_pg_ts_seq"
+    _pg_ts_seq=$((_pg_ts_seq + 1))
+  done
+  _pg_gitignore_done=0
+  while IFS="$PROJECTION_GUARD_TAB" read -r _pg_hash _pg_rel; do
+    [ -n "$_pg_rel" ] || continue
+    _pg_after="$(awk -F'\t' -v r="$_pg_rel" '$2==r { print $1; exit }' "$PROJECTION_GUARD_POST" 2>/dev/null)"
+    # 内容未变（含幂等命令写回相同内容）或文件仍为同一内容 → 无覆盖，无需归档。
+    [ "$_pg_after" = "$_pg_hash" ] && continue
+    _pg_stage_file="$PROJECTION_GUARD_STAGE/$_pg_rel"
+    if [ ! -f "$_pg_stage_file" ]; then
+      add_warning "PROJECTION_GUARD_FAILED" "投影前像缺失，无法归档被覆盖内容" "$_pg_rel" ""
+      continue
+    fi
+    _pg_archive_rel="cadence/legacy/$_pg_ts/$_pg_rel"
+    if mkdir -p "$PROJECT_ROOT/cadence/legacy/$_pg_ts/$(dirname "$_pg_rel")" 2>/dev/null \
+      && cp -p "$_pg_stage_file" "$PROJECT_ROOT/$_pg_archive_rel" 2>/dev/null; then
+      add_warning "EXTERNAL_PROJECTION_USER_EDIT_OVERWRITTEN" \
+        "openspec 外部命令改写了投影文件，改前内容已归档" "$_pg_rel" "$_pg_archive_rel"
+      add_backup "$_pg_rel" "$_pg_archive_rel" "projection-user-edit-overwritten"
+      # 与 rule-config 归档约定一致：cadence/legacy 只保留 .gitignore 可追踪。
+      if [ "$_pg_gitignore_done" -eq 0 ]; then
+        if [ ! -f "$PROJECT_ROOT/cadence/legacy/.gitignore" ]; then
+          printf '*\n!.gitignore\n' > "$PROJECT_ROOT/cadence/legacy/.gitignore" 2>/dev/null
+        fi
+        _pg_gitignore_done=1
+      fi
+    else
+      add_warning "PROJECTION_GUARD_FAILED" "投影改前内容归档失败" "$_pg_rel" ""
+    fi
+  done < "$PROJECTION_GUARD_PRE"
+  rm -rf "$PROJECTION_GUARD_DIR"
+  PROJECTION_GUARD_DIR=""
+  return 0
+}
+
 do_openspec_phase() {
   if [ ! -f "$PROJECT_ROOT/openspec/config.yaml" ]; then
     log "${C_YEL}ℹ️  openspec/config.yaml 缺失，将由后续 rule-config 步骤 11 创建${C_NC}"
@@ -287,9 +454,11 @@ do_openspec_phase() {
     _init_missing="$OPENSPEC_MISSING"
     PHASE_CURRENT_SKIPPED="$OPENSPEC_SKIPPED"
     log "${C_BLU}🧩 OpenSpec 补齐缺失客户端：$OPENSPEC_MISSING${C_NC}"
+    projection_guard_begin
     openspec init --tools "$OPENSPEC_MISSING" >/dev/null 2>&1 || {
       PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
       PHASE_CURRENT_ERROR="openspec init 失败（tools=$OPENSPEC_MISSING）"
+      projection_guard_finish
       return 1
     }
     # 缺失分支 init 后最多一次 update；齐全分支 run 模式执行一次 update，check 模式仅只读复核。
@@ -304,18 +473,23 @@ do_openspec_phase() {
       openspec update >/dev/null 2>&1 || {
         PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
         PHASE_CURRENT_ERROR="openspec update 失败"
+        projection_guard_finish
         return 1
       }
       PHASE_CURRENT_CREATED=$((PHASE_CURRENT_CREATED + 1))
     fi
+    projection_guard_finish
   else
     if [ "$MODE" = "run" ]; then
       PHASE_CURRENT_ACTION="update-verify"
+      projection_guard_begin
       openspec update >/dev/null 2>&1 || {
         PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
         PHASE_CURRENT_ERROR="openspec update 失败"
+        projection_guard_finish
         return 1
       }
+      projection_guard_finish
     else
       PHASE_CURRENT_ACTION="verify-ready"
     fi
@@ -1021,6 +1195,32 @@ add_step() {
   if [ -z "$STEPS_JSON" ]; then STEPS_JSON="$_item"; else STEPS_JSON="$STEPS_JSON,$_item"; fi
 }
 
+# 追加一条报告级警告：code 为稳定枚举，detail 供人读，path/archive 可选。
+# 警告只进入 warnings[]，不改变 overall 与退出码（内容级关注项不失败关闭）。
+add_warning() {
+  _code="$(json_escape "$1")"; _detail="$(json_escape "$2")"
+  _item="{\"code\":\"$_code\",\"detail\":\"$_detail\""
+  if [ -n "${3:-}" ]; then _item="$_item,\"path\":\"$(json_escape "$3")\""; fi
+  if [ -n "${4:-}" ]; then _item="$_item,\"archive\":\"$(json_escape "$4")\""; fi
+  _item="$_item}"
+  if [ -z "$WARNINGS_JSON" ]; then
+    WARNINGS_JSON="$_item"
+  else
+    WARNINGS_JSON="$WARNINGS_JSON,$_item"
+  fi
+}
+
+# 追加一条归档记录到 backups[]：源相对路径 + 归档相对路径 + 原因。
+add_backup() {
+  _bp_path="$(json_escape "$1")"; _bp_archive="$(json_escape "$2")"; _bp_reason="$(json_escape "$3")"
+  _item="{\"path\":\"$_bp_path\",\"archive\":\"$_bp_archive\",\"reason\":\"$_bp_reason\"}"
+  if [ -z "$BACKUPS_JSON" ]; then
+    BACKUPS_JSON="$_item"
+  else
+    BACKUPS_JSON="$BACKUPS_JSON,$_item"
+  fi
+}
+
 # 从 STEPS_JSON 删除指定 name 的旧步骤项（升级后用于替换 do_* 已加的 ready 项，避免重复）。
 # 每项均为无嵌套花括号的紧凑 JSON，可按 {"name":"<n>"...} 精确匹配删除后清理多余逗号。
 remove_step() {
@@ -1314,6 +1514,8 @@ emit_report() {
   printf '  "overall": "%s",\n' "$_overall"
   printf '  "steps": [%s],\n' "$STEPS_JSON"
   printf '  "phases": [%s],\n' "$PHASES_JSON"
+  printf '  "warnings": [%s],\n' "$WARNINGS_JSON"
+  printf '  "backups": [%s],\n' "$BACKUPS_JSON"
   printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
   printf '  "hints": {"superpowers_git_candidates": %s}\n' "$_git_candidates"
   printf '}\n'

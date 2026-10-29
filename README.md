@@ -247,9 +247,33 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 
 `/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读五项自检（L0 版本/规则哈希/权限投影/内联漂移/软链解析，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
 
-入口文件规范化：`CLAUDE.md` / `AGENTS.md` 中的 `## 强制规则` 章节会被规范化生成或修复（权威条目重排编号、清理已退役规则残留、用户自有内容逐字保留）；L0 旧版内核确定性升级，重跑幂等零变更。
+入口文件规范化：`CLAUDE.md` / `AGENTS.md` 中的 `## 强制规则` 章节按 H3 标题归属重建受管条目，条目内用户追加与用户自定义 H3 逐字保留；不再按路径 marker 子串删除用户行。L0 旧版内核确定性升级，重跑幂等零变更。
 
-产物自动提交开关：初始化后入口文件 `## 项目配置` 章节会出现一行 `- **产物自动提交（design/plan/code）**：关闭`。默认关闭时，Agent 写完设计文档、实施计划或实现类产物后不会自动 `git commit`，只汇报产物路径；把该行的值改为 `开启` 即启用自动提交（仅精确值 `开启` 有效，其余值按关闭处理）。读取以 CLAUDE.md 为准、AGENTS.md 为兜底，双入口不一致按关闭处理。修改后无需重跑初始化。
+规则文件与可重跑语义：`.claude/rules/` 下 7 个框架规则文件始终保持为当前模板；用户直接修改框架文件时，`rule-config` 把差异抽取到 `.claude/rules/user-<name>.md` overlay，再由入口声明其优先级。任何实际写入先归档到 `cadence/legacy/`，第二次重跑零写入。基线状态保存在本地 `cadence/framework-state/`，不提交 VCS。
+
+产物自动提交开关：初始化后入口文件 `## 项目配置` 章节会出现一行 `- **产物自动提交（design/plan/code）**：关闭`。默认关闭时，Agent 写完设计文档、实施计划或实现类产物后不会自动 `git commit`，只汇报产物路径；把该行的值改为 `开启` 即启用自动提交（`打开`、`启用`、`on` 视为等价别名，但建议使用精确值 `开启`；其余值按关闭处理）。读取以 CLAUDE.md 为准、AGENTS.md 为兜底，双入口不一致按关闭处理。修改后无需重跑初始化。
+
+### 重复初始化（no-interrupt 重跑）
+
+四步都可重复执行：`pre-check`、`mcp-configuration`、`rule-config`、`project-rules-examples` 均支持 `--no-interrupt`，在项目已完成初始化并被人工修改后再次运行，用于升级框架内容而不覆盖人工修改。
+
+重跑时的确定性承诺：
+
+- **框架内容升级**：`.claude/rules/` 框架规则文件、入口受管条目、L0 内核升级到当前版本。
+- **用户内容零丢失**：入口规范条目内的人工内容被放入「用户覆盖」块（声明优先级高于框架条目）；`.claude/rules` 的用户差异抽取到 `user-<name>.md` overlay；`cadence/project-rules/` 含用户内容的文件不被通用模板章节追加。
+- **写前归档**：任何改变既有文件字节的写入都先归档到 `cadence/legacy/<14位时间戳>/<相对路径>`。
+- **幂等**：同版本第二次重跑零写入、零备份。
+- **冲突可见**：被人工内容挡住的框架新版写入 `cadence/framework-state/pending/latest.json`；基线与 overlay 抽取记录保存在本地 `cadence/framework-state/`（不进版本库）。
+
+`project-rules-examples` 与 `mcp-configuration` 均为确定性脚本，不做模型语义合并：`mcp-config.py` 按包名/启动器语义去重 `args`（同名包保留人工固定版本）；`apply.py` 以人工文件的章节顺序为骨架，模板新增章节追加到末尾。
+
+已知限制（重跑前请知悉）：
+
+- 若人工**删除过** `.claude/rules` 中的某一行，该行可能被「旧模板子集」判定为旧版内容而恢复，且不给 warning。
+- 无历史基线的存量项目首次升级会报 `BASE_MISSING`，差异按保守模式处理。
+- `dry-run` 只预演规则文件 overlay 与入口写入，不预演 `codegraph` 等外部步骤。
+
+初始化完成后由使用者自行比对文件确认；需要回退时，从 `cadence/legacy/<时间戳>/` 取写前副本。
 
 ## 13 个 Skills
 
