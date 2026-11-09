@@ -100,10 +100,9 @@ new_home() {
 run_installer() {
   local output="$1"
   shift
-  set +e
-  "$@" > "$output" 2>&1
-  LAST_STATUS=$?
-  set -e
+  # 预期失败的命令用 || 承接：既不触发 errexit，也不触发 ERR trap
+  LAST_STATUS=0
+  "$@" > "$output" 2>&1 || LAST_STATUS=$?
   LAST_OUTPUT="$output"
 }
 
@@ -202,10 +201,8 @@ test_clone_failure() {
   new_home "$case_name"
   export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
   make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
-  set +e
-  CLONE_MODE=all-fail bash "$INSTALLER" > "$HOME/out" 2>&1
-  status=$?
-  set -e
+  status=0
+  CLONE_MODE=all-fail bash "$INSTALLER" > "$HOME/out" 2>&1 || status=$?
   test "$status" -ne 0
   assert_contains "$HOME/out" 'ghfast.top'
   assert_contains "$HOME/out" 'gh-proxy.com'
@@ -221,10 +218,8 @@ test_non_git_target() {
   mkdir -p "$HOME/.agents/Cadence-skills"
   printf 'keep\n' > "$HOME/.agents/Cadence-skills/user-file"
   before="$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
-  set +e
-  bash "$INSTALLER" > "$HOME/out" 2>&1
-  status=$?
-  set -e
+  status=0
+  bash "$INSTALLER" > "$HOME/out" 2>&1 || status=$?
   test "$status" -ne 0
   assert_contains "$HOME/out" '请删除 ~/.agents/Cadence-skills 后重新运行'
   test "$before" = "$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
