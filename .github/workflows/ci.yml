@@ -185,6 +185,10 @@ jobs:
           out="$(HOME="$test_home" /bin/bash tests/test-install.sh 2>&1)"
           status=$?
           printf '%s\n' "$out"
+          if [ "$status" -ne 0 ]; then
+            printf -- '--- 失败复现：bash -x 跟踪尾部 ---\n' >&2
+            HOME="$test_home" /bin/bash -x tests/test-install.sh 2>&1 | tail -40 >&2
+          fi
           exit "$status"
 
       - name: 安装器 dry-run（bash 3.2）
