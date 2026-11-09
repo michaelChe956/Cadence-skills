@@ -35,15 +35,38 @@ fail_test() {
 }
 assert_contains() { grep -F -- "$2" "$1" >/dev/null || fail_test "未找到 [$2] 于 $1"; }
 assert_not_exists() { [[ ! -e "$1" && ! -L "$1" ]] || fail_test "不应存在：$1"; }
+# 单文件哈希：sha256 优先，macOS/BSD 回退 shasum，再退 md5sum/cksum（三端门禁）
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v md5sum >/dev/null 2>&1; then
+    md5sum "$1" 2>/dev/null | cut -d' ' -f1
+  else
+    cksum "$1" 2>/dev/null | cut -d' ' -f1
+  fi
+}
+
 snapshot_home() {
   local root="$1" out="$2"
   {
-    find "$root/.agents" "$root/.claude" "$root/.codex" -mindepth 1 -maxdepth 8 -printf '%y %p\n' 2>/dev/null | sort
+    # 三端可移植的树快照：不使用 GNU 专有的 find -printf
+    find "$root/.agents" "$root/.claude" "$root/.codex" -mindepth 1 -maxdepth 8 2>/dev/null | sort |
+      while IFS= read -r path; do
+        if [ -L "$path" ]; then
+          printf 'l %s\n' "$path"
+        elif [ -d "$path" ]; then
+          printf 'd %s\n' "$path"
+        else
+          printf 'f %s\n' "$path"
+        fi
+      done
     find "$root/.agents" "$root/.claude" "$root/.codex" -type l -print0 2>/dev/null |
       while IFS= read -r -d '' link; do
         printf 'LINK %s -> %s\n' "$link" "$(readlink -- "$link")"
       done | sort
-    sha256sum "$root/.claude/plugins/known_marketplaces.json" 2>/dev/null || true
+    hash_file "$root/.claude/plugins/known_marketplaces.json" 2>/dev/null || true
   } > "$out"
 }
 new_home() {
@@ -176,14 +199,14 @@ test_non_git_target() {
   new_home "$case_name"
   mkdir -p "$HOME/.agents/Cadence-skills"
   printf 'keep\n' > "$HOME/.agents/Cadence-skills/user-file"
-  before="$(sha256sum "$HOME/.agents/Cadence-skills/user-file")"
+  before="$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
   set +e
   bash "$INSTALLER" > "$HOME/out" 2>&1
   status=$?
   set -e
   test "$status" -ne 0
   assert_contains "$HOME/out" '请删除 ~/.agents/Cadence-skills 后重新运行'
-  test "$before" = "$(sha256sum "$HOME/.agents/Cadence-skills/user-file")"
+  test "$before" = "$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
   pass "$case_name"
 }
 
@@ -548,7 +571,10 @@ test_installer_reexec_after_update() {
 
   # 执行中的安装脚本副本 + 仓库更新后替换成的新版本（带标记行）
   cp "$INSTALLER" "$HOME/installer-copy.sh"
-  sed '1a printf "[cadence][test] 使用更新后的安装脚本\\n"' "$INSTALLER" > "$HOME/installer-new.sh"
+  { printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'printf "[cadence][test] 使用更新后的安装脚本\n"'
+    printf 'exec "${BASH:-bash}" "%s"\n' "$INSTALLER"
+  } > "$HOME/installer-new.sh"
   export CADENCE_TEST_INSTALLER="$HOME/installer-copy.sh"
   export CADENCE_TEST_NEW_INSTALLER="$HOME/installer-new.sh"
   # 更新前的旧布局：共享层受管链 + 旧 Codex 嵌套层受管链

@@ -694,7 +694,7 @@ uninstall() {
   execute_plan
 }
 
-# 脚本自身指纹（cksum 为 POSIX 工具，macOS 自带）：用于判断仓库更新是否改写了本脚本
+# 脚本自身指纹：cksum 是 POSIX 标准工具，Linux 与 macOS 自带，用于判断仓库更新是否改写了本脚本
 installer_fingerprint() {
   cksum "$INSTALLER_SELF" 2>/dev/null || true
 }
@@ -710,7 +710,8 @@ run_install() {
         "${CADENCE_INSTALLER_REEXEC:-0}" != "1" ]]; then
     log "安装脚本已更新为新版本，改用新版本重新执行"
     export CADENCE_INSTALLER_REEXEC=1
-    exec bash "$INSTALLER_SELF" "$@"
+    # 用当前解释器重跑，避免 PATH 中的 bash 版本漂移（macOS 自带 bash 3.2）
+    exec "${BASH:-bash}" "$INSTALLER_SELF" "$@"
   fi
   DRY_RUN=0
   sync_links
