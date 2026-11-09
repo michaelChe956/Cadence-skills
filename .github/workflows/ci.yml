@@ -187,8 +187,13 @@ jobs:
           printf '%s\n' '--- 语法检查 ---'
           /bin/bash -n tests/test-install.sh
           printf 'syntax_exit=%s\n' "$?"
-          printf '%s\n' '--- 直接执行前 5 行跟踪 ---'
-          /bin/bash -x tests/test-install.sh 2>&1 | head -20
+          printf '%s\n' '--- mkdir 探针（复刻 new_home 的建目录动作）---'
+          probe_root="$(mktemp -d "${TMPDIR:-/tmp}/cadence-install-tests.XXXXXX")"
+          mkdir -pv "$probe_root/home-third-party-install" 2>&1
+          printf 'mkdir_rc=%s\n' "$?"
+          ls -ld "$probe_root" 2>&1
+          printf '%s\n' '--- 执行跟踪尾部（看失败命令与错误原文）---'
+          /bin/bash -x tests/test-install.sh 2>&1 | tail -30
           printf 'trace_exit=%s\n' "$?"
 
       - name: 隔离 HOME 集成测试（bash 3.2 + BSD 工具）
