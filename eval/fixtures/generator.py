@@ -80,7 +80,7 @@ def snapshot_superpowers_state(home: Path) -> dict:
     """快照源、四层软链及非目标条目，供 eval runner/断言消费。"""
     home = Path(home)
     out = {}
-    for rel in (".agents/superpowers", ".agents/skills", ".codex/skills/skills",
+    for rel in (".agents/superpowers", ".agents/skills", ".codex/skills",
                 ".claude/skills", ".pi/agent/skills"):
         base = home / rel
         if not base.exists() and not base.is_symlink():

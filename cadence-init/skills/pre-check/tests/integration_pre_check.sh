@@ -78,9 +78,9 @@ mkdir -p "$HOME_DIR/.agents"
 export CADENCE_TEST_GIT_CANDIDATES="$REMOTE"
 export REAL_GIT="$(command -v git)"
 
-# 四层各 14 条直连软链，与冻结基线完全一致。
+# 四层各 14 条直连软链，与冻结基线完全一致；Codex 层为官方约定的扁平布局。
 _SKILLS='brainstorming writing-plans executing-plans subagent-driven-development test-driven-development systematic-debugging verification-before-completion requesting-code-review receiving-code-review finishing-a-development-branch using-superpowers dispatching-parallel-agents creating-skills testing-skills'
-for _layer in "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.pi/agent/skills"; do
+for _layer in "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.pi/agent/skills"; do
   mkdir -p "$_layer"
   for _name in $_SKILLS; do
     ln -s "$HOME_DIR/.agents/superpowers/skills/$_name" "$_layer/$_name"
@@ -101,7 +101,7 @@ snapshot() {
   (cd "$HOME_DIR" && find . -type f -not -path './.git/*' -not -path './.agents/superpowers/.git/*' -not -path './.precheck-*' -not -path './.codegraph/*' | LC_ALL=C sort) | while IFS= read -r _path; do
     printf 'file home %s %s\n' "${_path#./}" "$(sha256_file "$HOME_DIR/$_path")" >> "$_out"
   done
-  for _layer in "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.pi/agent/skills"; do
+  for _layer in "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.pi/agent/skills"; do
     [ -d "$_layer" ] || continue
     for _link in "$_layer"/*; do
       [ -L "$_link" ] || continue
@@ -183,4 +183,64 @@ print('idempotency PASS')
 PY
 _python_rc=$?
 [ "$_python_rc" -eq 0 ] || exit "$_python_rc"
+
+# --- Codex 层布局场景：旧嵌套层迁移、非托管条目保留、verify 可读性复核 ---
+scenario_fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+# A. 旧嵌套层（~/.codex/skills/skills）中的受管链接迁移到扁平层，旧目录迁空后删除。
+mkdir -p "$HOME_DIR/.codex/skills/skills"
+for _name in $_SKILLS; do
+  ln -s "$HOME_DIR/.agents/superpowers/skills/$_name" "$HOME_DIR/.codex/skills/skills/$_name"
+done
+(cd "$PROJECT" && bash "$SCRIPT" run --no-interrupt > "$ROOT/migrate.json")
+_migrate_rc=$?
+[ "$_migrate_rc" -eq 0 ] || { cat "$ROOT/migrate.json" >&2; scenario_fail "旧嵌套层迁移运行失败"; }
+if [ -d "$HOME_DIR/.codex/skills/skills" ]; then
+  scenario_fail "旧嵌套层目录迁空后未删除"
+fi
+for _name in $_SKILLS; do
+  _link="$HOME_DIR/.codex/skills/$_name"
+  [ -L "$_link" ] || scenario_fail "扁平 Codex 层缺少软链：$_name"
+  [ "$(readlink "$_link")" = "$HOME_DIR/.agents/superpowers/skills/$_name" ] \
+    || scenario_fail "扁平 Codex 层软链目标不符：$_name"
+  [ -r "$_link/SKILL.md" ] || scenario_fail "扁平 Codex 层软链不可解析到可读 SKILL.md：$_name"
+done
+printf 'codex-legacy-migration PASS\n'
+
+# B. 旧嵌套层含非托管条目时保留目录与条目，并输出告警。
+mkdir -p "$HOME_DIR/.codex/skills/skills"
+printf 'third party\n' > "$HOME_DIR/.codex/skills/skills/third-party.txt"
+ln -s "$HOME_DIR/.agents/skills" "$HOME_DIR/.codex/skills/skills/third-party-link"
+(cd "$PROJECT" && bash "$SCRIPT" run --no-interrupt > "$ROOT/legacy-keep.json")
+_keep_rc=$?
+[ "$_keep_rc" -eq 0 ] || { cat "$ROOT/legacy-keep.json" >&2; scenario_fail "旧嵌套层保留场景运行失败"; }
+[ -d "$HOME_DIR/.codex/skills/skills" ] || scenario_fail "旧嵌套层含非托管条目时目录被删除"
+[ -f "$HOME_DIR/.codex/skills/skills/third-party.txt" ] || scenario_fail "旧嵌套层非托管文件被删除"
+[ -L "$HOME_DIR/.codex/skills/skills/third-party-link" ] || scenario_fail "旧嵌套层第三方链被删除"
+grep -q 'CODEX_LEGACY_ENTRY_RETAINED' "$ROOT/legacy-keep.json" || scenario_fail "缺少旧嵌套层条目保留告警"
+grep -q 'CODEX_LEGACY_DIR_RETAINED' "$ROOT/legacy-keep.json" || scenario_fail "缺少旧嵌套层目录保留告警"
+printf 'codex-legacy-retain PASS\n'
+
+# C. Codex 内置系统技能目录（~/.codex/skills/.system）不计入受管集合，不产生误报。
+mkdir -p "$HOME_DIR/.codex/skills/.system/builtin-skill"
+ln -s "$HOME_DIR/.codex/skills/.system/builtin-skill/MISSING.md" \
+  "$HOME_DIR/.codex/skills/.system/builtin-skill/SKILL.md"
+(cd "$PROJECT" && bash "$SCRIPT" run --no-interrupt > "$ROOT/system.json")
+_system_rc=$?
+[ "$_system_rc" -eq 0 ] || { cat "$ROOT/system.json" >&2; scenario_fail ".system 目录触发 verify 失败"; }
+grep -q '"overall": "success"' "$ROOT/system.json" || scenario_fail ".system 目录场景总体结果非 success"
+if grep -qE 'unreadable-(skill|target)|missing-link|broken-link' "$ROOT/system.json"; then
+  scenario_fail ".system 目录条目被计入受管集合并产生 VERIFY_ERROR"
+fi
+printf 'codex-system-dir PASS\n'
+
+# D. 受管软链最终解析不到可读 SKILL.md 时，verify 判失败并记录 VERIFY_ERROR。
+rm -f "$HOME_DIR/.agents/superpowers/skills/brainstorming/SKILL.md"
+(cd "$PROJECT" && bash "$SCRIPT" run --no-interrupt > "$ROOT/verify-fail.json")
+_verify_rc=$?
+[ "$_verify_rc" -ne 0 ] || scenario_fail "受管软链不可读时 verify 未判失败"
+grep -q 'unreadable-skill' "$ROOT/verify-fail.json" || scenario_fail "缺少 VERIFY_ERROR 记录"
+grep -q '"overall": "failed"' "$ROOT/verify-fail.json" || scenario_fail "总体结果未判失败"
+printf 'codex-verify-unreadable PASS\n'
+
 printf 'integration PASS\n'

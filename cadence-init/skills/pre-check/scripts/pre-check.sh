@@ -130,6 +130,15 @@ BACKUPS_JSON=""
 # 项目根固定为调用 cwd 的物理路径；所有阶段动作消费此根目录。
 PROJECT_ROOT="$(pwd -P)"
 
+# 四层软链目标目录。Codex 用户技能层采用官方约定的扁平布局 ~/.codex/skills/<name>
+# （与 Codex 自带的 ~/.codex/skills/.system/<name> 同构）；旧嵌套层 ~/.codex/skills/skills
+# 仅作为迁移来源被读取，不再新建条目。
+AGENTS_SKILLS_LAYER="$HOME/.agents/skills"
+CODEX_SKILLS_LAYER="$HOME/.codex/skills"
+CLAUDE_SKILLS_LAYER="$HOME/.claude/skills"
+PI_SKILLS_LAYER="$HOME/.pi/agent/skills"
+CODEX_LEGACY_SKILLS_LAYER="$HOME/.codex/skills/skills"
+
 # 五阶段报告累积（使用字符串，不使用 Bash 4 关联数组）。
 PHASES_JSON=""
 PHASE_CURRENT_STARTED_S=0
@@ -1036,6 +1045,66 @@ EOF
   return 0
 }
 
+# 目录是否为空（含隐藏条目）；空目录才允许被删除。
+dir_is_empty() {
+  _dir="$1"
+  [ -d "$_dir" ] || return 1
+  for _item in "$_dir"/* "$_dir"/.[!.]* "$_dir"/..?*; do
+    [ -e "$_item" ] || [ -L "$_item" ] || continue
+    return 1
+  done
+  return 0
+}
+
+# Codex 旧嵌套层（~/.codex/skills/skills）迁移到扁平层（~/.codex/skills）。
+# 托管判定：旧条目、扁平层同名条目、~/.agents/skills 同名条目三者都是软链，
+# 且最终解析目标一致（本阶段四层均直连 Superpowers 来源，故等价于指向 Superpowers 来源）；
+# 扁平层同名软链由本阶段先行建立，缺失即无法证明等价迁移。
+# 无法证明归属的条目（普通文件/目录/第三方链/来源已下线）一律保留并告警，绝不删除；
+# 旧目录迁空后删除目录本身，仍含非托管条目时保留目录并告警。
+migrate_codex_legacy_layer() {
+  [ "$MODE" = "check" ] && return 0
+  _legacy="$CODEX_LEGACY_SKILLS_LAYER"
+  [ -d "$_legacy" ] || return 0
+  _migrated=0
+  for _entry in "$_legacy"/* "$_legacy"/.[!.]* "$_legacy"/..?*; do
+    [ -e "$_entry" ] || [ -L "$_entry" ] || continue
+    _name="${_entry##*/}"
+    _managed=0
+    if [ -L "$_entry" ] && [ -L "$AGENTS_SKILLS_LAYER/$_name" ] && [ -L "$CODEX_SKILLS_LAYER/$_name" ]; then
+      _legacy_final="$(resolve_final_link_target "$_entry")"
+      _agents_final="$(resolve_final_link_target "$AGENTS_SKILLS_LAYER/$_name")"
+      _flat_final="$(resolve_final_link_target "$CODEX_SKILLS_LAYER/$_name")"
+      # 三者最终指向同一目标才算等价迁移；否则视为无法证明归属。
+      [ -n "$_legacy_final" ] && [ "$_legacy_final" = "$_agents_final" ] \
+        && [ "$_flat_final" = "$_agents_final" ] && _managed=1
+    fi
+    if [ "$_managed" -eq 1 ]; then
+      rm -f "$_entry" || {
+        PHASE_CURRENT_ERROR="旧 Codex 嵌套层条目移除失败：$_entry"
+        return 1
+      }
+      _migrated=$((_migrated + 1))
+    else
+      add_warning "CODEX_LEGACY_ENTRY_RETAINED" "旧 Codex 嵌套层条目无法证明归属，已保留：$_entry" "$_entry"
+    fi
+  done
+  if [ "$_migrated" -gt 0 ]; then
+    PHASE_CURRENT_UPDATED=$((PHASE_CURRENT_UPDATED + _migrated))
+    log "${C_GRN}✅ 已迁移 ${_migrated} 条旧 Codex 嵌套层链接到 ${CODEX_SKILLS_LAYER}${C_NC}"
+  fi
+  if dir_is_empty "$_legacy"; then
+    if rmdir "$_legacy" 2>/dev/null; then
+      log "${C_GRN}✅ 已删除空的旧 Codex 嵌套层目录：$_legacy${C_NC}"
+    else
+      add_warning "CODEX_LEGACY_DIR_RETAINED" "旧 Codex 嵌套层目录删除失败，已保留：$_legacy" "$_legacy"
+    fi
+  else
+    add_warning "CODEX_LEGACY_DIR_RETAINED" "旧 Codex 嵌套层仍含非托管条目，已保留目录：$_legacy" "$_legacy"
+  fi
+  return 0
+}
+
 do_superpowers_links_phase() {
   SUPERPOWERS_DIR="$HOME/.agents/superpowers"
   PHASE_CURRENT_ACTION="sync-four-layers"
@@ -1056,9 +1125,10 @@ EOF
     PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
     return 1
   }
-  for _layer in "$HOME/.agents/skills" "$HOME/.codex/skills/skills" "$HOME/.claude/skills" "$HOME/.pi/agent/skills"; do
+  for _layer in "$AGENTS_SKILLS_LAYER" "$CODEX_SKILLS_LAYER" "$CLAUDE_SKILLS_LAYER" "$PI_SKILLS_LAYER"; do
     link_layer "$_layer" || return 1
   done
+  migrate_codex_legacy_layer || return 1
   if [ "$PHASE_CURRENT_CREATED" -eq 0 ] && [ "$PHASE_CURRENT_UPDATED" -eq 0 ] && [ "$PHASE_CURRENT_CONFLICTS" -eq 0 ]; then
     PHASE_CURRENT_RESULT="skipped"
     PHASE_CURRENT_ACTION="all-skipped"
@@ -1098,10 +1168,14 @@ do_verify_phase() {
     PHASE_CURRENT_ERROR="$VERIFY_ERROR"
     return 1
   }
-  for _layer in "$HOME/.agents/skills" "$HOME/.codex/skills/skills" "$HOME/.claude/skills" "$HOME/.pi/agent/skills"; do
+  for _layer in "$AGENTS_SKILLS_LAYER" "$CODEX_SKILLS_LAYER" "$CLAUDE_SKILLS_LAYER" "$PI_SKILLS_LAYER"; do
     while IFS= read -r _name; do
       [ -n "$_name" ] || continue
       _target="$_layer/$_name"
+      # Codex 内置系统技能层与插件缓存目录不属于本阶段托管集合，不得计入复核范围。
+      case "$_target" in
+        "$HOME/.codex/skills/.system/"*|"$HOME/.codex/plugins/"*) continue ;;
+      esac
       [ -L "$_target" ] || {
         VERIFY_ERROR="missing-link:$_target"
         PHASE_CURRENT_ERROR="$VERIFY_ERROR"
@@ -1111,6 +1185,19 @@ do_verify_phase() {
       _resolved="$(resolve_final_link_target "$_target")"
       if [ ! -e "$_resolved" ] || ! is_superpowers_target "$_resolved"; then
         VERIFY_ERROR="broken-link:$_target"
+        PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        return 1
+      fi
+      # 最终目标必须可读；目录型 skill 条目还必须含可读的 SKILL.md，否则清单入口不可用。
+      if [ ! -r "$_resolved" ]; then
+        VERIFY_ERROR="unreadable-target:$_target"
+        PHASE_CURRENT_ERROR="$VERIFY_ERROR"
+        PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
+        return 1
+      fi
+      if [ -d "$_resolved" ] && [ ! -r "$_resolved/SKILL.md" ]; then
+        VERIFY_ERROR="unreadable-skill:$_target"
         PHASE_CURRENT_ERROR="$VERIFY_ERROR"
         PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
         return 1

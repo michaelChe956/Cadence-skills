@@ -56,7 +56,7 @@ jobs:
 
           shared_root="$HOME/.agents/skills"
           claude_root="$HOME/.claude/skills"
-          codex_root="$HOME/.codex/skills/skills"
+          codex_root="$HOME/.codex/skills"
           mkdir -p "$shared_root" "$claude_root" "$codex_root"
 
           mapfile -t skills < <(

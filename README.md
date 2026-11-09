@@ -104,7 +104,11 @@ bash ~/.agents/Cadence-skills/install.sh --help
 bash ~/.agents/Cadence-skills/install.sh
 ```
 
-安装过程会将仓库克隆或更新到 `~/.agents/Cadence-skills`，扫描 `cadence-init/skills/*/SKILL.md`，然后建立三层 skill 级软链：共享层 `~/.agents/skills/`，Claude Code 层 `~/.claude/skills/`，以及 Codex 兼容层 `~/.codex/skills/skills/`。重复运行会更新 Git 工作树并重新同步链接。
+安装过程会将仓库克隆或更新到 `~/.agents/Cadence-skills`，扫描 `cadence-init/skills/*/SKILL.md`，然后建立三层 skill 级软链：共享层 `~/.agents/skills/`，Claude Code 层 `~/.claude/skills/`，以及 Codex 用户技能层 `~/.codex/skills/`。重复运行会更新 Git 工作树并重新同步链接。
+
+Codex 用户技能层为扁平目录 `~/.codex/skills/<skill>`，与 Codex 自带系统技能目录 `~/.codex/skills/.system/` 并列、互不覆盖；旧版本安装留下的 `~/.codex/skills/skills/` 会在下次运行安装脚本时自动迁移。
+
+skill-creator 存在两个版本：Codex 内置系统版位于 `~/.codex/skills/.system/skill-creator`（随 Codex 版本升级）；仓库版位于 `~/.agents/skills/skill-creator`，并投影到 `~/.codex/skills/skill-creator`。两者会在 Codex 清单里同时出现且名称不同（系统版为 `skill-creator`，仓库版带仓库命名空间前缀），不互相遮蔽；仓库版用于本仓库及 marketplace 的 Claude Code 风格 skill authoring。
 
 #### 安全安装流程（必须先预览）
 
@@ -137,7 +141,7 @@ bash ~/.agents/Cadence-skills/install.sh
 ```bash
 ls ~/.claude/skills/
 ls ~/.agents/skills/
-ls ~/.codex/skills/skills/
+ls ~/.codex/skills/
 test -f ~/.claude/skills/pre-check/SKILL.md
 ```
 
@@ -153,7 +157,7 @@ bash ~/.agents/Cadence-skills/install.sh --help
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills/` | `ls ~/.claude/skills/` |
 | pi | `~/.agents/skills/` | `ls ~/.agents/skills/` |
-| Codex | `~/.agents/skills/`；兼容层 `~/.codex/skills/skills/` | `ls ~/.agents/skills/`、`ls ~/.codex/skills/skills/` |
+| Codex | `~/.agents/skills/`；用户技能层 `~/.codex/skills/` | `ls ~/.agents/skills/`、`ls ~/.codex/skills/` |
 | Kimi Code | `~/.agents/skills/` | `ls ~/.agents/skills/` |
 | omp（oh-my-pi） | `~/.agents/skills/` | `ls ~/.agents/skills/` |
 
@@ -358,7 +362,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 
 ## 技术亮点
 
-- **三层 skill 级软链**：共享层以 Git 仓库为源，Claude Code 和 Codex 兼容层分别投影，重复安装可幂等重同步。
+- **三层 skill 级软链**：共享层以 Git 仓库为源，Claude Code 和 Codex 用户技能层分别投影，重复安装可幂等重同步。
 - **镜像轮换与快进更新**：固定镜像顺序、无直连兜底，更新拒绝强制覆盖本地历史。
 - **用户文件保护**：仅识别精确的受管链接；冲突、非 Git 目录和旧残留均提示用户处理。
 - **Schema 4.0 KnowledgeBase**：同时保留代码、数据模型、配置快照和变更包证据，按任务画像渐进检索。

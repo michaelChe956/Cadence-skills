@@ -11,7 +11,10 @@ readonly REPO_DIR="$HOME/.agents/Cadence-skills"
 readonly SOURCE_ROOT="$REPO_DIR/cadence-init/skills"
 readonly SHARED_ROOT="$HOME/.agents/skills"
 readonly CLAUDE_ROOT="$HOME/.claude/skills"
-readonly CODEX_ROOT="$HOME/.codex/skills/skills"
+# Codex 用户技能层：与 Codex 官方约定一致（$CODEX_HOME/skills/<skill>/SKILL.md），
+# 与 Codex 自带系统技能目录 $CODEX_HOME/skills/.system/<skill> 同构；旧版嵌套布局在下方迁移。
+readonly CODEX_ROOT="$HOME/.codex/skills"
+readonly LEGACY_CODEX_ROOT="$HOME/.codex/skills/skills"
 
 : "$REPOSITORY_URL"
 
@@ -131,8 +134,26 @@ is_git_repo() {
     git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
+# 下游层（Claude/Codex）条目是否为指向共享层同名词的投影链：
+# - 共享层条目存在时，要求共享层条目自身通过所有权证明（指向仓库源）；
+# - 共享层条目已不存在时，视为本机制遗留投影（目标必然不可达），
+#   用于清理共享层先被删除后残留的下游断链。
+is_projection_link() {
+  local link_path="$1" link_name link_target shared_target
+  [[ -L "$link_path" ]] || return 1
+  link_name="$(basename -- "$link_path")"
+  link_target="$(readlink -- "$link_path" 2>/dev/null)" || return 1
+  [[ "$link_target" == "$SHARED_ROOT/$link_name" ]] || return 1
+  if [[ -L "$SHARED_ROOT/$link_name" ]]; then
+    shared_target="$(readlink -- "$SHARED_ROOT/$link_name" 2>/dev/null)" || return 1
+    [[ "$shared_target" == "$REPO_DIR/cadence-init/skills/$link_name" ]]
+    return
+  fi
+  [[ ! -e "$SHARED_ROOT/$link_name" ]]
+}
+
 is_managed_link() {
-  local link_path="$1" link_dir link_name link_target shared_target expected_source
+  local link_path="$1" link_dir link_name link_target expected_source
   [[ -L "$link_path" ]] || return 1
   link_dir="$(dirname -- "$link_path")"
   link_name="$(basename -- "$link_path")"
@@ -143,11 +164,8 @@ is_managed_link() {
     "$SHARED_ROOT")
       [[ "$link_target" == "$expected_source" ]]
       ;;
-    "$CLAUDE_ROOT"|"$CODEX_ROOT")
-      [[ "$link_target" == "$SHARED_ROOT/$link_name" ]] || return 1
-      [[ -L "$SHARED_ROOT/$link_name" ]] || return 1
-      shared_target="$(readlink -- "$SHARED_ROOT/$link_name" 2>/dev/null)" || return 1
-      [[ "$shared_target" == "$expected_source" ]]
+    "$CLAUDE_ROOT"|"$CODEX_ROOT"|"$LEGACY_CODEX_ROOT")
+      is_projection_link "$link_path"
       ;;
     *)
       return 1
@@ -220,9 +238,97 @@ plan_remove_link() {
   fi
 }
 
+# 旧版 Codex 嵌套层（~/.codex/skills/skills）迁移到扁平 Codex 层（~/.codex/skills）。
+# 只迁移本阶段托管的条目（链接目标精确等于共享层同名词）；非托管条目保留并告警。
+plan_migrate_legacy_codex() {
+  local -a expected=("$@")
+  local entry entry_name target new_path new_target
+  [[ -d "$LEGACY_CODEX_ROOT" ]] || return 0
+
+  while IFS= read -r -d '' entry; do
+    entry_name="${entry##*/}"
+    if ! list_has "$entry_name" ${expected[@]+"${expected[@]}"}; then
+      continue
+    fi
+    target="$(readlink -- "$entry" 2>/dev/null || true)"
+    if [[ "$target" != "$SHARED_ROOT/$entry_name" ]]; then
+      add_action "WARN-MANUAL" "$entry" "$target" "旧 Codex 嵌套层含非托管条目，保留"
+      continue
+    fi
+    # 共享层同名条目已存在时，必须自身通过所有权证明，否则旧条目不可认领
+    if [[ -e "$SHARED_ROOT/$entry_name" || -L "$SHARED_ROOT/$entry_name" ]]; then
+      if ! is_managed_link "$SHARED_ROOT/$entry_name"; then
+        add_action "WARN-MANUAL" "$entry" "$target" "旧 Codex 嵌套层条目的共享层目标无法证明归属，保留"
+        continue
+      fi
+    fi
+    new_path="$CODEX_ROOT/$entry_name"
+    if [[ -e "$new_path" || -L "$new_path" ]]; then
+      if [[ ! -L "$new_path" ]]; then
+        add_action "WARN-MANUAL" "$entry" "$target" "扁平 Codex 层同名条目为普通文件或目录，保留旧条目"
+        continue
+      fi
+      new_target="$(readlink -- "$new_path" 2>/dev/null || true)"
+      if [[ "$new_target" != "$SHARED_ROOT/$entry_name" ]]; then
+        add_action "WARN-MANUAL" "$entry" "$target" "扁平 Codex 层同名条目无法证明归属，保留旧条目"
+        continue
+      fi
+    fi
+    add_action "MIGRATE-CODEX" "$entry" "$new_path" "旧嵌套层条目迁移到扁平 Codex 层"
+  done < <(find "$LEGACY_CODEX_ROOT" -mindepth 1 -maxdepth 1 -type l -print0)
+}
+
+# 只读扫描 Codex 技能根：报告不可读入口（含嵌套命名空间目录下的条目）。
+# 仅报告非本机制托管的条目，避免与同步阶段的修复动作重复告警。
+# Codex 自带的系统技能目录（.system）不在报告范围；旧嵌套层（skills）中的
+# 受管条目由迁移与孤儿清理负责，其余失效入口仍需报告。
+plan_scan_codex_root() {
+  local entry relative base ancestor target
+  [[ -d "$CODEX_ROOT" ]] || return 0
+
+  while IFS= read -r -d '' entry; do
+    relative="${entry#"$CODEX_ROOT"/}"
+    case "$relative" in
+      ".system"|".system/"*) continue ;;
+    esac
+    # 深度 2 条目若其深度 1 祖先本身是可读技能目录，则属于技能内部资源，不再单独报告
+    if [[ "$relative" == */* ]]; then
+      base="${relative%%/*}"
+      ancestor="$CODEX_ROOT/$base"
+      if [[ -d "$ancestor" && -r "$ancestor/SKILL.md" ]]; then
+        continue
+      fi
+    fi
+    if [[ -L "$entry" ]]; then
+      # 指向普通文件的软链不是技能入口
+      if [[ -e "$entry" && ! -d "$entry" ]]; then
+        continue
+      fi
+      if [[ -r "$entry/SKILL.md" ]]; then
+        continue
+      fi
+    elif [[ -d "$entry" ]]; then
+      # 普通目录：清单不存在（非技能入口）或清单不可读（失效入口）才处理
+      if [[ ! -e "$entry/SKILL.md" && ! -L "$entry/SKILL.md" ]]; then
+        continue
+      fi
+      if [[ -r "$entry/SKILL.md" ]]; then
+        continue
+      fi
+    else
+      continue
+    fi
+    target="$(readlink -- "$entry" 2>/dev/null || true)"
+    if is_managed_link "$entry"; then
+      continue
+    fi
+    add_action "WARN-MANUAL" "$entry" "$target" "Codex 技能根条目不可读，需人工确认后清理"
+  done < <(find "$CODEX_ROOT" -mindepth 1 -maxdepth 2 -print0)
+}
+
 plan_sync_links() {
   local skill_file skill_dir skill_name layer_root entry entry_name
-  local -a layer_roots=("$SHARED_ROOT" "$CLAUDE_ROOT" "$CODEX_ROOT")
+  local -a layer_roots=("$SHARED_ROOT" "$CLAUDE_ROOT" "$CODEX_ROOT" "$LEGACY_CODEX_ROOT")
   local -a expected_skills=()
 
   [[ -d "$SOURCE_ROOT" ]] || {
@@ -234,10 +340,15 @@ plan_sync_links() {
     skill_dir="${skill_file%/SKILL.md}"
     skill_name="${skill_dir##*/}"
     expected_skills+=("$skill_name")
+    if [[ ! -r "$skill_file" ]]; then
+      add_action "WARN-UNREADABLE" "$skill_file" "-" "技能源 SKILL.md 不可读，投影后入口将不可用"
+    fi
     sync_one_link "$SHARED_ROOT/$skill_name" "$skill_dir"
     sync_one_link "$CLAUDE_ROOT/$skill_name" "$SHARED_ROOT/$skill_name"
     sync_one_link "$CODEX_ROOT/$skill_name" "$SHARED_ROOT/$skill_name"
   done < <(find "$SOURCE_ROOT" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' -print0)
+
+  plan_migrate_legacy_codex ${expected_skills[@]+"${expected_skills[@]}"}
 
   local -a orphan_names=()
   if [[ -d "$SHARED_ROOT" ]]; then
@@ -248,6 +359,26 @@ plan_sync_links() {
       fi
     done < <(find "$SHARED_ROOT" -mindepth 1 -maxdepth 1 -type l -print0)
   fi
+
+  # 下游层遗留投影：共享层已无该条目，但本层仍指向共享层同名词（必然不可达）
+  for layer_root in "$CLAUDE_ROOT" "$CODEX_ROOT" "$LEGACY_CODEX_ROOT"; do
+    [[ -d "$layer_root" ]] || continue
+    while IFS= read -r -d '' entry; do
+      entry_name="${entry##*/}"
+      if list_has "$entry_name" ${expected_skills[@]+"${expected_skills[@]}"}; then
+        continue
+      fi
+      if list_has "$entry_name" ${orphan_names[@]+"${orphan_names[@]}"}; then
+        continue
+      fi
+      if [[ -e "$SHARED_ROOT/$entry_name" || -L "$SHARED_ROOT/$entry_name" ]]; then
+        continue
+      fi
+      if is_projection_link "$entry"; then
+        orphan_names+=("$entry_name")
+      fi
+    done < <(find "$layer_root" -mindepth 1 -maxdepth 1 -type l -print0)
+  done
 
   for layer_root in "${layer_roots[@]}"; do
     [[ -d "$layer_root" ]] || continue
@@ -266,12 +397,20 @@ plan_sync_links() {
   for entry_name in ${orphan_names[@]+"${orphan_names[@]}"}; do
     plan_remove_link "$CLAUDE_ROOT/$entry_name"
     plan_remove_link "$CODEX_ROOT/$entry_name"
+    plan_remove_link "$LEGACY_CODEX_ROOT/$entry_name"
     plan_remove_link "$SHARED_ROOT/$entry_name"
   done
+
+  # 旧 Codex 嵌套层的清理安排在迁移与孤儿删除之后，确保迁空后目录可被删除
+  if [[ -d "$LEGACY_CODEX_ROOT" ]]; then
+    add_action "RMDIR-EMPTY" "$LEGACY_CODEX_ROOT" "-" "旧 Codex 嵌套层迁空后删除目录"
+  fi
+
+  plan_scan_codex_root
 }
 
 execute_action() {
-  local action="$1" type path target reason temp_link replaced_atomically
+  local action="$1" type path target reason temp_link replaced_atomically _mig_name
   type='' path='' target='' reason=''
   IFS="$ACTION_SEP" read -r type path target reason <<< "$action" || true
     printf 'ACTION %s path=%s target=%s reason=%s\n' "$type" "$path" "$target" "$reason"
@@ -331,11 +470,41 @@ execute_action() {
         warn "计划执行时仓库不再是可识别 Git 仓库，跳过删除：$REPO_DIR"
       fi
       ;;
+    MIGRATE-CODEX)
+      # path = 旧嵌套层条目；target = 扁平层新条目。
+      # 删除前复核：旧条目仍是软链且目标未变、新条目已建立且清单可读。
+      _mig_name="${path##*/}"
+      if [[ ! -L "$path" ]]; then
+        warn "旧 Codex 嵌套层条目已不是软链，跳过移除：$path"
+      elif [[ "$(readlink -- "$path" 2>/dev/null || true)" != "$SHARED_ROOT/$_mig_name" ]]; then
+        warn "旧 Codex 嵌套层条目目标已变化，跳过移除：$path"
+      elif [[ ! -L "$target" ]] ||
+        [[ "$(readlink -- "$target" 2>/dev/null || true)" != "$SHARED_ROOT/$_mig_name" ]]; then
+        warn "扁平 Codex 层条目未建立成功，保留旧条目：$path"
+      elif [[ ! -r "$target/SKILL.md" ]]; then
+        warn "扁平 Codex 层条目不可读，保留旧条目：$path"
+      else
+        rm -f -- "$path"
+        log "已移除旧 Codex 嵌套层条目：$path"
+      fi
+      ;;
+    RMDIR-EMPTY)
+      if [[ -d "$path" ]]; then
+        if rmdir -- "$path" 2>/dev/null; then
+          log "已删除空的旧 Codex 嵌套层目录：$path"
+        else
+          warn "旧 Codex 嵌套层目录仍含条目，保留：$path"
+        fi
+      fi
+      ;;
     SKIP-WARN|WARN-MANUAL|KEEP)
       if [[ "$type" == "WARN-MANUAL" ]]; then
         warn "$reason：$path；请人工检查"
         printf '手动清理命令：rm -i -- %q\n' "$path" >&2
       fi
+      ;;
+    WARN-UNREADABLE)
+      warn "$reason：$path；请修复该文件的读权限后重新运行安装"
       ;;
     *)
       warn "未知动作类型，跳过：$type"
@@ -368,13 +537,17 @@ plan_repository() {
 
 plan_uninstall() {
   local layer_root entry
-  local -a layer_roots=("$CLAUDE_ROOT" "$CODEX_ROOT" "$SHARED_ROOT")
+  local -a layer_roots=("$CLAUDE_ROOT" "$CODEX_ROOT" "$LEGACY_CODEX_ROOT" "$SHARED_ROOT")
   for layer_root in "${layer_roots[@]}"; do
     [[ -d "$layer_root" ]] || continue
     while IFS= read -r -d '' entry; do
       plan_remove_link "$entry"
     done < <(find "$layer_root" -mindepth 1 -maxdepth 1 -type l -print0)
   done
+
+  if [[ -d "$LEGACY_CODEX_ROOT" ]]; then
+    add_action "RMDIR-EMPTY" "$LEGACY_CODEX_ROOT" "-" "卸载后清理空的旧 Codex 嵌套层目录"
+  fi
 
   if [[ "${1:-0}" == 1 ]]; then
     if is_git_repo; then
@@ -400,8 +573,10 @@ print_visibility() {
 安装完成。四类 agent 的 Cadence skill 消费路径与验证命令：
   Claude Code: ~/.claude/skills/       验证：ls ~/.claude/skills/
   pi:          ~/.agents/skills/        验证：ls ~/.agents/skills/
-  Codex:       ~/.agents/skills/        验证：ls ~/.agents/skills/；兼容层：ls ~/.codex/skills/skills/
+  Codex:       ~/.agents/skills/        验证：ls ~/.agents/skills/；用户层：ls ~/.codex/skills/
   Kimi Code:   ~/.agents/skills/        验证：ls ~/.agents/skills/
+Codex 用户层为扁平目录 ~/.codex/skills/<skill>/SKILL.md（与 Codex 自带系统技能目录
+~/.codex/skills/.system/ 并列，互不覆盖）；旧版嵌套层 ~/.codex/skills/skills/ 已在本次安装中迁移。
 示例验证：test -f ~/.claude/skills/pre-check/SKILL.md && test -f ~/.agents/skills/pre-check/SKILL.md
 MESSAGE
 }
@@ -477,11 +652,37 @@ run_dry_run() {
   print_plan
 }
 
+# 同步完成后复核各层投影入口的可读性：
+# 清单里的每个入口都必须能读到 SKILL.md，避免注入不可解析的技能路径。
+verify_projected_entries() {
+  local skill_file skill_dir skill_name layer_root entry unreadable=0
+  [[ -d "$SOURCE_ROOT" ]] || return 0
+
+  while IFS= read -r -d '' skill_file; do
+    skill_dir="${skill_file%/SKILL.md}"
+    skill_name="${skill_dir##*/}"
+    for layer_root in "$SHARED_ROOT" "$CLAUDE_ROOT" "$CODEX_ROOT"; do
+      entry="$layer_root/$skill_name"
+      if [[ ! -r "$entry/SKILL.md" ]]; then
+        warn "投影入口不可读：$entry/SKILL.md"
+        unreadable=$((unreadable + 1))
+      fi
+    done
+  done < <(find "$SOURCE_ROOT" -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' -print0)
+
+  if (( unreadable > 0 )); then
+    log "投影入口可读性校验：$unreadable 个入口不可读（详见上方告警）"
+  else
+    log "投影入口可读性校验：全部入口可读"
+  fi
+}
+
 sync_links() {
   PLAN_ACTIONS=()
   PLANNED_DIRS=()
   plan_sync_links
   execute_plan
+  verify_projected_entries
 }
 
 uninstall() {
