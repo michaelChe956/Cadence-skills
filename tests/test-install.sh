@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# -E（errtrace）：让 ERR trap 在函数内部也生效 —— 否则函数内断言失败只会静默退出，
+#    既不打印用例名，也拿不到失败现场，CI 上表现为"零输出退出 1"。
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER="$ROOT_DIR/install.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cadence-install-tests.XXXXXX")"
-trap 'rm -rf -- "$TEST_ROOT"' EXIT
+
+# 失败时保留测试目录：安装器输出等现场不能随成功路径一起删掉
+cleanup() {
+  local status=$?
+  if [ "$status" -eq 0 ]; then
+    rm -rf -- "$TEST_ROOT"
+  else
+    printf '失败：保留测试目录 %s\n' "$TEST_ROOT" >&2
+  fi
+}
+trap cleanup EXIT
 
 CURRENT_CASE=unknown
 LAST_OUTPUT=
@@ -17,6 +29,15 @@ on_error() {
   if [[ -n "$LAST_OUTPUT" && -f "$LAST_OUTPUT" ]]; then
     printf '命令输出（%s）：\n' "$LAST_OUTPUT" >&2
     cat "$LAST_OUTPUT" >&2
+  fi
+  # 打印本用例目录下的安装器输出：平台差异（如 BSD 工具报错）只在这里可见
+  local case_dir="$TEST_ROOT/home-$CURRENT_CASE" out_file
+  if [[ -d "$case_dir" ]]; then
+    for out_file in "$case_dir"/*.out; do
+      [[ -f "$out_file" ]] || continue
+      printf '用例输出（%s）：\n' "$out_file" >&2
+      cat "$out_file" >&2
+    done
   fi
   exit "$status"
 }
@@ -35,15 +56,38 @@ fail_test() {
 }
 assert_contains() { grep -F -- "$2" "$1" >/dev/null || fail_test "未找到 [$2] 于 $1"; }
 assert_not_exists() { [[ ! -e "$1" && ! -L "$1" ]] || fail_test "不应存在：$1"; }
+# 单文件哈希：sha256 优先，macOS/BSD 回退 shasum，再退 md5sum/cksum（三端门禁）
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+  elif command -v md5sum >/dev/null 2>&1; then
+    md5sum "$1" 2>/dev/null | cut -d' ' -f1
+  else
+    cksum "$1" 2>/dev/null | cut -d' ' -f1
+  fi
+}
+
 snapshot_home() {
   local root="$1" out="$2"
   {
-    find "$root/.agents" "$root/.claude" "$root/.codex" -mindepth 1 -maxdepth 8 -printf '%y %p\n' 2>/dev/null | sort
+    # 三端可移植的树快照：不使用 GNU 专有的 find -printf
+    find "$root/.agents" "$root/.claude" "$root/.codex" -mindepth 1 -maxdepth 8 2>/dev/null | sort |
+      while IFS= read -r path; do
+        if [ -L "$path" ]; then
+          printf 'l %s\n' "$path"
+        elif [ -d "$path" ]; then
+          printf 'd %s\n' "$path"
+        else
+          printf 'f %s\n' "$path"
+        fi
+      done
     find "$root/.agents" "$root/.claude" "$root/.codex" -type l -print0 2>/dev/null |
       while IFS= read -r -d '' link; do
         printf 'LINK %s -> %s\n' "$link" "$(readlink -- "$link")"
       done | sort
-    sha256sum "$root/.claude/plugins/known_marketplaces.json" 2>/dev/null || true
+    hash_file "$root/.claude/plugins/known_marketplaces.json" 2>/dev/null || true
   } > "$out"
 }
 new_home() {
@@ -56,10 +100,9 @@ new_home() {
 run_installer() {
   local output="$1"
   shift
-  set +e
-  "$@" > "$output" 2>&1
-  LAST_STATUS=$?
-  set -e
+  # 预期失败的命令用 || 承接：既不触发 errexit，也不触发 ERR trap
+  LAST_STATUS=0
+  "$@" > "$output" 2>&1 || LAST_STATUS=$?
   LAST_OUTPUT="$output"
 }
 
@@ -81,6 +124,10 @@ case "$command" in
         mkdir -p "$target/.git" "$target/cadence-init/skills/pre-check"
         printf 'fixture\n' > "$target/cadence-init/skills/pre-check/SKILL.md"
         printf '%s\n' "$url" > "$target/.fake-origin"
+        # 模拟"仓库更新顺带升级了安装脚本"：把新版安装器覆盖到正在执行的脚本上
+        if [ -n "${CADENCE_TEST_NEW_INSTALLER:-}" ] && [ -n "${CADENCE_TEST_INSTALLER:-}" ]; then
+          cp "$CADENCE_TEST_NEW_INSTALLER" "$CADENCE_TEST_INSTALLER"
+        fi
         exit 0 ;;
       first-success:*) exit 1 ;;
       *) exit 1 ;;
@@ -154,10 +201,8 @@ test_clone_failure() {
   new_home "$case_name"
   export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
   make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
-  set +e
-  CLONE_MODE=all-fail bash "$INSTALLER" > "$HOME/out" 2>&1
-  status=$?
-  set -e
+  status=0
+  CLONE_MODE=all-fail bash "$INSTALLER" > "$HOME/out" 2>&1 || status=$?
   test "$status" -ne 0
   assert_contains "$HOME/out" 'ghfast.top'
   assert_contains "$HOME/out" 'gh-proxy.com'
@@ -172,14 +217,12 @@ test_non_git_target() {
   new_home "$case_name"
   mkdir -p "$HOME/.agents/Cadence-skills"
   printf 'keep\n' > "$HOME/.agents/Cadence-skills/user-file"
-  before="$(sha256sum "$HOME/.agents/Cadence-skills/user-file")"
-  set +e
-  bash "$INSTALLER" > "$HOME/out" 2>&1
-  status=$?
-  set -e
+  before="$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
+  status=0
+  bash "$INSTALLER" > "$HOME/out" 2>&1 || status=$?
   test "$status" -ne 0
   assert_contains "$HOME/out" '请删除 ~/.agents/Cadence-skills 后重新运行'
-  test "$before" = "$(sha256sum "$HOME/.agents/Cadence-skills/user-file")"
+  test "$before" = "$(hash_file "$HOME/.agents/Cadence-skills/user-file")"
   pass "$case_name"
 }
 
@@ -536,6 +579,38 @@ test_codex_root_scan_boundaries() {
   pass "$case_name"
 }
 
+test_installer_reexec_after_update() {
+  local case_name=installer-reexec
+  new_home "$case_name"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  # 执行中的安装脚本副本 + 仓库更新后替换成的新版本（带标记行）
+  cp "$INSTALLER" "$HOME/installer-copy.sh"
+  { printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'printf "[cadence][test] 使用更新后的安装脚本\n"'
+    printf 'exec "${BASH:-bash}" "%s"\n' "$INSTALLER"
+  } > "$HOME/installer-new.sh"
+  export CADENCE_TEST_INSTALLER="$HOME/installer-copy.sh"
+  export CADENCE_TEST_NEW_INSTALLER="$HOME/installer-new.sh"
+  # 更新前的旧布局：共享层受管链 + 旧 Codex 嵌套层受管链
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/skills"
+  ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check" "$HOME/.agents/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+
+  bash "$HOME/installer-copy.sh" > "$HOME/install.out" 2>&1
+
+  # 仓库更新改写了安装脚本 → 必须用新版本重跑一次
+  assert_contains "$HOME/install.out" '改用新版本重新执行'
+  assert_contains "$HOME/install.out" '[cadence][test] 使用更新后的安装脚本'
+  # 重跑用的是新版本逻辑：旧嵌套层被迁移，扁平层可解析
+  test -L "$HOME/.codex/skills/pre-check"
+  test -r "$HOME/.codex/skills/pre-check/SKILL.md"
+  assert_not_exists "$HOME/.codex/skills/skills/pre-check"
+  assert_not_exists "$HOME/.codex/skills/skills"
+  pass "$case_name"
+}
+
 test_third_party_projection_survives_install
 test_third_party_projection_survives_uninstall
 test_dry_run_plan_and_uninstall
@@ -550,4 +625,5 @@ test_codex_legacy_ownership_conflicts
 test_codex_legacy_conflict_and_orphan_cleanup
 test_codex_legacy_uninstall_cleanup
 test_codex_root_scan_boundaries
+test_installer_reexec_after_update
 printf '全部 install.sh 隔离场景通过\n'

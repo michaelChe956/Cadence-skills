@@ -43,14 +43,14 @@ jobs:
       - name: 隔离 HOME 集成测试
         run: |
           set -euo pipefail
-          test_home="$(mktemp -d)"
+          test_home="$(mktemp -d "${TMPDIR:-/tmp}/cadence-ci-test.XXXXXX")"
           trap 'rm -rf -- "$test_home"' EXIT
           HOME="$test_home" bash tests/test-install.sh
 
       - name: 13×3 链接解析 fixture 矩阵
         run: |
           set -euo pipefail
-          matrix_home="$(mktemp -d)"
+          matrix_home="$(mktemp -d "${TMPDIR:-/tmp}/cadence-ci-matrix.XXXXXX")"
           trap 'rm -rf -- "$matrix_home"' EXIT
           export HOME="$matrix_home"
 
@@ -59,13 +59,13 @@ jobs:
           codex_root="$HOME/.codex/skills"
           mkdir -p "$shared_root" "$claude_root" "$codex_root"
 
-          mapfile -t skills < <(
-            find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
-              -printf '%h\n' | sed 's#^.*/##' | sort -u
-          )
-          test "${#skills[@]}" -eq 14   # 13 基线 + devbox-stack（2026-09-11 新增）
+          # 三端可移植：不使用 bash 4 的 mapfile，也不用 GNU 专有的 find -printf
+          skills="$(find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
+            | sed 's#/SKILL.md$##' | sed 's#^.*/##' | sort -u | tr '\n' ' ')"
+          skill_count="$(printf '%s\n' $skills | grep -c .)"
+          test "$skill_count" -eq 14   # 13 基线 + devbox-stack（2026-09-11 新增）
 
-          for skill in "${skills[@]}"; do
+          for skill in $skills; do
             source_skill="$GITHUB_WORKSPACE/cadence-init/skills/$skill"
             test -f "$source_skill/SKILL.md"
             ln -s "$source_skill" "$shared_root/$skill"
@@ -96,7 +96,7 @@ jobs:
           ln -s "$shared_root/$dangling_name" "$codex_root/$dangling_name"
 
           link_checks=0
-          for skill in "${skills[@]}"; do
+          for skill in $skills; do
             test -L "$shared_root/$skill"
             test -L "$claude_root/$skill"
             test -L "$codex_root/$skill"
@@ -105,7 +105,7 @@ jobs:
             test -f "$codex_root/$skill/SKILL.md"
             link_checks=$((link_checks + 3))
           done
-          test "$link_checks" -eq $((${#skills[@]} * 3))   # 随技能数自动伸缩（此前硬编码 13*3）
+          test "$link_checks" -eq $((skill_count * 3))   # 随技能数自动伸缩（此前硬编码 13*3）
 
           test -L "$shared_root/$third_party_name"
           test -L "$claude_root/$third_party_name"
@@ -151,3 +151,49 @@ jobs:
           set -euo pipefail
           bash cadence-init/skills/project-rules-examples/tests/test-apply.sh
           bash cadence-init/skills/pre-check/scripts/test.sh
+
+  checks-macos:
+    name: macOS 三端门禁（bash 3.2 + BSD 工具）
+    runs-on: macos-latest
+    # 三端门禁（cadence/project-rules/three-platform-gating.md）：安装器与隔离测试套件
+    # 必须同时在 Linux 与 macOS runner 跑通。macos-latest 自带 bash 3.2 + BSD 工具链，
+    # 这里的失败即三端兼容违例（GNU 专有选项、bash 4+ 语法等）。
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 记录工具链基线
+        run: |
+          set -euo pipefail
+          /bin/bash --version | head -1
+          command -v cksum
+
+      - name: 环境自检（mktemp 模板与 bash 版本）
+        run: |
+          set -euo pipefail
+          /bin/bash --version
+          probe="$(mktemp -d "${TMPDIR:-/tmp}/cadence-ci-probe.XXXXXX")"
+          printf 'mktemp ok: %s\n' "$probe"
+          rm -rf -- "$probe"
+
+      - name: 隔离 HOME 集成测试（bash 3.2 + BSD 工具）
+        run: |
+          set -uo pipefail
+          test_home="$(mktemp -d "${TMPDIR:-/tmp}/cadence-ci-macos.XXXXXX")"
+          trap 'rm -rf -- "$test_home"' EXIT
+          # 捕获输出再判定退出码：失败时把用例输出打进 CI 日志，避免静默失败
+          out="$(HOME="$test_home" /bin/bash tests/test-install.sh 2>&1)"
+          status=$?
+          printf '%s\n' "$out"
+          if [ "$status" -ne 0 ]; then
+            printf -- '--- 失败复现：bash -x 跟踪尾部 ---\n' >&2
+            HOME="$test_home" /bin/bash -x tests/test-install.sh 2>&1 | tail -40 >&2
+          fi
+          exit "$status"
+
+      - name: 安装器 dry-run（bash 3.2）
+        run: |
+          set -euo pipefail
+          test_home="$(mktemp -d "${TMPDIR:-/tmp}/cadence-ci-macos-dry.XXXXXX")"
+          trap 'rm -rf -- "$test_home"' EXIT
+          HOME="$test_home" /bin/bash install.sh --dry-run

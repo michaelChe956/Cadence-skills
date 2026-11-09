@@ -61,11 +61,26 @@
 - 默认从严：按 🔴 三端强制处理
 - 拿不准某语法是否 3.2 支持：以 `podman bash:3.2` 实测为准，不查记忆
 
+## macOS bash 3.2 的两个隐蔽陷阱（2026-11-09 macOS CI 门禁实测）
+
+- **变量名后紧跟多字节字符会被吞进变量名**：macOS 的 libc 在 C/POSIX locale 下
+  `isalnum()` 对 0x80–0xFF 返回 true，bash 3.2 因此把 `$reason：` 解析成变量
+  `reason<0xEF>`，在 `set -u` 下直接报 `unbound variable` 并退出。
+  → 变量后紧跟全角标点时**必须**写 `${reason}`，显式界定变量名。
+- **ERR trap 不加 `set -E` 不会在函数内生效**：函数内断言失败只会静默退出，
+  既不打印用例名也拿不到失败现场，CI 上表现为"零输出退出 1"。
+  → 需要失败可诊断的套件统一 `set -Eeuo pipefail`；同时预期失败的命令要用
+  `cmd || status=$?` 承接，否则会误触 ERR trap。
+
+## 门禁执行方式
+
+`ci.yml` 已包含 `macos-latest` job（bash 3.2 + BSD 工具链）跑隔离安装测试与
+dry-run —— 三端门禁不再只停留在文档要求，CI 里每次提交都会实际执行。
+
 ## 存量过渡（本规则生效前的已知违例）
 
 规则只约束新写与修改的内容；以下存量违例在触碰对应文件时必须收敛为三端写法：
 
-- `.github/workflows/ci.yml`：`mktemp -d` 无模板（L46/L53）、`mapfile -t`（L62）
 - `.github/workflows/eval.yml`：`declare -A`（L87）
 
 以上命令当前跑在 GitHub Linux runner 上侥幸可用，一旦复用进 macOS job 或本地文档即失效。

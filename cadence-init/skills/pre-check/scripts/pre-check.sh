@@ -466,7 +466,7 @@ do_openspec_phase() {
     projection_guard_begin
     openspec init --tools "$OPENSPEC_MISSING" >/dev/null 2>&1 || {
       PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
-      PHASE_CURRENT_ERROR="openspec init 失败（tools=$OPENSPEC_MISSING）"
+      PHASE_CURRENT_ERROR="openspec init 失败（tools=${OPENSPEC_MISSING}）"
       projection_guard_finish
       return 1
     }
