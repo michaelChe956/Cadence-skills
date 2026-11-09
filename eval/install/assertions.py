@@ -13,7 +13,7 @@ from typing import Optional
 
 
 TARGET_HOME_LAYERS = (
-    ".agents/skills", ".codex/skills/skills", ".claude/skills", ".pi/agent/skills",
+    ".agents/skills", ".codex/skills", ".claude/skills", ".pi/agent/skills",
 )
 
 

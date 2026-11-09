@@ -2,7 +2,7 @@
 
 ## Skills 总览（14 个）
 
-Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex、Kimi Code 和 omp 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供 `~/.codex/skills/skills/` 兼容投影。
+Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex、Kimi Code 和 omp 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供扁平的 `~/.codex/skills/<skill>` 用户技能层投影（与 Codex 自带的 `~/.codex/skills/.system/` 并列、互不覆盖）。
 
 ### KnowledgeBase Skills（7 个）
 
@@ -44,7 +44,7 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills/` | 消费 Claude Code 个人层的 skill 级链接 |
 | pi | `~/.agents/skills/` | 读取共享层 |
-| Codex | `~/.agents/skills/`；兼容投影 `~/.codex/skills/skills/` | 优先共享层，同时提供兼容层 |
+| Codex | `~/.agents/skills/`；用户技能层 `~/.codex/skills/` | 优先共享层，同时提供用户技能层 |
 | Kimi Code | `~/.agents/skills/` | 读取共享层 |
 | omp（oh-my-pi） | `~/.agents/skills/` | 读取共享层 |
 

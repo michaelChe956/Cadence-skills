@@ -80,9 +80,12 @@ class Fixture:
             shutil.rmtree(target / "skills")
             (target / "skills").mkdir()
             for index in range(1, 15):
-                (target / "skills" / ("skill-%02d" % index)).mkdir()
+                skill_dir = target / "skills" / ("skill-%02d" % index)
+                skill_dir.mkdir()
+                # 受管软链必须最终解析到含 SKILL.md 的来源目录（verify 阶段复核可读性）。
+                (skill_dir / "SKILL.md").write_text("# fixture skill\n", encoding="utf-8")
             agents_layer = self.home / ".agents" / "skills"
-            codex_layer = self.home / ".codex" / "skills" / "skills"
+            codex_layer = self.home / ".codex" / "skills"
             claude_layer = self.home / ".claude" / "skills"
             pi_layer = self.home / ".pi" / "agent" / "skills"
             layers = (agents_layer, codex_layer, claude_layer, pi_layer)

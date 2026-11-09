@@ -112,7 +112,7 @@ git -C "$HOME_DIR/.agents/superpowers" push -q -u origin main
 # 预置四层 14 条直连软链；额外 HOME sentinel 用于非目标树校验。
 for layer in \
   "$HOME_DIR/.agents/skills" \
-  "$HOME_DIR/.codex/skills/skills" \
+  "$HOME_DIR/.codex/skills" \
   "$HOME_DIR/.claude/skills" \
   "$HOME_DIR/.pi/agent/skills"; do
   mkdir -p "$layer"
@@ -156,7 +156,7 @@ snapshot_tree() {
   done
   for _layer in \
     "$HOME_DIR/.agents/skills" \
-    "$HOME_DIR/.codex/skills/skills" \
+    "$HOME_DIR/.codex/skills" \
     "$HOME_DIR/.claude/skills" \
     "$HOME_DIR/.pi/agent/skills"; do
     [ -d "$_layer" ] || continue
@@ -216,7 +216,7 @@ cat > "$BASELINE_DIR/README.md" <<EOF_README
 - 项目根：临时 \`project/\`，预置四端 OpenSpec 投影：Claude/Codex、Pi 的 5 个 \`openspec-*/SKILL.md\` + 5 个 \`opsx-*.md\`、Kimi 的 5 个 \`openspec-*/SKILL.md\`。
 - 项目非目标 sentinel：\`project-sentinel.txt\`。
 - Superpowers：临时 \`home/.agents/superpowers/\` 有效 Git worktree；\`origin\` 为同一临时目录内的 bare remote，分支为 \`main\`，HEAD 为 \`$GIT_HEAD\`。
-- 软链：\`~/.agents/skills\`、\`~/.codex/skills/skills\`、\`~/.claude/skills\`、\`~/.pi/agent/skills\` 各预置 14 条直连 Superpowers 源的软链。
+- 软链：\`~/.agents/skills\`、\`~/.codex/skills\`、\`~/.claude/skills\`、\`~/.pi/agent/skills\` 各预置 14 条直连 Superpowers 源的软链（Codex 层为官方约定的扁平布局）。
 - HOME 非目标 sentinel：\`home-sentinel.txt\`。
 - fake CLI：\`npx 10.9.0\`、\`uvx 0.4.0\`、\`ast-grep 0.40.0\`、\`codegraph 0.8.0\`、\`openspec 1.2.0\`；fake \`pi list\` 报告 \`pi-mcp-adapter\`。
 

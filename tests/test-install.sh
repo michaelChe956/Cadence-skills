@@ -132,10 +132,10 @@ test_first_and_repeat_install() {
   CLONE_MODE=first-success bash "$INSTALLER" > "$HOME/first.out" 2>&1
   test -L "$HOME/.agents/skills/pre-check"
   test -L "$HOME/.claude/skills/pre-check"
-  test -L "$HOME/.codex/skills/skills/pre-check"
+  test -L "$HOME/.codex/skills/pre-check"
   test "$(readlink "$HOME/.agents/skills/pre-check")" = "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
   test "$(readlink "$HOME/.claude/skills/pre-check")" = "$HOME/.agents/skills/pre-check"
-  test "$(readlink "$HOME/.codex/skills/skills/pre-check")" = "$HOME/.agents/skills/pre-check"
+  test "$(readlink "$HOME/.codex/skills/pre-check")" = "$HOME/.agents/skills/pre-check"
   first_target="$(readlink "$HOME/.agents/skills/pre-check")"
 
   UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" bash "$INSTALLER" > "$HOME/repeat.out" 2>&1
@@ -206,13 +206,13 @@ test_conflict_orphan_uninstall_residue() {
   mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
   printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
   printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
-  mkdir -p "$HOME/.claude/skills/pre-check/user-dir" "$HOME/.agents/skills/user-skill" "$HOME/.codex/skills/skills"
+  mkdir -p "$HOME/.claude/skills/pre-check/user-dir" "$HOME/.agents/skills/user-skill" "$HOME/.codex/skills"
   printf 'user\n' > "$HOME/.agents/skills/user-skill/keep"
   ln -s /tmp/not-cadence "$HOME/.claude/skills/non-managed"
   mkdir -p "$HOME/.agents/Cadence-skills/cadence-init/skills/managed-old"
   ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/managed-old" "$HOME/.agents/skills/managed-old"
   ln -s "$HOME/.agents/skills/managed-old" "$HOME/.claude/skills/managed-old"
-  ln -s "$HOME/.agents/skills/managed-old" "$HOME/.codex/skills/skills/managed-old"
+  ln -s "$HOME/.agents/skills/managed-old" "$HOME/.codex/skills/managed-old"
   mkdir -p "$HOME/.claude/plugins/marketplaces/cadence-skills-local"
   printf '{"cadence-skills-local":{}}\n' > "$HOME/.claude/plugins/known_marketplaces.json"
   export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
@@ -223,7 +223,7 @@ test_conflict_orphan_uninstall_residue() {
   assert_contains "$HOME/install.out" 'cadence-skills-local'
   test ! -e "$HOME/.agents/skills/managed-old"
   test ! -e "$HOME/.claude/skills/managed-old"
-  test ! -e "$HOME/.codex/skills/skills/managed-old"
+  test ! -e "$HOME/.codex/skills/managed-old"
   bash "$INSTALLER" --uninstall > "$HOME/uninstall.out" 2>&1
   test -e "$HOME/.agents/Cadence-skills"
   test -e "$HOME/.agents/skills/user-skill/keep"
@@ -242,7 +242,7 @@ test_dry_run_plan_and_uninstall() {
     "$HOME/.agents/Cadence-skills/cadence-init/skills/new-skill" \
     "$HOME/.agents/Cadence-skills/cadence-init/skills/managed-old" \
     "$HOME/.agents/Cadence-skills/cadence-init/skills/ordinary-file" \
-    "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills/skills" \
+    "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" \
     "$HOME/.claude/plugins/marketplaces"
   printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
   printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/new-skill/SKILL.md"
@@ -251,17 +251,20 @@ test_dry_run_plan_and_uninstall() {
   printf '{"cadence-skills-local":{}}\n' > "$HOME/.claude/plugins/known_marketplaces.json"
   ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check" "$HOME/.agents/skills/pre-check"
   ln -s "$HOME/.agents/skills/pre-check" "$HOME/.claude/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/pre-check"
+  # 旧嵌套层条目：迁移动作必须同时出现在 dry-run 计划与实装输出中
+  mkdir -p "$HOME/.codex/skills/skills"
   ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
   ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/managed-old" "$HOME/.agents/skills/managed-old"
   ln -s "$HOME/.agents/skills/managed-old" "$HOME/.claude/skills/managed-old"
-  ln -s "$HOME/.agents/skills/managed-old" "$HOME/.codex/skills/skills/managed-old"
+  ln -s "$HOME/.agents/skills/managed-old" "$HOME/.codex/skills/managed-old"
   mkdir -p "$HOME/.agents/skills/ordinary-dir" "$HOME/.claude/skills/ordinary-dir"
   printf 'keep\n' > "$HOME/.agents/skills/ordinary-file"
   printf 'keep\n' > "$HOME/.claude/skills/ordinary-dir/file"
   mkdir -p "$HOME/.agents/third-party/skills"
   ln -s "$HOME/.agents/third-party/skills/missing" "$HOME/.agents/skills/dangling-x"
   ln -s "$HOME/.agents/skills/dangling-x" "$HOME/.claude/skills/dangling-x"
-  ln -s "$HOME/.agents/skills/dangling-x" "$HOME/.codex/skills/skills/dangling-x"
+  ln -s "$HOME/.agents/skills/dangling-x" "$HOME/.codex/skills/dangling-x"
   export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
   make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
 
@@ -282,10 +285,10 @@ test_dry_run_plan_and_uninstall() {
 
   HOME="$HOME" bash "$INSTALLER" > "$real_output" 2>&1
   grep '^DRY-RUN ' "$dry_output" |
-    grep -E 'path=.*/(\.agents/skills|\.claude/skills|\.codex/skills/skills)/' |
+    grep -E 'path=.*/(\.agents/skills|\.claude/skills|\.codex/skills)/' |
     sed -E 's/^DRY-RUN /ACTION /; s/ reason=.*$//' | sort > "$TEST_ROOT/$case_name.plan-actions"
   grep '^ACTION ' "$real_output" |
-    grep -E 'path=.*/(\.agents/skills|\.claude/skills|\.codex/skills/skills)/' |
+    grep -E 'path=.*/(\.agents/skills|\.claude/skills|\.codex/skills)/' |
     sed -E 's/^\[cadence\] //; s/ reason=.*$//' | sort > "$TEST_ROOT/$case_name.real-actions"
   diff -u "$TEST_ROOT/$case_name.plan-actions" "$TEST_ROOT/$case_name.real-actions"
   ! grep -E 'ACTION (REMOVE|REPLACE).*superpowers-x' "$real_output"
@@ -314,20 +317,20 @@ test_third_party_projection_survives_install() {
   local case_name=third-party-install git_bin
   new_home "$case_name"
   mkdir -p "$HOME/.agents/superpowers/skills/superpowers-x"
-  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills/skills"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills"
   ln -s "$HOME/.agents/superpowers/skills/superpowers-x" "$HOME/.agents/skills/superpowers-x"
   ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.claude/skills/superpowers-x"
-  ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.codex/skills/skills/superpowers-x"
+  ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.codex/skills/superpowers-x"
   git_bin="$HOME/fake-bin"; export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
   make_fake_git "$git_bin"; PATH="$git_bin:$PATH"; export PATH
 
   CLONE_MODE=first-success bash "$INSTALLER" > "$HOME/install.out" 2>&1
   test -L "$HOME/.agents/skills/superpowers-x"
   test -L "$HOME/.claude/skills/superpowers-x"
-  test -L "$HOME/.codex/skills/skills/superpowers-x"
+  test -L "$HOME/.codex/skills/superpowers-x"
   test "$(readlink "$HOME/.agents/skills/superpowers-x")" = "$HOME/.agents/superpowers/skills/superpowers-x"
   test "$(readlink "$HOME/.claude/skills/superpowers-x")" = "$HOME/.agents/skills/superpowers-x"
-  test "$(readlink "$HOME/.codex/skills/skills/superpowers-x")" = "$HOME/.agents/skills/superpowers-x"
+  test "$(readlink "$HOME/.codex/skills/superpowers-x")" = "$HOME/.agents/skills/superpowers-x"
   pass "$case_name"
 }
 
@@ -337,22 +340,199 @@ test_third_party_projection_survives_uninstall() {
   mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
   printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
   mkdir -p "$HOME/.agents/superpowers/skills/superpowers-x"
-  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills/skills"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills"
   ln -s "$HOME/.agents/superpowers/skills/superpowers-x" "$HOME/.agents/skills/superpowers-x"
   ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.claude/skills/superpowers-x"
-  ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.codex/skills/skills/superpowers-x"
+  ln -s "$HOME/.agents/skills/superpowers-x" "$HOME/.codex/skills/superpowers-x"
   ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check" "$HOME/.agents/skills/pre-check"
   ln -s "$HOME/.agents/skills/pre-check" "$HOME/.claude/skills/pre-check"
-  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/pre-check"
 
   bash "$INSTALLER" --uninstall > "$HOME/uninstall.out" 2>&1
   test -L "$HOME/.agents/skills/superpowers-x"
   test -L "$HOME/.claude/skills/superpowers-x"
-  test -L "$HOME/.codex/skills/skills/superpowers-x"
+  test -L "$HOME/.codex/skills/superpowers-x"
   assert_not_exists "$HOME/.agents/skills/pre-check"
   assert_not_exists "$HOME/.claude/skills/pre-check"
-  assert_not_exists "$HOME/.codex/skills/skills/pre-check"
+  assert_not_exists "$HOME/.codex/skills/pre-check"
   test -e "$HOME/.agents/Cadence-skills"
+  pass "$case_name"
+}
+
+test_codex_flat_layer_migration() {
+  local case_name=codex-flat-migration
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/skills"
+  # 旧嵌套层：受管投影链（应迁移）+ 非托管条目（应保留并告警）
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+  mkdir -p "$HOME/.codex/skills/skills/user-dir"
+  printf 'keep\n' > "$HOME/.codex/skills/skills/user-dir/keep"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install.out" 2>&1
+
+  test -L "$HOME/.codex/skills/pre-check"
+  test "$(readlink "$HOME/.codex/skills/pre-check")" = "$HOME/.agents/skills/pre-check"
+  test -r "$HOME/.codex/skills/pre-check/SKILL.md"
+  assert_not_exists "$HOME/.codex/skills/skills/pre-check"
+  test -d "$HOME/.codex/skills/skills"
+  test -f "$HOME/.codex/skills/skills/user-dir/keep"
+  assert_contains "$HOME/install.out" '旧 Codex 嵌套层'
+
+  # 非托管条目移除后再次安装：旧嵌套层迁空并被删除
+  rm -rf -- "$HOME/.codex/skills/skills/user-dir"
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install2.out" 2>&1
+  assert_not_exists "$HOME/.codex/skills/skills"
+  test -L "$HOME/.codex/skills/pre-check"
+  pass "$case_name"
+}
+
+test_codex_root_scan_reports_unreadable() {
+  local case_name=codex-root-scan
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" \
+    "$HOME/.codex/skills/.system/skill-creator" "$HOME/.codex/skills/superpowers"
+  printf 'system skill\n' > "$HOME/.codex/skills/.system/skill-creator/SKILL.md"
+  # 命名空间下的失效条目：非本机制托管，应被报告且保留
+  ln -s "$HOME/.agents/superpowers/skills/using-superpowers" "$HOME/.codex/skills/superpowers/using-superpowers"
+  # 共享层已缺失的下游遗留投影：应被清理
+  ln -s "$HOME/.agents/skills/project-analysis" "$HOME/.codex/skills/project-analysis"
+  ln -s "$HOME/.agents/skills/project-analysis" "$HOME/.claude/skills/project-analysis"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install.out" 2>&1
+
+  assert_contains "$HOME/install.out" 'superpowers/using-superpowers'
+  test -L "$HOME/.codex/skills/superpowers/using-superpowers"
+  if grep -F 'Codex 技能根条目不可读' "$HOME/install.out" | grep -qF '.system'; then
+    fail_test ".system 目录被误报为不可读入口"
+  fi
+  assert_not_exists "$HOME/.codex/skills/project-analysis"
+  assert_not_exists "$HOME/.claude/skills/project-analysis"
+  assert_contains "$HOME/install.out" '投影入口可读性校验'
+  pass "$case_name"
+}
+
+test_codex_legacy_ownership_conflicts() {
+  local case_name=codex-legacy-ownership
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills/skills"
+  # 共享层同名条目指向第三方目录：旧嵌套层条目不可认领，必须保留并告警
+  mkdir -p "$HOME/.agents/third-party/skills/pre-check"
+  printf 'third\n' > "$HOME/.agents/third-party/skills/pre-check/SKILL.md"
+  ln -s "$HOME/.agents/third-party/skills/pre-check" "$HOME/.agents/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+  # 共享层同名条目是用户自建的普通目录：下游链不可证明归属，必须保留
+  mkdir -p "$HOME/.agents/skills/user-skill"
+  printf 'user\n' > "$HOME/.agents/skills/user-skill/keep"
+  ln -s "$HOME/.agents/skills/user-skill" "$HOME/.claude/skills/user-skill"
+  ln -s "$HOME/.agents/skills/user-skill" "$HOME/.codex/skills/user-skill"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install.out" 2>&1
+
+  # 共享层目标无法证明归属时，旧嵌套层条目不被认领也不被删除
+  test -L "$HOME/.codex/skills/skills/pre-check"
+  assert_contains "$HOME/install.out" '无法证明归属'
+  # 用户自建的共享层普通目录与其下游链保持原样
+  test -d "$HOME/.agents/skills/user-skill"
+  test -f "$HOME/.agents/skills/user-skill/keep"
+  test -L "$HOME/.claude/skills/user-skill"
+  test -L "$HOME/.codex/skills/user-skill"
+  pass "$case_name"
+}
+
+test_codex_legacy_conflict_and_orphan_cleanup() {
+  local case_name=codex-legacy-orphan
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/skills"
+  # 扁平层同名普通文件：迁移冲突，旧条目必须保留
+  printf 'conflict\n' > "$HOME/.codex/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+  # 旧层孤儿链接：名字不在仓库源集合，迁移后应被清理并让旧目录迁空删除
+  ln -s "$HOME/.agents/skills/removed-skill" "$HOME/.codex/skills/skills/removed-skill"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install.out" 2>&1
+
+  test -f "$HOME/.codex/skills/pre-check"
+  test "$(cat "$HOME/.codex/skills/pre-check")" = "conflict"
+  test -L "$HOME/.codex/skills/skills/pre-check"
+  assert_not_exists "$HOME/.codex/skills/skills/removed-skill"
+  assert_contains "$HOME/install.out" '扁平 Codex 层同名条目为普通文件或目录'
+  pass "$case_name"
+}
+
+test_codex_legacy_uninstall_cleanup() {
+  local case_name=codex-legacy-uninstall
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/skills"
+  ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check" "$HOME/.agents/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+  ln -s "$HOME/.agents/third-party/skills/x" "$HOME/.codex/skills/skills/third-party"
+
+  bash "$INSTALLER" --uninstall > "$HOME/uninstall.out" 2>&1
+
+  assert_not_exists "$HOME/.codex/skills/skills/pre-check"
+  test -L "$HOME/.codex/skills/skills/third-party"
+  test -d "$HOME/.codex/skills/skills"
+  pass "$case_name"
+}
+
+test_codex_root_scan_boundaries() {
+  local case_name=codex-root-scan-boundaries
+  new_home "$case_name"
+  mkdir -p "$HOME/.agents/Cadence-skills/.git" "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check"
+  printf 'fixture\n' > "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check/SKILL.md"
+  printf '%s\n' 'https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git' > "$HOME/.agents/Cadence-skills/.fake-origin"
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/namespace" "$HOME/.codex/skills/foo" \
+    "$HOME/.codex/skills/bar" "$HOME/.codex/skills/.system/skill-creator"
+  # 命名空间下的失效嵌套入口：应报告
+  ln -s "$HOME/.agents/third-party/skills/broken" "$HOME/.codex/skills/namespace/broken"
+  # 技能目录内的悬空清单：应报告
+  ln -s "$HOME/.agents/third-party/skills/missing.md" "$HOME/.codex/skills/foo/SKILL.md"
+  # 技能目录内的可读清单软链：不应误报
+  printf 'readable\n' > "$HOME/.codex/skills/bar/real.md"
+  ln -s "$HOME/.codex/skills/bar/real.md" "$HOME/.codex/skills/bar/SKILL.md"
+  # 系统技能目录内的悬空清单：不在报告范围
+  ln -s "$HOME/.agents/third-party/skills/missing.md" "$HOME/.codex/skills/.system/skill-creator/SKILL.md"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  UPDATE_MODE=success CURRENT_ORIGIN="https://ghfast.top/https://github.com/michaelChe956/Cadence-skills.git" \
+    bash "$INSTALLER" > "$HOME/install.out" 2>&1
+
+  assert_contains "$HOME/install.out" 'namespace/broken'
+  assert_contains "$HOME/install.out" 'foo/SKILL.md'
+  if grep -F 'Codex 技能根条目不可读' "$HOME/install.out" | grep -qF 'bar'; then
+    fail_test "可读清单软链被误报为不可读入口"
+  fi
+  if grep -F 'Codex 技能根条目不可读' "$HOME/install.out" | grep -qF '.system'; then
+    fail_test ".system 目录被误报为不可读入口"
+  fi
   pass "$case_name"
 }
 
@@ -364,4 +544,10 @@ test_clone_failure
 test_non_git_target
 test_update_rotation
 test_conflict_orphan_uninstall_residue
+test_codex_flat_layer_migration
+test_codex_root_scan_reports_unreadable
+test_codex_legacy_ownership_conflicts
+test_codex_legacy_conflict_and_orphan_cleanup
+test_codex_legacy_uninstall_cleanup
+test_codex_root_scan_boundaries
 printf '全部 install.sh 隔离场景通过\n'
