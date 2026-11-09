@@ -176,6 +176,21 @@ jobs:
           printf 'mktemp ok: %s\n' "$probe"
           rm -rf -- "$probe"
 
+      - name: 诊断：脚本文件形态与执行入口
+        run: |
+          set -uo pipefail
+          ls -l tests/test-install.sh
+          wc -c tests/test-install.sh
+          file tests/test-install.sh 2>/dev/null || true
+          printf '%s\n' '--- 前 200 字节（od 看行尾/隐藏字符）---'
+          head -c 200 tests/test-install.sh | od -c | head -12
+          printf '%s\n' '--- 语法检查 ---'
+          /bin/bash -n tests/test-install.sh
+          printf 'syntax_exit=%s\n' "$?"
+          printf '%s\n' '--- 直接执行前 5 行跟踪 ---'
+          /bin/bash -x tests/test-install.sh 2>&1 | head -20
+          printf 'trace_exit=%s\n' "$?"
+
       - name: 隔离 HOME 集成测试（bash 3.2 + BSD 工具）
         run: |
           set -uo pipefail
