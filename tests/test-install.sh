@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# -E（errtrace）：让 ERR trap 在函数内部也生效 —— 否则函数内断言失败只会静默退出，
+#    既不打印用例名，也拿不到失败现场，CI 上表现为"零输出退出 1"。
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALLER="$ROOT_DIR/install.sh"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/cadence-install-tests.XXXXXX")"
-trap 'rm -rf -- "$TEST_ROOT"' EXIT
+
+# 失败时保留测试目录：安装器输出等现场不能随成功路径一起删掉
+cleanup() {
+  local status=$?
+  if [ "$status" -eq 0 ]; then
+    rm -rf -- "$TEST_ROOT"
+  else
+    printf '失败：保留测试目录 %s\n' "$TEST_ROOT" >&2
+  fi
+}
+trap cleanup EXIT
 
 CURRENT_CASE=unknown
 LAST_OUTPUT=
@@ -17,6 +29,15 @@ on_error() {
   if [[ -n "$LAST_OUTPUT" && -f "$LAST_OUTPUT" ]]; then
     printf '命令输出（%s）：\n' "$LAST_OUTPUT" >&2
     cat "$LAST_OUTPUT" >&2
+  fi
+  # 打印本用例目录下的安装器输出：平台差异（如 BSD 工具报错）只在这里可见
+  local case_dir="$TEST_ROOT/home-$CURRENT_CASE" out_file
+  if [[ -d "$case_dir" ]]; then
+    for out_file in "$case_dir"/*.out; do
+      [[ -f "$out_file" ]] || continue
+      printf '用例输出（%s）：\n' "$out_file" >&2
+      cat "$out_file" >&2
+    done
   fi
   exit "$status"
 }
