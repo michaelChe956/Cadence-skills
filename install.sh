@@ -431,7 +431,7 @@ execute_action() {
       ;;
     REPLACE)
       if ! is_managed_link "$path"; then
-        warn "计划执行时所有权证明失效，跳过替换：$path；请手动检查"
+        warn "计划执行时所有权证明失效，跳过替换：${path}；请手动检查"
       elif [[ "$(readlink -- "$path")" == "$target" ]]; then
         log "软链已正确，无需修改：$path"
       else
@@ -461,7 +461,7 @@ execute_action() {
         rm -f -- "$path"
         log "已卸载受管软链：$path"
       else
-        warn "计划执行时所有权证明失效，跳过删除：$path；请手动检查"
+        warn "计划执行时所有权证明失效，跳过删除：${path}；请手动检查"
       fi
       ;;
     REMOVE-REPO)
@@ -501,12 +501,12 @@ execute_action() {
       ;;
     SKIP-WARN|WARN-MANUAL|KEEP)
       if [[ "$type" == "WARN-MANUAL" ]]; then
-        warn "$reason：$path；请人工检查"
+        warn "${reason}：${path}；请人工检查"
         printf '手动清理命令：rm -i -- %q\n' "$path" >&2
       fi
       ;;
     WARN-UNREADABLE)
-      warn "$reason：$path；请修复该文件的读权限后重新运行安装"
+      warn "${reason}：${path}；请修复该文件的读权限后重新运行安装"
       ;;
     *)
       warn "未知动作类型，跳过：$type"
