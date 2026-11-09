@@ -15,6 +15,8 @@ readonly CLAUDE_ROOT="$HOME/.claude/skills"
 # 与 Codex 自带系统技能目录 $CODEX_HOME/skills/.system/<skill> 同构；旧版嵌套布局在下方迁移。
 readonly CODEX_ROOT="$HOME/.codex/skills"
 readonly LEGACY_CODEX_ROOT="$HOME/.codex/skills/skills"
+# 本脚本自身路径：仓库更新后脚本内容可能已变，需要用新版本重跑一次（见 run_install）
+readonly INSTALLER_SELF="${BASH_SOURCE[0]}"
 
 : "$REPOSITORY_URL"
 
@@ -692,8 +694,24 @@ uninstall() {
   execute_plan
 }
 
+# 脚本自身指纹（cksum 为 POSIX 工具，macOS 自带）：用于判断仓库更新是否改写了本脚本
+installer_fingerprint() {
+  cksum "$INSTALLER_SELF" 2>/dev/null || true
+}
+
 run_install() {
+  local fingerprint_before fingerprint_after
+  fingerprint_before="$(installer_fingerprint)"
   ensure_repo
+  fingerprint_after="$(installer_fingerprint)"
+  # 仓库更新可能带来新版本安装脚本：旧脚本在内存中继续执行会漏掉新逻辑
+  # （如 Codex 层扁平化迁移），此处用新版本重跑一次，保证一次调用即完成更新与迁移
+  if [[ -n "$fingerprint_before" && "$fingerprint_before" != "$fingerprint_after" &&
+        "${CADENCE_INSTALLER_REEXEC:-0}" != "1" ]]; then
+    log "安装脚本已更新为新版本，改用新版本重新执行"
+    export CADENCE_INSTALLER_REEXEC=1
+    exec bash "$INSTALLER_SELF" "$@"
+  fi
   DRY_RUN=0
   sync_links
   print_visibility
@@ -728,7 +746,7 @@ main() {
   local dry_run=0 uninstall_mode=0 delete_repo=0 arg
   if (( $# == 0 )); then
     detect_residue
-    run_install
+    run_install "$@"
     return 0
   fi
 

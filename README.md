@@ -108,6 +108,8 @@ bash ~/.agents/Cadence-skills/install.sh
 
 Codex 用户技能层为扁平目录 `~/.codex/skills/<skill>`，与 Codex 自带系统技能目录 `~/.codex/skills/.system/` 并列、互不覆盖；旧版本安装留下的 `~/.codex/skills/skills/` 会在下次运行安装脚本时自动迁移。
 
+从旧版本首次升级到扁平布局需要运行两次安装脚本：第一次把仓库更新到新版本（内存中执行的仍是旧脚本），第二次由新脚本完成旧嵌套层迁移；也可以先手动更新 `~/.agents/Cadence-skills` 再运行一次。此后每次更新只需一次——安装脚本检测到自身被更新时会自动用新版本重跑一遍。
+
 skill-creator 存在两个版本：Codex 内置系统版位于 `~/.codex/skills/.system/skill-creator`（随 Codex 版本升级）；仓库版位于 `~/.agents/skills/skill-creator`，并投影到 `~/.codex/skills/skill-creator`。两者会在 Codex 清单里同时出现且名称不同（系统版为 `skill-creator`，仓库版带仓库命名空间前缀），不互相遮蔽；仓库版用于本仓库及 marketplace 的 Claude Code 风格 skill authoring。
 
 #### 安全安装流程（必须先预览）

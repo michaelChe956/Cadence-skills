@@ -81,6 +81,10 @@ case "$command" in
         mkdir -p "$target/.git" "$target/cadence-init/skills/pre-check"
         printf 'fixture\n' > "$target/cadence-init/skills/pre-check/SKILL.md"
         printf '%s\n' "$url" > "$target/.fake-origin"
+        # 模拟"仓库更新顺带升级了安装脚本"：把新版安装器覆盖到正在执行的脚本上
+        if [ -n "${CADENCE_TEST_NEW_INSTALLER:-}" ] && [ -n "${CADENCE_TEST_INSTALLER:-}" ]; then
+          cp "$CADENCE_TEST_NEW_INSTALLER" "$CADENCE_TEST_INSTALLER"
+        fi
         exit 0 ;;
       first-success:*) exit 1 ;;
       *) exit 1 ;;
@@ -536,6 +540,35 @@ test_codex_root_scan_boundaries() {
   pass "$case_name"
 }
 
+test_installer_reexec_after_update() {
+  local case_name=installer-reexec
+  new_home "$case_name"
+  export GIT_LOG="$HOME/git.log"; : > "$GIT_LOG"
+  make_fake_git "$HOME/fake-bin"; PATH="$HOME/fake-bin:$PATH"; export PATH
+
+  # 执行中的安装脚本副本 + 仓库更新后替换成的新版本（带标记行）
+  cp "$INSTALLER" "$HOME/installer-copy.sh"
+  sed '1a printf "[cadence][test] 使用更新后的安装脚本\\n"' "$INSTALLER" > "$HOME/installer-new.sh"
+  export CADENCE_TEST_INSTALLER="$HOME/installer-copy.sh"
+  export CADENCE_TEST_NEW_INSTALLER="$HOME/installer-new.sh"
+  # 更新前的旧布局：共享层受管链 + 旧 Codex 嵌套层受管链
+  mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills/skills"
+  ln -s "$HOME/.agents/Cadence-skills/cadence-init/skills/pre-check" "$HOME/.agents/skills/pre-check"
+  ln -s "$HOME/.agents/skills/pre-check" "$HOME/.codex/skills/skills/pre-check"
+
+  bash "$HOME/installer-copy.sh" > "$HOME/install.out" 2>&1
+
+  # 仓库更新改写了安装脚本 → 必须用新版本重跑一次
+  assert_contains "$HOME/install.out" '改用新版本重新执行'
+  assert_contains "$HOME/install.out" '[cadence][test] 使用更新后的安装脚本'
+  # 重跑用的是新版本逻辑：旧嵌套层被迁移，扁平层可解析
+  test -L "$HOME/.codex/skills/pre-check"
+  test -r "$HOME/.codex/skills/pre-check/SKILL.md"
+  assert_not_exists "$HOME/.codex/skills/skills/pre-check"
+  assert_not_exists "$HOME/.codex/skills/skills"
+  pass "$case_name"
+}
+
 test_third_party_projection_survives_install
 test_third_party_projection_survives_uninstall
 test_dry_run_plan_and_uninstall
@@ -550,4 +583,5 @@ test_codex_legacy_ownership_conflicts
 test_codex_legacy_conflict_and_orphan_cleanup
 test_codex_legacy_uninstall_cleanup
 test_codex_root_scan_boundaries
+test_installer_reexec_after_update
 printf '全部 install.sh 隔离场景通过\n'
