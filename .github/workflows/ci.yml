@@ -63,7 +63,7 @@ jobs:
           skills="$(find cadence-init/skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md \
             | sed 's#/SKILL.md$##' | sed 's#^.*/##' | sort -u | tr '\n' ' ')"
           skill_count="$(printf '%s\n' $skills | grep -c .)"
-          test "$skill_count" -eq 14   # 13 基线 + devbox-stack（2026-09-11 新增）
+          test "$skill_count" -eq 15   # 14 基线 + knowledge-base-user-input（2026-11-10 新增）
 
           for skill in $skills; do
             source_skill="$GITHUB_WORKSPACE/cadence-init/skills/$skill"
@@ -122,7 +122,7 @@ jobs:
           test ! -e "$shared_root/$dangling_name"
           test ! -e "$claude_root/$dangling_name"
           test ! -e "$codex_root/$dangling_name"
-          printf '13×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
+          printf '15×3 links resolved; third-party, ordinary directory, and dangling fixtures preserved\n'
 
       - name: 安装 rule-config 测试依赖
         run: python3 -m pip install --user pytest pyyaml
