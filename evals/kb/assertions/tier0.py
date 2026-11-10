@@ -69,6 +69,29 @@ def check_skill_src(r: Result):
     r.check("固定产物两副本一致", life == det, str(life ^ det))
     for d in ["business", "capabilities", "evidence"]:
         r.check(f"副本含{d}", f"{d}/" in life or d in life, str(sorted(life)))
+    check_user_input_skill(r, sk)
+
+
+def check_user_input_skill(r: Result, bootstrap_skill: str):
+    """草稿生成 Skill 与 bootstrap 输入模板的一致性断言。"""
+    ui_skill = SKILL_ROOT / "knowledge-base-user-input"
+    if not r.check("user-input skill存在", (ui_skill / "SKILL.md").exists()):
+        return
+    ui_text = (ui_skill / "SKILL.md").read_text(encoding="utf-8")
+    m = re.search(r"^name:\s*(\S+)\s*$", ui_text, re.M)
+    r.check("user-input skill名一致", bool(m) and m.group(1) == "knowledge-base-user-input",
+            str(m.group(1) if m else None))
+    tpl_dir = SKILL_ROOT / "knowledge-base-bootstrap/user-input"
+    tpl_files = {p.name for p in tpl_dir.iterdir() if p.is_file()}
+    tree_re = r"[├└]──\s+([\w.-]+\.(?:md|sql))"
+    ui_tree = ui_text.split("## 固定输出")[1].split("##")[0] if "## 固定输出" in ui_text else ""
+    ui_declared = set(re.findall(tree_re, ui_tree))
+    r.check("草稿声明文件与模板一致", ui_declared == tpl_files, str(sorted(ui_declared ^ tpl_files)))
+    b_tree = bootstrap_skill.split("## 固定输入")[1].split("##")[0] if "## 固定输入" in bootstrap_skill else ""
+    b_declared = set(re.findall(tree_re, b_tree))
+    r.check("bootstrap固定输入与模板一致", b_declared == tpl_files, str(sorted(b_declared ^ tpl_files)))
+    r.check("草稿不产知识库产物", "不生成 `manifest.yaml`" in ui_text)
+    r.check("草稿状态三态齐全", all(s in ui_text for s in ("`全量`", "`指定`", "`不适用`")))
 
 
 def check_products(r: Result, kb: Path, stage: str):

@@ -1,10 +1,10 @@
 # Cadence Skills 使用指南
 
-## Skills 总览（14 个）
+## Skills 总览（15 个）
 
 Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.claude/skills/` 消费，pi、Codex、Kimi Code 和 omp 通过共享的 `~/.agents/skills/` 消费；Codex 同时提供扁平的 `~/.codex/skills/<skill>` 用户技能层投影（与 Codex 自带的 `~/.codex/skills/.system/` 并列、互不覆盖）。
 
-### KnowledgeBase Skills（7 个）
+### KnowledgeBase Skills（8 个）
 
 | Skill | 用途 | 指南 |
 | --- | --- | --- |
@@ -15,6 +15,7 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 | `knowledge-base-overview` | 生成知识库入口、关系导航、术语和项目规则 | — |
 | `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 API 关系 | — |
 | `knowledge-base-update` | 依据完整变更包增量更新已有 KnowledgeBase | [指南](knowledge-base-update.md) |
+| `knowledge-base-user-input` | 依据目标项目证据生成 9 个输入文件草稿并交用户确认 | [指南](knowledge-base-user-input.md) |
 
 ### 初始化与规则 Skills（4 个）
 
@@ -60,6 +61,7 @@ Cadence 的能力以 Skill 形式提供。安装后，Claude Code 通过 `~/.cla
 
 ### 使用现有项目知识
 
+- 尚未准备知识库输入：调用 `/knowledge-base-user-input` 生成输入草稿并逐项确认。
 - 首次建立知识库：调用 `/knowledge-base-bootstrap`。
 - 任务前获取上下文：调用 `/knowledge-base-context`。
 - 项目事实变化后更新：调用 `/knowledge-base-update`。

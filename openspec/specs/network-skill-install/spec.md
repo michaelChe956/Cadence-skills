@@ -49,7 +49,7 @@ install/更新完成后，对仓库 `cadence-init/skills/` 下每个含 `SKILL.m
 #### Scenario: 全新安装后三层软链齐全
 
 - **WHEN** 在无任何历史安装的环境中完成 install.sh
-- **THEN** 14 个 skill 在三层目录中均有软链，且各层软链按上述指向解析到真实文件，Codex 层条目直接位于 `~/.codex/skills/<skill>` 下
+- **THEN** 15 个 skill 在三层目录中均有软链，且各层软链按上述指向解析到真实文件，Codex 层条目直接位于 `~/.codex/skills/<skill>` 下
 
 #### Scenario: 完成输出覆盖四类 agent
 
@@ -115,7 +115,7 @@ install.sh MUST 提供 `--dry-run`：按与真实安装相同的逻辑计算全�
 
 ### Requirement: 发布验证分层
 
-install.sh 交付前 MUST 通过自动化门禁：shellcheck 静态检查零告警；以隔离 HOME 运行的安装/重复安装/非 git 目录/卸载/第三方投影链共存全流程测试；以及 14 个 skill × 三层的链接解析矩阵（使用含第三方形状软链的回归 fixture）。真实环境中 Claude Code、pi、Codex、Kimi Code 四类 agent 的可见性冒烟为 SHOULD 级一次性人工验证：发布前 SHOULD 补跑并留档，跳过时 MUST 在变更记录中书面豁免。
+install.sh 交付前 MUST 通过自动化门禁：shellcheck 静态检查零告警；以隔离 HOME 运行的安装/重复安装/非 git 目录/卸载/第三方投影链共存全流程测试；以及 15 个 skill × 三层的链接解析矩阵（使用含第三方形状软链的回归 fixture）。真实环境中 Claude Code、pi、Codex、Kimi Code 四类 agent 的可见性冒烟为 SHOULD 级一次性人工验证：发布前 SHOULD 补跑并留档，跳过时 MUST 在变更记录中书面豁免。
 
 #### Scenario: 隔离环境全流程测试通过
 
@@ -125,7 +125,7 @@ install.sh 交付前 MUST 通过自动化门禁：shellcheck 静态检查零告�
 #### Scenario: 链接解析矩阵通过
 
 - **WHEN** 在含第三方形状软链的隔离 fixture 上完成安装
-- **THEN** 14 个 skill 在三层均可解析到 `SKILL.md`，且第三方形状软链全部存活
+- **THEN** 15 个 skill 在三层均可解析到 `SKILL.md`，且第三方形状软链全部存活
 
 #### Scenario: 四类 agent 可见性验证
 

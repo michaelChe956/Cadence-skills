@@ -31,6 +31,8 @@ cadence/knowledge-base/user-input/
 
 插件内置模板位于仓库源目录 `cadence-init/skills/knowledge-base-bootstrap/user-input/`，仅供参考；Bootstrap 不代替用户填写，也不会把模板复制为目标项目事实。
 
+输入尚未准备时，可先用 `/knowledge-base-user-input` 依据目标项目证据生成一版输入草稿，再逐项确认后回到本 Skill；Bootstrap 仍按上述契约校验输入，不直接采信未确认的草稿。
+
 ## 如何使用
 
 ### 自然语言自动触发
