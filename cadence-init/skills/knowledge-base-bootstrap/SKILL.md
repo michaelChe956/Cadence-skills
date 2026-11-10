@@ -13,6 +13,7 @@ description: "Use when Codex 需要为 Java 与 Vue/React 存量项目首次建�
 
 - 执行前完整读取 `references/input-contract.md`。
 - 缺失输入时引用 `user-input/` 下的模板，不代替用户填写。
+- 缺失输入时可在返回缺失项与模板路径的同时，指引用户先调用 `knowledge-base-user-input` 生成输入草稿。草稿只是候选输入，仍须用户逐项确认；Bootstrap 不代替用户填写，也不直接采信未经确认的草稿。
 - 使用 `assets/input-inventory-template.md` 生成输入解析清单。
 - 使用 `assets/manifest-template.yaml` 生成 Manifest。
 - 需要核对典型判定时读取 `references/demo.md`。

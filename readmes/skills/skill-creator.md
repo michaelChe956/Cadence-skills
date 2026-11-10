@@ -116,5 +116,5 @@ Skill 目录名必须与 front matter 的 `name` 相同，并且目录中包含 
 完整参数、目录约定和执行流程请参考：
 
 - [仓库内 Skill 定义](../../cadence-init/skills/skill-creator/SKILL.md)
-- [13 个 Skills 导航](README.md)
+- [15 个 Skills 导航](README.md)
 - [Commands 与 Skills 关系](../commands/skill-create.md)

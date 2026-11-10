@@ -1,0 +1,4 @@
+interface:
+  display_name: "KnowledgeBase 输入草稿生成"
+  short_description: "依据目标项目证据生成 9 个 Schema 4.0 输入文件草稿并输出确认清单"
+  default_prompt: "使用 $knowledge-base-user-input，为目标项目的 cadence/knowledge-base/user-input/ 生成 9 个输入文件草稿；只依据目标项目自身的代码、构建与配置证据推导，状态值只用全量/指定/不适用，不确定的条目标注【待确认】，敏感值一律 <redacted>；生成后给出逐项确认清单，未经我确认不执行 knowledge-base-bootstrap。"

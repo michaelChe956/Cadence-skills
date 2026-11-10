@@ -208,7 +208,7 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 
 ## 项目初始化（cadence-init）
 
-`cadence-init` 是仓库中包含 13 个 Skills 的插件目录。安装后，在目标项目根目录按需执行以下流程；这些调用均使用实际 Skill 名，不使用插件命名空间。
+`cadence-init` 是仓库中包含 15 个 Skills 的插件目录。安装后，在目标项目根目录按需执行以下流程；这些调用均使用实际 Skill 名，不使用插件命名空间。
 
 ### 初始化步骤
 
@@ -216,7 +216,8 @@ rm -rf -- ~/.claude/plugins/marketplaces/cadence-skills-local
 2. `/mcp-configuration`：生成或合并项目 `.mcp.json`，并交接其他客户端配置。
 3. `/rule-config`：配置 `.claude/rules/`、入口文件、`cadence/` 和 OpenSpec。
 4. `/project-rules-examples`：按需创建 `cadence/project-rules/` 模板（需求文档、设计文档、代码开发规范、测试规范四类）。
-5. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
+5. `/knowledge-base-user-input`：目标项目尚未准备 Schema 4.0 输入时，依据项目自身证据生成 9 个输入文件草稿，并逐项确认。
+6. `/knowledge-base-bootstrap`：在已填写 Schema 4.0 输入后初始化存量项目知识库。
 
 `/pre-check` 的运行时工具安装、Superpowers 目录及其同步边界，和 Cadence 的 Git 仓库与三层 skill 链接是两套独立机制，不要混称。
 
@@ -281,11 +282,11 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 
 初始化完成后由使用者自行比对文件确认；需要回退时，从 `cadence/legacy/<时间戳>/` 取写前副本。
 
-## 13 个 Skills
+## 15 个 Skills
 
 ### KnowledgeBase skills
 
-以下 7 个 Skills 面向 Schema 4.0 KnowledgeBase：
+以下 8 个 Skills 面向 Schema 4.0 KnowledgeBase：
 
 | Skill | 职责 |
 | --- | --- |
@@ -296,8 +297,9 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 | `knowledge-base-overview` | 生成知识库入口、导航、术语和项目使用规则 |
 | `knowledge-base-pages` | 分析 Vue/React 页面、路由、权限、状态和 API 关系 |
 | `knowledge-base-update` | 依据完整变更包增量更新已有 KnowledgeBase |
+| `knowledge-base-user-input` | 依据目标项目证据生成 9 个 Schema 4.0 输入文件草稿并交用户确认 |
 
-常用调用：`/knowledge-base-bootstrap`、`/knowledge-base-context`、`/knowledge-base-update`。
+常用调用：`/knowledge-base-user-input`、`/knowledge-base-bootstrap`、`/knowledge-base-context`、`/knowledge-base-update`。
 
 ### 项目初始化与规则 skills
 
@@ -319,7 +321,7 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 
 常用调用：`/skill-creator`。`legacy-bootstrap` 默认不自动触发，需按实际需要使用。
 
-插件元数据版本以 `cadence-init/.claude-plugin/plugin.json` 的 `0.0.4` 为准；Skill 数量以仓库中的 13 个 `SKILL.md` 为准。
+插件元数据版本以 `cadence-init/.claude-plugin/plugin.json` 的 `0.0.4` 为准；Skill 数量以仓库中的 15 个 `SKILL.md` 为准。
 
 ## Commands 库
 
@@ -356,7 +358,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 
 - 安装后先运行验证命令，再启动 Agent 客户端。
 - 让 `/pre-check`、`/rule-config` 按顺序完成项目基础配置。
-- 先填写并校验 Schema 4.0 输入，再运行 `/knowledge-base-bootstrap`。
+- 先填写并校验 Schema 4.0 输入，再运行 `/knowledge-base-bootstrap`；输入尚未准备时可先用 `/knowledge-base-user-input` 生成草稿并逐项确认。
 - 已完成知识库的任务优先使用 `/knowledge-base-context`；事实变化使用 `/knowledge-base-update`，不要用重新初始化替代增量更新。
 - 更新 Cadence 时重新运行 `install.sh`，不要手工复制 Skill 目录。
 - 卸载前核对链接目标；默认卸载保留仓库，删除仓库必须显式传递 `--delete-repo`。
@@ -385,7 +387,7 @@ Cadence 产物使用 `cadence/designs/` 和 `cadence/plans/`。`docs/superpowers
 
 1. Fork 本仓库并创建功能分支。
 2. 使用 `/skill-creator` 创建或维护 Skill，确保目录名、front matter 的 `name` 和 `SKILL.md` 一致。
-3. 更新用户文档时同步检查 13 个 Skill 名称、五端 Agent 路径和安装脚本契约。
+3. 更新用户文档时同步检查 15 个 Skill 名称、五端 Agent 路径和安装脚本契约。
 4. 运行 ShellCheck、安装/更新/卸载验证和文档定向断言后提交 Pull Request。
 5. 改动 KnowledgeBase 能力时，同步更新 `evals/kb/cases.py` 案例集与 `VALUE-TEST-PLAN.md` 基线，并按配对实验复测。
 
