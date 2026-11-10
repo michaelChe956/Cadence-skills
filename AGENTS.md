@@ -62,6 +62,7 @@ Skill 调用：Claude/Kimi 原生调用；Codex/pi/omp 清单选择后将用途�
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
 - 禁止在 `.claude/rules/` 目录中添加用户自定义规则
 - 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
+- **持久 shell 会话里禁止 `export` 会话级全局变量**（`HOME`/`PATH`/`GIT_*`），隔离环境用单命令前缀赋值或子 shell → 详见 `cadence/project-rules/shell-session-isolation.md`
 - 详见 `cadence/project-rules/README.md`
 
 ### 7. 代码阅读规则
