@@ -52,6 +52,22 @@ no-interrupt 模式的全部写入由 `scripts/apply.py` 完成（`apply.sh` 为
 | `skipped CLAUDE.md/AGENTS.md` | 入口已含等价引用，脚本未写 | 该步骤视为完成 |
 | `needs-rule-config CLAUDE.md/AGENTS.md` | 入口文件缺失或缺少引用 | 交给 `rule-config` 处理；本 Skill 不写入口文件，只记入报告 |
 
+### 收尾报告（stdout 最后一行）
+
+六态行之后，脚本在 stdout 最后一行输出单行 JSON 收尾报告（`--help` 除外）；上表的逐行输出不变，模型仍按上表解读。调用方（含 cadence-aria 的零变更判定）只读取该行的 `overall`。
+
+| 字段 | 含义 |
+|------|------|
+| `overall` | 总是该行最后一个键。取值只有 `success`（退出码 0）与 `failed`（退出码 2 / 3），与 `pre-check` 对齐 |
+| `exit_code` | 进程退出码 |
+| `counts` | 六种状态各出现的次数 |
+| `completed` | 已处理的路径（失败时即失败前已完成的文件） |
+| `needs_rule_config` | 缺少等价引用的入口文件；这是交给 `rule-config` 的交接项，**不算失败**，`overall` 仍为 `success` |
+| `pending` | stderr `pending` 提示的数量 |
+| `failure` | 失败时的 `file` / `reason` / `recovery`，成功时为 `null` |
+
+幂等重跑（全部 `pristine` / `unchanged` / `skipped`，零写入）输出 `overall` = `success`。
+
 脚本保证的合并规则（模型不得绕过）：
 
 - 章节身份 = 标题级别 + 去编号标题文本（NB-01）；围栏代码块内的 `#` 不识别为标题。
@@ -65,7 +81,7 @@ no-interrupt 模式的全部写入由 `scripts/apply.py` 完成（`apply.sh` 为
 ### 失败与恢复
 
 - 脚本对无法安全解析的文件（非空但无任何标题、围栏代码块未闭合、非 UTF-8 文本）保持原样并输出 `unchanged` 与 stderr 警告，不写、不删。
-- 备份或写入失败时脚本立即终止（退出码 3）；按 `cadence/legacy/<时间戳>/` 中的写入前原像恢复。
+- 备份或写入失败时脚本立即终止（退出码 3，stderr 输出原因，stdout 收尾报告的 `overall` 为 `failed` 且 `failure.file` 为失败文件）；按 `cadence/legacy/<时间戳>/` 中的写入前原像恢复。
 
 ## 无交互默认策略
 

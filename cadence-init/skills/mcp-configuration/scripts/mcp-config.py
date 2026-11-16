@@ -1151,9 +1151,29 @@ def cmd_apply(args: argparse.Namespace) -> int:
     return 0 if report["overall"] in ("ok", "degraded") else 1
 
 
+def emit_verdict(exit_code: int, native: Optional[str], report_path: str,
+                 failure: Optional[dict] = None, pending: int = 0) -> None:
+    """stdout 末行输出机器可读收尾报告（单行 JSON）。
+
+    `overall` 取值与 pre-check 对齐：success（退出码 0，含 degraded）/ failed（非 0）；
+    必须是最后一个键，调用方只读该字段后的短窗口。原生三值（ok/degraded/fail）在 `native`。
+    """
+    sys.stdout.write(json.dumps({
+        "skill": "mcp-configuration",
+        "exit_code": exit_code,
+        "native": native,
+        "report": report_path,
+        "pending": pending,
+        "failure": failure,
+        "overall": "success" if exit_code == 0 else "failed",
+    }, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
 def _finish(args: argparse.Namespace, report: dict) -> None:
-    """写报告并输出摘要（不含任何密钥）。"""
-    write_report(Path(args.report).expanduser(), report)
+    """写报告并输出摘要与收尾报告（不含任何密钥）。"""
+    report_path = Path(args.report).expanduser()
+    write_report(report_path, report)
     restored = sum(1 for a in report["actions"] if a.get("action") == "server-restored")
     kept = sum(1 for a in report["actions"] if a.get("action") == "user-value-kept")
     sys.stdout.write(
@@ -1167,6 +1187,11 @@ def _finish(args: argparse.Namespace, report: dict) -> None:
             backups=len(report["backups"]),
             warn=len(report["warnings"]),
         )
+    )
+    emit_verdict(
+        0 if report["overall"] in ("ok", "degraded") else 1,
+        report["overall"], str(report_path),
+        failure=report.get("failure"), pending=len(report["pending"]),
     )
 
 
@@ -1196,11 +1221,22 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     """入口。"""
     parser = build_parser()
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:  # --help 退出 0 不出报告；参数错误出失败报告
+        code = exc.code if isinstance(exc.code, int) else 2
+        if code != 0:
+            emit_verdict(code, None, "", failure={
+                "file": None, "reason": "命令行参数错误",
+                "recovery": "见上方 usage 提示修正参数"})
+        raise
     try:
         return int(args.func(args))
     except UsageError as exc:
         sys.stderr.write(f"mcp-config: {exc}\n")
+        emit_verdict(2, None, str(Path(args.report).expanduser()), failure={
+            "file": None, "reason": str(exc),
+            "recovery": "修正命令行参数或项目根后重试"})
         return 2
 
 

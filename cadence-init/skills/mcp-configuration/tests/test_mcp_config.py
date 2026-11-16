@@ -439,5 +439,93 @@ class TestCliContract(McpConfigTestCase):
         self.assertIn("time", document["mcpServers"])
 
 
+def recipe_report_verdict(tool_output: str) -> str:
+    """镜像 cadence-aria `recipe_report_verdict`：带引号的 "overall" 后 64 字符窗口，
+    含 failed → failed；含 success 且此前无结论 → success；无字段 → absent。"""
+    field, window, verdict = '"overall"', 64, "absent"
+    rest = tool_output
+    while True:
+        index = rest.find(field)
+        if index < 0:
+            return verdict
+        win = rest[index + len(field):][:window]
+        if "failed" in win:
+            verdict = "failed"
+        elif "success" in win and verdict == "absent":
+            verdict = "success"
+        rest = rest[index + 1:]
+
+
+class TestStdoutReport(McpConfigTestCase):
+    """stdout 收尾报告：单行 JSON，overall ∈ {success, failed}，原摘要行保留。"""
+
+    def last_report(self, stdout: str) -> dict:
+        lines = [ln for ln in stdout.splitlines() if ln.strip()]
+        self.assertTrue(lines and lines[-1].startswith("{"), stdout)
+        return json.loads(lines[-1])
+
+    def test_first_run_reports_success(self) -> None:
+        proc = self.run_apply()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        report = self.last_report(proc.stdout)
+        self.assertEqual(report["overall"], "success")
+        self.assertEqual(report["native"], "ok")
+        self.assertEqual(report["exit_code"], 0)
+        self.assertEqual(report["report"], str(self.report_path))
+        self.assertIn("mcp-config: overall=ok", proc.stdout)  # 原摘要行保留
+        self.assertEqual(recipe_report_verdict(proc.stdout), "success")
+
+    def test_idempotent_rerun_reports_success(self) -> None:
+        self.run_apply()
+        before = {p: p.read_bytes() for p in self.project.rglob("*") if p.is_file()}
+        proc = self.run_apply()
+        after = {p: p.read_bytes() for p in self.project.rglob("*") if p.is_file()}
+        self.assertEqual(before, after, "重跑必须零写入")
+        self.assertEqual(self.read_report()["backups"], [])
+        self.assertEqual(self.last_report(proc.stdout)["overall"], "success")
+        self.assertEqual(recipe_report_verdict(proc.stdout), "success")
+
+    def test_degraded_reports_success_with_native_degraded(self) -> None:
+        (self.project / ".mcp.json").write_text("{ this is not json\n", encoding="utf-8")
+        proc = self.run_apply()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        report = self.last_report(proc.stdout)
+        self.assertEqual(report["overall"], "success")
+        self.assertEqual(report["native"], "degraded")
+        self.assertGreaterEqual(report["pending"], 1)
+
+    def test_backup_failure_reports_failed(self) -> None:
+        self.write_mcp_json({"mcpServers": {"context7": {
+            "type": "stdio", "command": "npx",
+            "args": ["-y", "@upstash/context7-mcp"], "env": {},
+        }}})
+        (self.project / "cadence").mkdir()
+        (self.project / "cadence" / "legacy").write_text("占位文件", encoding="utf-8")
+        proc = self.run_apply()
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        report = self.last_report(proc.stdout)
+        self.assertEqual(report["overall"], "failed")
+        self.assertEqual(report["native"], "fail")
+        self.assertEqual(report["exit_code"], 1)
+        self.assertTrue(report["failure"]["reason"])
+        self.assertEqual(recipe_report_verdict(proc.stdout), "failed")
+
+    def test_usage_error_reports_failed(self) -> None:
+        cmd = [sys.executable, str(SCRIPT), "apply",
+               "--project-root", str(self.tmp / "nope"),
+               "--report", str(self.report_path)]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 2)
+        report = self.last_report(proc.stdout)
+        self.assertEqual(report["overall"], "failed")
+        self.assertEqual(report["exit_code"], 2)
+
+    def test_help_prints_no_report(self) -> None:
+        proc = subprocess.run([sys.executable, str(SCRIPT), "apply", "--help"],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn('"overall"', proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -124,6 +124,20 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print(d['warnings'])"
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 ```
 
+### stdout 收尾报告（机器可读）
+
+除 `--report` 文件外，脚本在 stdout **最后一行**输出一份单行 JSON 收尾报告（`--help` 与 `verify --json` 除外；后者的 stdout 保持为单个完整 JSON 文档）。`verify` 的逐行 `[ok]` / `[drift]` 输出原样保留在其之前。调用方（含 cadence-aria 的零变更判定）只读取该行的 `overall`，不必再读报告文件。
+
+| 字段 | 含义 |
+|------|------|
+| `overall` | 总是该行最后一个键。取值只有 `success`（退出码 0，含 `degraded`、`healthy`）与 `failed`（退出码非 0，含 `fail`、`drift`、用法错误 2、缺 PyYAML 77），与 `pre-check` 对齐 |
+| `native` | 报告文件里的原生 `overall`：`ok` / `degraded` / `fail`（`verify` 为 `healthy` / `drift`）；未生成报告时为 `null` |
+| `exit_code` | 进程退出码 |
+| `report` | `--report` 文件路径 |
+| `failure` | 失败信息（`file` / `reason` / `recovery`），成功时为 `null` |
+
+幂等重跑（全部 `ok`、零写入）输出 `overall` = `success`。`degraded` 同样是 `success`，是否需要人工补齐看 `native` 与报告里的 `warnings`。
+
 ## 失败关闭
 
 | 退出码 | 含义 | 恢复建议 |

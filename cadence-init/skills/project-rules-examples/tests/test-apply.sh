@@ -55,8 +55,8 @@ ck "T1 requirement created" "created cadence/project-rules/examples/requirement-
 ck "T1 design created"      "created cadence/project-rules/examples/design-template.md"      "$(grep '/design-template.md$' <<<"$out")"
 ck "T1 coding created"      "created cadence/project-rules/examples/coding-standards.md"     "$(grep '/coding-standards.md$' <<<"$out")"
 ck "T1 test created"        "created cadence/project-rules/examples/test-standards.md"       "$(grep '/test-standards.md$' <<<"$out")"
-ck "T1 CLAUDE needs-rule-config" "needs-rule-config CLAUDE.md" "$(grep 'CLAUDE.md' <<<"$out" | grep needs-rule-config)"
-ck "T1 AGENTS needs-rule-config" "needs-rule-config AGENTS.md" "$(grep 'AGENTS.md' <<<"$out" | grep needs-rule-config)"
+ck "T1 CLAUDE needs-rule-config" "needs-rule-config CLAUDE.md" "$(grep -E '^(skipped|needs-rule-config) CLAUDE.md$' <<<"$out")"
+ck "T1 AGENTS needs-rule-config" "needs-rule-config AGENTS.md" "$(grep -E '^(skipped|needs-rule-config) AGENTS.md$' <<<"$out")"
 ck "T1 未创建 CLAUDE.md" "missing" "$([ -e "$P/CLAUDE.md" ] && echo exists || echo missing)"
 ck "T1 未创建 AGENTS.md" "missing" "$([ -e "$P/AGENTS.md" ] && echo exists || echo missing)"
 ck "T1 内容=模板" "$(head -1 "$REFS/README.md")" "$(head -1 "$P/cadence/project-rules/README.md")"
@@ -89,8 +89,8 @@ out=$("$APPLY" --project-root "$P")
 ck "T3 coding unchanged" "unchanged cadence/project-rules/examples/coding-standards.md" "$(grep '/coding-standards.md$' <<<"$out")"
 ck "T3 README merged"    "merged cadence/project-rules/README.md" "$(grep '/README.md$' <<<"$out")"
 ck "T3 coding 字节不变"  "$cs_before" "$(hash_of "$CS")"
-ck "T3 CLAUDE needs-rule-config" "needs-rule-config CLAUDE.md" "$(grep 'CLAUDE.md' <<<"$out" | grep needs-rule-config)"
-ck "T3 AGENTS skipped"   "skipped AGENTS.md" "$(grep 'AGENTS.md' <<<"$out" | grep skipped)"
+ck "T3 CLAUDE needs-rule-config" "needs-rule-config CLAUDE.md" "$(grep -E '^(skipped|needs-rule-config) CLAUDE.md$' <<<"$out")"
+ck "T3 AGENTS skipped"   "skipped AGENTS.md" "$(grep -E '^(skipped|needs-rule-config) AGENTS.md$' <<<"$out")"
 ck "T3 CLAUDE 哈希不变"  "$cm_before" "$(hash_of "$P/CLAUDE.md")"
 ck "T3 AGENTS 哈希不变"  "$ag_before" "$(hash_of "$P/AGENTS.md")"
 ck "T3 用户行逐字保留"  "1" "$(grep -c '提交前必须跑全量回归' "$CS")"
@@ -122,7 +122,8 @@ ck "T4 重跑退出码 0" "0" "$rc"
 ck "T4 无新增写入状态" "0" "$(grep -cE '^(created|merged) ' <<<"$out")"
 ck "T4 文件内容零变化" "$snap" "$(find "$P/cadence" -type f -exec sha256sum {} + | sort)"
 ck "T4 备份目录零新增" "$legacy_before" "$(find "$P/cadence/legacy" -maxdepth 1 -mindepth 1 -type d | wc -l)"
-ck "T4 输出全部为六态行" "0" "$(grep -cvE '^(created|pristine|merged|unchanged|skipped|needs-rule-config) ' <<<"$out")"
+ck "T4 输出全部为六态行（收尾报告行除外）" "0" "$(grep -vE '^\{' <<<"$out" | grep -cvE '^(created|pristine|merged|unchanged|skipped|needs-rule-config) ')"
+ck "T4 末行为收尾报告 success" '"overall": "success"}' "$(tail -n 1 <<<"$out" | grep -o '"overall": "[a-z]*"}')"
 rm -rf "$P"
 
 # ---------- T5 用法错误 ----------
@@ -130,6 +131,28 @@ rm -rf "$P"
 ck "T5 项目根不存在退出码 2" "2" "$rc"
 "$APPLY" --unknown-flag >/dev/null 2>&1; rc2=$?
 ck "T5 未知参数退出码 2" "2" "$rc2"
+
+# ---------- T7 收尾报告契约：已初始化目录连续两遍；失败退出码 3 报告 failed ----------
+P=$(new_proj)
+printf '# CLAUDE.md\n\n## 项目个性化规则\n\n详见 cadence/project-rules/README.md\n' > "$P/CLAUDE.md"
+printf '# AGENTS.md\n\n## 项目个性化规则\n\n详见 cadence/project-rules/README.md\n' > "$P/AGENTS.md"
+"$APPLY" --project-root "$P" >/dev/null
+snap=$(find "$P" -type f -exec sha256sum {} + | sort)
+out=$("$APPLY" --project-root "$P"); rc=$?
+ck "T7 第二遍退出码 0" "0" "$rc"
+ck "T7 第二遍零写入" "$snap" "$(find "$P" -type f -exec sha256sum {} + | sort)"
+ck "T7 第二遍报告 success" "1" "$(grep -c '"overall": "success"' <<<"$out")"
+ck "T7 第二遍不含 failed" "0" "$(grep -c 'failed' <<<"$out")"
+rm -rf "$P"
+SK=$(mktemp -d "${TMPDIR:-/tmp}/prx-apply-skill.XXXXXX")
+cp -r "$TEST_DIR/.." "$SK/skill"; rm -rf "$SK/skill/tests"
+rm -f "$SK/skill/references/project-rules/examples/test-standards.md"
+P=$(new_proj)
+out=$("$SK/skill/scripts/apply.sh" --project-root "$P" 2>/dev/null); rc=$?
+ck "T7 模板缺失退出码 3" "3" "$rc"
+ck "T7 失败报告 failed" "1" "$(grep -c '"overall": "failed"' <<<"$out")"
+ck "T7 失败报告不含 success" "0" "$(grep -c '"overall": "success"' <<<"$out")"
+rm -rf "$P" "$SK"
 
 # ---------- T6 Python 单元/端到端测试 ----------
 py_out=$(python3 "$TEST_DIR/test_apply.py" 2>&1); py_rc=$?
