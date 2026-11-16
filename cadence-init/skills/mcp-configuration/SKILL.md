@@ -36,6 +36,7 @@ python3 scripts/mcp-config.py apply \
 - 可选 `--project-type coding|non-coding`：显式指定项目类型（默认自动检测；`codegraph` 只在 coding 项目启用）。
 - 退出码：`0` = ok / degraded，`1` = fail（归档或写入失败，零发布），`2` = 用法错误。
 - 报告 JSON 关键字段：`overall`、`steps[]`、`actions[]`、`backups[]`、`warnings[]`、`pending[]`、`overrides[]`、`failure{}`。
+- stdout 输出：先一行人读摘要（`mcp-config: overall=ok ...`），**最后一行**为单行 JSON 收尾报告，供调用方（含 cadence-aria 的零变更判定）机器读取，`--help` 除外。字段：`overall`（总是最后一个键，取值只有 `success` / `failed`，与 `pre-check` 对齐；退出码 0 即 `success`，含 `degraded`；非 0 即 `failed`）、`native`（报告文件里的原生取值 `ok` / `degraded` / `fail`，用法错误时为 `null`）、`exit_code`、`report`（报告文件路径）、`pending`（待人工处理项数量）、`failure`（成功时 `null`）。幂等重跑输出 `overall` = `success`；`degraded` 的人工项看 `native` 与 `pending`。
 - 默认 server 的单一数据源是 `references/required-servers.json`（与本文 §5 / §6 示例同源）；修改默认 server 必须同步该文件与本文示例。
 
 ### no-interrupt 通用规则

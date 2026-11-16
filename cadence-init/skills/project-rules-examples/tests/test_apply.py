@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -200,6 +202,8 @@ class EndToEndTests(PrxTestCase):
         second = self.run_apply(root)
         self.assertEqual(second.returncode, 0, second.stderr)
         for line in second.stdout.splitlines():
+            if line.startswith("{"):  # 收尾报告行（machine-readable），不是状态行
+                continue
             self.assertIn(
                 line.split(" ", 1)[0], {"unchanged", "pristine", "skipped", "needs-rule-config"},
                 f"第二次运行不得再写入：{line}",
@@ -250,6 +254,132 @@ class EndToEndTests(PrxTestCase):
         )
         self.assertEqual(result.returncode, 2)
 
+
+
+def recipe_report_verdict(tool_output: str) -> str:
+    """逐字镜像 cadence-aria `recipe_report_verdict`（coordinator_turn_output.inc.rs）：
+    找每个带引号的 "overall" 字段，取其后 64 字符窗口：含 failed → failed；
+    含 success 且此前无结论 → success；没有字段 → absent。"""
+    field, window, verdict = '"overall"', 64, "absent"
+    rest = tool_output
+    while True:
+        index = rest.find(field)
+        if index < 0:
+            return verdict
+        win = rest[index + len(field):][:window]
+        if "failed" in win:
+            verdict = "failed"
+        elif "success" in win and verdict == "absent":
+            verdict = "success"
+        rest = rest[index + 1:]
+
+
+class ReportContractTests(PrxTestCase):
+    """stdout 末尾收尾报告契约：单行 JSON，`"overall"` 取值 success|failed。"""
+
+    def last_report(self, stdout: str) -> dict:
+        lines = [ln for ln in stdout.splitlines() if ln.strip()]
+        self.assertTrue(lines and lines[-1].startswith("{"), f"最后一行必须是报告 JSON：{stdout!r}")
+        return json.loads(lines[-1])
+
+    def test_fresh_run_reports_success_and_keeps_status_lines(self):
+        root = self.make_root()
+        result = self.run_apply(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = self.last_report(result.stdout)
+        self.assertEqual(report["overall"], "success")
+        self.assertEqual(report["counts"]["created"], len(prx.TARGETS))
+        self.assertEqual(report["counts"]["needs-rule-config"], len(prx.ENTRY_FILES))
+        self.assertEqual(sorted(report["needs_rule_config"]), sorted(prx.ENTRY_FILES))
+        self.assertEqual(report["exit_code"], 0)
+        self.assertEqual(recipe_report_verdict(result.stdout), "success")
+        for rel in PROJECT_RELS:  # 逐行输出保持不变
+            self.assertEqual(self.state_of(result.stdout, rel), "created", rel)
+
+    def test_idempotent_rerun_zero_write_reports_success(self):
+        root = self.make_root()
+        self.write_entries(root)
+        self.run_apply(root)
+        cadence = root / "cadence"
+        before = {str(p): sha(p.read_text(encoding="utf-8")) for p in cadence.rglob("*") if p.is_file()}
+        second = self.run_apply(root)
+        after = {str(p): sha(p.read_text(encoding="utf-8")) for p in cadence.rglob("*") if p.is_file()}
+        self.assertEqual(before, after, "重跑必须零写入")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        report = self.last_report(second.stdout)
+        self.assertEqual(report["overall"], "success")
+        self.assertEqual(report["counts"]["pristine"], len(prx.TARGETS))
+        self.assertEqual(report["counts"]["skipped"], len(prx.ENTRY_FILES))
+        self.assertEqual(report["counts"]["created"] + report["counts"]["merged"], 0)
+        self.assertEqual(recipe_report_verdict(second.stdout), "success")
+
+    def write_entries(self, root: Path) -> None:
+        for entry in prx.ENTRY_FILES:
+            (root / entry).write_text(
+                f"# {entry}\n\n## 项目个性化规则\n\n引用 cadence/project-rules/README.md\n",
+                encoding="utf-8",
+            )
+
+    def test_missing_template_exit_3_reports_failed(self):
+        root = self.make_root()
+        skill_copy = self.make_root() / "skill"
+        shutil.copytree(
+            SCRIPTS.parent, skill_copy, ignore=shutil.ignore_patterns("__pycache__", "tests")
+        )
+        (skill_copy / "references" / "project-rules" / "examples" / "design-template.md").unlink()
+        result = subprocess.run(
+            [sys.executable, str(skill_copy / "scripts" / "apply.py"), "--project-root", str(root)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 3, result.stderr)
+        report = self.last_report(result.stdout)
+        self.assertEqual(report["overall"], "failed")
+        self.assertEqual(report["exit_code"], 3)
+        self.assertIn("design-template.md", report["failure"]["file"])
+        self.assertEqual(recipe_report_verdict(result.stdout), "failed")
+        # 失败前已完成的文件仍以逐行状态输出并计入 completed
+        self.assertEqual(self.state_of(result.stdout, "README.md"), "created")
+        self.assertIn("cadence/project-rules/README.md", report["completed"])
+
+    def test_backup_failure_exit_3_reports_failed_not_traceback(self):
+        root = self.make_root()
+        rel = "README.md"
+        self.write_target(root, rel, drop_section(TEMPLATES[rel], "💡 提示"))
+        legacy = root / "cadence" / "legacy"
+        legacy.write_text("占位文件使备份目录无法创建", encoding="utf-8")
+        result = self.run_apply(root)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        report = self.last_report(result.stdout)
+        self.assertEqual(report["overall"], "failed")
+        self.assertEqual(report["failure"]["file"], "cadence/project-rules/README.md")
+        self.assertEqual(recipe_report_verdict(result.stdout), "failed")
+
+    def test_usage_error_exit_2_reports_failed(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "apply.py"), "--project-root", "/nonexistent-prx-xyz"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        report = self.last_report(result.stdout)
+        self.assertEqual(report["overall"], "failed")
+        self.assertEqual(report["exit_code"], 2)
+
+    def test_unknown_flag_exit_2_reports_failed(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "apply.py"), "--unknown-flag"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.last_report(result.stdout)["overall"], "failed")
+
+    def test_help_prints_no_report(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "apply.py"), "--help"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('"overall"', result.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

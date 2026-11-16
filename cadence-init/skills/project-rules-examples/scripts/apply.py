@@ -19,13 +19,20 @@
   created|pristine|merged|unchanged <目标相对路径>
   skipped|needs-rule-config CLAUDE.md|AGENTS.md
 
-退出码：0 正常；2 用法错误；3 内部错误。
+收尾报告（stdout 最后一行，单行 JSON；状态行之后输出，--help 除外）：
+  {"skill": ..., "exit_code": N, "counts": {...}, "completed": [...],
+   "needs_rule_config": [...], "pending": N, "failure": null|{...}, "overall": "success"|"failed"}
+  overall 恒为最后一个键；退出码 0 ⇒ success，非 0 ⇒ failed。
+  幂等重跑（全 pristine/unchanged/skipped）报告 success；needs-rule-config 是交接项，不算失败。
+
+退出码：0 正常；2 用法错误；3 内部错误（备份/写入/读取/模板缺失，均落失败报告）。
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import shutil
 import sys
 from datetime import datetime
@@ -219,101 +226,182 @@ def ref_anchor(path: Path) -> bool:
     return "项目个性化规则" in text and "cadence/project-rules" in text
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="铺设/合并 cadence/project-rules")
-    parser.add_argument("--project-root", default=".")
-    args = parser.parse_args(argv)
+class ApplyError(Exception):
+    """可预期的终止性失败：携带退出码与失败报告字段。"""
+
+    def __init__(self, code: int, reason: str, file: str | None = None,
+                 recovery: str = "按上方逐行状态确认已完成文件，修复后重跑本脚本（幂等）"):
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
+        self.file = file
+        self.recovery = recovery
+
+
+STATUSES = ("created", "pristine", "merged", "unchanged", "skipped", "needs-rule-config")
+
+
+class Run:
+    """一次运行的状态累积：逐行输出与收尾报告共用同一份记录。"""
+
+    def __init__(self) -> None:
+        self.counts = {status: 0 for status in STATUSES}
+        self.completed: list[str] = []
+        self.needs_rule_config: list[str] = []
+        self.pending = 0
+
+    def status(self, status: str, path: str) -> None:
+        print(f"{status} {path}")
+        self.counts[status] += 1
+        if status == "needs-rule-config":
+            self.needs_rule_config.append(path)
+        else:
+            self.completed.append(path)
+
+    def warn_pending(self, message: str) -> None:
+        print(f"[prx-apply][pending] {message}", file=sys.stderr)
+        self.pending += 1
+
+    def report(self, exit_code: int, error: ApplyError | None) -> dict:
+        """收尾报告。`overall` 必须是最后一个键：解析器只看该字段后 64 字符窗口。"""
+        return {
+            "skill": "project-rules-examples",
+            "exit_code": exit_code,
+            "counts": self.counts,
+            "completed": self.completed,
+            "needs_rule_config": self.needs_rule_config,
+            "pending": self.pending,
+            "failure": None if error is None else {
+                "file": error.file,
+                "reason": error.reason,
+                "recovery": error.recovery,
+            },
+            "overall": "failed" if exit_code != 0 else "success",
+        }
+
+
+def _apply(args: argparse.Namespace, run: Run) -> None:
     root = Path(args.project_root).resolve()
     if not root.is_dir():
-        print(f"[prx-apply][错误] 项目根不存在：{root}", file=sys.stderr)
-        return 2
+        raise ApplyError(2, f"项目根不存在：{root}", file=str(root),
+                         recovery="传入存在的 --project-root")
     if not REFS.is_dir():
-        print(f"[prx-apply][错误] 模板源缺失：{REFS}", file=sys.stderr)
-        return 3
+        raise ApplyError(3, f"模板源缺失：{REFS}", file=str(REFS),
+                         recovery="重新安装 project-rules-examples skill 后重试")
 
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     for src_rel, dst_rel in TARGETS:
         src = REFS / src_rel
         dst = root / dst_rel
         if not src.is_file():
-            print(f"[prx-apply][错误] 模板文件缺失：{src}", file=sys.stderr)
-            return 3
-        if not dst.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            if _state_module is not None:
-                _state_module.record_asset_base(root, dst_rel, src.read_text(encoding="utf-8"))
-            print(f"created {dst_rel}")
-            continue
+            raise ApplyError(3, f"模板文件缺失：{src}", file=str(src),
+                             recovery="重新安装 project-rules-examples skill 后重试")
         try:
-            existing = dst.read_text(encoding="utf-8")
-            template = src.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            print(f"[prx-apply][错误] 读取失败：{dst_rel}: {exc}", file=sys.stderr)
-            return 3
-        if existing == template:
-            if _state_module is not None:
-                _state_module.record_asset_base(root, dst_rel, template)
-            print(f"pristine {dst_rel}")
-            continue
-
-        base = (
-            _state_module.get_asset_base(root, dst_rel)
-            if _state_module is not None else None
-        )
-        if base is not None and merge_sections is not None:
-            if base == template:
-                # 框架模板未变：只补缺失章节，用户正文不重写。
-                merged, changed = merge_missing_sections(existing, template)
-                if changed:
-                    _backup_file(root, stamp, dst_rel, dst)
-                    _write_file(dst, merged)
-                    print(f"merged {dst_rel}")
-                else:
-                    print(f"unchanged {dst_rel}")
-                if _state_module is not None:
-                    _state_module.record_asset_base(root, dst_rel, template)
-                continue
-            merged, pending = merge_sections(base, existing, template)
-            if pending:
-                print(
-                    f"[prx-apply][pending] {dst_rel}: "
-                    f"{len(pending)} 项框架新版未自动采纳",
-                    file=sys.stderr,
-                )
-            if merged != existing:
-                _backup_file(root, stamp, dst_rel, dst)
-                _write_file(dst, merged)
-                print(f"merged {dst_rel}")
-            else:
-                print(f"unchanged {dst_rel}")
-            if _state_module is not None:
-                _state_module.record_asset_base(root, dst_rel, template)
-            continue
-
-        # 无基线：只有“纯旧版”（所有行都在模板中）才升级；
-        # 含用户内容的文件保持不变，只报告 pending，避免追加通用章节污染。
-        if _is_line_subset(existing, template):
-            _backup_file(root, stamp, dst_rel, dst)
-            _write_file(dst, template)
-            if _state_module is not None:
-                _state_module.record_asset_base(root, dst_rel, template)
-            print(f"merged {dst_rel}")
-            continue
-        print(
-            f"[prx-apply][pending] {dst_rel}: 无基线且含用户内容，"
-            f"保持原文件，未追加模板章节",
-            file=sys.stderr,
-        )
-        print(f"unchanged {dst_rel}")
+            _apply_target(root, stamp, src, dst, dst_rel, run)
+        except ApplyError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - 备份/写入/回读校验失败统一落失败报告
+            raise ApplyError(
+                3, f"{type(exc).__name__}: {exc}", file=dst_rel,
+                recovery="按 cadence/legacy/<时间戳>/ 中的写入前原像恢复，修复权限或磁盘后重跑",
+            ) from exc
 
     for entry in ENTRY_FILES:
         path = root / entry
         if path.exists() and ref_anchor(path):
-            print(f"skipped {entry}")
+            run.status("skipped", entry)
         else:
-            print(f"needs-rule-config {entry}")
-    return 0
+            run.status("needs-rule-config", entry)
+
+
+def _apply_target(root: Path, stamp: str, src: Path, dst: Path, dst_rel: str, run: Run) -> None:
+    if not dst.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        if _state_module is not None:
+            _state_module.record_asset_base(root, dst_rel, src.read_text(encoding="utf-8"))
+        run.status("created", dst_rel)
+        return
+    try:
+        existing = dst.read_text(encoding="utf-8")
+        template = src.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ApplyError(3, f"读取失败：{exc}", file=dst_rel,
+                         recovery="确认文件为可读的 UTF-8 文本后重跑") from exc
+    if existing == template:
+        if _state_module is not None:
+            _state_module.record_asset_base(root, dst_rel, template)
+        run.status("pristine", dst_rel)
+        return
+
+    base = (
+        _state_module.get_asset_base(root, dst_rel)
+        if _state_module is not None else None
+    )
+    if base is not None and merge_sections is not None:
+        if base == template:
+            # 框架模板未变：只补缺失章节，用户正文不重写。
+            merged, changed = merge_missing_sections(existing, template)
+            if changed:
+                _backup_file(root, stamp, dst_rel, dst)
+                _write_file(dst, merged)
+                run.status("merged", dst_rel)
+            else:
+                run.status("unchanged", dst_rel)
+            if _state_module is not None:
+                _state_module.record_asset_base(root, dst_rel, template)
+            return
+        merged, pending = merge_sections(base, existing, template)
+        if pending:
+            run.warn_pending(f"{dst_rel}: {len(pending)} 项框架新版未自动采纳")
+        if merged != existing:
+            _backup_file(root, stamp, dst_rel, dst)
+            _write_file(dst, merged)
+            run.status("merged", dst_rel)
+        else:
+            run.status("unchanged", dst_rel)
+        if _state_module is not None:
+            _state_module.record_asset_base(root, dst_rel, template)
+        return
+
+    # 无基线：只有“纯旧版”（所有行都在模板中）才升级；
+    # 含用户内容的文件保持不变，只报告 pending，避免追加通用章节污染。
+    if _is_line_subset(existing, template):
+        _backup_file(root, stamp, dst_rel, dst)
+        _write_file(dst, template)
+        if _state_module is not None:
+            _state_module.record_asset_base(root, dst_rel, template)
+        run.status("merged", dst_rel)
+        return
+    run.warn_pending(f"{dst_rel}: 无基线且含用户内容，保持原文件，未追加模板章节")
+    run.status("unchanged", dst_rel)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="铺设/合并 cadence/project-rules")
+    parser.add_argument("--project-root", default=".")
+    run = Run()
+    error: ApplyError | None = None
+    try:
+        args = parser.parse_args(argv)
+        _apply(args, run)
+        exit_code = 0
+    except SystemExit as exc:  # argparse：--help 退出 0 不出报告；用法错误退出 2 出失败报告
+        code = exc.code if isinstance(exc.code, int) else 2
+        if code == 0:
+            return 0
+        exit_code = code
+        error = ApplyError(code, "命令行参数错误", recovery="见上方 usage 提示修正参数")
+    except ApplyError as exc:
+        print(f"[prx-apply][错误] {exc.reason}", file=sys.stderr)
+        exit_code, error = exc.code, exc
+    except Exception as exc:  # noqa: BLE001 - 兜底：任何异常都必须落失败报告
+        print(f"[prx-apply][错误] 未预期异常：{type(exc).__name__}: {exc}", file=sys.stderr)
+        exit_code = 3
+        error = ApplyError(3, f"未预期异常：{type(exc).__name__}: {exc}")
+    # 收尾报告：stdout 最后一行单行 JSON；逐行状态保持原样在其之前。
+    print(json.dumps(run.report(exit_code, error), ensure_ascii=False))
+    return exit_code
 
 
 if __name__ == "__main__":

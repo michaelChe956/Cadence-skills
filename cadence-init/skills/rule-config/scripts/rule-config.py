@@ -76,6 +76,20 @@ except ImportError:
         except OSError:
             pass
     sys.stderr.write("rule-config: 缺少依赖 PyYAML，请执行 pip install pyyaml\n")
+    # 收尾报告（与 main 的契约一致）：缺依赖是失败，overall 恒为最后一个键。
+    sys.stdout.write(json.dumps({
+        "skill": "rule-config",
+        "exit_code": 77,
+        "native": "fail" if _arg_report else None,
+        "report": _arg_report,
+        "failure": {
+            "file": __file__,
+            "reason": "missing dependency: PyYAML",
+            "recovery": "pip install pyyaml",
+        },
+        "overall": "failed",
+    }, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
     sys.exit(77)
 
 
@@ -5413,8 +5427,48 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _emit_verdict(exit_code: int, ctx: dict) -> None:
+    """stdout 末行输出机器可读收尾报告（单行 JSON）。
+
+    `overall` 取值与 pre-check 对齐：success（退出码 0，含 degraded）/ failed（非 0）；
+    必须是最后一个键，调用方只读该字段后的短窗口。原生取值（ok/degraded/fail、
+    verify 的 healthy/drift）在 `native`。`--help` 与 `verify --json`（stdout 须为单个
+    JSON 文档）不输出。
+    """
+    if ctx.get("silent"):
+        return
+    report = ctx.get("report")
+    failure = report.get("failure") if report else None
+    if exit_code != 0 and not failure:
+        failure = {
+            "file": None,
+            "reason": f"未生成执行报告（退出码 {exit_code}，详见 stderr）",
+            "recovery": "按 stderr 提示修正命令行参数后重试",
+        }
+    sys.stdout.write(json.dumps({
+        "skill": "rule-config",
+        "exit_code": exit_code,
+        "native": report.get("overall") if report else None,
+        "report": ctx.get("report_path"),
+        "failure": failure,
+        "overall": "success" if exit_code == 0 else "failed",
+    }, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
 def main(argv: Optional[list] = None) -> int:
-    """CLI 入口。退出码：0=success/degraded，1=failed，2=usage，77=missing-yaml。"""
+    """CLI 入口：执行 `_main` 后在 stdout 末行输出收尾报告。"""
+    ctx: dict = {}
+    exit_code = _main(argv, ctx)
+    _emit_verdict(exit_code, ctx)
+    return exit_code
+
+
+def _main(argv: Optional[list], ctx: dict) -> int:
+    """CLI 主体。退出码：0=success/degraded，1=failed，2=usage，77=missing-yaml。
+
+    ctx 回传 report / report_path / silent 供 `main` 生成收尾报告。
+    """
     global T0
     T0 = time.monotonic()  # 入口第一行：budget 基准
 
@@ -5422,8 +5476,9 @@ def main(argv: Optional[list] = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        # argparse 解析失败 → 退出码 2（usage）
+        # argparse 解析失败 → 退出码 2（usage）；--help（退出码 0）不输出收尾报告
         code = exc.code if isinstance(exc.code, int) else 2
+        ctx["silent"] = code == 0
         return code if code != 0 else 2
 
     if args.remove_permission_gate and args.mode is not None:
@@ -5447,6 +5502,8 @@ def main(argv: Optional[list] = None) -> int:
     # 构造 intents
     root = Path(args.project_root).resolve()
     report_path = Path(args.report).resolve()
+    ctx["report_path"] = str(report_path)
+    ctx["silent"] = bool(args.json and (args.verify or args.mode == "verify"))
     decisions_path = Path(args.decisions).resolve() if args.decisions else None
 
     # --report 必须位于项目根之外（Plan L22 全局约束：脚本拒绝根内路径）。
@@ -5471,6 +5528,7 @@ def main(argv: Optional[list] = None) -> int:
                 "recovery": "将 decisions 文件放在项目根目录之外（外部输入）",
             }
             write_report(report_path, report)
+            ctx["report"] = report
             return 2
 
     intents = Intents(
@@ -5493,6 +5551,7 @@ def main(argv: Optional[list] = None) -> int:
         }
     else:
         report = build_report(mode, root)
+    ctx["report"] = report
 
     try:
         if args.remove_permission_gate:
