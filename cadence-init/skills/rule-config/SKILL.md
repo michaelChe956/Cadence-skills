@@ -54,6 +54,9 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 | 忽略产物目录 | `--ignore-cadence` | 将 `cadence/` 追加到 `.gitignore`（默认不追加） |
 | 启用 Playwright | `--enable-playwright` | 创建 `.claude/rules/playwright.md` 并补摘要（默认跳过） |
 | 强制启用 CodeGraph | `--enable-codegraph` | 非 Coding 项目也执行 CodeGraph 安装与初始化（默认仅 Coding 项目） |
+| 延后 CodeGraph 索引 | `--defer-codegraph-index` | 只配置 CodeGraph MCP（`.mcp.json` 与 `.codex/config.toml`），不执行 `codegraph install/init/status`，索引构建由调用方后续阶段完成（默认关闭） |
+
+> **延后索引的透传纪律（强制）**：`--defer-codegraph-index` **只在上游调用上下文明确要求"本阶段仅配置 MCP、索引推迟到后续阶段"时才透传**；默认不启用。Agent 不得自行推断启用（例如不得以"仓库较大、担心初始化超时"为由擅自加上该标志）。未携带该标志时，脚本按既有矩阵执行 `codegraph install` → `codegraph init`（既有 `.codegraph/` 时仅 `codegraph status`）。
 
 ## 调用方式
 
@@ -73,6 +76,8 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 
 **PyYAML 缺失（退出码 77）**：脚本依赖 PyYAML，缺失时以退出码 77 退出并照常写出报告。此时改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 以相同参数重跑（报告路径可复用或重新 `mktemp`）。
 
+**意图参数保留（强制）**：dry-run 与 apply 两次调用必须携带**完全一致**的意图参数（`--project-type` / `--ignore-cadence` / `--enable-playwright` / `--enable-codegraph` / `--defer-codegraph-index`）。PyYAML 缺失改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 重跑时同样保留原参数，不得在重跑时丢弃或新增任何意图标志。
+
 ## 两阶段流程
 
 ### 普通模式
@@ -88,6 +93,22 @@ python3 "<RULE_CONFIG_PY>" apply --project-root "<PROJECT_ROOT>" --report "<REPO
 单次 apply：直接执行 `apply --no-interrupt` 一次完成（可选先跑 dry-run 摸底）。脚本不读取也不要求决策文件，全部冲突按 `references/merge-semantics.md` 的权威规则内部决策并记入报告。此模式禁止 Agent 调用 `AskUserQuestion`、`request_user_input` 或等价提问工具，禁止等待用户输入。
 
 **汇报冲突实际动作（强制）**：两模式汇报 drift 处理结果时，Agent MUST 依据报告 `steps[].actions[]` 条目的 `action`/`branch`（如 `overwritten`/`authoritative-overwrite`/`l1-authoritative-replace`/`rules-apply-removed`/`template-replace`）描述**实际执行动作**。冲突清单已不再承载 drift 条目。
+
+## CodeGraph 索引延后（`--defer-codegraph-index`）
+
+携带该标志时，脚本在 S8 只做一件事：**补齐双 MCP 配置**（`.mcp.json` 的 `mcpServers.codegraph` 与 `.codex/config.toml` 的 `[mcp_servers.codegraph]` 区块），其余一律不做。
+
+- **不执行任何 codegraph 子命令**：`install` / `init` / `status` 都不运行，无论 `.codegraph/` 是否已存在。
+- **不触碰索引产物**：不创建、不读取、不改写 `.codegraph/` 下的任何索引文件；报告里也不产生"索引就绪"结论。
+- **报告标记**：apply 报告的 `s8_codegraph` 步骤动作出现 `branch = codegraph-index-deferred`（`action = deferred`）；dry-run 计划中同一步骤的 `assets` 出现 `action = deferred`，步骤 `reason` 含 `codegraph-index-deferred`。
+- **降级与失败语义不变**：`.mcp.json` 畸形仍**原样保留**并把 `overall` 置为 `degraded`（`warnings` 含 `UNIT_UNPARSEABLE`）；配置补写前的备份失败或原子发布失败仍按 `PublishError` 终止（退出码 1），**不得**因处于延后模式而吞掉或降级。
+- **非 Coding 项目**：未携带 `--enable-codegraph` 时 S8 整体跳过（该标志不改变项目类型前提）；非 Coding 项目若需要"只配置、不建索引"，须同时携带 `--enable-codegraph --defer-codegraph-index`。
+- **Agent 纪律**：延后模式下 Agent **不得**自行执行 `codegraph init` / `codegraph index` / `codegraph sync`，**不得**用 `nohup` 或后台任务拉起索引后再等待其完成，**不得**声称索引已就绪、已可查询。汇报口径只说"CodeGraph MCP 配置已写入，索引构建已延后到后续阶段"。
+- **只读自检**（可选）：需要确认配置落地时，用只读自检核对项目现状，它不构建索引、不写项目文件：
+
+```bash
+python3 "<RULE_CONFIG_PY>" verify --project-root "<PROJECT_ROOT>" --report "<REPORT>"
+```
 
 ## 有界扫描说明
 
@@ -122,7 +143,11 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print([(a.get('path'),a.ge
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d['warnings'])"
 # 失败详情与恢复建议
 python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
+# CodeGraph 索引延后标记（deferred = 只配置 MCP、索引未构建）
+python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],a.get('action'),a.get('branch')) for s in d['steps'] for a in s.get('actions',[]) if a.get('branch')=='codegraph-index-deferred'])"
 ```
+
+`codegraph-index-deferred` 只表示"双 MCP 配置已写入、索引构建已延后"，**不表示索引已就绪**；报告中没有该标记时，按 `s8_codegraph` 的实际动作分支判断脚本做了什么。
 
 ### stdout 收尾报告（机器可读）
 
@@ -147,7 +172,7 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print(d.get('failure'))"
 | 2 | 用法错误（参数非法，或 `--report` / `--decisions` 路径位于项目根内） | 按本文件"调用方式"修正参数与路径后重跑 |
 | 77 | 缺少 PyYAML 依赖 | 改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 重跑，或先安装 PyYAML |
 
-任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复归档位于 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，归档副本与原位文件均保留。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。
+任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复归档位于 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，归档副本与原位文件均保留。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。延后索引模式（`--defer-codegraph-index`）不改变退出码语义：备份失败或发布失败仍是退出码 1 的 `fail`，畸形 `.mcp.json` 仍是退出码 0 的 `degraded`。
 
 ## 下一步
 

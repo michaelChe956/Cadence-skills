@@ -27,6 +27,16 @@
 | MCP args | 按启动器/包名去重；同名包保留用户 token（含版本） |
 | 安全单元 | `.gitignore` 保护项、permission deny 框架优先并强警告；`.gitignore` 反向规则由 `mcp-configuration --allow-security-override` 显式保留 |
 
+## 显式延后 CodeGraph 索引（2026-11-16）
+
+`--defer-codegraph-index` 是 CS/CG 默认矩阵的显式例外，默认关闭。启用条件仍为最终项目类型 coding 或 `--enable-codegraph`；参数不改变项目类型、规则模板及入口摘要。
+
+- 启用且携带参数时，S8 只复用双 MCP 配置补齐流程，不运行任何 `codegraph` 子进程，不创建或修改 `.codegraph/`、`codegraph.json`。报告记录 `action=deferred`、`branch=codegraph-index-deferred` 和独立耗时，明确索引未构建/未核验；有意延后本身不是 degraded。
+- dry-run 只报告该计划，不写入配置；apply 补配置并交接给调用方的后续索引阶段。模型不得自行后台补建或轮询等待索引。
+- 既有不可解析 JSON 保留原文并 degraded，备份/发布异常失败关闭的规则不变；不以 defer 吞掉真实错误。
+- 未携带参数时，以下 CS/CG 表的 install/init/status 矩阵保持不变，实际初始化仍同步执行。
+- 验收：`tests/test_defer_codegraph_index.py` 覆盖首次/已有索引、幂等配置、默认行为、降级与失败。
+
 ## 0. 八列定义与行 ID 基线
 
 十张表统一采用八列结构，列序固定为：

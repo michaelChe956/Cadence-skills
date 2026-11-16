@@ -6,22 +6,22 @@
 
 ### Requirement: OpenSpec 初始化包含 kimi 工具
 
-pre-check 对新项目的 OpenSpec 初始化 MUST 使用 `openspec init --tools claude,codex,pi,kimi`。对已存在 `openspec/config.yaml` 的项目，若 kimi 产物缺失，MUST 先执行 `openspec init --tools kimi`，再执行 `openspec update`；若 kimi 产物已存在，MUST 直接执行 `openspec update`。kimi 产物就绪判定为 `.kimi-code/skills/` 下存在 5 个 `openspec-*` 目录。pre-check MUST NOT 声称 `openspec update` 单独执行会为未选择过 kimi 工具的老项目新增 `.kimi-code/skills/openspec-*`。
+pre-check MUST 按 `init-skill-sequencing` 的四客户端缺失集合执行增量 init/update，其中包含 kimi。共享marker列出kimi时，MUST验证 `.agents/skills/` 六项核心技能的可读非空SKILL.md，不要求 `.kimi-code/skills` 副本；未登记kimi时允许完整旧版六项客户端技能。已登记但shared损坏不得回退旧目录。不以config.yaml存在性代替投影就绪。
 
 #### Scenario: 新项目初始化生成 kimi 产物
 
-- **WHEN** 项目不存在 `openspec/config.yaml` 且 pre-check 执行 OpenSpec 初始化
-- **THEN** 执行 `openspec init --tools claude,codex,pi,kimi`，且验证 `test -f .kimi-code/skills/openspec-propose/SKILL.md` 通过
+- **WHEN** 新项目缺少kimi客户端产物并执行OpenSpec初始化
+- **THEN** 缺失工具集合包含kimi，验证共享布局或旧版客户端布局，不手工重建上游已退役副本
 
 #### Scenario: 老项目缺少 kimi 产物时增量初始化
 
-- **WHEN** 项目已存在 `openspec/config.yaml` 但缺少 `.kimi-code/skills/openspec-*`
-- **THEN** pre-check 先执行 `openspec init --tools kimi`，确认生成 5 个 kimi skills，再执行 `openspec update`
+- **WHEN** kimi共享登记/技能或未登记时的旧布局不完整
+- **THEN** 先执行包含kimi的增量init，复核可用后执行update
 
 #### Scenario: 老项目已有 kimi 产物时更新
 
-- **WHEN** 项目已存在 `openspec/config.yaml` 且 `.kimi-code/skills/` 下 5 个 `openspec-*` 目录已存在
-- **THEN** pre-check 直接执行 `openspec update` 刷新已有工具产物
+- **WHEN** kimi有效共享布局或未登记时的完整旧版布局已存在
+- **THEN** pre-check直接执行update，不因旧客户端目录消失重复初始化
 
 ### Requirement: Superpowers 说明 kimi 消费方式
 

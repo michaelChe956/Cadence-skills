@@ -55,6 +55,13 @@ pre-check MUST 分别检测 claude、codex、pi、kimi 四客户端指令产物�
 - **WHEN** 项目经 `openspec init --tools codex` 生成产物（最新 OpenSpec 为 skills-only，产物在项目根 `.agents/skills/openspec-*`，无 `.codex/` 目录），执行 `/pre-check`
 - **THEN** pre-check 以 `.agents/skills/` 下存在 `openspec-*` 目录判定 codex 就绪，MUST NOT 因 `.codex/skills/` 不存在而误判 codex 缺失或重复执行 `openspec init --tools codex`
 
+#### Scenario: OpenSpec 2.x 的 Pi/Kimi 共享技能
+
+- **WHEN** `.agents/skills/.openspec-target` 的行首工具字段登记 `pi` 或 `kimi`（允许上游 `own-files` 后缀）
+- **THEN** 对应客户端 MUST 以共享目录内 `openspec-apply-change`、`openspec-archive-change`、`openspec-explore`、`openspec-propose`、`openspec-sync-specs`、`openspec-update-change` 的可读非空 `SKILL.md` 验证，不要求 `.pi/prompts` 或客户端副本；允许额外技能
+- **AND** 已登记但核心技能不完整时 MUST 判为未就绪，不得回退旧目录；未登记对应客户端时允许完整旧布局，兼容1.x单工具marker
+
+
 ### Requirement: 硬门槛与失败语义保留
 
 OpenSpec CLI 安装失败、`openspec init`/`openspec update` 失败、或四客户端指令产物验证失败时，no-interrupt 模式 MUST 立即终止 `/pre-check`，普通模式 MUST 报告失败；npx/uvx/ast-grep/codegraph/OpenSpec/Superpowers 六个基础检查的门槛地位 MUST 保持不变。

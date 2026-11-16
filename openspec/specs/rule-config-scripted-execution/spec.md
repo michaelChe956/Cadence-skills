@@ -178,7 +178,7 @@
 - **AND** dry-run 与实际运行产出的 warnings MUST 一致
 
 #### Scenario: codegraph 已初始化状态幂等
-- **WHEN** `.codegraph/` 已存在，或 `.mcp.json` 与 `.codex/config.toml` 均已包含 CodeGraph MCP
+- **WHEN** 未携带 `--defer-codegraph-index`，且 `.codegraph/` 已存在，或 `.mcp.json` 与 `.codex/config.toml` 均已包含 CodeGraph MCP
 - **THEN** 脚本 MUST 按现行 CodeGraph 增量状态矩阵处理：`.codegraph/` 已存在时只运行 `codegraph status` 不重复 init，双配置齐全时不重复写入
 - **AND** 任一配置文件缺少 CodeGraph MCP 时 MUST 先执行 `codegraph install --target=claude,codex --location=local --yes`，再核验并仅补齐仍缺失的一方
 - **AND** `.codegraph/` 不存在时 MUST 执行 install 与 init
@@ -193,8 +193,23 @@
 - **THEN** 该步骤 MUST 标记为 degraded 且整体流程继续
 - **AND** 报告 SHALL 给出项目语言、目录规模提示与手动兜底配置
 
+### Requirement: 显式配置与索引交接
+
+脚本 MUST 提供可选 `--defer-codegraph-index`，默认关闭，不改变项目类型或CodeGraph启用条件。调用方明确交接索引时，dry-run/apply MUST 保留该参数。
+
+#### Scenario: 调用方负责后续索引
+
+- **WHEN** CodeGraph已启用且携带 `--defer-codegraph-index`
+- **THEN** S8 MUST 只补齐双MCP配置，不运行CodeGraph子进程，不改索引目录或codegraph.json；记录deferred动作及耗时，不宣称索引健康
+- **AND** 原有配置解析降级和备份/发布失败语义保持；dry-run只报告计划，零配置写入
+
+#### Scenario: 普通独立配置不受影响
+
+- **WHEN** 未携带该参数
+- **THEN** 脚本 MUST 保持既有 install/init/status 矩阵；实际执行初始化时仍同步，不因新增参数变为后台任务
+
 ### Requirement: 端到端耗时预算
-在 Claude Code 真实环境的空项目上，以 no-interrupt 模式执行完整 rule-config 流程，从 Skill 触发到最终汇报完成的端到端耗时 MUST 不超过 5 分钟，计算时 SHALL 只扣除 codegraph 步骤（S8，含 install 与 init）的实际耗时区间；codegraph 初始化 MUST 保持同步执行不得异步化。脚本报告 MUST 另提供脚本级代理指标 `budget_seconds_excluding_codegraph`（计时起点为脚本入口、终点为 OpenSpec 配置步骤完成），用于 CI 中的预算回归断言。
+在 Claude Code 真实环境的空项目上，以 no-interrupt 模式执行完整 rule-config 流程，从 Skill 触发到最终汇报完成的端到端耗时 MUST 不超过 5 分钟，计算时 SHALL 只扣除 codegraph 步骤（S8，含 install 与 init）的实际耗时区间；未显式延后时，codegraph 初始化 MUST 保持同步执行不得异步化。脚本报告 MUST 另提供脚本级代理指标 `budget_seconds_excluding_codegraph`（计时起点为脚本入口、终点为 OpenSpec 配置步骤完成），用于 CI 中的预算回归断言。
 
 #### Scenario: 空项目预算验收
 - **WHEN** 在空项目上以 no-interrupt 模式执行完整 rule-config 流程

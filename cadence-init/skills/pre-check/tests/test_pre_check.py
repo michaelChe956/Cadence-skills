@@ -350,6 +350,233 @@ class TestOpenSpecPhase(unittest.TestCase):
             self.assertGreaterEqual(phase["conflicts"], 1)
             self.assertIn("openspec update 失败", phase["error"])
 
+    SHARED_CORE_NAMES = (
+        "apply-change", "archive-change", "explore", "propose", "sync-specs", "update-change",
+    )
+
+    def _remove_legacy_layout(self, project):
+        for relative in (".pi", ".kimi-code", ".claude/commands/opsx"):
+            shutil.rmtree(project / relative, ignore_errors=True)
+
+    def _write_shared_layout(self, project, marker_text, *, claude_links=True):
+        skills = project / ".agents" / "skills"
+        for name in self.SHARED_CORE_NAMES:
+            skill = skills / ("openspec-" + name)
+            skill.mkdir(parents=True, exist_ok=True)
+            (skill / "SKILL.md").write_text("shared %s\n" % name, encoding="utf-8")
+        if marker_text is not None:
+            (skills / ".openspec-target").write_text(marker_text, encoding="utf-8")
+        if claude_links:
+            layer = project / ".claude" / "skills"
+            layer.mkdir(parents=True, exist_ok=True)
+            for name in self.SHARED_CORE_NAMES:
+                link = layer / ("openspec-" + name)
+                if link.is_symlink() or link.exists():
+                    link.unlink()
+                link.symlink_to(Path("../../.agents/skills") / ("openspec-" + name))
+
+    @staticmethod
+    def _run_with_shared_fake(fx, *args):
+        env = fx.env()
+        env["FAKE_OPENSPEC_SHARED_LAYOUT"] = "1"
+        proc = subprocess.run(
+            ["bash", str(SCRIPT), *args],
+            cwd=fx.project,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            report = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            report = {}
+        return proc, report
+
+    @staticmethod
+    def _prepare_superpowers_check_links(fx):
+        # check 不补链接；为正例提供有效的独立前置，避免后续 verify 掩盖投影结果。
+        source = fx.home / ".agents/superpowers/skills"
+        (source / "README.md").unlink()
+        skill = source / "fixture-skill"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("# fixture skill\n", encoding="utf-8")
+        for relative in (".agents/skills", ".codex/skills", ".claude/skills", ".pi/agent/skills"):
+            layer = fx.home / relative
+            layer.mkdir(parents=True, exist_ok=True)
+            (layer / "fixture-skill").symlink_to(skill)
+
+    def test_modern_shared_layout_check_mode_is_readonly_ready(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._prepare_superpowers_check_links(fx)
+            self._remove_legacy_layout(fx.project)
+            # 上游 2.x marker 每行首 token 是工具 ID，可追加 own-files 等列。
+            self._write_shared_layout(
+                fx.project, "claude\ncodex\npi own-files\nkimi own-files\n"
+            )
+            self.assertFalse((fx.project / ".pi").exists())
+            self.assertFalse((fx.project / ".kimi-code").exists())
+            self.assertFalse((fx.project / ".claude/commands/opsx").exists())
+            before_agents = snapshot_tree(fx.project / ".agents")
+            before_claude = snapshot_tree(fx.project / ".claude")
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["action"], "verify-ready")
+            self.assertEqual(phase["result"], "skipped")
+            self.assertEqual(snapshot_tree(fx.project / ".agents"), before_agents)
+            self.assertEqual(snapshot_tree(fx.project / ".claude"), before_claude)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertFalse(
+                [call for call in calls if call == "update" or call.startswith("init")]
+            )
+
+    def test_modern_shared_layout_run_updates_without_init(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._remove_legacy_layout(fx.project)
+            self._write_shared_layout(fx.project, "pi\nkimi\n")
+            proc, doc = run_precheck(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(calls.count("update"), 1)
+            self.assertFalse([call for call in calls if call.startswith("init")])
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["action"], "update-verify")
+            self.assertEqual(phase["result"], "skipped")
+            self.assertFalse((fx.project / ".pi").exists())
+            self.assertFalse((fx.project / ".kimi-code").exists())
+
+    def test_shared_marker_client_missing_core_skill_fails_even_legacy_present(self):
+        # 旧 6+6 布局完整，但 marker 列出 pi → 只认 shared，缺失即失败，绝不回退。
+        with isolated_fixture("openspec-ready") as fx:
+            self._write_shared_layout(fx.project, "codex\npi\n")
+            (fx.project / ".agents/skills/openspec-explore/SKILL.md").unlink()
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertEqual(
+                [item["phase"] for item in doc["phases"]],
+                ["base-tools", "openspec"],
+            )
+
+    def test_shared_marker_kimi_missing_core_skill_fails_even_legacy_present(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._write_shared_layout(fx.project, "codex\nkimi\n")
+            (fx.project / ".agents/skills/openspec-sync-specs/SKILL.md").unlink()
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+
+    def test_shared_core_empty_skill_fails(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._remove_legacy_layout(fx.project)
+            self._write_shared_layout(fx.project, "pi\nkimi\n")
+            (fx.project / ".agents/skills/openspec-propose/SKILL.md").write_text(
+                "", encoding="utf-8"
+            )
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+
+    def test_marker_listing_kimi_uses_shared_while_pi_uses_complete_legacy(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._prepare_superpowers_check_links(fx)
+            self._write_shared_layout(fx.project, "codex\nkimi\n")
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "skipped")
+
+    def test_marker_listing_pi_uses_shared_while_kimi_uses_complete_legacy(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._prepare_superpowers_check_links(fx)
+            self._write_shared_layout(fx.project, "pi\n")
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "skipped")
+
+    def test_unlisted_client_with_incomplete_legacy_fails(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._write_shared_layout(fx.project, "pi\n")
+            shutil.rmtree(fx.project / ".kimi-code/skills/openspec-verify")
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+
+    def test_empty_marker_allows_complete_legacy_layout(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._prepare_superpowers_check_links(fx)
+            (fx.project / ".agents/skills/.openspec-target").write_text(
+                "", encoding="utf-8"
+            )
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "skipped")
+
+    def test_codex_only_marker_allows_complete_legacy_layout(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._prepare_superpowers_check_links(fx)
+            (fx.project / ".agents/skills/.openspec-target").write_text(
+                "codex\n", encoding="utf-8"
+            )
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "skipped")
+
+    def test_shared_core_without_marker_requires_complete_legacy(self):
+        with isolated_fixture("openspec-ready") as fx:
+            self._remove_legacy_layout(fx.project)
+            self._write_shared_layout(fx.project, None)
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+
+    def test_broken_marker_symlink_is_invalid_and_fails_without_fallback(self):
+        with isolated_fixture("openspec-ready") as fx:
+            marker = fx.project / ".agents/skills/.openspec-target"
+            marker.symlink_to("missing-target")
+            proc, doc = run_precheck(fx, "check", "--no-interrupt")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "failed")
+
+    def test_shared_init_completes_layout_without_legacy_projection(self):
+        with isolated_fixture("openspec-partial") as fx:
+            proc, doc = self._run_with_shared_fake(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertIn("init --tools pi,kimi", calls)
+            self.assertEqual(calls.count("update"), 1)
+            marker = (fx.project / ".agents/skills/.openspec-target").read_text(
+                encoding="utf-8"
+            )
+            self.assertEqual(sorted(marker.split()), ["kimi", "pi"])
+            for name in self.SHARED_CORE_NAMES:
+                self.assertTrue(
+                    (fx.project / ".agents/skills" / ("openspec-" + name) / "SKILL.md").is_file(),
+                    name,
+                )
+            self.assertFalse((fx.project / ".pi").exists())
+            self.assertFalse((fx.project / ".kimi-code").exists())
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
+
+    def test_shared_init_with_claude_creates_relative_skill_links(self):
+        with isolated_fixture("openspec-partial") as fx:
+            shutil.rmtree(fx.project / ".claude")
+            shutil.rmtree(fx.project / ".agents")
+            proc, doc = self._run_with_shared_fake(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertIn("init --tools claude,codex,pi,kimi", calls)
+            link = fx.project / ".claude/skills/openspec-propose"
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(
+                os.readlink(link), "../../.agents/skills/openspec-propose"
+            )
+            self.assertFalse((fx.project / ".claude/commands/opsx").exists())
+            self.assertFalse((fx.project / ".pi").exists())
+            self.assertFalse((fx.project / ".kimi-code").exists())
+            self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
+
 
 class TestSuperpowersGitPhase(unittest.TestCase):
     def test_non_git_source_fails_without_local_fallback(self):
