@@ -253,16 +253,79 @@ count_files_named() {
   printf '%s' "$_count"
 }
 
+# --- OpenSpec 2 shared 投影 ---
+# 2.0 起各工具共用 `.agents/skills`，`.agents/skills/.openspec-target` 记录本次投影
+# 覆盖的客户端：每行 trim 后首 token 是工具 ID（上游可追加 own-files 等附加列）。
+# 判定语义（审查裁决）：
+#   - marker 列出当前客户端 → 该客户端只认 shared 六核心 skill，不完整绝不回退旧布局；
+#   - marker 未列出当前客户端（含空 marker、旧版单 codex marker）→ 允许完整的旧
+#     6 skills（pi 另需 6 prompts）布局，不完整仍失败；
+#   - 断链 symlink / marker 不可读视为投影无效：按 shared 校验且不回退。
+openspec_shared_marker_present() {
+  [ -e "$PROJECT_ROOT/.agents/skills/.openspec-target" ] \
+    || [ -L "$PROJECT_ROOT/.agents/skills/.openspec-target" ]
+}
+
+openspec_shared_marker_readable() {
+  [ -f "$PROJECT_ROOT/.agents/skills/.openspec-target" ] \
+    && [ -r "$PROJECT_ROOT/.agents/skills/.openspec-target" ]
+}
+
+# marker 逐行 trim 后取首 token 与客户端 ID 精确比较。
+openspec_shared_marker_lists() {
+  _osml_client="$1"
+  while IFS= read -r _osml_line || [ -n "$_osml_line" ]; do
+    _osml_line="${_osml_line#"${_osml_line%%[![:space:]]*}"}"
+    case "$_osml_line" in
+      ''|'#'*) continue ;;
+    esac
+    _osml_token="${_osml_line%%[[:space:]]*}"
+    [ "$_osml_token" = "$_osml_client" ] && return 0
+  done < "$PROJECT_ROOT/.agents/skills/.openspec-target"
+  return 1
+}
+
+# shared 六核心：SKILL.md 必须可读且非空；允许额外 skill，不锁定目录总数。
+openspec_shared_core_ready() {
+  openspec_shared_marker_present || return 1
+  openspec_shared_marker_readable || return 1
+  for _osc_name in apply-change archive-change explore propose sync-specs update-change; do
+    _osc_skill="$PROJECT_ROOT/.agents/skills/openspec-$_osc_name/SKILL.md"
+    [ -f "$_osc_skill" ] && [ -r "$_osc_skill" ] && [ -s "$_osc_skill" ] || return 1
+  done
+  return 0
+}
+
+# pi/kimi 布局判定：marker 列出的客户端只认 shared；未列出时才接受完整旧布局。
+client_openspec_layout_ready() {
+  case "$1" in
+    pi|kimi)
+      if openspec_shared_marker_present; then
+        openspec_shared_marker_readable || return 1
+        if openspec_shared_marker_lists "$1"; then
+          openspec_shared_core_ready
+          return $?
+        fi
+      fi
+      if [ "$1" = "pi" ]; then
+        [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 6 ] \
+          && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 6 ]
+      else
+        [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 6 ]
+      fi ;;
+    *)
+      return 2 ;;
+  esac
+}
+
 client_openspec_ready() {
   case "$1" in
     claude)
       [ -d "$PROJECT_ROOT/.claude/commands/opsx" ] || [ "$(count_dirs_named "$PROJECT_ROOT/.claude/skills" openspec-)" -gt 0 ] ;;
     codex)
       [ "$(count_dirs_named "$PROJECT_ROOT/.agents/skills" openspec-)" -gt 0 ] ;;
-    pi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.pi/skills" openspec-)" -eq 6 ] && [ "$(count_files_named "$PROJECT_ROOT/.pi/prompts" opsx- .md)" -eq 6 ] ;;
-    kimi)
-      [ "$(count_dirs_named "$PROJECT_ROOT/.kimi-code/skills" openspec-)" -eq 6 ] ;;
+    pi|kimi)
+      client_openspec_layout_ready "$1" ;;
     *)
       return 2 ;;
   esac

@@ -513,6 +513,9 @@ class Intents(NamedTuple):
     enable_playwright: bool
     enable_codegraph: bool
     decisions: Optional[Path]
+    # defer_codegraph_index：仅配置 CodeGraph MCP，索引构建延后到调用方后续阶段。
+    # 默认 False（不改变既有行为）；追加在末尾并带默认值，旧构造方式保持有效。
+    defer_codegraph_index: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -2198,6 +2201,25 @@ def compute_plan(root: Path, intents: Intents) -> dict:
     s8 = _step_skeleton(STEP_CODEGRAPH)
     s8["elapsed_ms"] = 0
     s8["status"] = "ok"
+    # defer_codegraph_index=True：仅配置 CodeGraph MCP，索引构建与核验由调用方
+    # 后续阶段负责。计划只表达意图（action/reason），本身不产生任何写入动作。
+    if intents.defer_codegraph_index and (
+        plan.get("project_type") == "coding" or intents.enable_codegraph
+    ):
+        s8["assets"].append({
+            "path": "codegraph-index",
+            "action": "deferred",
+            "branch": "codegraph-index-deferred",
+            "reason": (
+                "defer_codegraph_index=True：仅配置 CodeGraph MCP，"
+                "索引构建与核验由调用方后续阶段完成"
+            ),
+            "conflict": None,
+            "backup_needed": False,
+        })
+        s8["note"] = (
+            "codegraph-index-deferred：仅配置 CodeGraph MCP，不构建索引"
+        )
     plan["steps"][STEP_CODEGRAPH] = s8
 
     # --- S9 permission gate：规则元数据 → settings.json deny 投影（新增） ---
@@ -4158,6 +4180,9 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
     """S8 执行（Task 9）：CodeGraph 增量矩阵与降级、独立计时。
 
     启用条件 =（project_type=='coding' 或 intents.enable_codegraph）；否则 skip。
+    defer_codegraph_index=True 时：仅补齐双 MCP 配置，绝不执行任何 codegraph
+    子命令（install/init/status 均不运行），索引构建由调用方后续阶段负责；
+    索引文件不被读写，配置补写/备份/原子写失败仍按 PublishError 终止。
     状态矩阵（简报 Step 1）：
       * .codegraph/ 存在 → 仅调 codegraph status（不重复 install/init）；
       * .codegraph/ 不存在 → codegraph install（cwd=project_root）→
@@ -4186,6 +4211,23 @@ def step_s8_codegraph(root: Path, intents: Intents, plan: dict, report: dict) ->
         })
         _record_step_actions(report, STEP_CODEGRAPH, actions_log)
         _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
+        return
+
+    # defer_codegraph_index：仅配置 CodeGraph MCP，索引构建/核验延后到调用方
+    # 后续阶段。无论 .codegraph/ 是否存在都绝不执行任何 codegraph 子命令。
+    if intents.defer_codegraph_index:
+        try:
+            _s8_ensure_mcp_configs(root, report, actions_log)
+            actions_log.append({
+                "action": "deferred",
+                "branch": "codegraph-index-deferred",
+                "detail": (
+                    "仅配置 CodeGraph MCP；索引构建与核验延后到调用方后续阶段"
+                ),
+            })
+        finally:
+            _record_step_actions(report, STEP_CODEGRAPH, actions_log)
+            _s8_record_elapsed(report, int((time.monotonic() - t_start) * 1000))
         return
 
     codegraph_dir = root / ".codegraph"
@@ -5404,6 +5446,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="非 Coding 项目也执行 S8 CodeGraph 配置",
     )
     parser.add_argument(
+        "--defer-codegraph-index",
+        action="store_true",
+        help="仅配置 CodeGraph MCP，索引由调用方后续阶段构建",
+    )
+    parser.add_argument(
         "--remove-permission-gate",
         action="store_true",
         help="独立模式：整体移除 .claude/settings.json 中的 cadence-managed 权限区块后退出",
@@ -5538,6 +5585,7 @@ def _main(argv: Optional[list], ctx: dict) -> int:
         enable_playwright=args.enable_playwright,
         enable_codegraph=args.enable_codegraph,
         decisions=decisions_path,
+        defer_codegraph_index=args.defer_codegraph_index,
     )
 
     mode = "no-interrupt" if args.no_interrupt else "normal"

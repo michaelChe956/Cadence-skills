@@ -27,22 +27,22 @@ pre-check 的 Superpowers 软链同步 MUST 在现有 `~/.agents/skills`、`~/.c
 
 ### Requirement: OpenSpec 初始化包含 pi 工具
 
-pre-check 对新项目的 OpenSpec 初始化 MUST 使用 `openspec init --tools claude,codex,pi`。对已存在 `openspec/config.yaml` 的项目，若 pi 产物缺失，MUST 先执行 `openspec init --tools pi`，再执行 `openspec update`；若 pi 产物已存在，MUST 直接执行 `openspec update`。pre-check MUST NOT 声称 `openspec update` 单独执行会为未选择过 pi 工具的老项目新增 `.pi/prompts/opsx-*.md` 与 `.pi/skills/openspec-*`。
+pre-check 对新项目的 OpenSpec 初始化 MUST 包含 pi 工具，并按 `init-skill-sequencing` 的四客户端缺失集合执行增量 init/update，不以 config.yaml 存在与否代替投影就绪。OpenSpec 2.x MUST 依据 `.agents/skills/.openspec-target` 中的 pi 登记及六项有效共享核心技能验证，不要求已退役的 `.pi/prompts`；无共享登记时继续支持旧客户端布局。
 
 #### Scenario: 新项目初始化生成 pi 产物
 
-- **WHEN** 项目不存在 `openspec/config.yaml` 且 pre-check 执行 OpenSpec 初始化
-- **THEN** 执行 `openspec init --tools claude,codex,pi`，且验证 `test -f .pi/skills/openspec-propose/SKILL.md` 通过
+- **WHEN** 新项目缺少 pi 客户端产物且 pre-check 执行 OpenSpec 初始化
+- **THEN** 缺失工具集合包含 pi，并验证对应共享布局或旧布局可用，不手工补造上游已删除的命令文件
 
 #### Scenario: 老项目缺少 pi 产物时增量初始化
 
-- **WHEN** 项目已存在 `openspec/config.yaml` 但缺少 `.pi/skills/openspec-*` 或 `.pi/prompts/opsx-*`
-- **THEN** pre-check 先执行 `openspec init --tools pi`，确认生成 5 个 pi skills 与 5 个 pi prompts，再执行 `openspec update`
+- **WHEN** pi 的共享登记/核心技能或无登记时的旧客户端投影未就绪
+- **THEN** pre-check 执行包含 pi 的缺失工具初始化并复核后执行 update；共享布局按有效核心技能验证，旧布局按六项skills与六项prompts验证
 
 #### Scenario: 老项目已有 pi 产物时更新
 
-- **WHEN** 项目已存在 `openspec/config.yaml` 且 pi skills 与 prompts 已存在
-- **THEN** pre-check 直接执行 `openspec update` 刷新已有工具产物
+- **WHEN** pi 的有效共享布局或旧客户端投影已就绪
+- **THEN** pre-check 直接执行 `openspec update` 刷新已有工具产物，不因旧目录消失重复初始化
 
 ### Requirement: pi MCP adapter 条件检查与安装
 

@@ -8,6 +8,10 @@
 > 2026-08-19 变更记录（change rule-config-self-contained-templates）：S1b-01~04 由模板三级定位（在线/离线/glob 回退）对账为 skill 目录单源自包含定位（references/merge-semantics.md §11.5 同步重写）；旧用例 ut-locate_templates-online/-offline/-fallback/-pair-check/-mtime-latest/-all-incomplete 与 it-s2-templates-missing 移除，新增 ut-locate_templates-skill-dir/-incomplete/-no-home/-ignore-stale-marketplace 与 it-s2-skill-self-contained；fx-templates-* fixture 删除（改为测试内 inline 构造）；S1b 行号区间改指瘦身版 SKILL「调用方式·第一步」（42-44 行）。
 > 2026-08-27 对账（change `2026-08-27-mcp-image-route-and-codegraph-typed-source`）：`code-reading.md` 改为固定落地名、按最终 `project_type` 从 `code-reading-coding.md` / `code-reading-noncoding.md` 单选来源；新增集成断言 `it-s8-codegraph-explicit-enable-source-stable`、`it-s1-no-interrupt-ignores-cli-typed-code-reading`、`it-s1-no-interrupt-detect-coding-typed-code-reading`、`it-s1-normal-cli-promotes-typed-code-reading`、`it-s1-normal-detect-coding-typed-code-reading`。原有 `it-s8-codegraph-explicit-enable`、`it-s1-*` ID 保留，断言范围扩展而非更名。
 
+## 显式索引交接补充（2026-11-16）
+
+`--defer-codegraph-index` 对应 `Intents.defer_codegraph_index`、`compute_plan` 和 `step_s8_codegraph`；权威语义见 `references/merge-semantics.md`「显式延后 CodeGraph 索引」。`test_defer_codegraph_index.py` 验证新建/已有索引均不调用 CodeGraph、双 MCP 配置补齐与用户值保留、重复执行幂等、dry-run 零写入、默认关闭保持原矩阵、不可解析 JSON 保留并 degraded、备份/发布失败不被吞掉。CLI stdout 的 success 只代表配置完成，不代表索引健康。
+
 ## 0. 命名与列定义
 
 - 最小列（逐字）：`SKILL 行号区间 | 条款摘要 | 适用模式 | 脚本函数或 references 条目 | fixture | 测试 ID | 关键断言`

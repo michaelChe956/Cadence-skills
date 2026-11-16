@@ -52,6 +52,10 @@ Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入。AP
 
 软链拓扑以解析后最终等价为准：现网直连源路径、兼容中转链均视为同一有效拓扑；已有正确链接应保持幂等，非目标用户内容不得被触碰。冲突和不可支持的布局按报告语义转人工处理。
 
+### OpenSpec 共享技能布局
+
+OpenSpec 2.x 将项目技能统一写入 `.agents/skills/`，并通过 `.openspec-target` 逐行登记已配置客户端（首字段为工具名，可带 `own-files`）。已登记 Pi/Kimi 的就绪检查以六项共享核心技能（`apply-change`、`archive-change`、`explore`、`propose`、`sync-specs`、`update-change`）的可读非空 `SKILL.md` 为准，不要求已退役的 `.pi/prompts/` 或客户端副本；共享技能不完整时不得回退旧目录。未登记对应客户端时仍验证完整旧布局，兼容1.x只登记Codex的marker。投影由 OpenSpec CLI 管理，Agent 不手工补建旧目录。
+
 ### 投影保护与 `warnings[]`
 
 `run` 模式在执行 OpenSpec 外部命令（`init`/`update`）前，对客户端投影做只读哈希快照并暂存既有文件前像：`.claude/commands/opsx/` 全量、`.claude`/`.agents`/`.codex`/`.pi`/`.kimi-code` 下的 `openspec-*` skill 目录、`.pi/prompts/opsx-*.md`。命令结束后重新快照并比较；被改写或删除的既有文件，改前内容归档到 `cadence/legacy/<14位时间戳>/<相对路径>`，并在 `warnings[]` 记录 `EXTERNAL_PROJECTION_USER_EDIT_OVERWRITTEN`（附 `path` 与 `archive`），同时在该记录的 `backups[]` 中写入 `{path, archive, reason}`。内容未变化时零归档、零警告，保持幂等；`check` 模式不执行外部命令，因此不触发保护逻辑。归档目录沿用 `rule-config` 约定：`cadence/legacy/.gitignore` 内容为 `*` 与 `!.gitignore`，同秒已有归档目录时追加 `-2`/`-3` 后缀，不覆盖既有归档。
