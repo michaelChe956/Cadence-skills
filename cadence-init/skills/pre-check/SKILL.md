@@ -34,6 +34,8 @@ cd "<PROJECT_ROOT>" && bash "<PRE_CHECK_SH>" run [--mirror cn] [--no-interrupt]
 
 仅探测用 `check`；升级只在明确要求时添加 `--upgrade`。stdout 为一份 JSON，stderr 为中文摘要；不得自行改写安装、OpenSpec、Git 或软链命令。
 
+`--upgrade` 的升级范围：ast-grep、codegraph、openspec、pi-mcp-adapter 与 uv 本体。pi-mcp-adapter 经 pi 自带的更新机制升级并沿用当前镜像的 npm 源，固定版本写法（`npm:pi-mcp-adapter@x.y.z`）视为用户的有意选择，不改动；升级后版本未追到 latest 按升级失败报告。
+
 脚本调用必须保持项目根 cwd。除显式传入的 `--mirror cn`、`--no-interrupt` 和 `--upgrade` 外，不自行拼接额外流程；报告文件由调用方按既有生命周期管理。
 
 ### 步骤 3：读取 JSON 报告并呈现
@@ -55,6 +57,12 @@ Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入。AP
 ### OpenSpec 共享技能布局
 
 OpenSpec 2.x 将项目技能统一写入 `.agents/skills/`，并通过 `.openspec-target` 逐行登记已配置客户端（首字段为工具名，可带 `own-files`）。已登记 Pi/Kimi 的就绪检查以六项共享核心技能（`apply-change`、`archive-change`、`explore`、`propose`、`sync-specs`、`update-change`）的可读非空 `SKILL.md` 为准，不要求已退役的 `.pi/prompts/` 或客户端副本；共享技能不完整时不得回退旧目录。未登记对应客户端时仍验证完整旧布局，兼容1.x只登记Codex的marker。投影由 OpenSpec CLI 管理，Agent 不手工补建旧目录。
+
+OpenSpec CLI 2.1.0 起初始化默认把技能装入用户家目录的全局作用域（`~/.agents/skills`），项目根只剩 `openspec/` 骨架，四端复核无法通过。脚本在探测到 CLI 版本 ≥ 2.1.0 时，会为缺失客户端的初始化调用显式钉住项目作用域（`--scope project`）；更早版本不认识该参数，脚本不会追加。复核失败时 phase `error` 会点明该原因并给出补救方向。Agent 不手工传入作用域参数，也不手工补建投影。
+
+OpenSpec CLI 2.1.0 起的初始化与更新需要克隆 GitHub 上对应版本的技能，而 CLI 自身没有网络超时。脚本因此对这类调用设置单次超时（默认 60 秒，可用 `CADENCE_OPENSPEC_TIMEOUT_S` 调整）和阶段级网络预算（默认 180 秒，可用 `CADENCE_OPENSPEC_BUDGET_S` 调整，初始化与更新共享），超时按失败报告，phase `error` 会写明已尝试次数和下一步。`--mirror cn` 时按序尝试镜像配置里的 GitHub 加速代理（`CADENCE_GITHUB_PROXIES`），仅作用于该次调用的子进程环境，不写入任何 git 配置；官方源直连。更早版本的 CLI 不需要克隆，保持原有直接调用。
+
+其余两处依赖外网的环节同样跟随当前镜像：安装 pi-mcp-adapter 时让 pi 内部的 npm 使用镜像源；codegraph 的 npm 包在镜像缺少平台子包时，其 npm shim 会回退为从 GitHub Releases 下载运行时，`--mirror cn` 下脚本按序让该下载经 GitHub 加速代理（shim 的 `CODEGRAPH_DOWNLOAD_BASE`），用户已自行设置该变量时不覆盖。脚本不执行 codegraph 的初始化、索引或同步，索引由 `rule-config` 等后续阶段决定。
 
 ### 投影保护与 `warnings[]`
 

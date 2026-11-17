@@ -1,7 +1,37 @@
 #!/usr/bin/env bash
-# 测试替身：仅模拟已安装 pi-mcp-adapter 的 list 查询。
+# 测试替身：模拟 pi-mcp-adapter 的 list / install / update。
+#   FAKE_PI_ADAPTER_DIR  list 输出的包目录；update 时若设置 FAKE_PI_UPDATE_TO 则把其中 package.json 版本改写为该值
+#   FAKE_PI_PINNED=1     list 输出固定版本写法 npm:pi-mcp-adapter@5.4.0
+#   FAKE_PI_CALLS        install/update 调用记录文件（参数 + 子进程看到的 npm_config_registry）
+#   FAKE_PI_INSTALL_FLAG 设置后：该文件存在才视为已安装（list 才列出包），install 会创建它
+_record() {
+  if [ -n "${FAKE_PI_CALLS:-}" ]; then
+    printf '%s | npm_config_registry=%s\n' "$*" "${npm_config_registry:-}" >> "$FAKE_PI_CALLS"
+  fi
+}
 if [ "${1:-}" = "list" ]; then
-  printf 'pi-mcp-adapter\n'
+  printf 'User packages:\n'
+  if [ -n "${FAKE_PI_INSTALL_FLAG:-}" ] && [ ! -e "$FAKE_PI_INSTALL_FLAG" ]; then
+    exit 0
+  fi
+  if [ "${FAKE_PI_PINNED:-0}" = "1" ]; then
+    printf '  npm:pi-mcp-adapter@5.4.0\n'
+  else
+    printf '  npm:pi-mcp-adapter\n'
+  fi
+  [ -n "${FAKE_PI_ADAPTER_DIR:-}" ] && printf '    %s\n' "$FAKE_PI_ADAPTER_DIR"
+  exit 0
+fi
+if [ "${1:-}" = "install" ]; then
+  _record "$@"
+  [ -n "${FAKE_PI_INSTALL_FLAG:-}" ] && touch "$FAKE_PI_INSTALL_FLAG"
+  exit 0
+fi
+if [ "${1:-}" = "update" ]; then
+  _record "$@"
+  if [ -n "${FAKE_PI_UPDATE_TO:-}" ] && [ -n "${FAKE_PI_ADAPTER_DIR:-}" ]; then
+    printf '{\n  "name": "pi-mcp-adapter",\n  "version": "%s"\n}\n' "$FAKE_PI_UPDATE_TO" > "$FAKE_PI_ADAPTER_DIR/package.json"
+  fi
   exit 0
 fi
 exit 1

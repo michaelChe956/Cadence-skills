@@ -577,6 +577,250 @@ class TestOpenSpecPhase(unittest.TestCase):
             self.assertFalse((fx.project / ".kimi-code").exists())
             self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
 
+    @staticmethod
+    def _run_with_scope_aware_fake(fx, *args, **extra_env):
+        env = fx.env()
+        env["FAKE_OPENSPEC_SHARED_LAYOUT"] = "1"
+        env["FAKE_OPENSPEC_VERSION"] = "2.1.0"
+        env.update(extra_env)
+        proc = subprocess.run(
+            ["bash", str(SCRIPT), *args],
+            cwd=fx.project,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            report = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            report = {}
+        return proc, report
+
+    def test_openspec_2_1_init_pins_project_scope(self):
+        # 2.1.0 默认把技能装进 $HOME，项目根只剩骨架；pre-check 必须显式钉住项目作用域。
+        with isolated_fixture() as fx:
+            proc, doc = self._run_with_scope_aware_fake(fx, "run", "--no-interrupt")
+            calls = fx.calls.read_text(encoding="utf-8").splitlines()
+            self.assertIn("init --tools claude,codex,pi,kimi --scope project", calls)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "success", phase.get("error"))
+            self.assertTrue(
+                (fx.project / ".agents/skills/openspec-apply-change/SKILL.md").is_file()
+            )
+            self.assertEqual(list((fx.home / ".agents/skills").glob("openspec-*")), [])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_openspec_2_1_failure_message_names_scope_cause(self):
+        with isolated_fixture() as fx:
+            proc, doc = self._run_with_scope_aware_fake(
+                fx, "run", "--no-interrupt", FAKE_OPENSPEC_NOOP_INIT="1"
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertTrue(phase["error"].startswith("OpenSpec 客户端投影数量或路径复核失败"))
+            self.assertIn("--scope project", phase["error"])
+
+    def test_cn_mirror_falls_back_across_github_proxies_for_openspec_2_1(self):
+        # 2.1.0+ 的 init 要克隆 GitHub；大陆网络直连不通，--mirror cn 按序走加速代理。
+        with isolated_fixture() as fx:
+            envlog = fx.root / "openspec-env"
+            proc, doc = self._run_with_scope_aware_fake(
+                fx, "run", "--mirror", "cn", "--no-interrupt",
+                FAKE_OPENSPEC_ENVLOG=str(envlog),
+                FAKE_OPENSPEC_UNREACHABLE="fail",
+                FAKE_OPENSPEC_GITHUB_OK_VIA="gh-proxy.com",
+            )
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "success", phase.get("error"))
+            inits = [l for l in envlog.read_text(encoding="utf-8").splitlines() if l.startswith("init ")]
+            self.assertEqual(len(inits), 2, inits)
+            self.assertIn("KEY_0=url.https://ghfast.top/https://github.com/.insteadOf", inits[0])
+            self.assertIn("KEY_0=url.https://gh-proxy.com/https://github.com/.insteadOf", inits[1])
+            self.assertIn("VALUE_0=https://github.com/", inits[1])
+
+    def test_openspec_2_1_hang_is_bounded_and_reported(self):
+        # CLI 自身没有网络超时：GitHub 不通时脚本必须在超时后明确失败，而不是无限挂起。
+        with isolated_fixture() as fx:
+            (fx.bin / "timeout").unlink()  # 使用真实 timeout 以验证超时确实生效
+            started = time.monotonic()
+            proc, doc = self._run_with_scope_aware_fake(
+                fx, "run", "--no-interrupt",
+                FAKE_OPENSPEC_UNREACHABLE="hang", CADENCE_OPENSPEC_TIMEOUT_S="2",
+            )
+            self.assertLess(time.monotonic() - started, 30)
+            self.assertNotEqual(proc.returncode, 0)
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertIn("超时", phase["error"])
+            self.assertIn("GitHub", phase["error"])
+
+    def test_github_proxy_rewrite_only_for_cn_mirror_and_openspec_2_1(self):
+        for mirror_args, version in ((("--mirror", "cn"), "2.0.0"), ((), "2.1.0")):
+            with self.subTest(mirror=mirror_args, version=version), isolated_fixture() as fx:
+                envlog = fx.root / "openspec-env"
+                proc, doc = self._run_with_scope_aware_fake(
+                    fx, "run", *mirror_args, "--no-interrupt",
+                    FAKE_OPENSPEC_ENVLOG=str(envlog), FAKE_OPENSPEC_VERSION=version,
+                )
+                self.assertEqual(phase_by_name(doc, "openspec")["result"], "success")
+                for line in envlog.read_text(encoding="utf-8").splitlines():
+                    self.assertIn("GIT_CONFIG_COUNT= KEY_0= VALUE_0=", line)
+
+
+class TestUpgradePiMcpAdapter(unittest.TestCase):
+    ADAPTER = ".pi/agent/npm/node_modules/pi-mcp-adapter"
+
+    def _run(self, fx, version, latest, *args, **extra_env):
+        adapter = fx.home / self.ADAPTER
+        adapter.mkdir(parents=True)
+        (adapter / "package.json").write_text(
+            '{\n  "name": "pi-mcp-adapter",\n  "version": "%s"\n}\n' % version, encoding="utf-8"
+        )
+        self.pi_calls = fx.root / "pi-calls"
+        env = fx.env()
+        env.update(
+            FAKE_PI_ADAPTER_DIR=str(adapter),
+            FAKE_PI_CALLS=str(self.pi_calls),
+            FAKE_NPM_LATEST_pi_mcp_adapter=latest,
+        )
+        env.update(extra_env)
+        proc = subprocess.run(
+            ["bash", str(SCRIPT), "run", "--upgrade", "--no-interrupt", *args],
+            cwd=fx.project, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        doc = json.loads(proc.stdout)
+        step = [s for s in doc["steps"] if s["name"] == "pi-mcp-adapter"]
+        self.assertEqual(len(step), 1, doc["steps"])
+        return proc, doc, step[0]
+
+    def _pi_calls(self):
+        return self.pi_calls.read_text(encoding="utf-8").splitlines() if self.pi_calls.exists() else []
+
+    def test_stale_adapter_is_updated_through_mirror_registry(self):
+        with isolated_fixture() as fx:
+            proc, doc, step = self._run(
+                fx, "5.4.0", "7.0.1", "--mirror", "cn", FAKE_PI_UPDATE_TO="7.0.1"
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(step["status"], "upgraded")
+            self.assertEqual(step["version"], "7.0.1")
+            self.assertIn("from=5.4.0 to=7.0.1", step["error"])
+            self.assertEqual(
+                self._pi_calls(),
+                ["update npm:pi-mcp-adapter --no-approve | npm_config_registry=https://registry.npmmirror.com"],
+            )
+
+    def test_update_that_does_not_reach_latest_is_failure(self):
+        with isolated_fixture() as fx:
+            proc, doc, step = self._run(fx, "5.4.0", "7.0.1")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(step["status"], "failed")
+            self.assertEqual(step["action"], "upgrade-failed")
+            self.assertEqual(doc["overall"], "failed")
+
+    def test_current_adapter_is_not_touched(self):
+        with isolated_fixture() as fx:
+            proc, doc, step = self._run(fx, "7.0.1", "7.0.1")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(step["status"], "ready")
+            self.assertEqual(self._pi_calls(), [])
+
+    def test_version_pinned_adapter_is_left_alone(self):
+        with isolated_fixture() as fx:
+            proc, doc, step = self._run(fx, "5.4.0", "7.0.1", FAKE_PI_PINNED="1")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(step["status"], "ready")
+            self.assertEqual(self._pi_calls(), [])
+
+
+class TestMirrorAwareExternalFetches(unittest.TestCase):
+    """pi install 与 codegraph npm shim 的回退下载也必须走当前镜像，不能偷偷直连。"""
+
+    @staticmethod
+    def _run(fx, *args, **extra_env):
+        env = fx.env()
+        env.update(extra_env)
+        proc = subprocess.run(
+            ["bash", str(SCRIPT), "run", "--no-interrupt", *args],
+            cwd=fx.project, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        return proc, json.loads(proc.stdout)
+
+    @staticmethod
+    def _step(doc, name):
+        steps = [s for s in doc["steps"] if s["name"] == name]
+        assert len(steps) == 1, doc["steps"]
+        return steps[0]
+
+    def test_pi_install_uses_mirror_npm_registry(self):
+        with isolated_fixture() as fx:
+            calls = fx.root / "pi-calls"
+            proc, doc = self._run(
+                fx, "--mirror", "cn",
+                FAKE_PI_CALLS=str(calls), FAKE_PI_INSTALL_FLAG=str(fx.root / "pi-installed"),
+            )
+            self.assertEqual(self._step(doc, "pi-mcp-adapter")["status"], "installed")
+            self.assertEqual(
+                calls.read_text(encoding="utf-8").splitlines(),
+                ["install npm:pi-mcp-adapter | npm_config_registry=https://registry.npmmirror.com"],
+            )
+
+    def test_codegraph_cn_mirror_falls_back_across_github_proxies(self):
+        # npmmirror 缺平台子包时 npm shim 会回退到 GitHub Releases；cn 下必须经加速代理。
+        with isolated_fixture() as fx:
+            envlog = fx.root / "codegraph-env"
+            proc, doc = self._run(
+                fx, "--mirror", "cn",
+                FAKE_CODEGRAPH_ENVLOG=str(envlog), FAKE_CODEGRAPH_OK_VIA="gh-proxy.com",
+            )
+            step = self._step(doc, "codegraph")
+            self.assertEqual(step["status"], "ready", step)
+            self.assertEqual(
+                envlog.read_text(encoding="utf-8").splitlines(),
+                [
+                    "CODEGRAPH_DOWNLOAD_BASE=https://ghfast.top/https://github.com/colbymchenry/codegraph/releases/download",
+                    "CODEGRAPH_DOWNLOAD_BASE=https://gh-proxy.com/https://github.com/colbymchenry/codegraph/releases/download",
+                ],
+            )
+
+    def test_codegraph_download_base_untouched_without_proxies_or_when_user_set(self):
+        cases = (
+            ((), {}, ""),
+            (("--mirror", "cn"), {"CODEGRAPH_DOWNLOAD_BASE": "https://example.invalid/dl"}, "https://example.invalid/dl"),
+        )
+        for args, extra, expected in cases:
+            with self.subTest(args=args), isolated_fixture() as fx:
+                envlog = fx.root / "codegraph-env"
+                proc, doc = self._run(fx, *args, FAKE_CODEGRAPH_ENVLOG=str(envlog), **extra)
+                self.assertEqual(self._step(doc, "codegraph")["status"], "ready")
+                self.assertEqual(
+                    envlog.read_text(encoding="utf-8").splitlines(),
+                    ["CODEGRAPH_DOWNLOAD_BASE=" + expected],
+                )
+
+    def test_openspec_network_budget_bounds_total_attempts(self):
+        # 阶段总预算耗尽后必须停止重试并失败，不得无限累积尝试（仓库性能熔断 240 秒上限）。
+        with isolated_fixture() as fx:
+            (fx.bin / "timeout").unlink()  # 使用真实 timeout 才能真正触发超时
+            envlog = fx.root / "openspec-env"
+            proc, doc = self._run(
+                fx, "--mirror", "cn", "--no-interrupt",
+                FAKE_OPENSPEC_ENVLOG=str(envlog),
+                FAKE_OPENSPEC_SHARED_LAYOUT="1", FAKE_OPENSPEC_VERSION="2.1.0",
+                FAKE_OPENSPEC_UNREACHABLE="hang",
+                FAKE_OPENSPEC_GITHUB_OK_VIA="never-matches",
+                CADENCE_OPENSPEC_TIMEOUT_S="4", CADENCE_OPENSPEC_BUDGET_S="5",
+            )
+            phase = phase_by_name(doc, "openspec")
+            self.assertEqual(phase["result"], "failed")
+            self.assertIn("超时", phase["error"])
+            # 阶段耗时受网络预算约束（预算 5 秒 + 少量开销），不得靠反复重试拖长整体运行。
+            self.assertLessEqual(phase["duration_ms"], 7000)
+            inits = [l for l in envlog.read_text(encoding="utf-8").splitlines() if l.startswith("init ")]
+            self.assertTrue(inits)
+
 
 class TestSuperpowersGitPhase(unittest.TestCase):
     def test_non_git_source_fails_without_local_fallback(self):
