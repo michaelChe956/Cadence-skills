@@ -16,4 +16,8 @@ CADENCE_PY_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 # Superpowers Git GitHub 加速代理候选（按顺序尝试）
 CADENCE_SUPERPOWERS_GIT="https://ghfast.top/https://github.com/obra/superpowers.git https://gh-proxy.com/https://github.com/obra/superpowers.git https://mirror.ghproxy.com/https://github.com/obra/superpowers.git"
 
-export CADENCE_NPM_REGISTRY CADENCE_PY_INDEX CADENCE_SUPERPOWERS_GIT
+# 通用 GitHub 加速代理前缀（按顺序尝试）。OpenSpec 2.1.0+ 的 init/update 要克隆 GitHub，
+# 脚本仅对该命令子进程用 GIT_CONFIG_* 把 https://github.com/ 改写为 <前缀>https://github.com/。
+CADENCE_GITHUB_PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://mirror.ghproxy.com/"
+
+export CADENCE_NPM_REGISTRY CADENCE_PY_INDEX CADENCE_SUPERPOWERS_GIT CADENCE_GITHUB_PROXIES

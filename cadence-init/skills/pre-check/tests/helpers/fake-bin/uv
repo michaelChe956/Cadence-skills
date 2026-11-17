@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# 测试替身：模拟 uv 不可用，使 --upgrade 的 uv 升级分支跳过，避免测试访问真实 pip/网络。
+exit 1

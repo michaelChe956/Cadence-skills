@@ -42,7 +42,7 @@ usage() {
   check          仅探测就绪状态，不安装
   --mirror name  加载 scripts/mirrors/<name>.sh（默认 default）
   --no-interrupt 任一基础工具失败即非零退出（失败关闭）
-  --upgrade      查询当前源 latest 并升级落后工具（npm 系 + uv 本体）
+  --upgrade      查询当前源 latest 并升级落后工具（npm 系 + pi-mcp-adapter + uv 本体）
 USAGE
 }
 
@@ -512,6 +512,75 @@ projection_guard_finish() {
   return 0
 }
 
+# OpenSpec 2.1.0 起 init 默认把技能装进 $HOME（~/.agents/skills），项目根只剩 openspec/ 骨架，
+# 四端复核必然失败；必须显式 `--scope project`。1.x/2.0.0 不认识该参数，只在 CLI >= 2.1.0 时追加；
+# 版本无法解析时保守不追加（保持旧行为）。
+openspec_supports_scope() {
+  _oss_ver="$(_norm_ver "$(probe_version openspec --version)")"
+  [ -n "$_oss_ver" ] || return 1
+  _ver_lt "$_oss_ver" "2.1.0" && return 1
+  return 0
+}
+
+# OpenSpec >= 2.1.0 的 init/update 会通过 git 克隆 GitHub 上对应 tag 拉取技能（2.0.0 起随包模板），
+# 而 CLI 自身没有任何网络超时：GitHub 不通时会无限挂起。这里对 >= 2.1.0 统一加超时；
+# `--mirror cn` 时按序尝试 CADENCE_GITHUB_PROXIES（GitHub 加速代理前缀），仅通过该命令子进程的
+# GIT_CONFIG_* 环境变量改写 github.com，不写任何 git 全局/仓库配置。旧版本保持原样直接执行。
+# 退出码：0 成功；124 最后一次尝试超时；其余为最后一次尝试的退出码。
+OPENSPEC_LAST_RC=0
+OPENSPEC_ATTEMPTS=0
+OPENSPEC_NET_DEADLINE=""
+openspec_exec() {
+  OPENSPEC_ATTEMPTS=1
+  if ! openspec_supports_scope; then
+    openspec "$@" >/dev/null 2>&1
+    OPENSPEC_LAST_RC=$?
+    return "$OPENSPEC_LAST_RC"
+  fi
+  # 阶段级网络预算：OpenSpec 2.1.0+ 的 init 与 update 共享同一截止时间，避免多次调用累加超出
+  # 仓库的 240 秒网络熔断上限。单次调用另有超时上限，取两者较小值。
+  [ -n "$OPENSPEC_NET_DEADLINE" ] || OPENSPEC_NET_DEADLINE=$(( $(now_s) + ${CADENCE_OPENSPEC_BUDGET_S:-180} ))
+  _oe_limit="${CADENCE_OPENSPEC_TIMEOUT_S:-60}"
+  _oe_proxies="${CADENCE_GITHUB_PROXIES:-}"
+  [ -n "$_oe_proxies" ] || _oe_proxies="-"   # "-" 表示直连
+  OPENSPEC_ATTEMPTS=0
+  for _oe_proxy in $_oe_proxies; do
+    _oe_remaining=$(( OPENSPEC_NET_DEADLINE - $(now_s) ))
+    [ "$_oe_remaining" -gt 0 ] || break
+    if [ "$_oe_remaining" -lt "$_oe_limit" ]; then
+      _oe_limit="$_oe_remaining"
+    fi
+    OPENSPEC_ATTEMPTS=$((OPENSPEC_ATTEMPTS + 1))
+    if [ "$_oe_proxy" = "-" ]; then
+      run_with_timeout "$_oe_limit" env GIT_TERMINAL_PROMPT=0 openspec "$@" >/dev/null 2>&1
+    else
+      _oe_n="${GIT_CONFIG_COUNT:-0}"
+      run_with_timeout "$_oe_limit" env GIT_TERMINAL_PROMPT=0 \
+        "GIT_CONFIG_COUNT=$((_oe_n + 1))" \
+        "GIT_CONFIG_KEY_${_oe_n}=url.${_oe_proxy}https://github.com/.insteadOf" \
+        "GIT_CONFIG_VALUE_${_oe_n}=https://github.com/" \
+        openspec "$@" >/dev/null 2>&1
+    fi
+    OPENSPEC_LAST_RC=$?
+    [ "$OPENSPEC_LAST_RC" -eq 0 ] && return 0
+  done
+  return "$OPENSPEC_LAST_RC"
+}
+
+# openspec_exec 失败后的可执行提示：超时按网络问题给出下一步，其余保持原有简短文案。
+openspec_failure_text() {  # openspec_failure_text <init|update> <失败文案后缀，可空>
+  if [ "$OPENSPEC_LAST_RC" -eq 124 ]; then
+    _oft="openspec $1 超时$2：OpenSpec 2.1.0+ 需访问 GitHub 拉取技能（单次上限 ${CADENCE_OPENSPEC_TIMEOUT_S:-60}s，阶段网络预算 ${CADENCE_OPENSPEC_BUDGET_S:-180}s，已尝试 ${OPENSPEC_ATTEMPTS} 次）"
+    if [ -n "${CADENCE_GITHUB_PROXIES:-}" ]; then
+      printf '%s；GitHub 加速代理均不可用，请检查网络后重试' "$_oft"
+    else
+      printf '%s；可改用 --mirror cn 经 GitHub 加速代理重试，或检查到 github.com 的网络' "$_oft"
+    fi
+  else
+    printf 'openspec %s 失败%s' "$1" "$2"
+  fi
+}
+
 do_openspec_phase() {
   if [ ! -f "$PROJECT_ROOT/openspec/config.yaml" ]; then
     log "${C_YEL}ℹ️  openspec/config.yaml 缺失，将由后续 rule-config 步骤 11 创建${C_NC}"
@@ -527,9 +596,15 @@ do_openspec_phase() {
     PHASE_CURRENT_SKIPPED="$OPENSPEC_SKIPPED"
     log "${C_BLU}🧩 OpenSpec 补齐缺失客户端：$OPENSPEC_MISSING${C_NC}"
     projection_guard_begin
-    openspec init --tools "$OPENSPEC_MISSING" >/dev/null 2>&1 || {
+    _scope_flag=""
+    if openspec_supports_scope; then
+      _scope_flag="--scope project"
+    fi
+    # _scope_flag 刻意不加引号：空串需展开为零个参数，"--scope project" 需分词为两个参数。
+    # shellcheck disable=SC2086
+    openspec_exec init --tools "$OPENSPEC_MISSING" $_scope_flag || {
       PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
-      PHASE_CURRENT_ERROR="openspec init 失败（tools=${OPENSPEC_MISSING}）"
+      PHASE_CURRENT_ERROR="$(openspec_failure_text init "（tools=${OPENSPEC_MISSING}）")"
       projection_guard_finish
       return 1
     }
@@ -542,9 +617,9 @@ do_openspec_phase() {
       esac
     done
     if [ "$_init_ready" -eq 1 ]; then
-      openspec update >/dev/null 2>&1 || {
+      openspec_exec update || {
         PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
-        PHASE_CURRENT_ERROR="openspec update 失败"
+        PHASE_CURRENT_ERROR="$(openspec_failure_text update "")"
         projection_guard_finish
         return 1
       }
@@ -555,9 +630,9 @@ do_openspec_phase() {
     if [ "$MODE" = "run" ]; then
       PHASE_CURRENT_ACTION="update-verify"
       projection_guard_begin
-      openspec update >/dev/null 2>&1 || {
+      openspec_exec update || {
         PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
-        PHASE_CURRENT_ERROR="openspec update 失败"
+        PHASE_CURRENT_ERROR="$(openspec_failure_text update "")"
         projection_guard_finish
         return 1
       }
@@ -571,6 +646,9 @@ do_openspec_phase() {
   verify_openspec_clients || {
     PHASE_CURRENT_CONFLICTS=$((PHASE_CURRENT_CONFLICTS + 1))
     PHASE_CURRENT_ERROR="OpenSpec 客户端投影数量或路径复核失败"
+    if openspec_supports_scope; then
+      PHASE_CURRENT_ERROR="${PHASE_CURRENT_ERROR}；OpenSpec 2.1.0+ 默认把技能装进全局目录（~/.agents/skills）而非项目根，可在项目根手动执行 openspec init --tools <缺失端> --scope project 补救"
+    fi
     return 1
   }
   return 0
@@ -1459,13 +1537,30 @@ do_ast_grep() {
   fi
 }
 
+# codegraph 的 npm 包把真正的运行时放在平台子包里；镜像（npmmirror 等）缺子包时，npm shim 会回退为
+# 从 GitHub Releases 下载并缓存到 ~/.codegraph，大陆网络直连会失败。CODEGRAPH_DOWNLOAD_BASE 是 shim
+# 提供的下载源开关，这里在 --mirror cn（CADENCE_GITHUB_PROXIES 非空）时按序改走加速代理，
+# 仅作用于该次 codegraph 调用的子进程；用户已自行设置 CODEGRAPH_DOWNLOAD_BASE 时尊重用户，不覆盖。
+# 缓存落地后后续运行不再需要下载。
+codegraph_cli() {
+  if [ -n "${CODEGRAPH_DOWNLOAD_BASE:-}" ] || [ -z "${CADENCE_GITHUB_PROXIES:-}" ]; then
+    codegraph "$@"
+    return $?
+  fi
+  for _cc_proxy in $CADENCE_GITHUB_PROXIES; do
+    env "CODEGRAPH_DOWNLOAD_BASE=${_cc_proxy}https://github.com/colbymchenry/codegraph/releases/download" \
+      codegraph "$@" && return 0
+  done
+  return 1
+}
+
 do_codegraph() {
-  if _v="$(probe_version codegraph version)"; then
+  if _v="$(probe_version codegraph_cli version)"; then
     add_step "codegraph" "ready" "already-installed" "$_v" ""
     log "${C_GRN}✓ codegraph 已安装（${_v}）${C_NC}"
   else
     _try_install "codegraph" npm i -g @colbymchenry/codegraph "$(npm_registry_args)"
-    if _v="$(probe_version codegraph version)"; then
+    if _v="$(probe_version codegraph_cli version)"; then
       add_step "codegraph" "installed" "installed-via-npm" "$_v" ""
       log "${C_GRN}✓ codegraph 安装成功（${_v}）${C_NC}"
     else
@@ -1510,7 +1605,7 @@ do_pi_mcp_adapter() {
     add_step "pi-mcp-adapter" "ready" "already-installed" "" ""
     log "${C_GRN}✓ pi-mcp-adapter 已安装${C_NC}"
   else
-    _try_install "pi-mcp-adapter" pi install npm:pi-mcp-adapter
+    _try_install "pi-mcp-adapter" env "npm_config_registry=$CADENCE_NPM_REGISTRY" pi install npm:pi-mcp-adapter
     if pi list 2>/dev/null | grep -q "pi-mcp-adapter" || [ -d "$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter" ]; then
       add_step "pi-mcp-adapter" "installed" "installed-via-pi" "" ""
       log "${C_GRN}✓ pi-mcp-adapter 安装成功${C_NC}"
@@ -1526,8 +1621,8 @@ do_pi_mcp_adapter() {
 }
 
 # --- 升级（opt-in）---
-# 仅在 UPGRADE=1 时调用。范围：ast-grep/codegraph/openspec（npm 系）+ uv 本体。
-# 不含 pi-mcp-adapter、uvx 临时包、playwright-cli。以当前源 latest 为准，不跨源比对。
+# 仅在 UPGRADE=1 时调用。范围：ast-grep/codegraph/openspec（npm 系）+ pi-mcp-adapter（经 pi update）+ uv 本体。
+# 不含 uvx 临时包、playwright-cli。以当前源 latest 为准，不跨源比对。
 
 # 规范化版本号为可比较的三段数字（取首个形如 x.y.z 的子串）
 _norm_ver() { printf '%s' "$1" | sed -n 's/.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1; }
@@ -1625,6 +1720,57 @@ upgrade_uv() {
   return 0
 }
 
+# 读取 package.json 的 "version"（不依赖 jq）。
+_pkg_json_version() {
+  sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -n1
+}
+
+# 升级 pi-mcp-adapter：交给 pi 自己的更新机制（pi update <源>），不绕过 pi 直接改它的 npm 目录。
+# 未安装则跳过（安装归 do_pi_mcp_adapter）；固定版本写法（npm:pi-mcp-adapter@x.y.z）是用户的有意选择，
+# pi update 本身也会跳过，这里同样不动。npm_config_registry 让 pi 内部的 npm 走当前 mirror。
+upgrade_pi_mcp_adapter() {
+  command -v pi >/dev/null 2>&1 || return 0
+  _pa_list="$(pi list 2>/dev/null)"
+  _pa_dir="$HOME/.pi/agent/npm/node_modules/pi-mcp-adapter"
+  case "$_pa_list" in
+    *pi-mcp-adapter*) ;;
+    *) [ -d "$_pa_dir" ] || return 0 ;;
+  esac
+  # 优先用 `pi list` 给出的真实安装目录（紧跟包名的缩进路径行）。
+  _pa_listed="$(printf '%s\n' "$_pa_list" | awk '/pi-mcp-adapter/ {f=1; next} f && /^[[:space:]]+\// {sub(/^[[:space:]]+/, ""); print; exit} f {exit}')"
+  [ -z "$_pa_listed" ] || _pa_dir="$_pa_listed"
+  case "$_pa_list" in
+    *pi-mcp-adapter@*)
+      log "${C_BLU}ℹ️  pi-mcp-adapter 已固定版本，跳过升级${C_NC}"
+      return 0 ;;
+  esac
+  _cur="$(_pkg_json_version "$_pa_dir/package.json")"
+  [ -n "$_cur" ] || { log "${C_YEL}⚠️  pi-mcp-adapter 无法读取已装版本，跳过升级${C_NC}"; return 0; }
+  _lat="$(npm_latest "pi-mcp-adapter")"
+  [ -n "$_lat" ] || { log "${C_YEL}⚠️  pi-mcp-adapter 无法查询 latest，跳过升级${C_NC}"; return 0; }
+  _ver_lt "$_cur" "$_lat" || return 0
+  log "${C_YEL}⬆️  升级 pi-mcp-adapter：$_cur → ${_lat}（来源 ${CADENCE_NPM_REGISTRY}）${C_NC}"
+  run_with_timeout 180 env "npm_config_registry=$CADENCE_NPM_REGISTRY" \
+    pi update npm:pi-mcp-adapter --no-approve </dev/null >/dev/null 2>&1
+  _new="$(_pkg_json_version "$_pa_dir/package.json")"
+  # 校验升级结果：版本非空且已追到 latest 才记 upgraded
+  if [ -n "$_new" ] && ! _ver_lt "$_new" "$_lat"; then
+    remove_step "pi-mcp-adapter"
+    add_step "pi-mcp-adapter" "upgraded" "upgraded" "$_new" "from=$_cur to=$_new source=$CADENCE_NPM_REGISTRY"
+    return 2
+  fi
+  FAILED_COUNT=$((FAILED_COUNT + 1))
+  remove_step "pi-mcp-adapter"
+  add_step "pi-mcp-adapter" "failed" "upgrade-failed" "$_new" "升级 $_lat 失败，当前 ${_new:-未知}"
+  log "${C_RED}❌ pi-mcp-adapter 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
+  if [ "$NO_INTERRUPT" = "1" ]; then
+    err "🛑 no-interrupt 模式：升级失败立即终止"
+    emit_report "failed"
+    exit 1
+  fi
+  return 0
+}
+
 # --- 报告 ---
 
 # 计算整体状态：有失败→failed（no-interrupt）或 partial；否则 success
@@ -1680,8 +1826,9 @@ run_required_phase "base-tools" do_base_tools || exit $?
 if [ "$UPGRADE" = "1" ]; then
   log "${C_BLU}⬆️  升级模式（来源：当前 mirror）${C_NC}"
   upgrade_npm_tool "ast-grep" "@ast-grep/cli" ast-grep --version
-  upgrade_npm_tool "codegraph" "@colbymchenry/codegraph" codegraph version
+  upgrade_npm_tool "codegraph" "@colbymchenry/codegraph" codegraph_cli version
   upgrade_npm_tool "openspec" "@fission-ai/openspec" openspec --version
+  upgrade_pi_mcp_adapter
   upgrade_uv
 fi
 run_required_phase "openspec" do_openspec_phase || exit $?

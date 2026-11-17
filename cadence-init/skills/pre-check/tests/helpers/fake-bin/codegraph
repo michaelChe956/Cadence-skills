@@ -1,3 +1,15 @@
 #!/usr/bin/env bash
-# 测试替身：固定返回 codegraph 版本，不访问网络。
+# 测试替身：不访问网络。
+#   FAKE_CODEGRAPH_ENVLOG   每次调用记录子进程看到的 CODEGRAPH_DOWNLOAD_BASE
+#   FAKE_CODEGRAPH_OK_VIA   设置后，仅当 CODEGRAPH_DOWNLOAD_BASE 含该子串才成功（模拟平台包缺失、
+#                           需经 GitHub 加速代理下载的 npm shim），否则退出 1
+if [ -n "${FAKE_CODEGRAPH_ENVLOG:-}" ]; then
+  printf 'CODEGRAPH_DOWNLOAD_BASE=%s\n' "${CODEGRAPH_DOWNLOAD_BASE:-}" >> "$FAKE_CODEGRAPH_ENVLOG"
+fi
+if [ -n "${FAKE_CODEGRAPH_OK_VIA:-}" ]; then
+  case "${CODEGRAPH_DOWNLOAD_BASE:-}" in
+    *"$FAKE_CODEGRAPH_OK_VIA"*) ;;
+    *) exit 1 ;;
+  esac
+fi
 printf 'codegraph 0.8.0\n'

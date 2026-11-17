@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# 测试替身：不访问网络。`npm view <pkg> version` 读 FAKE_NPM_LATEST_<包名，非字母数字转下划线>；
+# 未设置则无输出（脚本按"无法查询 latest"跳过升级）。其余子命令一律成功。
+if [ "${1:-}" = "view" ]; then
+  _key="$(printf '%s' "${2:-}" | tr -c 'A-Za-z0-9' '_')"
+  _var="FAKE_NPM_LATEST_$_key"
+  [ -n "${!_var:-}" ] && printf '%s\n' "${!_var}"
+  exit 0
+fi
+exit 0

@@ -6,21 +6,63 @@ _CALLS="${FAKE_OPENSPEC_CALLS:-}"
 if [ -n "$_CALLS" ]; then
   printf '%s\n' "$*" >> "$_CALLS"
 fi
+# 记录子进程环境里的 git url 改写，供测试断言镜像/加速代理是否生效（--version 探测不记）。
+if [ -n "${FAKE_OPENSPEC_ENVLOG:-}" ] && [ "${1:-}" != "--version" ]; then
+  printf '%s | GIT_CONFIG_COUNT=%s KEY_0=%s VALUE_0=%s\n' "$*" \
+    "${GIT_CONFIG_COUNT:-}" "${GIT_CONFIG_KEY_0:-}" "${GIT_CONFIG_VALUE_0:-}" >> "$FAKE_OPENSPEC_ENVLOG"
+fi
+
+# 版本号：FAKE_OPENSPEC_VERSION 优先；否则 2.x 共享布局为 2.0.0，旧布局为 1.2.0。
+if [ -n "${FAKE_OPENSPEC_VERSION:-}" ]; then
+  _version="$FAKE_OPENSPEC_VERSION"
+elif [ "${FAKE_OPENSPEC_SHARED_LAYOUT:-0}" = "1" ]; then
+  _version="2.0.0"
+else
+  _version="1.2.0"
+fi
+# 2.1.0 起引入 --scope 与"默认全局作用域"；更早版本不认识 --scope。
+_major="${_version%%.*}"
+_rest="${_version#*.}"
+_minor="${_rest%%.*}"
+_scope_aware=0
+if [ "$_major" -gt 2 ] || { [ "$_major" -eq 2 ] && [ "$_minor" -ge 1 ]; }; then
+  _scope_aware=1
+fi
 
 if [ "${1:-}" = "--version" ]; then
-  if [ "${FAKE_OPENSPEC_SHARED_LAYOUT:-0}" = "1" ]; then
-    printf 'openspec 2.0.0\n'
-  else
-    printf 'openspec 1.2.0\n'
-  fi
+  printf 'openspec %s\n' "$_version"
   exit 0
 fi
 
 if [ "${1:-}" = "init" ] && [ "${2:-}" = "--tools" ]; then
   _tools="${3:-}"
+  _scope=""
+  if [ "${4:-}" = "--scope" ]; then
+    [ "$_scope_aware" -eq 1 ] || exit 1   # 旧版 CLI：未知选项
+    _scope="${5:-}"
+  elif [ "$#" -gt 3 ]; then
+    exit 1
+  fi
+  # 模拟 init 退出 0 却没有写出任何投影的 CLI。
+  [ "${FAKE_OPENSPEC_NOOP_INIT:-0}" = "1" ] && exit 0
+  # 模拟 GitHub 不可达（2.1.0+ 的 init 要克隆 GitHub）：未经 FAKE_OPENSPEC_GITHUB_OK_VIA 指定的
+  # 加速代理改写时，hang 表示一直挂起，fail 表示立即失败。
+  if [ -n "${FAKE_OPENSPEC_UNREACHABLE:-}" ] && [ "$_scope_aware" -eq 1 ]; then
+    case "${GIT_CONFIG_KEY_0:-}" in
+      *"${FAKE_OPENSPEC_GITHUB_OK_VIA:-@@none@@}"*) ;;
+      *)
+        if [ "$FAKE_OPENSPEC_UNREACHABLE" = "hang" ]; then exec sleep 60; fi
+        exit 1 ;;
+    esac
+  fi
   if [ "${FAKE_OPENSPEC_SHARED_LAYOUT:-0}" = "1" ]; then
+    # 2.1.0+ 未显式 project 作用域时默认装进 $HOME（项目根不生成任何投影）。
+    _root="$PWD"
+    if [ "$_scope_aware" -eq 1 ] && [ "$_scope" != "project" ]; then
+      _root="$HOME"
+    fi
     # OpenSpec 2.x：所有工具共用 .agents/skills，marker 记录本次投影的工具并集。
-    _shared_skills="$PWD/.agents/skills"
+    _shared_skills="$_root/.agents/skills"
     mkdir -p "$_shared_skills"
     for _name in apply-change archive-change explore propose sync-specs update-change; do
       mkdir -p "$_shared_skills/openspec-$_name"
@@ -44,9 +86,9 @@ $_tool"
     printf '%s\n' "$_union" | awk 'NF { print $1 }' | sort -u > "$_marker"
     case ",$_tools," in
       *,claude,*)
-        mkdir -p "$PWD/.claude/skills"
+        mkdir -p "$_root/.claude/skills"
         for _name in apply-change archive-change explore propose sync-specs update-change; do
-          _link="$PWD/.claude/skills/openspec-$_name"
+          _link="$_root/.claude/skills/openspec-$_name"
           rm -f "$_link" 2>/dev/null
           [ -e "$_link" ] && rm -rf "$_link"
           ln -s "../../.agents/skills/openspec-$_name" "$_link"

@@ -13,4 +13,7 @@ CADENCE_PY_INDEX="https://pypi.org/simple"
 # Superpowers Git 远端地址（SKILL.md 的 Superpowers 步骤 clone/pull 使用）
 CADENCE_SUPERPOWERS_GIT="https://github.com/obra/superpowers"
 
-export CADENCE_NPM_REGISTRY CADENCE_PY_INDEX CADENCE_SUPERPOWERS_GIT
+# GitHub 加速代理前缀：官方源直连 GitHub，不使用代理。
+CADENCE_GITHUB_PROXIES=""
+
+export CADENCE_NPM_REGISTRY CADENCE_PY_INDEX CADENCE_SUPERPOWERS_GIT CADENCE_GITHUB_PROXIES
