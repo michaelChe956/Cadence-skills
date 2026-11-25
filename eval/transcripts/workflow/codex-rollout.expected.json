@@ -1,0 +1,4 @@
+[
+  {"kind": "write", "path": "docs/design.md", "summary": "apply_patch"},
+  {"kind": "review", "reviewer": "k3-reviewer", "path": "docs/design.md", "passed": false, "summary": "未通过：缺少验证章节"}
+]

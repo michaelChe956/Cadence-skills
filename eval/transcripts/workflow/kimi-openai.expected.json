@@ -1,0 +1,4 @@
+[
+  {"kind": "write", "path": "docs/design.md", "content": "# v3"},
+  {"kind": "unknown", "detail": "write-missing-path"}
+]

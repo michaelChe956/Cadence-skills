@@ -1,7 +1,7 @@
 # routing-conformance Specification
 
 ## Purpose
-TBD - created by archiving change improve-progressive-disclosure-routing. Update Purpose after archive.
+规定如何验证初始化后的客户端遵守项目工作流。验证覆盖 OpenSpec 原生指令、工作包与实施计划的双向追溯、人工确认与送审时序，以及旧项目升级后的配置保留和重复运行结果。
 
 ## Requirements
 
@@ -10,7 +10,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 #### Scenario: 生成 design artifact
 - **WHEN** Agent 创建或更新 OpenSpec design
-- **THEN** OpenSpec 指令包含将 brainstorming 已确认架构、边界和权衡持久化的规则
+- **THEN** OpenSpec 指令包含将 已通过门禁的 Design 架构、边界和权衡持久化的规则
 - **AND** design 不承担精确文件级实施步骤
 
 #### Scenario: 生成 tasks artifact
@@ -27,17 +27,35 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **AND** `openspec/config.yaml` 不包含无效的 `rules.apply`
 
 ### Requirement: OpenSpec 工作包与 Superpowers Plan 必须可追溯
-系统 MUST 要求 Superpowers Plan 引用 OpenSpec change、工作包编号和相关 requirement；Plan SHALL 只能展开已确认契约，不得重新定义范围、架构边界或验收标准。
+系统 MUST 在同一阶段编写 change 与 Plan。工作包与 Plan 步骤 SHALL 双向引用，并能定位到 change、requirement 和 scenario。
 
 #### Scenario: writing-plans 展开工作包
-- **WHEN** OpenSpec 书面契约获批并调用 `superpowers:writing-plans`
-- **THEN** Plan 写入 `cadence/plans/`
-- **AND** 每组实施步骤可以追溯到 OpenSpec 工作包和 requirement
+- **WHEN** Design 双审已通过且所需人工确认已满足，change 已有可引用的 requirement、scenario 和工作包编号
+- **THEN** 立即调用 `writing-plans`，在 `cadence/plans/` 展开文件、接口、实施顺序和验证方法，草稿可在 Design 边界内相互校正
 
 #### Scenario: Plan 与 OpenSpec 冲突
-- **WHEN** Plan 中的文件级方案需要改变 OpenSpec 的范围、架构边界或验收标准
-- **THEN** Agent 停止确认该 Plan
-- **AND** 先更新并重新审阅 OpenSpec，再重新生成或更新 Plan
+- **WHEN** Plan 的细化导致 change 与 Plan 出现分歧
+- **THEN** 在已审 Design 边界内联合修订草稿，涉及 Design 范围、架构或验收边界变化时返回 Design 阶段
+
+#### Scenario: 同版联合送审
+- **WHEN** change 和 Plan 均完整，`openspec validate <change-id> --strict` 通过且每个工作包与 Plan 可以双向追溯
+- **THEN** 将两份产物作为同一版本一次联合双审，按委托和人工决定继续
+
+#### Scenario: 路径变更的恢复
+- **WHEN** 联合双审后的修订只改变测试路径，契约和场景映射保持一致
+- **THEN** 恢复时接受代理协议规定的接地侧复核记录，沿用原一致性结论
+
+#### Scenario: 文本修订的签收
+- **WHEN** 只修正错字或链接且语义一致
+- **THEN** 集成人核验实际差异及链接目标后记录最终版本，恢复时沿用该记录
+
+#### Scenario: 授权语义变更
+- **WHEN** 送审后修改授权语义
+- **THEN** 按代理协议核对两侧的复核结果。超出已确认 Design 边界时先回 Design 阶段，再按新边界准备联合包
+
+#### Scenario: 直接 apply 时联合包未就绪
+- **WHEN** 恢复时仅有 change、该 change 严格校验失败或双向追溯缺失
+- **THEN** 回联合编写补 Plan、修正 change 或补齐映射，重新校验后再联合送审，实施保持阻塞
 
 ### Requirement: 路由目标和版本必须通过静态检查
 
@@ -93,6 +111,17 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 系统 MUST 记录客户端、场景、期望阶段、期望规则与 Skill、实际路由、门禁结果、误加载项和结论，并 SHALL 将失败项映射到 L0、L1、L2 或具体 OpenSpec artifact 的修复位置。
 
 #### Scenario: 直接 apply 越过 Plan
-- **WHEN** 任一客户端在没有已确认 Plan 的情况下继续执行 OpenSpec 工作包
+- **WHEN** 任一客户端在缺少 Plan、送审版联合双审结论或最终交付版相对送审版的差异核验记录时继续执行 OpenSpec 工作包
 - **THEN** 验证记录判定失败
 - **AND** 明确指出是入口路由、协作规则还是 artifacts 中的 Plan 门禁未生效
+
+### Requirement: 配置升级精确迁移旧工作流条款
+系统 MUST 仅在所属字段迁移已知框架的完整 context 行与完整 artifact 规则项。用户 context、额外规则、扩展字段、独立覆盖规则和提交开关保留。
+
+#### Scenario: 旧项目混入用户配置
+- **WHEN** 项目重跑正常初始化且含可识别的旧框架条款和部分文字相似的用户规则
+- **THEN** 原文件经备份后发布唯一的新框架流程，近似用户规则及其他字段保留
+
+#### Scenario: 再次初始化
+- **WHEN** 同一版本再次运行
+- **THEN** 已发布内容和文件写入时间保持一致，新增备份为零

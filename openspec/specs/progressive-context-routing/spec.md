@@ -1,7 +1,7 @@
 # progressive-context-routing Specification
 
 ## Purpose
-TBD - created by archiving change improve-progressive-disclosure-routing. Update Purpose after archive.
+定义项目入口如何根据当前任务和已有产物选择工作阶段。代理在开始或恢复任务时读取所需规则，按设计与联合包的审查记录、用户确认决定和委托范围选择下一步。
 
 ## Requirements
 
@@ -11,7 +11,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 #### Scenario: 新功能先进入 brainstorming
 - **WHEN** 用户要求新增功能、改变既有行为或讨论实施方案
 - **THEN** Agent 在创建实现文件或 OpenSpec artifacts 前调用 `superpowers:brainstorming`
-- **AND** 仅在用户确认设计后把结论持久化到 OpenSpec
+- **AND** 将完整 Design 写入 `cadence/designs/`，单独双审后等待 Design 确认，明确免确认时直接进入联合编写
 
 #### Scenario: 架构摸底先加载代码阅读规则
 - **WHEN** 用户要求进行架构摸底、调用链分析或影响面分析
@@ -25,15 +25,15 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 #### Scenario: 直接 apply 不得跳过 Plan
 - **WHEN** 用户或 Agent 准备执行 `/opsx:apply`
-- **THEN** Agent 重新加载协作规则并检查当前 OpenSpec change 是否存在已确认的 Superpowers Plan
-- **AND** 没有 Plan 时停止实施并先调用 `superpowers:writing-plans`
+- **THEN** Agent 重新加载协作规则并检查当前 OpenSpec change 的严格校验、Plan、双向追溯、送审版双审结果、交付版差异核验及本任务确认记录
+- **AND** 缺 Plan 回联合编写，调用 `superpowers:writing-plans`
 
 ### Requirement: 关键阶段必须重新路由
-系统 SHALL 要求 Agent 在新任务、从讨论转为修改文件、OpenSpec 契约获批、开始或恢复 apply、上下文恢复和完工声明前重新判断当前阶段，不得依赖更早阶段的隐含路由结果。
+系统 SHALL 要求 Agent 在新任务、从讨论转为修改文件、Design 双审、联合编写和联合双审交接、开始或恢复 apply、上下文恢复和完工声明前重新判断当前阶段，不得依赖更早阶段的隐含路由结果。
 
 #### Scenario: 上下文压缩后恢复实施
 - **WHEN** 会话发生 resume、clear、compact 或 Agent 无法确认之前的路由状态
-- **THEN** Agent 根据当前 change、Plan 和待办工作包重新输出路由结果
+- **THEN** Agent 读取当前任务的 Design、change、Plan 和交接记录，按委托类型、显式人工决定、送审版双审结论及最终版相对送审版的差异核验记录重新路由
 - **AND** 在门禁恢复前不继续修改实现文件
 
 #### Scenario: 从分析转为修改文件
@@ -71,7 +71,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **AND** Skill 未读完前不得读取仓库规则或使用仓库工具
 
 ### Requirement: 路由门禁必须失败关闭
-系统 MUST 要求 Agent 在必调 Skill 不可用、强制 OpenSpec 未确认、已有 change 缺少 Plan、实施发现契约变化或缺少完成证据时停止当前阶段，而不是静默降级或模拟已完成的流程。
+系统 MUST 要求 Agent 在必调 Skill 不可用、Design 双审或必要确认待办、联合包缺件、严格校验失败、追溯或联合双审待办、实施发现契约变化或缺少完成证据时停止当前阶段，而不是静默降级或模拟已完成的流程。
 
 #### Scenario: 必调 Skill 未加载
 - **WHEN** 当前任务命中必调 Skill 但 Agent 未加载或无法调用该 Skill
@@ -81,7 +81,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 #### Scenario: 实施发现验收标准变化
 - **WHEN** 实施过程中发现需要改变 OpenSpec 中的范围、架构边界或验收标准
 - **THEN** Agent 停止当前实施
-- **AND** 先更新并重新确认 OpenSpec，再更新 Plan 后继续
+- **AND** 涉及 Design 边界时返回 Design 双审和该版确认策略，修订 change 与 Plan 后按同版重新校验、追溯和联合双审
 
 #### Scenario: 缺少新鲜验证证据
 - **WHEN** Agent 准备声称任务完成、Bug 已修复或测试通过，但没有读取与声明对应的新鲜验证输出
@@ -98,4 +98,23 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 #### Scenario: 新增公共行为
 - **WHEN** 变更新增公共行为、修改接口或数据结构，或改变验收标准
 - **THEN** Agent 不得使用轻量豁免
-- **AND** 必须完成 brainstorming、OpenSpec 契约审阅和 writing-plans 门禁
+- **AND** 必须完成 Design、联合编写和联合双审门禁
+
+### Requirement: 任务人工确认与交付去向
+系统 MUST 将人工确认与双审分别记录。当前任务最近的明确用户决定适用于剩余确认点，恢复时沿用已经满足的决定和当前版本的审查凭据。
+
+#### Scenario: 默认实施与文档委托
+- **WHEN** 用户未指定额外确认点
+- **THEN** 仅在完整 Design 单独双审后等待用户一次，联合双审通过后按委托直接实施或交付文档
+
+#### Scenario: 免除剩余人工确认
+- **WHEN** 用户说“这次不用确认，直接继续”
+- **THEN** 后续人工询问为零，完整 Design 独立双审与同版联合双审仍各执行一次
+
+#### Scenario: 用户要求查看 Plan
+- **WHEN** 用户说“Plan 写完给我确认”
+- **THEN** 在联合双审通过后就该 Plan 等待一次，恢复时沿用已给出的答复
+
+#### Scenario: 已经确认 Design
+- **WHEN** 用户针对当前版 Design 说“Design 没问题，继续”且该版双审已通过
+- **THEN** 记录该决定，直接联合编写 change 与 Plan

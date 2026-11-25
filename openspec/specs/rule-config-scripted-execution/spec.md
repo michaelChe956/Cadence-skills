@@ -244,7 +244,7 @@ rule-config 的规则模板与 OpenSpec 配置模板 MUST 从脚本自身所在 
 
 ### Requirement: verify 子命令必须提供只读加载自检
 
-`rule-config --verify` MUST 以只读方式检查业务项目五项：①AGENTS.md/CLAUDE.md 的 L0 区块版本（v1/v2/v3/v4 及是否最新）；②受管规则文件与模板哈希比对；③权限投影区块与元数据重算结果比对；④codex-rules-inline 区块与源重算结果比对；⑤三层软链解析是否指向 Cadence 源。输出 MUST 结构化且可选 JSON；全部健康时退出码 MUST 为 0，存在漂移或过时项时 MUST 为 1。第 ③④ 项对从未生成过投影区块的项目 MUST 报"未生成"（提示运行 apply）而不报漂移。`--verify` MUST NOT 修改任何文件。
+`rule-config --verify` MUST 以只读方式检查业务项目：①AGENTS.md/CLAUDE.md 的 L0 区块版本是否最新；②受管规则文件与模板哈希比对；③权限投影区块与元数据重算结果比对；④codex-rules-inline 区块与源重算结果比对；⑤三层软链解析是否指向 Cadence 源。另检查 omp 规则投影及 S7 对 `openspec/config.yaml` 的迁移判定。输出 MUST 结构化且可选 JSON；全部健康时退出码 MUST 为 0，存在漂移或过时项时 MUST 为 1。第 ③④ 项对从未生成过投影区块的项目 MUST 报"未生成"（提示运行 apply）而不报漂移。`--verify` MUST NOT 修改任何文件。
 
 #### Scenario: 过时版本被报告
 
@@ -260,3 +260,8 @@ rule-config 的规则模板与 OpenSpec 配置模板 MUST 从脚本自身所在 
 
 - **WHEN** apply 后修改任一规则源文件再运行 `--verify`
 - **THEN** 对应投影项报告漂移且退出码为 1
+
+#### Scenario: 只有 OpenSpec 配置被回退
+
+- **WHEN** 已初始化项目的 `openspec/config.yaml` 被换回旧模板，dry-run 预告 S7 将更新
+- **THEN** verify 点名该文件并以 1 退出。apply 发布候选后，verify 报告 healthy 并以 0 退出。

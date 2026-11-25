@@ -1,0 +1,4 @@
+[
+  {"kind": "write", "path": "docs/design.md", "content": "# v2"},
+  {"kind": "review", "reviewer": "reviewer", "path": "docs/design.md", "passed": true, "summary": "审查结论：通过。"}
+]

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from eval import ifmt
+from eval.adapters import workflow_events
 
 AGENTS = ("claude", "codex", "pi", "kimi")
 
@@ -43,9 +44,11 @@ class AgentAdapter(abc.ABC):
         ...
 
     def parse_file(self, path: Path) -> ifmt.IntermediateTrajectory:
-        traj = self.parse_stream(
-            line for line in path.read_text(encoding="utf-8",
-                                            errors="replace").splitlines() if line.strip())
+        # 原始行只读一次：parse_stream 之外再供原生证据提取复用（P3）。
+        lines = [line for line in path.read_text(encoding="utf-8",
+                                                 errors="replace").splitlines() if line.strip()]
+        traj = self.parse_stream(lines)
+        traj.workflow_events = workflow_events.extract(self.name, lines)
         traj.source_path = str(path)
         return traj
 

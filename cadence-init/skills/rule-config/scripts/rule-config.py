@@ -19,6 +19,8 @@ decisions 校验与全局备份屏障。S1-S10 的实际发布逻辑（merge/rep
 from __future__ import annotations
 
 import argparse
+import difflib
+import itertools
 import hashlib
 import json
 import os
@@ -133,8 +135,8 @@ STEP_ORDER = (
 # 与 references/rules/agent-routing-kernel.md 首尾标记逐字一致（由 Task 2 单测
 # 锁定 L0_SOURCE 全文）。当前版本和可迁移的旧版本集中管理，避免升级时
 # 漏检历史区块。
-L0_CURRENT_VERSION = "v5"
-L0_OLD_VERSIONS = ["v4", "v3", "v2", "v1", "v0"]
+L0_CURRENT_VERSION = "v6"
+L0_OLD_VERSIONS = ["v5", "v4", "v3", "v2", "v1", "v0"]
 L0_BEGIN = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:start -->"
 L0_END = f"<!-- cadence-managed:openspec-superpowers-routing:{L0_CURRENT_VERSION}:end -->"
 
@@ -147,14 +149,9 @@ ARTIFACT_PATH_OVERRIDE_TABLE = (
     "| `docs/superpowers/plans/`（plan） | `cadence/plans/` |"
 )
 
-# L1 规则文件版本标记（单行注释，位于文件首行）。
+# 历史正文共用同一类标记；标记只定位版本号，完整内容用于识别与分类。
 L1_MARKER_PREFIX = "<!-- cadence-framework-rule:openspec-superpowers-workflow:"
-L1_V1_MARKER = "<!-- cadence-framework-rule:openspec-superpowers-workflow:v1 -->"
-
-# 当前受支持的 L1 旧版本集合（空集）：仓库仅存 v1 规范源，无真实旧版；
-# upgrade 路径由单测经 classify_l1(known_versions=...) 参数注入旧版文本覆盖。
-# KNOWN_L1_VERSIONS 必须包含当前 v1 全文（与规范源逐字一致）。
-KNOWN_L1_VERSIONS: dict = {}
+L1_V1_MARKER = L1_MARKER_PREFIX + "v1 -->"
 
 # L1 规则文件名（走独立分支，**不**进入 merge_markdown 章节合并）。
 L1_RULE_FILENAME = "openspec-superpowers-workflow.md"
@@ -275,16 +272,16 @@ def _load_reference(name: str) -> str:
         return ""
 
 
-# 初始化 KNOWN_L1_VERSIONS：v1 取 references/rules/openspec-superpowers-workflow.md 全文。
-# （模块加载期执行；测试 import rc 即生效，与 test_rule_config.py 中 L1_V1 加载一致。）
-try:
-    KNOWN_L1_VERSIONS["v1"] = _load_reference(Path("rules") / L1_RULE_FILENAME)
-except Exception:  # noqa: BLE001 — 加载失败兜底为空串，不阻断模块导入
-    KNOWN_L1_VERSIONS["v1"] = ""
+# 保存主历史中出现过的完整 L1 正文（v1 长文/简版/带 frontmatter 版与 v2 基线）。
+# 历史识别按单个版本模板在原位置认领框架行，不使用全部历史行的全局并集。
+KNOWN_L1_VERSIONS = {
+    path.stem: path.read_text(encoding="utf-8")
+    for path in (SKILL_DIR / "references/rules/l1-history").glob("*.md")
+}
 
-# L0 v1/v2 历史规范源：只有与该文本逐字一致的完整旧版区块才可确定性升级。
-# v0 没有可验证的真实历史源，保留其「合法成对即 upgrade」的兼容例外。
+# v0 没有可验证的真实历史源，仍以成对标记兼容升级。
 L0_OLD_SOURCES = {
+    "v5": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v5.md"),
     "v4": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v4.md"),
     "v3": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v3.md"),
     "v2": _load_reference(Path("rules") / "l0-history" / "agent-routing-kernel-v2.md"),
@@ -1515,37 +1512,40 @@ def l0_block(text: str, source: str) -> str:
 
 
 def classify_l1(path: Path, v1_source: str, known_versions: dict) -> str:
-    """判定 L1 规则文件版本分类（L1-02~06）。
-
-    返回 'skip'/'upgrade'/'replace' 之一：
-      * skip：完整内容与当前框架 v1 规范源逐字一致；
-      * upgrade：完整内容与 known_versions 中某个旧版逐字一致（仓库无真实旧版，
-        由单测经 known_versions={"v0": ...} 注入覆盖）；
-      * replace：v1 漂移 / 旧版漂移 / 无标记（任何分支都不调 merge_markdown）。
-
-    红线：标记只用于定位候选版本；最终识别必须比较完整文件内容（L1-B2）。
-    任何分支 MUST NOT 调 merge_markdown，结果 MUST NOT 含「项目补充」。
-    """
+    """按完整正文识别当前或历史框架版本。其余原文按用户漂移处理。"""
     try:
         content = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         # 文件不可读 → 当作无标记文件，replace（备份与替换由调用方处理）。
         return "replace"
 
-    # 1) 当前 v1 逐字一致 → skip。
     if content == v1_source:
         return "skip"
-
-    # 2) known_versions 旧版逐字一致 → upgrade（按版本号排序保证 v1 优先已在上一步处理）。
-    versions = known_versions or {}
-    for ver, text in versions.items():
-        if ver == "v1":
-            continue
-        if text and content == text:
-            return "upgrade"
-
-    # 3) 其余（v1 漂移 / 旧版漂移 / 无标记） → replace。
+    if content and content in known_versions.values():
+        return "upgrade"
     return "replace"
+
+
+# 仅匹配已发布的完整字段值。保留近似用户句、空白差异及其他 artifact 下的同文。
+_RETIRED_CONTEXT_LINES = {
+    "brainstorming 的确认结果必须持久化到 OpenSpec；OpenSpec 书面契约获批后才能调用 writing-plans。",
+    "已存在 OpenSpec change 的多步实施必须先有位于 cadence/plans/ 的已确认 Plan；Plan 只能展开契约，不能重新定义范围、架构或验收。",
+}
+_RETIRED_ARTIFACT_RULES = {
+    "proposal": {
+        "proposal 必须来自已经过用户确认的 brainstorming 结果。",
+    },
+    "design": {
+        "持久化已确认的架构边界、职责、权衡、失败处理和迁移策略。",
+        "发现未确认的设计决策时停止并返回 brainstorming，不得自行补全关键边界。",
+    },
+    "specs": {
+        "使用 MUST 或 SHALL 编写可验收 requirement，并为每项 requirement 提供 WHEN/THEN scenario。",
+    },
+    "tasks": {
+        "每个工作包必须能够映射到相关 requirement；Plan 只能展开工作包，不能重定义契约。",
+    },
+}
 
 
 def merge_yaml(template: str, existing: str):
@@ -1557,7 +1557,7 @@ def merge_yaml(template: str, existing: str):
       * rules.apply 存在 → 报告 conflicts=[{"kind":"rules.apply",...}]（NC-05+OS-N8），
         但 merged 仍返回合并后的文本（移除 rules.apply）；调用方据 conflicts 决定是否终止；
       * schema 缺失 → 写入 spec-driven（OS-N5）；保留项目 schema；
-      * context 按完整行去重追加（项目行在前，模板去重行在后）（OS-N6）；
+      * context 移除已知退役完整行，再按原序去重追加（OS-N6）；
       * 四个 artifact 数组去重追加，项目额外规则保留（OS-N7）；
       * 保留项目自定义键。
     """
@@ -1599,7 +1599,7 @@ def merge_yaml(template: str, existing: str):
         seen = set()
         result_lines: list = []
         for line in old_lines:
-            if line not in seen:
+            if line not in _RETIRED_CONTEXT_LINES and line not in seen:
                 seen.add(line)
                 result_lines.append(line)
         for line in tpl_lines:
@@ -1626,8 +1626,9 @@ def merge_yaml(template: str, existing: str):
             tpl_items = []
         seen_items: list = []
         seen_set: set = set()
+        retired = _RETIRED_ARTIFACT_RULES.get(group, ())
         for item in old_items:
-            if isinstance(item, str) and item not in seen_set:
+            if isinstance(item, str) and item not in retired and item not in seen_set:
                 seen_set.add(item)
                 seen_items.append(item)
         for item in tpl_items:
@@ -2515,6 +2516,144 @@ def _is_line_subset(existing: str, template: str) -> bool:
     return _nonempty_lines(existing) <= _nonempty_lines(template)
 
 
+def _l1_marker(text: str) -> str | None:
+    """返回 L1 文本中的框架版本标记行（含版本号）。"""
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        if stripped.startswith(L1_MARKER_PREFIX) and stripped.endswith("-->"):
+            return stripped
+    return None
+
+
+def _historical_l1_base(existing: str, template: str) -> str | None:
+    """用单份历史正文按序认领框架行。并列候选只能认领双方都能证明的位置。"""
+    marker = _l1_marker(existing)
+    if marker is None:
+        return None
+    lines = existing.splitlines()
+    comparable = [line.rstrip() if line.rstrip() == marker else line for line in lines]
+    sources = [s for s in KNOWN_L1_VERSIONS.values() if _l1_marker(s) == marker]
+    if _l1_marker(template) == marker:
+        sources.append(template)
+    # 完整模板后追加的任意文本（包括另一历史版本的逐字原句）都属于项目。
+    for source in sorted(sources, key=len, reverse=True):
+        original = source.splitlines()
+        if comparable[:len(original)] == original:
+            if source == template:
+                return None
+            return "\n".join(lines[:len(original)]) + ("\n" if existing.endswith("\n") else "")
+
+    # 兼容删节旧版或在框架正文中插入用户段落。保留未匹配的每个出现位置。
+    candidates = []
+    for source in sources:
+        original = source.splitlines()
+        matcher = difflib.SequenceMatcher(None, original, comparable, autojunk=False)
+        blocks = matcher.get_matching_blocks()
+        matches = {j for _, start, size in blocks for j in range(start, start + size)
+                   if comparable[j].strip()}
+        # 用户新增标题以下是项目正文，即使它恰好与其他版本逐字相同。
+        headings = {line for line in original if line.startswith("#")}
+        renamed = set()
+        for op, i, end_i, j, end_j in matcher.get_opcodes():
+            if op == "replace":
+                # 同一段中标题与邻接正文可以一起改。只有层级序列相同才识别为改名。
+                old_heads = [m[1] for line in original[i:end_i] if (m := re.match(r"^(#{1,6})\s", line))]
+                new_heads = [(k, m[1]) for k in range(j, end_j) if (m := re.match(r"^(#{1,6})\s", comparable[k]))]
+                if old_heads == [level for _, level in new_heads]:
+                    renamed.update(k for k, _ in new_heads)
+        user_level = None
+        for i, line in enumerate(comparable):
+            heading = re.match(r"^(#{1,6})\s", line)
+            if heading:
+                level = len(heading[1])
+                if user_level is None or level <= user_level:
+                    user_level = None if line in headings or i in renamed else level
+            if user_level is not None:
+                matches.discard(i)
+        # 标记、文档标题和至少一条正文提供版本依据。
+        if len(matches) < 3 or not any(comparable[j] == marker for j in matches):
+            continue
+        candidates.append((matches, source))
+    if not candidates:
+        return None
+    size = max(len(indices) for indices, _ in candidates)
+    best = [(indices, source) for indices, source in candidates if len(indices) == size]
+    if any(source == template for _, source in best):
+        return None
+    claims = set.intersection(*(indices for indices, _ in best))
+    return "\n".join(line for i, line in enumerate(lines) if i in claims or not line.strip()) + "\n"
+
+
+def _l1_overlay_repairs(root: Path, overlay: str | None):
+    """重放 462e56cf 的已知错误提取，再按实装历史正文提取真正的项目差异。"""
+    if not overlay or "## 旧版本差异（provisional，非用户禁用）" not in overlay:
+        return
+    fallback = KNOWN_L1_VERSIONS.get("workflow-v1-f681c587")
+    if not fallback:
+        return
+    # 先识别无定制的已知旧版。在带项目改写的安装中，备份屏障保留了原输入。
+    sources = (source for source in KNOWN_L1_VERSIONS.values() if _l1_marker(source) == L1_V1_MARKER)
+    archives = (root / "cadence/legacy").glob(f"[0-9]*/.claude/rules/{L1_RULE_FILENAME}")
+    normalized = overlay.replace("\r\n", "\n")
+    seen = set()
+    for original in itertools.chain(sources, (_safe_read(path) for path in archives)):
+        if not original or original in seen or _l1_marker(original) != L1_V1_MARKER:
+            continue
+        seen.add(original)
+        old, changed = cadence_state.build_overlay_body(L1_RULE_FILENAME, fallback, original, "template-fallback")
+        if not changed:
+            continue
+        batch = "\n".join(old.splitlines()[1:-1]).strip()
+        if batch not in normalized:
+            continue
+        baseline = _historical_l1_base(original, "")
+        if baseline is None:
+            continue
+        corrected, has_user = cadence_state.build_overlay_body(L1_RULE_FILENAME, baseline, original, "historical-v1")
+        yield batch, "\n".join(corrected.splitlines()[1:-1]).strip() if has_user else "## 用户新增\n（无）"
+
+
+def _rule_overlay_base(root: Path, rel: str, existing: str, template: str) -> tuple[str, str]:
+    """预演与发布采用同一基线。无记录的历史 L1 按原位置认领历史模板框架行。"""
+    recorded = cadence_state.get_rule_base(root, rel)
+    if recorded is not None:
+        return recorded, "manifest"
+    if rel == f".claude/rules/{L1_RULE_FILENAME}":
+        historical = _historical_l1_base(existing, template)
+        if historical is not None:
+            marker = _l1_marker(existing) or ""
+            version = marker[len(L1_MARKER_PREFIX):].split(" ", 1)[0] or "v1"
+            return historical, f"historical-{version}"
+    return template, "template-fallback"
+
+
+def _clean_l1_overlay(
+    root: Path, rules_dir: Path, target_name: str, report: dict, actions_log: list,
+) -> bool:
+    """清理已有 overlay 自动区中可溯源的旧框架残留；返回是否写入。"""
+    overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+    existing_overlay = _safe_read_exact(overlay_target)
+    if existing_overlay is None:
+        return False
+    cleaned, changed = cadence_state.repair_extracted_region(
+        existing_overlay, target_name, _l1_overlay_repairs(root, existing_overlay),
+    )
+    if not changed:
+        return False
+    backup_path = backup_file(overlay_target, root)
+    report.setdefault("backups", []).append({
+        "file": str(overlay_target),
+        "backup": str(backup_path),
+    })
+    atomic_write(overlay_target, cleaned)
+    actions_log.append({
+        "path": f".claude/rules/{overlay_target.name}",
+        "action": "overlay-cleaned",
+        "branch": "framework-cleanup",
+    })
+    return True
+
+
 def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) -> None:
     """S3 执行（Task 6 实现）。
 
@@ -2556,7 +2695,6 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
     for asset in assets:
         target_name = Path(asset["path"]).name
         template_source = asset.get("template_source", target_name)
-        is_l1 = asset.get("is_l1", False)
         target = rules_dir / target_name
         action = asset.get("action")
         conflict = asset.get("conflict")
@@ -2574,93 +2712,88 @@ def step_s3_rules_files(root: Path, intents: Intents, plan: dict, report: dict) 
             ensure_parent(target)
             atomic_write(target, template_text)
             cadence_state.record_rule_base(root, asset["path"], template_text)
+            if target_name == L1_RULE_FILENAME:
+                _clean_l1_overlay(root, rules_dir, target_name, report, actions_log)
             actions_log.append({"path": asset["path"], "action": "created"})
             continue
         if action == "skip" or conflict is None:
             if target.exists() and _safe_read(target) == template_text:
                 cadence_state.record_rule_base(root, asset["path"], template_text)
+            # 主规则无漂移时仍清理 overlay 内可溯源的旧框架残留。
+            if target_name == L1_RULE_FILENAME and template_text:
+                _clean_l1_overlay(root, rules_dir, target_name, report, actions_log)
             actions_log.append({"path": asset["path"], "action": "skipped"})
             continue
 
         # 冲突资产（conflict 非空）。
 
-        if is_l1 and False:  # L1 也走 unified overlay 分支；保留旧分支仅历史对账
-            # --- L1 独立分支：绝不调 merge_markdown，结果绝不含「项目补充」 ---
-            # 两模式统一：备份已由全局屏障完成；直接写当前模板（upgrade/replace 均替换）。
-            atomic_write(target, template_text)
+        # --- 框架受管规则文件：用户差异抽取到 overlay，文件本身保持纯净 ---
+        existing_text = _safe_read(target)
+        if existing_text == template_text:
+            cadence_state.record_rule_base(root, asset["path"], template_text)
+            if target_name == L1_RULE_FILENAME:
+                _clean_l1_overlay(root, rules_dir, target_name, report, actions_log)
             actions_log.append({
-                "path": asset["path"], "action": "replaced",
-                "branch": f"l1-authoritative-{conflict}",
+                "path": asset["path"],
+                "action": "unchanged",
+                "branch": "authoritative-idempotent",
             })
-        else:
-            # --- 框架受管规则文件：用户差异抽取到 overlay，文件本身保持纯净 ---
-            existing_text = _safe_read(target)
-            if existing_text == template_text:
-                cadence_state.record_rule_base(root, asset["path"], template_text)
-                actions_log.append({
-                    "path": asset["path"],
-                    "action": "unchanged",
-                    "branch": "authoritative-idempotent",
-                })
-                continue
-            rel = f".claude/rules/{target_name}"
-            base_text = cadence_state.get_rule_base(root, rel)
-            if base_text is None and _is_line_subset(existing_text or "", template_text):
-                # 纯旧版：当前文件所有行都在新模板中，没有用户新增，直接升级。
-                atomic_write(target, template_text)
-                cadence_state.record_rule_base(root, rel, template_text)
-                actions_log.append({
-                    "path": asset["path"], "action": "overwritten",
-                    "branch": "old-version-subset",
-                })
-                continue
-            base_origin = "manifest" if base_text is not None else "template-fallback"
-            if base_text is None:
-                base_text = template_text
-                report.setdefault("warnings", []).append({
-                    "code": "BASE_MISSING",
-                    "file": rel,
-                    "message": "无历史基线，按当前模板保守抽取用户差异",
-                    "detail": {},
-                })
-                report.setdefault("pending", []).append({
-                    "asset": rel,
-                    "reason": "base-missing",
-                    "detail": "overlay 抽取以当前模板为保守基线",
-                })
-            overlay_target = cadence_state.overlay_path(rules_dir, target_name)
-            existing_overlay = _safe_read(overlay_target)
-            new_overlay, overlay_changed = cadence_state.merge_overlay(
-                existing_overlay, target_name, base_text, existing_text or "",
-                base_origin,
-            )
-            if overlay_changed and new_overlay is not None:
-                if overlay_target.exists():
-                    overlay_backup = backup_file(overlay_target, root)
-                    report.setdefault("backups", []).append({
-                        "file": str(overlay_target),
-                        "backup": str(overlay_backup),
-                    })
-                    if existing_overlay is None:
-                        report.setdefault("warnings", []).append({
-                            "code": "OVERLAY_UNREADABLE_ARCHIVED",
-                            "file": str(overlay_target),
-                            "message": "overlay 无法按 UTF-8 读取，已归档后重建",
-                            "detail": {},
-                        })
-                atomic_write(overlay_target, new_overlay)
-                actions_log.append({
-                    "path": f".claude/rules/{overlay_target.name}",
-                    "action": "overlay-extracted",
-                    "branch": base_origin,
-                })
+            continue
+        rel = f".claude/rules/{target_name}"
+        base_text, base_origin = _rule_overlay_base(root, rel, existing_text or "", template_text)
+        if target_name != L1_RULE_FILENAME and base_origin == "template-fallback" and _is_line_subset(existing_text or "", template_text):
             atomic_write(target, template_text)
             cadence_state.record_rule_base(root, rel, template_text)
             actions_log.append({
-                "path": asset["path"],
-                "action": "overwritten",
-                "branch": "overlay-extracted",
+                "path": asset["path"], "action": "overwritten", "branch": "old-version-subset",
             })
+            continue
+        if base_origin == "template-fallback":
+            report.setdefault("warnings", []).append({
+                "code": "BASE_MISSING",
+                "file": rel,
+                "message": "无历史基线，按当前模板保守抽取用户差异",
+                "detail": {},
+            })
+            report.setdefault("pending", []).append({
+                "asset": rel,
+                "reason": "base-missing",
+                "detail": "overlay 抽取以当前模板为保守基线",
+            })
+        overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+        existing_overlay = _safe_read_exact(overlay_target)
+        new_overlay, overlay_changed = cadence_state.merge_overlay(
+            existing_overlay, target_name, base_text, existing_text or "",
+            base_origin,
+            repairs=_l1_overlay_repairs(root, existing_overlay) if target_name == L1_RULE_FILENAME else (),
+        )
+        if overlay_changed and new_overlay is not None:
+            if overlay_target.exists():
+                overlay_backup = backup_file(overlay_target, root)
+                report.setdefault("backups", []).append({
+                    "file": str(overlay_target),
+                    "backup": str(overlay_backup),
+                })
+                if existing_overlay is None:
+                    report.setdefault("warnings", []).append({
+                        "code": "OVERLAY_UNREADABLE_ARCHIVED",
+                        "file": str(overlay_target),
+                        "message": "overlay 无法按 UTF-8 读取，已归档后重建",
+                        "detail": {},
+                    })
+            atomic_write(overlay_target, new_overlay)
+            actions_log.append({
+                "path": f".claude/rules/{overlay_target.name}",
+                "action": "overlay-extracted",
+                "branch": base_origin,
+            })
+        atomic_write(target, template_text)
+        cadence_state.record_rule_base(root, rel, template_text)
+        actions_log.append({
+            "path": asset["path"],
+            "action": "overwritten",
+            "branch": "overlay-extracted",
+        })
 
     # codex 终审 I5 / OP-01：可选规则完整性检查（两模式同动作）。
     # 规则文件与摘要均存在 → 视为已启用，仅检查完整性并报告结果；
@@ -2697,6 +2830,15 @@ def _safe_read(path: Path) -> Optional[str]:
     """安全读取文件文本，失败返回 None。"""
     try:
         return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _safe_read_exact(path: Path) -> Optional[str]:
+    """读取文本但保留原有换行字节（用于改写 overlay 时保护手写区）。"""
+    try:
+        with open(path, encoding="utf-8", newline="") as handle:
+            return handle.read()
     except (OSError, UnicodeDecodeError):
         return None
 
@@ -2751,7 +2893,8 @@ def _record_step_conflicts(report: dict, step_name: str, conflicts: list) -> Non
 
 def _known_framework_lines() -> set[str]:
     """收集已知框架文本行，供 loss guard 判定删除是否可归属。"""
-    known: set[str] = set()
+    # v0 只有受支持的标记对，无历史正文文件。未知正文仍受损失保护。
+    known: set[str] = set(_l0_markers("v0"))
     rules_root = SKILL_DIR / "references" / "rules"
     for path in rules_root.rglob("*.md"):
         try:
@@ -3140,8 +3283,13 @@ def _normalize_l0_to_single_block(text: str, l0_source: str) -> tuple[str, list[
             ])
         else:
             ranges.append((*pair_range, True))
-    normalized = _remove_l0_ranges(text, ranges)
-    normalized = _insert_l0_block(normalized, l0_source)
+    if len(pairs) == 1 and not orphans:
+        # 原位升级保留前后用户段落的边界，包括 Markdown 围栏。
+        begin, end = pairs[0]
+        normalized = text[:begin["start"]] + l0_source.rstrip("\n") + text[end["end"]:]
+    else:
+        normalized = _remove_l0_ranges(text, ranges)
+        normalized = _insert_l0_block(normalized, l0_source)
     warnings: list[dict] = []
     if user_lines:
         end_pos = normalized.find(L0_END)
@@ -3375,7 +3523,10 @@ def _normalize_mandatory_rules(
                 lines.append("")
             lines.extend(section_lines)
         else:
-            lines[end_marker_idx + 1:end_marker_idx + 1] = [""] + section_lines
+            # 入口原有说明和刚迁出的用户行仍归属原章节。否则重跑会把它们
+            # 识别为最后一个框架条目的用户覆盖，导致再次改写两个入口。
+            insert_at = _fence_aware_section_end(lines, end_marker_idx)
+            lines[insert_at:insert_at] = [""] + section_lines + [""]
         return finish(lines), warnings_out
 
     if len(h2_idx) > 1:
@@ -4637,6 +4788,18 @@ STEP_FUNCS = {
 # ---------------------------------------------------------------------------
 
 
+def _openspec_needs_update(path: Path, action: str, template_path: str | None) -> bool:
+    """对 S7 预演及只读自检使用与发布相同的合并候选。"""
+    if action != "merge":
+        return action != "skip"
+    existing = _safe_read(path)
+    template = _safe_read(Path(template_path)) if template_path else None
+    if existing is None or template is None:
+        return True
+    candidate, _ = merge_yaml(template, existing)
+    return candidate != existing
+
+
 def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents) -> bool:
     """判定 target 是否真实需要备份（有实际写入/备份后终止动作）。
 
@@ -4694,26 +4857,8 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action == "merge":
-            # 幂等判定：候选与现状逐字节比较（I3：幂等不进备份需求）
-            existing = _safe_read(target)
-            if existing is None:
-                return True  # 读不出 → 保守备份
-            template_text = ""
-            openspec_yaml = (plan.get("templates", {}) or {}).get("openspec_yaml")
-            if openspec_yaml:
-                try:
-                    template_text = Path(openspec_yaml).read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    template_text = ""
-            candidate, _ = merge_yaml(template_text, existing)
-            if candidate is None:
-                return True  # 无法判定 → 保守备份
-            return candidate != existing
-        if action in ("remove-apply", "replace"):
-            # 移除禁用键/模板整体替换（两模式同动作）→ 始终写入
-            return True
-        return False
+        return action != "create" and _openspec_needs_update(
+            target, action, (plan.get("templates") or {}).get("openspec_yaml"))
 
     # S9 权限投影（新增）
     for asset in (steps.get(STEP_PERMISSION_GATE, {}) or {}).get("assets", []) or []:
@@ -4810,34 +4955,53 @@ def _planned_preview(root: Path, intents: Intents, plan: dict, report: dict) -> 
     rules_dir = root / ".claude" / "rules"
     s3 = (plan.get("steps", {}) or {}).get(STEP_RULES_FILES, {}) or {}
     for asset in s3.get("assets", []) or []:
-        if asset.get("action") == "skip" or asset.get("conflict") is None:
-            continue
         target_name = Path(asset.get("path", "")).name
         target = rules_dir / target_name
-        existing = _safe_read(target)
         template_source = asset.get("template_source", target_name)
-        if existing is None or rules_root is None:
+        template_text = ""
+        if rules_root is not None:
+            try:
+                template_text = (rules_root / template_source).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                template_text = ""
+        if asset.get("action") == "skip" or asset.get("conflict") is None:
+            # 主规则无漂移时，预演同一份 overlay 旧框架残留清理。
+            if target_name == L1_RULE_FILENAME and template_text:
+                overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+                existing_overlay = _safe_read_exact(overlay_target)
+                if existing_overlay is not None:
+                    _cleaned, cleaned_changed = cadence_state.repair_extracted_region(
+                        existing_overlay, target_name, _l1_overlay_repairs(root, existing_overlay),
+                    )
+                    if cleaned_changed:
+                        overlay_rel = str(overlay_target.relative_to(root))
+                        actions.append({
+                            "path": overlay_rel, "action": "overlay-cleaned",
+                            "branch": "framework-cleanup",
+                        })
+                        backups.add(overlay_rel)
             continue
-        try:
-            template_text = (rules_root / template_source).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        existing = _safe_read(target)
+        if existing is None or rules_root is None:
             continue
         if existing == template_text:
             continue
         rel = str(target.relative_to(root))
         actions.append({"path": rel, "action": "would-overwrite", "branch": "overlay-extracted"})
         backups.add(rel)
-        base_text = cadence_state.get_rule_base(root, rel)
-        origin = "manifest" if base_text is not None else "template-fallback"
-        if base_text is None:
-            base_text = template_text
+        base_text, origin = _rule_overlay_base(root, rel, existing, template_text)
+        if target_name != L1_RULE_FILENAME and origin == "template-fallback" and _is_line_subset(existing, template_text):
+            continue
+        if origin == "template-fallback":
             pending.append({
                 "asset": rel, "reason": "base-missing",
                 "detail": "overlay 抽取以当前模板为保守基线",
             })
         overlay_target = cadence_state.overlay_path(rules_dir, target_name)
+        existing_overlay = _safe_read_exact(overlay_target)
         new_overlay, changed = cadence_state.merge_overlay(
-            _safe_read(overlay_target), target_name, base_text, existing, origin,
+            existing_overlay, target_name, base_text, existing, origin,
+            repairs=_l1_overlay_repairs(root, existing_overlay) if target_name == L1_RULE_FILENAME else (),
         )
         if changed and new_overlay is not None:
             overlay_rel = str(overlay_target.relative_to(root))
@@ -5101,7 +5265,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
 
 
 def run_verify(root: Path, report: dict) -> int:
-    """--verify 只读自检：六项检查，退出码 0=全部健康、1=存在漂移/过时项。
+    """--verify 只读自检：退出码 0 表示各项健康，1 表示存在漂移或过时项。
 
     纯只读（compute_plan 本身零写入；报告文件由 CLI 写在项目根之外）；
     ③④ 对从未生成过投影区块的项目报 not-generated（提示 apply）而不报
@@ -5314,6 +5478,16 @@ def run_verify(root: Path, report: dict) -> int:
             omp_items.append({"status": "ok", "detail": "受管活引用一致"})
     checks.append({"name": "omp_assets",
                    "status": "drift" if omp_drift else "ok", "items": omp_items})
+    config = "openspec/config.yaml"
+    s7 = plan.get("steps", {}).get(STEP_OPENSPEC_CONFIG, {})
+    asset = next((a for a in s7.get("assets", []) if a["path"] == config), {})
+    drift = _openspec_needs_update(root / config, asset.get("action", "missing"),
+                                   templates_info.get("openspec_yaml"))
+    status = "drift" if drift else "ok"
+    checks.append({"name": "openspec_config", "status": status, "items": [{
+        "file": config, "status": status,
+        "detail": "配置需要运行 rule-config apply 更新" if drift else "与 S7 合并候选一致",
+    }]})
     exit_code = 1 if any(c["status"] == "drift" for c in checks) else 0
     report["overall"] = "drift" if exit_code == 1 else "healthy"
     report["checks"] = checks

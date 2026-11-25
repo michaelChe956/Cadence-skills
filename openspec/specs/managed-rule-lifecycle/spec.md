@@ -1,12 +1,12 @@
 # managed-rule-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change improve-progressive-disclosure-routing. Update Purpose after archive.
+定义 rule-config 如何生成、升级和恢复项目的受管入口与完整协作规则，使各客户端获得同一版本的工作流，同时保留项目自定义内容、用户覆盖与可恢复的原文件。
 
 ## Requirements
 
 ### Requirement: 完整协作规则必须有框架规范源
-系统 SHALL 在 `cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md` 维护 OpenSpec 与 Superpowers 完整协作规则，并 MUST 由 `rule-config` 将其生成到业务项目的 `.claude/rules/openspec-superpowers-workflow.md`。系统 MUST 按最终项目类型分别为代码使用规则与代码阅读规则各选择唯一的来源模板，并 MUST 始终以 `code-usage.md` 与 `code-reading.md` 作为两者对应的落地文件名，SHALL NOT 同时生成多个同名规则文件或使用带项目类型后缀的落地名；两类规则的来源模板选择及其入口摘要文案 MUST 仅消费最终项目类型裁决结果，MUST NOT 旁路读取原始检测结果或其他信号。non-coding 项目生成的代码阅读规则及其摘要 MUST NOT 包含对 CodeGraph 的默认初始化或优先使用要求。L0 受管区块的规范源 MUST 仅用于插入 `CLAUDE.md` 与 `AGENTS.md`，MUST NOT 作为受管规则文件复制到 `.claude/rules/`。
+`rule-config` MUST 从 `cadence-init/skills/rule-config/references/rules/openspec-superpowers-workflow.md` 发布完整协作规则到 `.claude/rules/openspec-superpowers-workflow.md`。代码使用和阅读规则及其入口摘要以最终项目类型为唯一选择依据。L0 只插入项目入口。
 
 #### Scenario: 初始化后的业务项目生成协作规则
 - **WHEN** 已安装 OpenSpec 与 Superpowers 的业务项目运行 `rule-config`
@@ -41,7 +41,11 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 ### Requirement: L0 入口内容必须版本化且可安全升级
 
-系统 MUST 使用稳定开始标记、结束标记和版本号维护 `CLAUDE.md` 与 `AGENTS.md` 中的 L0 受管区块（当前版本 v3）；重复运行 `rule-config` 时 SHALL 只更新受管区块并保留区块外内容。当前版本开始和结束标记成对存在、但完整受管区块与规范源当前版本不一致时，系统 MUST 将其视为本地修改，并在归档成功后以规范源当前版本原子替换，普通模式与 no-interrupt 模式同动作、不经用户决策；归档副本使本地修改可回滚。受支持旧版本（含 v0、v1 与 v2）标记成对存在且完整内容与对应旧版规范逐字一致时，系统 MUST 执行确定性升级：两模式同动作、不经用户决策，将旧版区块替换为规范源当前版本并保留区块外内容。受支持旧版本标记成对存在但完整内容与对应旧版规范不一致（旧版本漂移，如 v2 区块含项目手加行）时，系统 MUST 按本地修改的 drift 语义处理：在 dry-run 报告中呈现漂移提示，并在归档成功后以规范源当前版本权威覆盖；该路径 MUST NOT 停滞，普通模式与 no-interrupt 模式 MUST 执行相同覆盖动作。任何插入/升级/替换完成后，入口文件 MUST 恰好包含一个当前版本受管区块：成对旧版区块与孤立单侧标记 MUST 先移除再插入规范区块；存在多个完整当前版本区块时 MUST 保留首个并归并其余，且记录 warning。一次 `rule-config` 处理两个入口时，系统 MUST 在写入任一入口前统一预检 `CLAUDE.md` 与 `AGENTS.md` 的状态和全部必要备份，并 MUST 仅在本次所需的全部 L0 备份成功后开始写入。本要求所述备份 MUST 采用复制原文件到 `cadence/legacy/<14 位时间戳>/<相对项目根路径>` 的形式，随后以 `atomic_write` 原子替换原位文件；备份复制失败时该入口 MUST 保持原样，`atomic_write` 失败时原文件 MUST 因原子替换语义保持运行前内容不变。
+系统 MUST 用带版本的成对标记维护 `CLAUDE.md` 与 `AGENTS.md` 的 L0。两种模式均在双入口预检及必要备份成功后原子发布唯一的当前版，保留区块外内容与块内用户追加。
+
+#### Scenario: 恢复失败的入口发布
+- **WHEN** 系统处理旧入口或存在本地漂移
+- **THEN** dry-run 显示漂移。发布前将原文件复制至 `cadence/legacy/<14 位时间戳>/<相对项目根路径>`，全部必要备份成功后再以 `atomic_write` 替换。归档或原子替换失败时保留原文件。
 
 #### Scenario: 升级已有受管区块
 
@@ -125,7 +129,11 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 ### Requirement: L1 框架规则升级必须保护无法识别的本地内容
 
-系统 SHALL 为 L1 框架规则记录可识别版本并按完整文件内容识别已知框架版本。版本标记 MUST 只用于定位候选框架版本；系统 MUST 仅在完整文件内容与该候选已知版本规范逐字一致时，才将文件识别为当前或受支持旧版。当前 v1 标记存在但完整内容与当前框架 v1 不一致，或受支持旧版本标记存在但完整内容与对应已知旧版规范不一致时，系统 MUST 将其归入"与任何已知框架版本不匹配"。对归入不匹配或无标记的未知本地修改，普通模式与 no-interrupt 模式 MUST 执行相同动作：先创建可恢复备份，备份成功后 SHALL 替换为当前框架 v1 并报告，处理 MUST 不经用户决策；可恢复备份使本地内容可回滚。任何需要 L1 备份的分支 MUST 在备份成功后才能替换；备份失败时 MUST 终止且 SHALL NOT 替换原文件。本要求所述可恢复备份 MUST 采用复制原文件到 `cadence/legacy/<14 位时间戳>/<相对项目根路径>` 的形式，随后以 `atomic_write` 原子替换原位文件；`atomic_write` 失败时原文件 MUST 因原子替换语义保持运行前内容不变。
+系统 MUST 按完整正文识别当前及历史 L1。两种模式均先归档原文件，再将用户差异保留为覆盖并原子发布当前模板。标记用于定位候选版本，完整内容不匹配时按本地改写处理。
+
+#### Scenario: L1 原子替换失败
+- **WHEN** `atomic_write` 未能发布已经备份的规则
+- **THEN** 原位文件保留运行前内容，原文可从 `cadence/legacy/<14 位时间戳>/<相对项目根路径>` 恢复。
 
 #### Scenario: 识别到旧版框架规则
 
@@ -137,20 +145,20 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 - **WHEN** 目标协作规则具有受支持的旧版本标记，但完整文件内容与该标记对应的已知旧版规范不一致
 - **THEN** `rule-config` MUST 将其视为与任何已知框架版本不匹配的未知本地修改
-- **AND** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架 v1 原子替换原位并报告
+- **AND** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架版本原子替换原位并报告
 - **AND** 处理 MUST 不经用户决策
 
 #### Scenario: 当前 v1 标记存在但完整内容漂移
 
-- **WHEN** 目标协作规则包含当前 v1 标记，但完整文件内容与当前框架 v1 不一致
+- **WHEN** 项目从 v1 升级，目标含 v1 标记但与任何已知 v1 正文不同
 - **THEN** `rule-config` MUST 将其视为与任何已知框架版本不匹配
-- **AND** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架 v1 原子替换原位并报告
+- **AND** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架版本原子替换原位并报告
 - **AND** 处理 MUST 不经用户决策
 
 #### Scenario: 发现其他未知本地修改
 
 - **WHEN** 目标协作规则无标记、版本未知或完整内容与任何已知框架版本均不匹配
-- **THEN** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架 v1 原子替换原位并报告
+- **THEN** 普通模式与 no-interrupt 模式 MUST 执行相同动作：先将原文件复制归档到 `cadence/legacy/`，归档成功后 SHALL 以当前框架版本原子替换原位并报告
 - **AND** 处理 MUST 不经用户决策
 
 #### Scenario: L1 备份失败
@@ -158,6 +166,18 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 - **WHEN** 受支持旧版本升级或未知本地修改处理等任意 L1 分支要求创建归档，但归档失败
 - **THEN** `rule-config` MUST 立即终止该次 L1 更新
 - **AND** `rule-config` SHALL NOT 替换或改变原协作规则文件
+
+#### Scenario: 无基线项目升级旧工作流
+- **WHEN** 项目缺少本地基线，旧 v1 工作流混有项目自定义
+- **THEN** 仅将无法归属历史框架的用户差异保留为覆盖，独立覆盖内容保留，旧门禁不会被提升为用户规则
+
+#### Scenario: 经旧 CLI 连续升级
+- **WHEN** 历史 L1 经旧 CLI 合并，自动抽取区含可从历史正文或原始归档重放的框架条款
+- **THEN** apply 纠正可证明的自动提取，保留手写区和真正的项目差异，再次 apply 零写入
+
+#### Scenario: 当前模板之外的同文项目条款
+- **WHEN** 缺少本地基线且用户在完整旧模板后新增章节，正文与另一份历史模板中的条款逐字相同
+- **THEN** 按本项目旧模板识别来源，将新增章节标题和正文都保留在实际生效的覆盖文件中
 
 ### Requirement: Claude Code、Kimi Code 与 Codex 入口必须语义等价
 
@@ -194,7 +214,7 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 ### Requirement: L0 区块必须包含可见文本版本行
 
-自 v4 起,L0 受管区块首行 MUST 包含可见文本版本标识(如 `Cadence L0 路由内核 v5`),与既有 HTML 注释标记并存:注释标记供脚本解析与受管识别,可见文本供 agent 在上下文中自报版本;v5 延续该要求。v5 的 Skill 调用客户端语义 MUST 覆盖五端(omp 归 pi 同类:经 `skill://` 全文读取)。既有确定性升级机制 MUST 将 v4 及更早版本升级为 v5;历史版本规范 MUST 归档进 `l0-history/`。框架升级 L0 版本时,eval 断言层(`eval/install/assertions.py` 的 L0 标记常量、`l0.v4` 断言名、升级文案与其测试 fixture)MUST 同步升版,不得留旧版断言名并行。
+自 v4 起,L0 受管区块首行 MUST 包含可见文本版本标识(如 `Cadence L0 路由内核 v6`),与既有 HTML 注释标记并存:注释标记供脚本解析与受管识别,可见文本供 agent 在上下文中自报版本;v6 延续该要求。当前版本的 Skill 调用客户端语义 MUST 覆盖五端(omp 归 pi 同类:经 `skill://` 全文读取)。既有确定性升级机制 MUST 将 v5 及更早版本升级为 v6;历史版本规范 MUST 归档进 `l0-history/`。框架升级 L0 版本时,eval 断言层(`eval/install/assertions.py` 的 L0 标记常量、当前标记对应的断言名、升级文案与其测试 fixture)MUST 同步升版,不得留旧版断言名并行。
 
 动机:Claude Code 注入上下文时剥离 HTML 注释(2026-09-02 实测);omp 调用 skill=全文读取 `skill://`(2026-09-09 omp 内置文档与实测)。
 
@@ -210,17 +230,25 @@ TBD - created by archiving change improve-progressive-disclosure-routing. Update
 
 #### Scenario: eval 断言层随版本同步
 
-- **WHEN** 框架 L0 当前版本为 v5
-- **THEN** eval stage1 断言以 v5 标记判定入口区块,断言名为 `l0.v5`,不存在残留的 `l0.v4` 断言名
+- **WHEN** 框架 L0 当前版本为 v6
+- **THEN** eval stage1 断言以 v6 标记判定入口区块，断言名为 `l0.v6`，退役 `l0.v5`
 
 #### Scenario: Claude Code 回执可自报版本
 
 - **WHEN** Claude Code 会话被要求复述当前生效的 L0 版本
-- **THEN** 其可从上下文中的可见文本版本行读出版本号 v5,不依赖 HTML 注释标记
+- **THEN** 其可从上下文中的可见文本版本行读出版本号 v6,不依赖 HTML 注释标记
+
+#### Scenario: v5 项目升级工作流
+- **WHEN** 旧项目的双入口使用 v5 内核
+- **THEN** 两个入口都升级为唯一 v6 区块，保留区块内用户追加、区块外内容和项目提交开关
 
 ### Requirement: 规则模板必须携带共享 frontmatter 分桶契约
 
-框架受管规则模板(`references/rules/` 下 8 个落地规则对应的 10 个源模板:`code-usage`/`code-reading` 各双源分化)MUST 按 bucket 分桶携带 YAML frontmatter,落地文件与模板逐字一致的既有权威覆盖语义不变:
+框架受管规则模板 MUST 按客户端适用范围携带 YAML frontmatter，落地文件与所选模板逐字一致。
+
+#### Scenario: 发布各分桶的模板
+- **WHEN** `rule-config` 为八项落地规则选择对应的来源模板
+- **THEN** 各端按下列字段加载相应规则
 
 - **常驻桶**(`language.md`):`description` + `alwaysApply: true`,无 `paths` —— Claude 端无条件强载,omp 端常驻;
 - **条件桶**(`code-usage.md`、`code-reading.md`、`document-storage.md`、`markdown-format.md`、`playwright.md`):`description` + 非空 `paths` glob —— Claude 端仅在触达匹配路径时注入,omp 端进索引按需 `rule://` 读取;`code-usage`/`code-reading` 双源按项目类型分化,coding 落地源给源码扩展名 glob(`SOURCE_EXTS` 口径 + `tsx`/`jsx` 增补),non-coding 落地源给永不匹配 glob(退化为行为路由桶);

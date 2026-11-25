@@ -252,7 +252,11 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 
 ### 规则配置与产物提交开关（rule-config）
 
-`/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读五项自检（L0 版本/规则哈希/权限投影/内联漂移/软链解析，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
+`/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读七项自检（L0 版本、规则哈希、权限投影、内联漂移、软链解析、omp 桥和 OpenSpec 配置，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
+
+更新 skill 后的生效路径：本仓只发布 skill 与模板，目标项目不会自动跟随更新。更新完成后需在**目标项目**内执行 `/rule-config`——先 `dry-run` 预演（零写入，只产出计划、冲突清单与备份需求），确认计划后 `apply` 发布，再用 `verify` 只读核验落地结果；两个阶段携带同一组意图参数。当前 L0 内核为 v6（可从 v0~v5 确定性升级），协作规则为 v2（可从 v1 升级），旧版 OpenSpec 条款按所属字段精确迁移后合并。
+
+需要 OpenSpec 的任务先把完整 Design 写到 `cadence/designs/`，独立双审通过后默认等用户确认。随后联合编写 `openspec/changes/<change-id>/` 中的 change 和 `cadence/plans/` 下的 Plan。当前 change 严格校验通过、工作包与 Plan 双向可查后，两份产物一次联合双审。通过后按原委托实施或交付文档。`cadence-subagents-config` 负责选角、派工和复核方式。
 
 入口文件规范化：`CLAUDE.md` / `AGENTS.md` 中的 `## 强制规则` 章节按 H3 标题归属重建受管条目，条目内用户追加与用户自定义 H3 逐字保留；不再按路径 marker 子串删除用户行。L0 旧版内核确定性升级，重跑幂等零变更。
 
@@ -263,6 +267,8 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 ### 重复初始化（no-interrupt 重跑）
 
 四步都可重复执行：`pre-check`、`mcp-configuration`、`rule-config`、`project-rules-examples` 均支持 `--no-interrupt`，在项目已完成初始化并被人工修改后再次运行，用于升级框架内容而不覆盖人工修改。
+
+免确认只是**项目任务策略**，不是本仓或脚本的默认：`--no-interrupt` 指脚本全程不向用户提问（冲突按权威规则内部决策并写入报告），任务级“这次不用确认”指只免除本任务剩余的人工确认。两者都不改变双审门禁——完整 Design 独立双审与 change+Plan 同版联合双审仍各执行一次；用户显式要求 Plan 写完先看时，联合双审后仍等一次答复。
 
 重跑时的确定性承诺：
 

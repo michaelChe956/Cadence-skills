@@ -1,0 +1,6 @@
+{"type":"session","cwd":"/w","id":"pj1","timestamp":"2026-11-25T11:00:00Z","version":"0.9.0"}
+{"type":"message","id":"m1","message":{"role":"user","content":[{"type":"text","text":"请产出 docs/design.md。"}]}}
+{"type":"message_start","id":"m2","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"write","arguments":{"path":"docs/design.md","content":"# v1"}}]}}
+{"type":"message_update","id":"m2","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"write","arguments":{"path":"docs/design.md","content":"# v1"}}]}}
+{"type":"message_end","id":"m2","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"write","arguments":{"path":"docs/design.md","content":"# v1"}}]}}
+{"type":"message_end","id":"m3","message":{"role":"toolResult","content":[{"type":"text","text":"written"}]}}

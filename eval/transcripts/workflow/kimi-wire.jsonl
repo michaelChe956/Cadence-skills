@@ -1,0 +1,7 @@
+{"type":"metadata","protocol_version":"1.4"}
+{"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"请更新 docs/design.md 并送审。"}]}}
+{"type":"context.append_loop_event","event":{"type":"tool.call","toolCallId":"k1","name":"Write","args":{"path":"docs/design.md","content":"# v2"}}}
+{"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"k1","result":{"output":"ok"}}}
+{"type":"context.append_loop_event","event":{"type":"tool.call","toolCallId":"k2","name":"Task","args":{"description":"复审设计","subagent_type":"reviewer","prompt":"复审 docs/design.md"}}}
+{"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"k2","result":{"output":"审查结论：通过。"}}}
+{"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"完成。"}]}}

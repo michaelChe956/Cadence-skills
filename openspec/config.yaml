@@ -5,21 +5,27 @@ context: 'OpenSpec 是契约层：proposal 记录 Why、范围和非目标，des
 
   需要仓库操作时必须先通过客户端原生机制调用 using-superpowers 和当前阶段全部必调 Skill，再输出首个用户可见路由回执，随后才读取规则和使用仓库工具。
 
-  brainstorming 的确认结果必须持久化到 OpenSpec；OpenSpec 书面契约获批后才能调用 writing-plans。
+  完整 Design 写入 cadence/designs/ 并单独双审，通过后默认等待用户确认。Design 已确认或明确免确认后，联合编写 change 和 Plan。
 
-  已存在 OpenSpec change 的多步实施必须先有位于 cadence/plans/ 的已确认 Plan；Plan 只能展开契约，不能重新定义范围、架构或验收。
+  有可引用的 requirement、scenario 和编号工作包即可调用 writing-plans 写 cadence/plans/ 下的 Plan。草稿可以相互校正，无需单独签发契约。
+
+  两份产物完整、openspec validate <change-id> --strict 通过且工作包与 Plan 双向可追溯，才同版一次联合双审。原生 apply 的 ready 仅说明 change 产物就绪，工作包在项目联合门禁通过后按委托实施或交付。
+
+  默认只确认 Design。明确免确认仅免本任务剩余人工确认，要求看 Plan 时保留原 Design 确认策略，联合双审后就 Plan 等一次。apply 或恢复沿用已记录的用户决定及同版双审结果，缺 Plan 补 Plan，严格校验失败修 change。
+
+  交付和恢复以送审版为依据，核对最终版本的全部差异已按代理协议核验且阻断已关闭，沿用已记录的人工决定和有效结论。
 
   '
 rules:
   proposal:
   - 记录 Why、范围、非目标和受影响 capability；不要写精确文件级实施步骤。
-  - proposal 必须来自已经过用户确认的 brainstorming 结果。
+  - proposal 引用已经独立双审且按本任务确认策略放行的 Design。
   design:
-  - 持久化已确认的架构边界、职责、权衡、失败处理和迁移策略。
-  - 发现未确认的设计决策时停止并返回 brainstorming，不得自行补全关键边界。
+  - 引用完整 Design，持久化其架构边界、职责、权衡、失败处理和迁移策略。
+  - 发现超出 Design 的关键决策时返回 brainstorming，修订 Design 并按本任务门禁处理。
   specs:
-  - 使用 MUST 或 SHALL 编写可验收 requirement，并为每项 requirement 提供 WHEN/THEN scenario。
   - specs 定义行为与验收边界，不包含 Superpowers 的操作步骤。
+  - 使用可引用的 requirement 和 WHEN/THEN scenario 标识，以 MUST 或 SHALL 写明可验收行为。
   tasks:
   - 只生成可跟踪的高层工作包；精确文件、命令、测试和提交步骤由 superpowers:writing-plans 写入 cadence/plans/。
-  - 每个工作包必须能够映射到相关 requirement；Plan 只能展开工作包，不能重定义契约。
+  - 给每个工作包编号，指向相关 requirement、scenario 和 Plan 步骤。Plan 回指本 change 与对应工作包，细化文件、接口、顺序与验证。

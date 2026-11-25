@@ -1,6 +1,6 @@
 """阶段一产物断言表（design §4 全表；纯函数，Tier-0 可离线单测）。
 
-断言期望值锚点：L0 v5 标记 / permission-gate v1 区块 / codex-rules-inline v1
+断言期望值锚点：L0 v6 标记 / permission-gate v1 区块 / codex-rules-inline v1
 区块均取自 p1 已合入产物（rule-config.py 常量同源；p1 改标记名时本文件同步）。
 """
 import hashlib
@@ -176,7 +176,7 @@ def _precheck_home_changed(home_info: object) -> tuple[bool, str]:
 
 from eval.fixtures import generator as gen
 
-L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->"
+L0_BEGIN = "<!-- cadence-managed:openspec-superpowers-routing:v6:start -->"
 GATE_BEGIN = "@@cadence-managed:permission-gate:v1:start@@"
 GATE_END = "@@cadence-managed:permission-gate:v1:end@@"
 INLINE_BEGIN = "<!-- cadence-managed:codex-rules-inline:v1:start -->"
@@ -318,14 +318,14 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     results.append(_ok("pre-check.home", home_detail) if home_ok
                    else _bad("pre-check.home", home_detail))
 
-    # --- rule-config：规则清单 / L0 v5 / 权限区 / 内联区 / --verify ---
+    # --- rule-config：规则清单 / L0 v6 / 权限区 / 内联区 / --verify ---
     rules_dir = root / ".claude" / "rules"
     actual = sorted(p.name for p in rules_dir.glob("*.md")) if rules_dir.is_dir() else []
     expect = sorted(gen.expected_rules_files())
     results.append(_ok("rules.manifest") if actual == expect
                    else _bad("rules.manifest", f"清单不符：{actual} != {expect}"))
     claude_md = _read(root, "CLAUDE.md") or ""
-    results.append(_ok("l0.v5") if L0_BEGIN in claude_md else _bad("l0.v5", "CLAUDE.md 无 v5 受管区块"))
+    results.append(_ok("l0.v6") if L0_BEGIN in claude_md else _bad("l0.v6", "CLAUDE.md 无 v6 受管区块"))
     settings_raw = _read(root, ".claude/settings.json")
     # 纯文本模式（实验撤除物理拦截）：deny 区块不生成——settings 缺失或无受管
     # 区块均为合规；仅当出现"半截区块"（有 begin 无 end，疑似手改损坏）才判红。
@@ -348,7 +348,7 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
     # --- v3 变体追加：确定性升级 + 备份 + 区块外逐字不变 ---
     if variant == "v3":
         results.append(_ok("v3.upgraded") if L0_BEGIN in claude_md and "v3:start" not in claude_md
-                       else _bad("v3.upgraded", "v3 区块未升级为 v5"))
+                       else _bad("v3.upgraded", "v3 区块未升级为 v6"))
         legacy = root / "cadence" / "legacy"
         results.append(_ok("v3.backup") if legacy.is_dir() and any(legacy.iterdir())
                        else _bad("v3.backup", "cadence/legacy/ 无备份"))
@@ -356,7 +356,7 @@ def assert_stage1(variant: str, root: Path, verify_exit: Optional[int],
         if baseline is None:
             results.append(_bad("v3.outside-verbatim", "缺少区块外基线（runner 未采集）"))
         else:
-            m = re.search(re.escape(L0_BEGIN) + r".*?" + "v5:end -->", claude_md, re.S)
+            m = re.search(re.escape(L0_BEGIN) + r".*?" + "v6:end -->", claude_md, re.S)
             outside = claude_md.replace(m.group(0), "") if m else claude_md
             results.append(_ok("v3.outside-verbatim") if baseline in outside
                            else _bad("v3.outside-verbatim", "区块外内容变化"))

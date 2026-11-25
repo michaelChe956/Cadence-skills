@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"model": "fixture", "role": "assistant", "content": [{"type": "tool_use", "id": "d1", "name": "Write", "input": {"file_path": "cadence/designs/导出公开目录.md", "content": ""}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "d1", "is_error": false, "content": "写入成功"}]}}

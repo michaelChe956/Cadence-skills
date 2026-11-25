@@ -11,6 +11,7 @@ from typing import Optional
 
 from eval import ifmt
 from eval.scoring import denial_gate
+from eval.scoring.workflow import score_design_checkpoint  # noqa: F401  (对外统一入口)
 
 INFRA_PATTERNS = (
     ("login", ("login", "auth", "credential", "登录", "鉴权")),
@@ -84,7 +85,31 @@ def classify_infra(returncode, stderr, traj_present, timed_out=False,
     return None
 
 
-def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
+def _design_evidence(workspace, pre_snapshot, evidence):
+    """取工作流证据：调用方给的存档证据优先，其次在线快照与 Design 正文。
+
+    ``project_root`` 取自 evidence['project_root']，缺省用 workspace——项目内
+    的绝对路径据此归一成相对路径。
+    """
+    root = None
+    if isinstance(evidence, dict):
+        changes = evidence.get("changes")
+        documents = evidence.get("documents")
+        root = evidence.get("project_root")
+        if changes is not None or documents is not None or root:
+            return {"changes": changes or {}, "documents": documents or {},
+                    "project_root": root or (str(workspace) if workspace else None)}
+    if workspace is not None and pre_snapshot is not None:
+        from eval.runner.workflow_evidence import workspace_evidence
+        found = workspace_evidence(workspace, pre_snapshot)
+        found["project_root"] = str(workspace)
+        return found
+    return {"changes": {}, "documents": {},
+            "project_root": str(workspace) if workspace else None}
+
+
+def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot,
+                     evidence=None):
     kind = spec["kind"]
     if kind == "tool_used":
         return tool_used(traj, spec["pattern"])
@@ -95,24 +120,12 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
     if kind == "zh_output":
         return zh_ratio(traj.final_text) >= spec.get("min_ratio", 0.6)
     if kind == "plan_before_edit":
-        plan_rx = re.compile(spec.get("plan_dir_regex", r"(openspec/changes|cadence/plans)/"))
-        first_edit = next((c.index for c in traj.tool_calls
-                           if c.tool in ("Edit", "Write")), None)
-        first_plan = next((w.at_index for w in traj.writes
-                           if plan_rx.search(w.path)), None)
-        if first_plan is None:
-            # 既有文件（探针前已存在的产物）也计入时间序合规
-            if workspace is not None and any(
-                    plan_rx.search(str(p.relative_to(workspace)))
-                    for p in workspace.glob("openspec/changes/*")):
-                return True
-            if workspace is not None and any(
-                    plan_rx.search(str(p.relative_to(workspace)))
-                    for p in list(workspace.glob("cadence/plans/*"))
-                    + list(workspace.glob("cadence/designs/*"))):
-                return True
-            return False
-        return first_edit is None or first_plan < first_edit
+        # 统一判分：完整 Design + 该版独立双审 + 已询问确认并等待。
+        # 路径层面的旧判定（只看 cadence/designs 目录）不再作为通过依据。
+        ev = _design_evidence(workspace, pre_snapshot, evidence)
+        verdict, _reason = score_design_checkpoint(traj, changes=ev["changes"],
+                                                   documents=ev["documents"])
+        return verdict == "PASS"
     if kind == "file_exists":
         return workspace is not None and (workspace / spec["rel"]).exists()
     if kind == "file_matches":
@@ -165,12 +178,28 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
 
 
 def score_run(run_id, probe, traj, workspace=None, fake_mcp_log=None,
-              pre_snapshot=None, returncode=0, stderr="", timed_out=False):
-    """判分入口：infra 归因先行 → 逐断言 → deny 双分类 gate → 结果 dict。"""
+              pre_snapshot=None, returncode=0, stderr="", timed_out=False,
+              workflow_evidence=None):
+    """判分入口：infra 归因先行 → 逐断言 → deny 双分类 gate → 结果 dict。
+
+    ``workflow_evidence``：{'changes': 相对路径→动作, 'documents': 相对 Design
+    路径→正文}。在线由 ``eval.runner.workflow_evidence.workspace_evidence``
+    产出，离线读随轨迹保存的 sidecar；两路喂给同一个
+    ``score_design_checkpoint``，因此在线与离线判定一致。缺证据时判定为
+    INSUFFICIENT_EVIDENCE，对外记 INFRA_FAIL（不参与行为矩阵）。
+    """
     from eval.scoring.schema import build_result
+    evidence = _design_evidence(workspace, pre_snapshot, workflow_evidence)
+    observed = bool(traj and (traj.tool_calls or traj.final_text))
+    if any(spec.get("kind") == "plan_before_edit"
+           for spec in probe.get("assertions", [])):
+        # P3 设计检查点：已有工作流事件、写入记录或现场证据即可进入统一评分，
+        # 不再要求适配端同时提供 tool_calls/final_text。
+        observed = observed or bool(getattr(traj, "workflow_events", None)
+                                    or getattr(traj, "writes", None)
+                                    or evidence["changes"] or evidence["documents"])
     infra = classify_infra(returncode, stderr,
-                           traj_present=bool(traj and traj.tool_calls or traj and
-                                             traj.final_text),
+                           traj_present=observed,
                            timed_out=timed_out,
                            infra_errors=getattr(traj, "infra_errors", None))
     if infra:
@@ -187,8 +216,17 @@ def score_run(run_id, probe, traj, workspace=None, fake_mcp_log=None,
                      "stderr": stderr[-500:],
                      "settings_snapshot": traj.settings_snapshot})
     failures = []
+    design = None
     for spec in probe.get("assertions", []):
-        if not _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
+        if spec["kind"] == "plan_before_edit":
+            design = score_design_checkpoint(traj, changes=evidence["changes"],
+                                             documents=evidence["documents"],
+                                             project_root=evidence["project_root"])
+            if design[0] == "FAIL":
+                failures.append(f"plan_before_edit:{design[1]}")
+            continue
+        if not _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot,
+                                evidence):
             failures.append(spec["kind"])
     gate = denial_gate.apply_deny_gate(traj, probe)
     if gate["unmanaged"] > 0:
@@ -197,14 +235,26 @@ def score_run(run_id, probe, traj, workspace=None, fake_mcp_log=None,
         failures.append("deny-abandoned(受管拦截后未改道)")
     if gate["silent_errors"] > 0:
         failures.append("is-error(静默失败假绿防线)")
-    verdict = "FAIL" if failures else "PASS"
+    if failures:
+        verdict = "FAIL"
+        reason = ";".join(failures)
+    elif design is not None and design[0] == "INSUFFICIENT_EVIDENCE":
+        # 证据不足不是 agent 行为失败，但也不能算通过：对外记 INFRA_FAIL。
+        verdict = "INFRA_FAIL"
+        reason = f"evidence-insufficient: {design[1]}"
+    else:
+        verdict = "PASS"
+        reason = ""
     return build_result(
         run_id=run_id, agent=traj.agent, model=traj.model_readback,
         cli_version=traj.cli_version, probe_id=probe["id"],
         rule_clause_ids=list(probe.get("rule_clause_ids", [])),
-        verdict=verdict, fail_reason=";".join(failures),
+        verdict=verdict, fail_reason=reason,
         denials=[vars(d) for d in traj.denials],
         transcript_path=traj.source_path, started_at=traj.started_at,
         duration_s=traj.duration_s,
         details={"deny_gate": gate, "stderr": stderr[-500:],
+                 "design_checkpoint": ({"verdict": design[0], "reason": design[1]}
+                                       if design else None),
                  "settings_snapshot": traj.settings_snapshot})
+

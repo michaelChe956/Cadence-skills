@@ -234,16 +234,19 @@ def _rebuild_codex_toml(c: Container) -> None:
 
 
 def run_probe(c: Container, agent: str, prompt: str,
-              timeout: int = 900, retries: int = 1) -> dict:
+              timeout: int = 900, retries: int = 1, *, structured: bool = False) -> dict:
     """运行单个探针会话；超时（rc=-9）自动重试——glm/MCP 间歇 hang 已知问题。"""
     start = time.time()
-    r = c.exec(_session_cmd(agent, prompt),
-               cwd="/home/tester/project", timeout=timeout)
+    command = _session_cmd(agent, prompt)
+    if structured:
+        flags = {"claude": "--output-format stream-json --verbose", "codex": "",
+                 "kimi": "--output-format stream-json", "pi": "--mode json", "omp": "--mode json"}
+        command += " " + flags[agent]
+    r = c.exec(command, cwd="/home/tester/project", timeout=timeout)
     while r["rc"] == -9 and retries > 0:
         retries -= 1
         print(f"    [probe-retry] 超时，重试（剩余 {retries}）")
-        r = c.exec(_session_cmd(agent, prompt),
-                   cwd="/home/tester/project", timeout=timeout)
+        r = c.exec(command, cwd="/home/tester/project", timeout=timeout)
     duration = time.time() - start
     return {
         "returncode": r["rc"], "duration_s": round(duration, 1),

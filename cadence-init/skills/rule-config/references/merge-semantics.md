@@ -27,6 +27,17 @@
 | MCP args | 按启动器/包名去重；同名包保留用户 token（含版本） |
 | 安全单元 | `.gitignore` 保护项、permission deny 框架优先并强警告；`.gitignore` 反向规则由 `mcp-configuration --allow-security-override` 显式保留 |
 
+## 0.1 v3 语义覆盖（2026-11-25）
+
+以下条款覆盖本文件旧表中与之冲突的历史语义；未列出的 v2 条款继续有效：
+
+| 主题 | v3 语义 |
+|---|---|
+| L0 版本 | 当前 **v6**，受支持旧版 **v0、v1、v2、v3、v4、v5**；v1~v5 仅在完整受管区块与 `references/rules/l0-history/agent-routing-kernel-<版本>.md` 逐字一致时判定可升级，v0 成对标记按无规范源例外升级 |
+| L1 版本 | 当前 **v2**，受支持旧版 **v1**；旧 v1 的完整正文在 `references/rules/l1-history/`（长文、简版、带 frontmatter 版）；优先取 manifest 基线，无基线时按实装版本及原文位置区分框架与项目内容。自动区只清理可由历史框架输入或项目旧文件归档精确重放的提取批次 |
+| OpenSpec 迁移 | 合并前按**所属字段**精确移除已退役的框架条款（context 按完整行，proposal/design/specs/tasks 按该字段的完整规则项），再走既有去重追加合并；用户 context、额外规则、扩展字段、独立覆盖规则与提交开关保留 |
+| 人工确认 | 免确认只是任务级策略：只免除本任务剩余人工确认，Design 独立双审与同版联合双审仍各执行一次 |
+
 ## 显式延后 CodeGraph 索引（2026-11-16）
 
 `--defer-codegraph-index` 是 CS/CG 默认矩阵的显式例外，默认关闭。启用条件仍为最终项目类型 coding 或 `--enable-codegraph`；参数不改变项目类型、规则模板及入口摘要。
@@ -89,7 +100,7 @@
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
 | OS-01 | `openspec/config.yaml` | 配置不存在 | 从模板构建候选，经 YAML parser 解析与结构预检（根映射/schema 标量/context 字符串/rules 映射/artifact 字符串数组）通过后原子创建 | 同普通模式（两模式同动作） | 无（无原文件）；原子创建仍须经同文件系统 `os.replace()` | 报告原子创建成功、内容来源（模板基础）、结构预检结果 | `it-s7-openspec-create` / `ut-atomic_write-publish` |
-| OS-02 | `openspec/config.yaml` | 配置可解析且无 `rules.apply` | 在候选中保守合并，完整行/完整字符串去重 | 同普通模式（两模式同动作） | 按 OS-B1 复制归档（§11.1） | 报告新增 context 行、按 proposal/design/specs/tasks 分组的合并规则 | `it-s7-openspec-merge-idempotent` |
+| OS-02 | `openspec/config.yaml` | 配置可解析且无 `rules.apply` | 在所属字段中精确移除退役 context 行和 artifact 规则项，再按完整行或完整项保序合并 | 同普通模式 | 发布前按 OS-B1 备份，候选相同则跳过 | S7 记录 `merge` 或 `merge-idempotent`，报告列出实际备份 | `it-s7-openspec-merge-idempotent` / `test_exact_field_scoped_migration` |
 | OS-03 | `openspec/config.yaml` 目标字段 | 目标字段结构/类型不兼容（根非映射、schema 非标量、context 非字符串、rules 非映射、artifact 非字符串数组等） | 先归档，归档成功后以模板内容原子替换原位并报告（两模式同动作，不经用户决策） | 同普通模式 | 先成功备份原文件（§11.1）；备份失败终止且不改原文件 | 报告字段路径、实际类型、冲突说明、备份路径与替换结果 | `it-s7-openspec-yaml-type-conflict-backed-up-replaced` |
 | OS-04 | `openspec/config.yaml` 的 `rules.apply` | 存在 `rules.apply`（禁止创建的键） | 先创建备份；备份成功后在候选中移除并继续合并（两模式同动作，不经用户决策） | 同普通模式 | 先成功备份原文件（OS-B1，§11.1）；任何必要备份失败立即终止且不修改原文件 | 报告 `rules.apply` 移除结果、备份路径；不虚构 apply artifact | `it-s7-openspec-apply-backed-up-removed` / `it-s7-openspec-normal-apply-removed` |
 | OS-05 | `openspec/config.yaml` | YAML 无法可靠解析 | 先归档，归档成功后以模板内容原子替换原位并报告（两模式同动作，不经用户决策） | 同普通模式 | 先成功备份原文件（§11.1）；备份失败终止且不改原文件 | 报告解析冲突、备份路径与替换结果 | `it-s7-openspec-invalid-yaml-backed-up-replaced` |
@@ -104,8 +115,8 @@
 - **OS-N3 结构/类型不兼容处理**：同 OS-03。
 - **OS-N4 候选处理不取消备份**：发现需备份分支时必须先成功备份，再对候选执行规范化/合并/无效键移除；必要备份失败时终止，候选不发布，原文件不变。
 - **OS-N5 schema 保留**：预检通过后在候选中保留已有 `schema`；未设置 `schema` 时写入 `spec-driven`。
-- **OS-N6 context 追加**：按完整行去重追加模板的 Cadence 协作 context（**实际为 5 行**，见 §11.5 修正说明），保留原有顺序以及项目技术栈、领域知识和其他上下文。
-- **OS-N7 artifact 数组追加**：在 proposal、design、specs、tasks 数组中追加模板规则，按完整字符串去重，保留各 artifact 下的项目额外规则和原有顺序。
+- **OS-N6 context 追加**：先按完整行移除已退役的框架 context 行（模板历史 context 共 5 行，其中 2 条工作流条款已退役），再按完整行去重追加模板的 Cadence 协作 context（以当前模板为准，见 §11.7 修正说明），保留原有顺序以及项目技术栈、领域知识和其他上下文。
+- **OS-N7 artifact 数组追加**：先在 proposal、design、specs、tasks 各自数组内移除属于该 artifact 的已退役完整规则项，再按完整字符串去重追加模板规则，保留各 artifact 下的项目额外规则和原有顺序；同文规则出现在其他 artifact 字段时保留。
 - **OS-N8 `rules.apply` 处理**：同 OS-04；禁止创建 `rules.apply`，也不得虚构 apply artifact。
 - **OS-N9 YAML 无法可靠解析**：同 OS-05；不得静默重写。
 - **OS-N10 临时 Change 验证**：**已废止，由结构预检取代**（design D4 删除了临时 Change 与四类 `openspec instructions` 验证；现行语义以 OS-01 的 YAML parser 解析与结构预检为准：根映射、`schema` 缺失或标量、`context` 缺失或字符串、`rules` 缺失或映射、四个 artifact 规则分别缺失或字符串数组）。保留行 ID 用于对账，但脚本 MUST NOT 创建临时 Change 或调用 `openspec instructions`。
@@ -113,48 +124,48 @@
 - **OS-N12 候选验证失败**：同 OS-06（已废止）；结构预检失败时报告失败字段路径、实际类型与错误，原文件不变，目标原本不存在时不得创建。
 - **OS-N13 原子失败**：同 OS-07。
 - **OS-B1 复制归档**：所有需备份分支都将原配置复制到 `cadence/legacy/<时间戳[-N]>/openspec/config.yaml`；必须在写入前完成归档，归档失败时不得部分合并 context、artifact 规则或删除无效键。
-- **OS-B2 完成报告清单**：逐项列出新增 context 完整行、按 proposal/design/specs/tasks 分组的合并规则、发现及处理的无效键、所有备份路径、结构冲突的具体字段路径与实际类型、解析或内容冲突、候选结构预检结果、原子发布结果；无新增内容时明确报告为幂等跳过。（instructions 验证已废止，见 OS-N10；不再报告 `openspec instructions ... --json` 命令结果或失败 artifact。）
+- **OS-B2 完成报告**：通过 S7 的 `actions`、备份路径及失败详情查看结构预检、原子发布或幂等跳过的实际结果。需要逐条核对迁移时，比较归档与新配置中相同字段的逻辑值。
 
 ## 3. L1 协作规则增量（L1-01~07）
 
 > 来源：现行 `SKILL.md` 第 677-689 行（"OpenSpec 与 Superpowers 协作规则增量处理"节，数据行 681-687；辅助条款 L1-B1/L1-B2 在 SKILL 689 行）。
 > 适用模式：两模式。
 
-仅处理带 `cadence-framework-rule:openspec-superpowers-workflow` 标记的 L1 文件；普通规则不覆盖策略见 §5 RF 表。标记只用于候选版本定位，最终识别必须比较完整文件内容。
+仅处理带 `cadence-framework-rule:openspec-superpowers-workflow` 标记的 L1 文件；普通规则不覆盖策略见 §5 RF 表。当前框架版本为 **v2**，受支持旧版为 **v1**（历史完整正文在 `references/rules/l1-history/`，含长文、简版与带 frontmatter 版）。标记只用于候选版本定位，最终识别必须比较完整文件内容。
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| L1-01 | `.claude/rules/openspec-superpowers-workflow.md` | 文件不存在 | 创建 v1（内容与框架 v1 规范源逐字一致） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与版本 v1 | `it-s3-l1-create` |
-| L1-02 | 同上 | 文件完整内容与当前框架 v1 一致 | 跳过 | 同普通模式（两模式同动作） | 无（不改文件） | 报告幂等跳过、判定 `current` | `ut-classify_l1-current` / `it-s3-l1-idempotent` |
-| L1-03 | 同上 | 版本标记受支持且完整内容与对应旧版规范逐字一致 | 备份后升级为当前 v1 | 同普通模式（两模式同动作） | 按 L1-B1 复制归档（§11.1）；归档失败终止且不得替换原文件 | 报告判定 `old-version`、归档路径、升级到 v1 | `ut-classify_l1-old-version` / `it-s3-l1-upgrade`（仅单测覆盖：仓库仅存在 v1 规范源，upgrade 分支无法集成复现，待补） |
-| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 两模式均先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）与备份路径、替换结果 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift`（仅单测覆盖：同 L1-03 无法集成复现，待补）/ `it-s3-l1-drift-normal-replaced` |
-| L1-05 | 同上 | 当前 v1 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，备份后以框架 v1 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-l1-drift-replace` / `it-s3-l1-drift-normal-replaced` |
-| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 归入"与任何已知框架版本不匹配"；备份后以框架 v1 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 两模式均先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-l1-unknown-replace` / `it-s3-l1-drift-normal-replaced` |
+| L1-01 | `.claude/rules/openspec-superpowers-workflow.md` | 文件不存在 | 创建 v2（内容与框架 v2 规范源逐字一致） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径与版本 v2 | `it-s3-l1-create` |
+| L1-02 | 同上 | 文件完整内容与当前框架 v2 一致 | 跳过 | 同普通模式（两模式同动作） | 无（不改文件） | 报告幂等跳过、判定 `current` | `ut-classify_l1-current` / `it-s3-l1-idempotent` |
+| L1-03 | 同上 | 完整内容与 `references/rules/l1-history/` 中任一历史 v1 正文逐字一致 | 备份后升级为当前 v2 | 同普通模式（两模式同动作） | 按 L1-B1 复制归档（§11.1）；归档失败终止且不得替换原文件 | 报告判定 `old-version`、归档路径、升级到 v2 | `ut-classify_l1-old-version` / `it-s3-l1-upgrade` / `test_workflow_upgrade.py::test_upgrade_without_local_baseline` |
+| L1-04 | 同上 | 仅受支持旧版本标记匹配但完整内容与对应旧版规范不同 | 归入"与任何已知框架版本不匹配"；备份后以框架 v2 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 两模式均先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `mismatch`（非 `old-version`）与备份路径、替换结果 | `ut-classify_l1-old-marker-drift` / `it-s3-l1-old-marker-drift`（仅单测覆盖：同 L1-03 的 mismatch 分支无法集成复现，待补）/ `it-s3-l1-drift-normal-replaced` |
+| L1-05 | 同上 | 当前 v2 标记存在但完整内容不同 | 同 L1-04：归入"不匹配"，备份后以框架 v2 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 同 L1-04 | 报告判定 `mismatch`；不得仅凭标记当作 `current` 跳过 | `ut-classify_l1-v1-marker-drift` / `it-l1-drift-replace` / `it-s3-l1-drift-normal-replaced` |
+| L1-06 | 同上 | 文件无标记或与已知版本不匹配 | 归入"与任何已知框架版本不匹配"；备份后以框架 v2 替换并报告（两模式同动作，不经用户决策） | 同普通模式（两模式同动作） | 两模式均先成功备份（L1-B1，§11.1）；备份失败终止 | 报告判定 `unmarked`；两模式分支动作符合表义 | `ut-classify_l1-unmarked` / `it-l1-unknown-replace` / `it-s3-l1-drift-normal-replaced` |
 | L1-07 | 同上任意需 L1 备份的分支 | 任何需要 L1 备份的分支备份失败 | 终止且不得替换原文件 | 同普通模式（两模式同动作） | 备份失败本身即终止条件 | 报告失败备份路径、失败原因、原文件不变 | `it-s3-l1-backup-failure-preserved` |
 
 **辅助条款（L1-B1/L1-B2，SKILL 689 行）**：
 
 - **L1-B1 复制归档**：需要备份时复制到 `cadence/legacy/<时间戳[-N]>/.claude/rules/openspec-superpowers-workflow.md`，原位文件不动；归档失败终止且不得替换原文件。
-- **L1-B2 标记仅用于定位**：`cadence-framework-rule:openspec-superpowers-workflow` 标记只用于候选版本定位；最终识别必须比较完整文件内容，不得仅凭标记把文件识别为当前或受支持旧版，也不得把无标记文件当作已知框架版本覆盖。
+- **L1-B2 标记仅用于定位**：`cadence-framework-rule:openspec-superpowers-workflow` 标记只用于候选版本定位；最终识别必须比较完整文件内容，不得仅凭标记把文件识别为当前或受支持旧版，也不得把无标记文件当作已知框架版本覆盖。旧版 v1 的完整正文以 `references/rules/l1-history/` 为准；无本地基线时按历史完整行区分旧框架正文与用户改写，无法归属的内容保留并按现有覆盖机制提示。
 
 ## 4. L0 入口增量（L0-01~07）
 
 > 来源：现行 `SKILL.md` 第 691-711 行（"CLAUDE.md / AGENTS.md 入口增量处理"节，数据行 699-705；屏障与受管区块外保留条款 L0-B1/L0-B2 在 SKILL 691-694、707 行）。L0-P1~P12 处理流程条款在 SKILL 185-200 行，与本表互证。
 > 适用模式：两模式。
 
-当前 L0 版本为 **v5**，受支持旧版为 **v0、v1、v2、v3、v4**。v4/v3/v2/v1 只有在完整受管区块与规范源 `references/rules/l0-history/agent-routing-kernel-<版本>.md` 逐字一致时才判定为可升级；标记匹配但正文不一致一律判定 drift。v0 没有规范源，成对标记即执行 upgrade（该无规范源例外须写入报告）。v5 起客户端语义行覆盖五端（omp 经 `skill://` 全文读取，与 pi 同类）。
+当前 L0 版本为 **v6**，受支持旧版为 **v0、v1、v2、v3、v4、v5**。v5/v4/v3/v2/v1 只有在完整受管区块与规范源 `references/rules/l0-history/agent-routing-kernel-<版本>.md` 逐字一致时才判定为可升级；标记匹配但正文不一致一律判定 drift。v0 没有规范源，成对标记即执行 upgrade（该无规范源例外须写入报告）。v5 起客户端语义行覆盖五端（omp 经 `skill://` 全文读取，与 pi 同类）。
 
 写入入口文件前必须先完成双入口统一预检，确定两个入口的标记、版本、完整内容、交互结果、目标动作和全部备份需求；在写入任一入口前创建本次所需的全部 L0 备份，仅当全部必要备份成功后才按下表执行各入口动作。任一必要备份失败时 CLAUDE.md 与 AGENTS.md 均不得写入。
 
-L0 迁移不变量：最终只保留一个 v5 区块；混合版本标记仅在安全成对时删除完整区块，孤立标记只删除自身标记行；重复区块归并并报告 `L0_DEDUP`；完整区块含污染对时降级为只剥离边界标记，保留区块内部用户正文，避免重叠删除吞掉内容。dedup/upgrade 在普通与 no-interrupt 模式执行相同动作。
+L0 迁移不变量：最终只保留一个 v6 区块；混合版本标记仅在安全成对时删除完整区块，孤立标记只删除自身标记行；重复区块归并并报告 `L0_DEDUP`；完整区块含污染对时降级为只剥离边界标记，保留区块内部用户正文，避免重叠删除吞掉内容。dedup/upgrade 在普通与 no-interrupt 模式执行相同动作。
 
 | 行 ID | 资产 | 冲突状态 | 普通模式动作 | no-interrupt 动作 | 备份要求 | 报告要求 | 对应测试 ID |
 |-------|------|----------|--------------|-------------------|----------|----------|-------------|
-| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v5（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v5、插入位置 | `it-entry-base-created` |
-| L0-02 | 入口的 L0 受管区块 | 当前 v5 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` / `ut-l0-v2-skip` |
-| L0-03 | 同上 | 当前 v5 标记成对但完整受管区块与规范源不同 | 视为本地修改；纳入备份屏障后以规范源当前 v5 替换（两模式同动作，不经用户决策） | 同普通模式 | 先成功备份（§11.1、§11.2 全局屏障）；任一必要备份失败双入口均不得写入 | 报告判定"本地修改"、备份路径与替换结果 | `it-s4-drift-normal-replaced` / `it-s4-drift-replaced-outside-preserved` / `ut-l0-v2-v1-drift` |
-| L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v5 并报告；v4/v3/v2/v1 仅规范源逐字一致时可升级，v0 成对标记按无规范源例外升级 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、处理动作与分支 | `it-s4-upgrade` / `ut-l0-v2-upgrade` / `ut-l0-v2-v1-drift` |
-| L0-05 | 同上 | 无 L0 标记 | 插入当前 v5，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
+| L0-01 | CLAUDE.md / AGENTS.md | 入口不存在 | 创建基础入口并插入当前 v6（L0 放在文件说明之后、`## 强制规则` 之前） | 同普通模式（两模式同动作） | 无（无原文件） | 报告创建路径、L0 版本 v6、插入位置 | `it-entry-base-created` |
+| L0-02 | 入口的 L0 受管区块 | 当前 v6 区块与规范源完整一致 | 跳过，不重复写入 | 同普通模式（两模式同动作） | 无（不改区块） | 报告幂等跳过；双入口 sha256 不变 | `it-s4-idempotent` / `ut-l0-v2-skip` |
+| L0-03 | 同上 | 当前 v6 标记成对但完整受管区块与规范源不同 | 视为本地修改；纳入备份屏障后以规范源当前 v6 替换（两模式同动作，不经用户决策） | 同普通模式 | 先成功备份（§11.1、§11.2 全局屏障）；任一必要备份失败双入口均不得写入 | 报告判定"本地修改"、备份路径与替换结果 | `it-s4-drift-normal-replaced` / `it-s4-drift-replaced-outside-preserved` / `ut-l0-v2-v1-drift` |
+| L0-04 | 同上 | 受支持旧版本标记成对 | 备份成功后升级到当前 v6 并报告；v5/v4/v3/v2/v1 仅规范源逐字一致时可升级，v0 成对标记按无规范源例外升级 | 同普通模式（两模式同动作） | 将该入口纳入本次备份屏障（§11.2）；屏障失败双入口均不得写入 | 报告备份路径、处理动作与分支 | `it-s4-upgrade` / `ut-l0-v2-upgrade` / `ut-l0-v2-v1-drift` / `test_workflow_upgrade.py::test_upgrade_with_local_baseline` |
+| L0-05 | 同上 | 无 L0 标记 | 插入当前 v6，入口原内容保留 | 同普通模式（两模式同动作） | 无（不改原内容，仅插入） | 报告插入位置；原内容 sha256 不变 | `it-s4-insert` |
 | L0-06 | 同上 | 单侧/顺序错误，或混合版本、重复区块等需归并的标记状态 | 单侧/顺序错误、混合版本与重复区块均按确定性安全归并执行（两模式同动作，不经用户决策） | 同普通模式 | 归并/替换分支按 §11.1、§11.2 全局屏障；任一必要备份失败双入口均不得写入 | 报告处理后标记成对且唯一；重复归并记 `L0_DEDUP`；区块外内容保留 | `it-s4-broken-markers-preserve-arbitrary` / `ut-l0-v2-mixed` / `ut-l0-v2-dedup` / `ut-l0-v2-nested-broken` |
 | L0-07 | 同上任意需 L0 备份的分支 | 任何 L0 备份失败 | 终止本次 L0 更新，CLAUDE.md 与 AGENTS.md 均不得写入 | 同普通模式（两模式同动作） | 备份失败本身即终止条件（全局屏障，见 §11.2） | 报告失败备份路径、失败原因、双入口零写入 | `it-s4-backup-barrier` |
 
@@ -334,8 +345,8 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 **2026-08-19 权威化裁决（change `rule-config-authoritative-overwrite`）**：六类原 A 类冲突全部转为**两模式确定性动作**，不再经用户决策、不再产生交互冲突：
 
 - **RF-05 框架受管规则文件 drift**：两模式统一为屏障归档+`atomic_write` 模板（`authoritative-overwrite`）。
-- **L1-04/L1-05/L1-06 协作规则 drift/unmarked**：两模式统一为备份后以框架 v1 替换。
-- **L0-03 受管区块 drift**：两模式统一为纳入备份屏障后以规范源当前 v5 替换。
+- **L1-04/L1-05/L1-06 协作规则 drift/unmarked**：两模式统一为备份后以框架 v2 替换。
+- **L0-03 受管区块 drift**：两模式统一为纳入备份屏障后以规范源当前 v6 替换。
 - **L0-06 单侧/顺序错误子分支**：与混合版本/重复区块一样按确定性安全归并执行。
 - **OS-03 结构/类型不兼容、OS-05 YAML 无法解析**：两模式统一为先归档，成功后以模板内容原子替换原位。
 - **OS-04 `rules.apply` 存在**：两模式统一为先备份，成功后在候选中移除并继续合并。
@@ -363,11 +374,11 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 > 归档提供可恢复性，替代「保留原状」作为安全兜底。原 A 类冲突清单全部清空，
 > 当前系统无活跃冲突类型。
 
-### 11.7 context 追加修正（5 行而非"四行"）
+### 11.7 context 合并与退役条款迁移
 
-> **修正说明**：现行 `SKILL.md` 第 638 行写"在候选中将模板**四行** Cadence 协作 context 追加到现有 context"，经核对模板实际 context 为 **5 行**，"四行"系笔误。本文件按"5 行"如实记录。
+> **修正说明（历史）**：现行 `SKILL.md` 第 638 行写"在候选中将模板**四行** Cadence 协作 context 追加到现有 context"，经核对当时的模板实际 context 为 **5 行**，"四行"系笔误。本文件按"5 行"如实记录。2026-11-25 起模板 context 为 **7 行**（3 行公共职责 + 4 行工作流条款），历史模板 context 仍为 5 行。
 
-**OS-N6 context 追加（修正后）**：在候选中将模板的 Cadence 协作 context（**实际 5 行**）追加到现有 context，**按完整行去重**，保留原有顺序以及项目技术栈、领域知识和其他上下文。
+**OS-N6 context 追加（修正后）**：在候选中先将模板历史 context 的已退役完整行按字段精确移除，再将模板的 Cadence 协作 context（以当前模板为准）追加到现有 context，**按完整行去重**，保留原有顺序以及项目技术栈、领域知识和其他上下文。
 
 实现要求：
 
@@ -375,6 +386,15 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 - 追加位置在现有 context 末尾；模板已存在的行不重复追加。
 - 保留项目原有 context 行的原顺序与内容。
 - 对应测试 `ut-merge_yaml-context-append`（断言追加按完整行去重、原顺序与项目技术栈等内容保留）。
+
+**退役条款的字段级精确迁移（2026-11-25）**：旧版 OpenSpec 条款在"全量追加"语义下会与新版并存（历史模板 context 的 5 行与旧 artifact 规则项继续生效），因此合并前先按**所属字段**精确移除已退役的框架条款：
+
+- **context**：按完整逻辑行匹配移除；带前后缀或仅含相同关键词的用户行保留。
+- **artifact 规则**：只在与其所属 artifact 字段一致的数组内按完整项匹配移除；同文规则出现在其他 artifact 字段时保留。
+- **退役清单**：脚本以字段级常量保存，取值精确等于改动前 `references/openspec/config.yaml` 的旧条款（context 旧行 2 条；proposal/design/specs/tasks 各 1~2 条）。
+- **保留项**：用户 context、额外规则、扩展字段、独立覆盖规则、`rules.apply` 处理与产物自动提交开关均按现行策略不变。
+- **一致性**：dry-run 的 `_filter_backup_needs` 与 S7 apply 使用同一 `merge_yaml` 候选判断是否需要归档发布。
+- **对应测试**：`tests/test_workflow_upgrade.py::test_exact_field_scoped_migration`、`tests/test_workflow_upgrade.py::test_fresh_project_and_rerun`。
 
 ## 11.8 omp 桥处理（OR-01~07，S11）
 
@@ -417,3 +437,5 @@ L0 更新先完成 CLAUDE.md 与 AGENTS.md 的统一预检，收集本次全部�
 **2026-08-19 权威化对账（change rule-config-authoritative-overwrite）**：RF-05/L1-04~06/L0-03/L0-06/OS-03~05 普通模式列两模式统一为归档+权威处理；§11.6 A 类清单清空；it-s3-normal-keep-decision→it-s3-normal-authoritative-overwrite 等 7 个集成 ID 改名（清单见 skill-clause-map.md）；it-l0-drift-normal-keep-default、it-l1-drift-normal-keep-default、it-decisions-unknown、it-decisions-stale 四个用例随决策编排路径消亡移除。
 
 **2026-08-19 定位自包含化对账（change rule-config-self-contained-templates）**：模板三级定位（在线/离线/glob）删除，改为 skill 目录单源；it-s2-templates-missing 反转为 it-s2-skill-self-contained；TestLocateTemplates 六用例重写为 ut-locate_templates-skill-dir/-incomplete/-no-home/-ignore-stale-marketplace。
+
+**2026-11-25 工作流升级对账（change joint-change-plan-review）**：L0 当前版本升至 v6（v5 规范源归档进 `references/rules/l0-history/`），L1 当前版本升至 v2（旧 v1 完整正文归档进 `references/rules/l1-history/`，含长文、简版与带 frontmatter 版）；OpenSpec 合并语义改为先按所属字段精确移除退役框架条款、再走去重追加合并（§11.7）；v3 语义覆盖见 §0.1，L0-04/L1-03 行补引 `tests/test_workflow_upgrade.py` 的升级用例。

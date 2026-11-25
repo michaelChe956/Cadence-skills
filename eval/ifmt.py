@@ -42,6 +42,9 @@ class IntermediateTrajectory:
     tool_calls: list = field(default_factory=list)
     denials: list = field(default_factory=list)
     writes: list = field(default_factory=list)
+    # 原生工作流证据（专项修复 P3）：有序 write/review/ask/unknown 事件字典，
+    # 列表次序 = transcript 观察次序；契约见 eval/adapters/workflow_events.py。
+    workflow_events: list = field(default_factory=list)
     final_text: str = ""
     started_at: str = ""
     duration_s: float = 0.0
@@ -61,6 +64,7 @@ class IntermediateTrajectory:
             "tool_calls": [vars(c) for c in self.tool_calls],
             "denials": [vars(d) for d in self.denials],
             "writes": [vars(w) for w in self.writes],
+            "workflow_events": [dict(e) for e in self.workflow_events],
             "final_text": self.final_text,
             "started_at": self.started_at,
             "duration_s": self.duration_s,
@@ -78,6 +82,8 @@ class IntermediateTrajectory:
         traj.tool_calls = [ToolCall(**c) for c in doc.get("tool_calls", [])]
         traj.denials = [Denial(**d) for d in doc.get("denials", [])]
         traj.writes = [WriteEvent(**w) for w in doc.get("writes", [])]
+        traj.workflow_events = [dict(e) for e in doc.get("workflow_events", [])
+                                if isinstance(e, dict)]
         traj.final_text = doc.get("final_text", "")
         traj.started_at = doc.get("started_at", "")
         traj.duration_s = float(doc.get("duration_s", 0.0))
