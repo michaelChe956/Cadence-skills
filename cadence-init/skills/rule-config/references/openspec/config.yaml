@@ -8,6 +8,7 @@ context: |
   有可引用的 requirement、scenario 和编号工作包即可调用 writing-plans 写 cadence/plans/ 下的 Plan。草稿可以相互校正，无需单独签发契约。
   两份产物完整、openspec validate <change-id> --strict 通过且工作包与 Plan 双向可追溯，才同版一次联合双审。原生 apply 的 ready 仅说明 change 产物就绪，工作包在项目联合门禁通过后按委托实施或交付。
   默认只确认 Design。明确免确认仅免本任务剩余人工确认，要求看 Plan 时保留原 Design 确认策略，联合双审后就 Plan 等一次。apply 或恢复沿用已记录的用户决定及同版双审结果，缺 Plan 补 Plan，严格校验失败修 change。
+  交付和恢复以送审版为依据，核对最终版本的全部差异已按代理协议核验且阻断已关闭，沿用已记录的人工决定和有效结论。
 
 rules:
   proposal:

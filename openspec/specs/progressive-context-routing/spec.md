@@ -25,7 +25,7 @@
 
 #### Scenario: 直接 apply 不得跳过 Plan
 - **WHEN** 用户或 Agent 准备执行 `/opsx:apply`
-- **THEN** Agent 重新加载协作规则并检查当前 OpenSpec change 的严格校验、Plan、双向追溯、同版联合双审及本任务确认记录
+- **THEN** Agent 重新加载协作规则并检查当前 OpenSpec change 的严格校验、Plan、双向追溯、送审版双审结果、交付版差异核验及本任务确认记录
 - **AND** 缺 Plan 回联合编写，调用 `superpowers:writing-plans`
 
 ### Requirement: 关键阶段必须重新路由
@@ -33,7 +33,7 @@
 
 #### Scenario: 上下文压缩后恢复实施
 - **WHEN** 会话发生 resume、clear、compact 或 Agent 无法确认之前的路由状态
-- **THEN** Agent 读取当前任务的 Design、change、Plan 和交接记录，按委托类型、显式人工决定及对应版本的双审证据重新路由
+- **THEN** Agent 读取当前任务的 Design、change、Plan 和交接记录，按委托类型、显式人工决定、送审版双审结论及最终版相对送审版的差异核验记录重新路由
 - **AND** 在门禁恢复前不继续修改实现文件
 
 #### Scenario: 从分析转为修改文件

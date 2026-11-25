@@ -13,6 +13,8 @@ context: 'OpenSpec 是契约层：proposal 记录 Why、范围和非目标，des
 
   默认只确认 Design。明确免确认仅免本任务剩余人工确认，要求看 Plan 时保留原 Design 确认策略，联合双审后就 Plan 等一次。apply 或恢复沿用已记录的用户决定及同版双审结果，缺 Plan 补 Plan，严格校验失败修 change。
 
+  交付和恢复以送审版为依据，核对最终版本的全部差异已按代理协议核验且阻断已关闭，沿用已记录的人工决定和有效结论。
+
   '
 rules:
   proposal:

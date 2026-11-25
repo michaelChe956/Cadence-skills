@@ -30,5 +30,7 @@ Claude/Kimi 原生调用 Skill。Codex/pi/omp 从清单选择，用途并入首�
 
 产物写入后读取入口“产物自动提交（design/plan/code）”开关。以 CLAUDE.md 为准，两端不一致按 `关闭`。`关闭` 时只汇报路径，禁止 `git commit`。
 
+审后交付或恢复时，核对送审版至交付版的差异核验记录。
+
 阶段切换必须重新路由：新任务、只读转修改、Design 或联合包交接、apply、恢复、完工声明前。
 <!-- cadence-managed:openspec-superpowers-routing:v6:end -->

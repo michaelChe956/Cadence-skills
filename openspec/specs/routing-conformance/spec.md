@@ -41,6 +41,18 @@
 - **WHEN** change 和 Plan 均完整，`openspec validate <change-id> --strict` 通过且每个工作包与 Plan 可以双向追溯
 - **THEN** 将两份产物作为同一版本一次联合双审，按委托和人工决定继续
 
+#### Scenario: 路径变更的恢复
+- **WHEN** 联合双审后的修订只改变测试路径，契约和场景映射保持一致
+- **THEN** 恢复时接受代理协议规定的接地侧复核记录，沿用原一致性结论
+
+#### Scenario: 文本修订的签收
+- **WHEN** 只修正错字或链接且语义一致
+- **THEN** 集成人核验实际差异及链接目标后记录最终版本，恢复时沿用该记录
+
+#### Scenario: 授权语义变更
+- **WHEN** 送审后修改授权语义
+- **THEN** 按代理协议核对两侧的复核结果。超出已确认 Design 边界时先回 Design 阶段，再按新边界准备联合包
+
 #### Scenario: 直接 apply 时联合包未就绪
 - **WHEN** 恢复时仅有 change、该 change 严格校验失败或双向追溯缺失
 - **THEN** 回联合编写补 Plan、修正 change 或补齐映射，重新校验后再联合送审，实施保持阻塞
@@ -99,7 +111,7 @@
 系统 MUST 记录客户端、场景、期望阶段、期望规则与 Skill、实际路由、门禁结果、误加载项和结论，并 SHALL 将失败项映射到 L0、L1、L2 或具体 OpenSpec artifact 的修复位置。
 
 #### Scenario: 直接 apply 越过 Plan
-- **WHEN** 任一客户端在当前联合包缺少 Plan 或同版联合双审通过证据时继续执行 OpenSpec 工作包
+- **WHEN** 任一客户端在缺少 Plan、送审版联合双审结论或最终交付版相对送审版的差异核验记录时继续执行 OpenSpec 工作包
 - **THEN** 验证记录判定失败
 - **AND** 明确指出是入口路由、协作规则还是 artifacts 中的 Plan 门禁未生效
 
