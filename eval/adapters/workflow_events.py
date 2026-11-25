@@ -26,8 +26,8 @@ writes/tool_calls 并用，供 scorer 判定真实写入 / 独立复审 / 用户
     tool_result 正文里的明确通过/不通过（结构化 passed/verdict 或明文结论，
     否定词优先防“未发现问题”误判）；assistant 自述一律不产事件。
   - 最终 result 行回显与 assistant 文本重复时不重复计提问。
-  - bash 重定向 / tee / apply_patch 补丁头等可观察写入必须标记（codex/kimi
-    无 Write 工具时的覆盖面），观察不到即证据不足。
+  - bash 的显式写入和工作树恢复按路径留痕，间接目标或未知命令产生
+    shell-effects-unobserved，已知的只读命令继续参与正常判分。
 
 四端真实 schema（复用既有适配器口径，本模块不反向 import 适配器避免环）：
   claude stream-json/session（kimi 的 Claude-compatible 流同构复用）、
@@ -35,7 +35,9 @@ writes/tool_calls 并用，供 scorer 判定真实写入 / 独立复审 / 用户
   message_start/update/delta 不重复计入，message_end 包裹视作完整消息）、
   kimi wire.jsonl 与 openai 分片（仅结构可辨时提取，残缺参数安全标 unknown）。
 """
+import getopt
 import json
+import posixpath
 import re
 import shlex
 from collections import deque
@@ -68,8 +70,19 @@ _PASS_PATTERNS = (r"\bpass(?:ed|ing)?\b", r"(?<![不未])通过", r"\blgtm\b", r
                   r"无需修改")
 _PASS_WORDS = {"pass", "passed", "approve", "approved", "lgtm", "通过"}
 _FAIL_WORDS = {"fail", "failed", "reject", "rejected", "error", "blocked", "不通过", "未通过"}
-_REDIRECT = re.compile(r"(?<![0-9<>-])>{1,2}\s*([^\s;|&<>]+)")
-_TEE = re.compile(r"\btee\s+(?:-{1,2}[A-Za-z][\w-]*\s+)*([^\s;|&<>]+)")
+# 保留引号，只有裸露的管道、分隔符和重定向才是 shell 操作符。
+_SHELL_TOKEN = re.compile(r'''
+    \#[^\n]*                                      # 行尾注释
+    | (?P<process>[<>]\()                        # 进程替换的副作用需要额外证据
+    | (?P<redir>\d*(?:<<<|<<-?|<>|<&|<|>>|>\||>&|>)|&>>?)
+    | (?P<end>[;&|\n]+)                           # 命令分隔符、管道
+    | (?:'[^']*'|"(?:\\.|[^"\\])*"|\\.|[^\s'"\\;&|<>])+  # 一个 shell 参数
+    | \S
+''', re.VERBOSE)
+_READ_ONLY_COMMANDS = {'cat', 'ls', 'pwd', 'head', 'tail', 'wc', 'grep', 'echo',
+                       'printf', 'test', '[', 'true', 'false'}
+_READ_ONLY_GIT = {'status', 'diff', 'show', 'log', 'ls-files', 'ls-tree', 'rev-parse',
+                  'rev-list', 'describe', 'show-ref', 'version', 'cat-file', 'blame'}
 _PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+)$", re.I | re.M)
 _DEVNULL = "/dev/null"
 # pi 顺序配对下的硬错误词（窄口径：审查结论里的“拒绝”交给 verdict 解析）。
@@ -103,34 +116,114 @@ def _parse_json_maybe(value) -> Optional[dict]:
     return value if isinstance(value, dict) else None
 
 
-def _bash_write_paths(command: str) -> list:
-    """bash 可观察写入面：重定向目标、tee 操作数、shell heredoc 补丁头。"""
-    if not isinstance(command, str) or not command.strip():
+def _literal_targets(operands, directory=''):
+    """记录字面路径，用 None 标出需要展开或另行读取的目标。"""
+    if any(c in directory for c in '$`*?[]{}') or directory.startswith('~'):
+        return [None]
+    paths = []
+    for path in operands:
+        if (not path or path == '-' or posixpath.basename(path) in ('', '.', '..')
+                or path.startswith(('~', ':')) or any(c in path for c in '$`*?[]{}')):
+            paths.append(None)
+        else:
+            paths.append(posixpath.join(directory, path))
+    return paths or [None]
+
+
+def _git_write_paths(args):
+    global_opts, args = getopt.getopt(args, 'C:', ['no-pager', 'no-optional-locks', 'literal-pathspecs', 'version'])
+    directory = ''
+    for flag, value in global_opts:
+        if flag == '-C':
+            directory = posixpath.join(directory, value)
+    if not args:
         return []
-    if "*** begin patch" in command.lower():
-        return [path.strip() for path in _PATCH_FILE.findall(command)]
-    paths = list(_REDIRECT.findall(command)) + list(_TEE.findall(command))
-    # 捕获不会留在最终快照中的创建、移动和删除。无法确定副作用的脚本留待核验。
-    for segment in re.split(r"[;|&\n]+", command):
-        try:
-            words = shlex.split(segment)
-        except ValueError:
-            paths.append(None)
+    verb, args = args[0], args[1:]
+    options = args[:args.index('--')] if '--' in args else args
+    if verb in _READ_ONLY_GIT:
+        for i, opt in enumerate(options):
+            if opt == '--output':
+                return _literal_targets(options[i + 1:i + 2], directory)
+            if opt.startswith('--output='):
+                return _literal_targets([opt.partition('=')[2]], directory)
+        return []
+    if verb == 'restore':
+        opts, targets = getopt.gnu_getopt(args, 's:SWq', ['source=', 'staged', 'worktree', 'quiet',
+                                                           'ours', 'theirs', 'merge', 'overlay', 'no-overlay'])
+        flags = {flag for flag, _ in opts}
+        if flags.intersection({'-S', '--staged'}) and not flags.intersection({'-W', '--worktree'}):
+            return []
+    elif verb == 'checkout' and '--' in args:
+        # 有明确路径分隔符时才按文件恢复。切换分支影响的文件由工作树决定。
+        targets = args[args.index('--') + 1:]
+    else:
+        return [None]
+    return _literal_targets(targets, directory)
+
+
+def _command_write_paths(words):
+    if not words:
+        return []
+    program, args = posixpath.basename(words[0]), words[1:]
+    try:
+        if program == 'git':
+            return _git_write_paths(args)
+        if program == 'truncate':
+            _, targets = getopt.gnu_getopt(args, 'cor:s:', ['no-create', 'io-blocks', 'reference=', 'size='])
+            return _literal_targets(targets)
+    except getopt.GetoptError:
+        return [None]
+    operands = [arg for arg in args if not arg.startswith('-')]
+    if program in {'rm', 'unlink', 'touch', 'mv', 'tee'}:
+        return _literal_targets(operands) if operands or program != 'tee' else []
+    if program in {'cp', 'install', 'ln'} or (program == 'sed' and any(a.startswith('-i') for a in args)):
+        return _literal_targets(operands[-1:])
+    if program in _READ_ONLY_COMMANDS or (program == 'rg' and not any(a.startswith('--pre') for a in args)):
+        return []
+    return [None]
+
+
+def _bash_write_paths(command: str) -> list:
+    """按 shell 执行顺序收集写入路径，无法定位的副作用用 None 表示。"""
+    if not isinstance(command, str) or not command.strip():
+        return [None]
+    paths, words = [], []
+    redir = None
+    for match in _SHELL_TOKEN.finditer(command):
+        if match.lastgroup == 'process':
+            return paths + [None]
+        token = match.group()
+        if token.startswith('#'):
             continue
-        if not words:
-            continue
-        program = words[0].rsplit("/", 1)[-1]
-        args = [arg for arg in words[1:] if not arg.startswith("-")]
-        if program in {"rm", "unlink", "touch", "mv"}:
-            paths.extend(args)
-        elif program in {"cp", "install", "ln"}:
-            paths.extend(args[-1:])
-        elif program == "sed" and any(arg.startswith("-i") for arg in words[1:]):
-            paths.extend(args[-1:])
-        elif (program in {"python", "python3", "bash", "sh", "node", "perl", "ruby", "make", "xargs"}
-              or program.startswith("./") or any(symbol in segment for symbol in ("$(", "`"))):
-            paths.append(None)
-    return [p for p in paths if p is None or (p != _DEVNULL and not p.startswith("&") and not p.isdigit())]
+        if match.lastgroup == 'end':
+            paths.extend(_command_write_paths(words))
+            words.clear()
+        elif match.lastgroup == 'redir':
+            redir = token.lstrip('0123456789')
+            if redir.startswith('<<'):
+                # here-doc 正文是输入数据，不能把其中的行当作 shell 命令。
+                if words == ['apply_patch'] and '*** Begin Patch' in command:
+                    paths.extend(_patch_write_paths(command) or [None])
+                else:
+                    paths.extend(_command_write_paths(words))
+                    paths.append(None)
+                return [path for path in paths if path != _DEVNULL]
+        else:
+            try:
+                word = shlex.split(token)[0]
+            except (IndexError, ValueError):
+                return paths + [None]
+            if '$(' in token or '`' in token:
+                paths.append(None)
+            if redir is None:
+                words.append(word)
+            elif redir not in ('<', '<&') and not (redir == '>&' and (word.isdigit() or word == '-')):
+                paths.extend(_literal_targets([word]))
+            redir = None
+    paths.extend(_command_write_paths(words))
+    if redir is not None:
+        paths.append(None)
+    return [path for path in paths if path != _DEVNULL]
 
 
 def _patch_write_paths(patch: Optional[str]) -> list:
@@ -285,16 +378,16 @@ class _Collector:
                 self.events.append({"kind": "unknown", "detail": "write-missing-path"})
         elif low in BASH_TOOLS:
             command = args.get("command") or args.get("cmd")
-            if isinstance(command, list):
-                command = " ".join(str(part) for part in command)
-            if isinstance(command, str):
-                for path in _bash_write_paths(command):
-                    if path is None:
-                        self.events.append({"kind": "unknown", "detail": "shell-effects-unobserved"})
-                        continue
-                    self.events.append(
-                        {"kind": "write", "path": path,
-                         "summary": "bash: " + command.strip()[:60]})
+            if isinstance(command, list) and all(isinstance(part, str) for part in command):
+                if len(command) == 3 and posixpath.basename(command[0]) in ('bash', 'sh') and command[1] in ('-c', '-lc'):
+                    command = command[2]
+                else:
+                    command = shlex.join(command)
+            for path in _bash_write_paths(command):
+                if path is None:
+                    self.events.append({"kind": "unknown", "detail": "shell-effects-unobserved"})
+                else:
+                    self.events.append({"kind": "write", "path": path, "summary": "bash: " + command.strip()[:60]})
         elif low in ASK_TOOLS or "askuser" in low or "ask_user" in low:
             # ask 工具调用本身即实际终端提问，回执只是答案。
             question = {"kind": "ask", "text": _ask_text(args)}
