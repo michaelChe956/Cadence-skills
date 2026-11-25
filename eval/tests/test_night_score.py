@@ -65,6 +65,16 @@ class TestScoreProbeText(unittest.TestCase):
         self.assertIn("TODO", hit["behavior_failures"])
         self.assertEqual(miss["behavior"], "PASS")
 
+    def test_new_task_stops_at_design_even_with_an_old_plan(self):
+        def score(changed):
+            return night._score_probe_text('claude', 'P3',
+                _probe_result('已处理', workflow_files=dict.fromkeys(changed, 'changed')))['verdict']
+
+        self.assertEqual(score(['cadence/designs/新增字段.md']), 'PASS')
+        self.assertEqual(score(['openspec/changes/add-field/tasks.md', 'src/users/schema.sql']), 'FAIL')
+        self.assertEqual(score(['cadence/designs/新增字段.md', 'src/users/schema.sql']), 'FAIL')
+        self.assertEqual(score([]), 'FAIL')
+
     def test_p1_keyword_branch_unchanged_pass(self):
         """ut-night-p1-parity：P 组对拍——P1 输出含调用链关键词仍按旧分支 PASS。"""
         score = night._score_probe_text(

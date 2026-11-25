@@ -1,6 +1,7 @@
 """eval/tests/test_assertor.py —— 确定性断言器（tasks 2.4 核心）。"""
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from eval import ifmt
 from eval.scoring import assertor as asr
@@ -91,6 +92,35 @@ class TestPrimitives(unittest.TestCase):
         result = asr.score_run("r-api", P1, traj)
         self.assertEqual(result["verdict"], "INFRA_FAIL")
         self.assertEqual(result["fail_reason"], "infra-fail:api-error")
+
+
+class TestWorkflowTiming(unittest.TestCase):
+    def verdict(self, paths, initial=None, workspace=None):
+        from eval.probes.definitions import PROBES
+
+        traj = _traj([('Write', path) for path in paths], writes=paths)
+        return asr.score_run('timing', PROBES['P3'], traj, workspace=workspace,
+                             pre_snapshot=initial)['verdict']
+
+    def test_change_followed_by_implementation_without_plan(self):
+        self.assertEqual(self.verdict(['openspec/changes/export/tasks.md', 'src/export.py']), 'FAIL')
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            change = 'openspec/changes/export/tasks.md'
+            (root / change).parent.mkdir(parents=True)
+            (root / change).write_text('- [ ] 1.1 导出')
+            self.assertEqual(self.verdict(['src/export.py'], {change: '已有'}, root), 'FAIL')
+
+    def test_design_wait_and_joint_drafting_are_allowed(self):
+        design = 'cadence/designs/目录导出.md'
+        self.assertEqual(self.verdict([design]), 'PASS')
+        self.assertEqual(self.verdict([design, 'openspec/changes/export/tasks.md',
+                                       'cadence/plans/目录导出.md', 'src/export.py']), 'PASS')
+
+    def test_late_plan_cannot_authorize_an_earlier_edit(self):
+        plan = 'cadence/plans/目录导出.md'
+        self.assertEqual(self.verdict(['src/export.py', plan]), 'FAIL')
+        self.assertEqual(self.verdict(['src/export.py'], {plan: '无关旧计划'}), 'FAIL')
 
 
 class TestScoreRun(unittest.TestCase):

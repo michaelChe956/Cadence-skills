@@ -178,7 +178,7 @@ managed_block_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.managed-block-hash-XXXXXX") || return $?
-  if ! awk '/cadence-managed:openspec-superpowers-routing:v5:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v5:end/{inside=0; exit}' "$1" > "$hash_input"; then
+  if ! awk '/cadence-managed:openspec-superpowers-routing:v6:start/{inside=1} inside{print} /cadence-managed:openspec-superpowers-routing:v6:end/{inside=0; exit}' "$1" > "$hash_input"; then
     rm -f "$hash_input"
     return 1
   fi
@@ -195,11 +195,21 @@ outside_l0_hash() {
   local status
 
   hash_input=$(mktemp "$TEST_ROOT/.outside-l0-hash-XXXXXX") || return $?
-  if ! awk '
-    /cadence-managed:openspec-superpowers-routing:v[0-9]+:start/ { inside=1; next }
-    /cadence-managed:openspec-superpowers-routing:v[0-9]+:end/ { inside=0; next }
-    !inside { print }
-  ' "$1" > "$hash_input"; then
+  if ! python3 - "$1" "${2-}" > "$hash_input" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8')
+moved_line = sys.argv[2]
+if moved_line:
+    block = f'\n<!-- cadence-user-l0-extra:start -->\n{moved_line}\n<!-- cadence-user-l0-extra:end -->\n'
+    if text.count(block) != 1:
+        sys.exit('入口应逐字保留一份迁出的用户内容')
+    text = text.replace(block, '', 1)
+sys.stdout.write(re.sub(r'^<!-- cadence-managed:openspec-superpowers-routing:v\d+:start -->\n.*?^<!-- cadence-managed:openspec-superpowers-routing:v\d+:end -->\n?', '', text, flags=re.M | re.S))
+PY
+  then
     rm -f "$hash_input"
     return 1
   fi
@@ -219,14 +229,10 @@ replace_first_visible_paragraph() {
   source_dir=$(dirname "$source_file") || return 1
   temporary_file=$(mktemp "$source_dir/.${source_file##*/}.cadence-replace-XXXXXX") || return 1
   if ! awk -v replacement="$replacement" '
+    /^<!-- cadence-managed:openspec-superpowers-routing:v[0-9]+:start -->$/ { inside=1 }
+    /^<!-- cadence-managed:openspec-superpowers-routing:v[0-9]+:end -->$/ { inside=0 }
     {
-      if (!replaced) {
-        match_position = index($0, "首段输出路由回执")
-        if (match_position > 0) {
-          $0 = substr($0, 1, match_position - 1) replacement substr($0, match_position + length("首段输出路由回执"))
-          replaced = 1
-        }
-      }
+      if (inside && !replaced && /^Cadence L0 /) { $0 = replacement; replaced=1 }
       print
     }
     END {
@@ -623,8 +629,8 @@ after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ] \
-  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md")" ] \
-  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md")" ] \
+  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md" '本地漂移段落')" ] \
+  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md" '另一个漂移段落')" ] \
   && legacy_archive_exists "$case_root" 'CLAUDE.md' \
   && legacy_archive_exists "$case_root" 'AGENTS.md'; then
   assert_changed it-s4-drift-normal-replaced "$RUN_STATUS" "$before" "$after"
@@ -648,8 +654,8 @@ after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && [ "$(managed_block_hash "$case_root/AGENTS.md")" = "$(sha256_file "$KERNEL")" ] \
-  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md")" ] \
-  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md")" ]; then
+  && [ "$outside_claude_before" = "$(outside_l0_hash "$case_root/CLAUDE.md" '本地漂移段落')" ] \
+  && [ "$outside_agents_before" = "$(outside_l0_hash "$case_root/AGENTS.md" '另一个漂移段落')" ]; then
   assert_changed it-s4-drift-replaced-outside-preserved "$RUN_STATUS" "$before" "$after"
 else
   record_result it-s4-drift-replaced-outside-preserved "$RUN_STATUS" "$before" "$after" fail
@@ -664,10 +670,10 @@ before=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 run_script apply "$case_root" --no-interrupt
 after=$(sha256_pair "$case_root/CLAUDE.md" "$case_root/AGENTS.md")
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:end' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/AGENTS.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:end' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:end' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:end' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '任意前置内容' "$case_root/CLAUDE.md" \
   && grep -q '无法判定归属的本地内容' "$case_root/CLAUDE.md" \
   && grep -q '任意后置内容' "$case_root/CLAUDE.md" \
@@ -994,26 +1000,13 @@ else
 fi
 
 # C3d. 普通模式历史目标非空跳过（it-s5-history-conflict-skip / DF-03+HM-03）
-# 用 HISTORY_DIRS 清单内目录（prds）+ 预置 rules 幂等 + cadence/prds 非空。
+# 先完成正常初始化，包含框架基线和各端投影，再制造两个非空历史目录。
 case_root="$TEST_ROOT/fx-history-target-nonempty"
-mkdir -p "$case_root/.claude/rules"
-# codex 终审 I2 适配：入口预收敛（全树零写入断言不被摘要补齐扰动）
-mk_converged_entries "$case_root"
-mk_converged_rules "$case_root"
+mkdir -p "$case_root"
+run_script apply "$case_root"
 mkdir -p "$case_root/.claude/prds" "$case_root/cadence/prds"
 printf 'legacy\n' > "$case_root/.claude/prds/old.md"
 printf 'existing\n' > "$case_root/cadence/prds/keep.md"
-# 预置幂等的 openspec/config.yaml（merge_yaml 的安全输出点），
-# 使 S7 merge 后字节不变，不干扰 S5 HM-03 的全树零写入断言。
-mkdir -p "$case_root/openspec"
-python3 -c "
-import importlib.util
-spec = importlib.util.spec_from_file_location('rc', '$SCRIPT')
-rc = importlib.util.module_from_spec(spec); spec.loader.exec_module(rc)
-tpl = open('$CONFIG_TEMPLATE').read()
-m, _ = rc.merge_yaml(tpl, '')
-open('$case_root/openspec/config.yaml', 'w').write(m)
-"
 before=$(tree_hash "$case_root")
 run_script apply "$case_root"
 after=$(tree_hash "$case_root")
@@ -1432,7 +1425,7 @@ run_script apply "$case_root" --no-interrupt
 if [ "$RUN_STATUS" -eq 0 ] \
   && [ -f "$case_root/CLAUDE.md" ] \
   && [ -f "$case_root/AGENTS.md" ] \
-  && grep -q 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md" \
+  && grep -q 'cadence-managed:openspec-superpowers-routing:v6:start' "$case_root/CLAUDE.md" \
   && grep -q '强制规则' "$case_root/CLAUDE.md"; then
   record_result it-entry-base-created "$RUN_STATUS" absent present pass
 else
@@ -1472,8 +1465,8 @@ printf '# CLAUDE.md\n\n我的项目说明，无 L0 标记。\n\n## 强制规则\
 printf '# AGENTS.md\n\n自定义 agents 内容。\n' > "$case_root/AGENTS.md"
 run_script apply "$case_root"
 if [ "$RUN_STATUS" -eq 0 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/CLAUDE.md")" -eq 1 ] \
-  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v5:start' "$case_root/AGENTS.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:start' "$case_root/CLAUDE.md")" -eq 1 ] \
+  && [ "$(grep -c 'cadence-managed:openspec-superpowers-routing:v6:start' "$case_root/AGENTS.md")" -eq 1 ] \
   && grep -q '我的项目说明' "$case_root/CLAUDE.md" \
   && grep -q '自定义 agents 内容' "$case_root/AGENTS.md"; then
   record_result it-s4-insert "$RUN_STATUS" absent present pass
@@ -1493,7 +1486,7 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && [ "$(managed_block_hash "$case_root/CLAUDE.md")" = "$(sha256_file "$KERNEL")" ] \
   && ! grep -q 'routing:v0' "$case_root/CLAUDE.md" \
   && grep -q '后置' "$case_root/CLAUDE.md"; then
-  record_result it-s4-upgrade "$RUN_STATUS" v0 v2 pass
+  record_result it-s4-upgrade "$RUN_STATUS" v0 v6 pass
 else
   record_result it-s4-upgrade "$RUN_STATUS" v0 v0 fail
 fi
@@ -1849,12 +1842,12 @@ fi
 # 2026-08-19：C17d（keep 决策不备份）随决策编排路径消亡删除，条款覆盖迁移至 ut-filter-backup-s3-drift 与 it-s3-normal-authoritative-overwrite。
 # ============================================================================
 
-# C17a. 无效 .mcp.json 重写前归档（it-s8-mcpjson-invalid-backed-up / codex 终审 C2）。
+# C17a. 无法解析的 .mcp.json 需保留并报告降级（it-s8-mcpjson-invalid-backed-up）。
 case_root="$(mk_coding_fixture fx-mcpjson-invalid)"
 printf '{invalid json\n' > "$case_root/.mcp.json"
 fake_bin="$TEST_ROOT/fake-bin-mcpjson-invalid"
 mkdir -p "$fake_bin"
-# install 失败 → degraded 路径仍补齐双配置；既有无效 .mcp.json 重写前必须归档
+# 两份文件都应保留原始字节，报告指出无法安全合并。
 fake_codegraph "$fake_bin" 1 0 0 0
 RC_FAKE_PATH="$fake_bin" run_script apply "$case_root" --no-interrupt
 mcp_archive=$(legacy_archive_path "$case_root" '.mcp.json')
@@ -1862,7 +1855,8 @@ if [ "$RUN_STATUS" -eq 0 ] \
   && jqr "['overall']" 2>/dev/null | grep -qi 'degraded' \
   && [ -n "$mcp_archive" ] \
   && grep -q 'invalid json' "$mcp_archive" \
-  && python3 -c "import json;d=json.load(open('$case_root/.mcp.json'));assert 'codegraph' in d['mcpServers']"; then
+  && cmp -s "$mcp_archive" "$case_root/.mcp.json" \
+  && jqr "['warnings']" | grep -q 'UNIT_UNPARSEABLE'; then
   record_result it-s8-mcpjson-invalid-backed-up "$RUN_STATUS" invalid backed-up pass
 else
   record_result it-s8-mcpjson-invalid-backed-up "$RUN_STATUS" invalid missing fail

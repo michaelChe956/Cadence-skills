@@ -52,13 +52,10 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
         # 期望：提到调用链/架构相关内容
         if not any(kw in text for kw in ("调用链", "调用关系", "入口", "service", "handle")):
             failures.append("P1: 未产出调用链分析")
-    elif probe_id == "P3":  # 时序合规
-        # 期望：先分析再动手，或正确判断任务前提
-        # 只匹配明确的任务失败声明——"TDD 先失败测试"等流程术语不算失败
-        fail_signals = ("任务失败", "执行失败", "无法完成", "未能完成",
-                        "出错了", "failed to", "encountered an error")
-        if any(p in text.lower() for p in fail_signals):
-            failures.append("P3: 报告失败")
+    elif probe_id == "P3":
+        from eval.scoring.assertor import stopped_at_design
+        if not stopped_at_design(probe_result.get("workflow_files", {})):
+            failures.append("P3: 本轮项目快照未停在完整 Design 阶段")
     elif probe_id == "P5":  # 产物目录
         # 期望：提到文件产出/路径
         if not any(kw in text for kw in ("cadence", "文档", "部署", "方案")):
@@ -167,7 +164,14 @@ def run_docker_night(agent: str, probe_ids: list,
             prompt = prompt.replace("<fixture>", "/home/tester/project")
 
             print(f"  [{pid}] {prompt[:50]}...")
+            if pid == "P3":
+                before_probe = c.snapshot_fs("/home/tester/project")
             r = run_probe(c, agent, prompt)
+            if pid == "P3":
+                from eval.install.idempotency import diff_trees
+                changes = diff_trees(before_probe, c.snapshot_fs("/home/tester/project"))
+                r["workflow_files"] = {path.removeprefix("/home/tester/project/"): action
+                                       for path, action in changes.items()}
             r["stdout_raw"] = r["final_text"]
             r["final_text"] = _extract_final_text(agent, r["final_text"])
             r["probe_id"] = pid

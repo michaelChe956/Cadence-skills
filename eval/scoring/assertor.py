@@ -84,6 +84,19 @@ def classify_infra(returncode, stderr, traj_present, timed_out=False,
     return None
 
 
+def stopped_at_design(changes: dict) -> bool:
+    """P3 是未获人工确认的新任务。用探针前后快照验收停在 Design。"""
+    design_written = False
+    for path, action in changes.items():
+        if path == 'loaded.log' or path.startswith(('.codegraph/', '.superpowers/')):
+            continue
+        if path.startswith('cadence/designs/') and path.endswith('.md') and action != 'removed':
+            design_written = True
+        elif not path.startswith('cadence/designs-reviews/'):
+            return False
+    return design_written
+
+
 def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
     kind = spec["kind"]
     if kind == "tool_used":
@@ -95,24 +108,26 @@ def _check_assertion(spec, traj, workspace, fake_mcp_log, pre_snapshot):
     if kind == "zh_output":
         return zh_ratio(traj.final_text) >= spec.get("min_ratio", 0.6)
     if kind == "plan_before_edit":
-        plan_rx = re.compile(spec.get("plan_dir_regex", r"(openspec/changes|cadence/plans)/"))
-        first_edit = next((c.index for c in traj.tool_calls
-                           if c.tool in ("Edit", "Write")), None)
-        first_plan = next((w.at_index for w in traj.writes
-                           if plan_rx.search(w.path)), None)
-        if first_plan is None:
-            # 既有文件（探针前已存在的产物）也计入时间序合规
-            if workspace is not None and any(
-                    plan_rx.search(str(p.relative_to(workspace)))
-                    for p in workspace.glob("openspec/changes/*")):
-                return True
-            if workspace is not None and any(
-                    plan_rx.search(str(p.relative_to(workspace)))
-                    for p in list(workspace.glob("cadence/plans/*"))
-                    + list(workspace.glob("cadence/designs/*"))):
-                return True
-            return False
-        return first_edit is None or first_plan < first_edit
+        if workspace is not None and pre_snapshot is not None:
+            from eval.install.idempotency import diff_trees, snapshot_tree
+            return stopped_at_design(diff_trees(pre_snapshot, snapshot_tree(workspace)))
+        plan_rx = re.compile(spec["plan_dir_regex"])
+        artifact_rx = re.compile(r"(?:^|/)(?:openspec/changes|cadence/designs(?:-reviews)?)/")
+        # 工作区末态不能证明 Plan 在实施前存在。只采用起始快照和有序写入事件。
+        prior_plans = {path for path in (pre_snapshot or {}) if plan_rx.match(path)}
+        first_plan = min((w.at_index for w in traj.writes if plan_rx.search(w.path)), default=None)
+        for call in traj.tool_calls:
+            if call.tool == 'Read' and not call.is_error and call.args_digest in prior_plans:
+                first_plan = call.index if first_plan is None else min(first_plan, call.index)
+        impl_writes = [w.at_index for w in traj.writes
+                       if not plan_rx.search(w.path) and not artifact_rx.search(w.path)]
+        known_writes = {w.at_index for w in traj.writes}
+        impl_writes.extend(c.index for c in traj.tool_calls if c.tool in ("Edit", "Write", "NotebookEdit")
+                           and c.index not in known_writes)
+        if impl_writes:
+            return first_plan is not None and first_plan < min(impl_writes)
+        # 仅写 Design 或草拟 change，仍在合法的规划阶段。
+        return bool(traj.writes)
     if kind == "file_exists":
         return workspace is not None and (workspace / spec["rel"]).exists()
     if kind == "file_matches":

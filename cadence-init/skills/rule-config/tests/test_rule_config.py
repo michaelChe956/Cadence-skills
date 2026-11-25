@@ -31,7 +31,7 @@ L0_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "age
 L0_V1_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules" / "l0-history" / "agent-routing-kernel-v1.md").read_text()
 L1_V1 = (Path(__file__).resolve().parents[1] / "references" / "rules" / "openspec-superpowers-workflow.md").read_text()
 
-# L0 受管区块标记（v5 为当前版本；v4/v3/v2/v1 为受支持旧版本，v0 为合成样本）
+# L0 受管区块标记（CURRENT_* 为当前版本 v6；v5/v4/v3/v2/v1 为受支持旧版本，v0 为合成样本）
 V1_START = "<!-- cadence-managed:openspec-superpowers-routing:v1:start -->"
 V1_END = "<!-- cadence-managed:openspec-superpowers-routing:v1:end -->"
 V2_START = "<!-- cadence-managed:openspec-superpowers-routing:v2:start -->"
@@ -297,7 +297,7 @@ class TestL0Block(unittest.TestCase):
         text = "# CLAUDE.md\n\n" + L0_SOURCE + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text, L0_SOURCE), "skip")
         # 区块首部多一个空格（被 strip 吞掉的差异）→ 必须判 drift，不能误判 skip
-        source_with_leading_space = V5_START + " " + L0_SOURCE[len(V5_START):]
+        source_with_leading_space = CURRENT_START + " " + L0_SOURCE[len(CURRENT_START):]
         text_drift = "# CLAUDE.md\n\n" + source_with_leading_space + "\n## 强制规则\n- x\n"
         self.assertEqual(rc.l0_block(text_drift, L0_SOURCE), "drift")
 
@@ -320,10 +320,10 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-single：升级后恰好一个当前版本区块且区块外保留。"""
         v1_text = "# 头\n\n" + V1_START + "\n旧路由\n" + V1_END + "\n\n## 用户章节\nx\n"
         out, warns = rc._normalize_l0_to_single_block(v1_text, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         self.assertIn("## 用户章节", out)
-        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        block = out[out.index(CURRENT_START):out.index(CURRENT_END) + len(CURRENT_END)]
         self.assertNotIn("旧路由", block)
         self.assertIn("旧路由", out)
         self.assertTrue(any(w["code"] == "L0_USER_LINES_RELOCATED" for w in warns))
@@ -331,15 +331,15 @@ class TestL0V2Migration(unittest.TestCase):
     def test_broken_nested_begin_preserves_user_section(self):
         """ut-l0-v2-nested-broken：孤儿 begin 不得跨块吞掉用户章节。"""
         broken = (
-            V5_START + "\nbroken\n\n## 用户章节\nx\n\n"
-            + V5_START + "\nfull\n" + V5_END
+            CURRENT_START + "\nbroken\n\n## 用户章节\nx\n\n"
+            + CURRENT_START + "\nfull\n" + CURRENT_END
         )
         out, _ = rc._normalize_l0_to_single_block(broken, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
-        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        block = out[out.index(CURRENT_START):out.index(CURRENT_END) + len(CURRENT_END)]
         self.assertNotIn("full", block)
 
     def test_upgrade_orphan_between_v1_pairs_preserves_user_section(self):
@@ -350,8 +350,8 @@ class TestL0V2Migration(unittest.TestCase):
         )
         self.assertEqual(rc.l0_block(upgrade, L0_SOURCE), "upgrade")
         out, _ = rc._normalize_l0_to_single_block(upgrade, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         self.assertIn("## 用户章节", out)
         self.assertIn("x", out)
 
@@ -359,14 +359,14 @@ class TestL0V2Migration(unittest.TestCase):
         """ut-l0-v2-overlap：完整旧块内的异版孤儿 end 不得使重叠删除吞文本。"""
         overlap = "A\n" + V1_START + "\nX\n" + V2_END + "\nY\n" + V1_END + "\nB\n"
         out, _ = rc._normalize_l0_to_single_block(overlap, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         for user_text in ("A", "X", "Y", "B"):
             self.assertIn(user_text, out)
 
     def test_orphan_current_marker_emits_l0_dedup(self):
         """ut-l0-v2-orphan-dedup：成对块加单侧当前标记会记录 L0_DEDUP。"""
-        current_with_orphan = L0_SOURCE + "\n\n" + V5_START + "\n残留用户内容\n"
+        current_with_orphan = L0_SOURCE + "\n\n" + CURRENT_START + "\n残留用户内容\n"
         out, warns = rc._normalize_l0_to_single_block(current_with_orphan, L0_SOURCE)
         warning = next(w for w in warns if w["code"] == "L0_DEDUP")
         self.assertEqual(warning["detail"]["orphan_markers"], 1)
@@ -374,10 +374,10 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_mixed_markers_not_broken_residue(self):
         """ut-l0-v2-mixed：旧版成对+当前单侧残留 → 归并为一个规范区块。"""
-        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + V5_START + "\n残留单侧\n"
+        mixed = V1_START + "\n旧\n" + V1_END + "\n\n" + CURRENT_START + "\n残留单侧\n"
         out, _ = rc._normalize_l0_to_single_block(mixed, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
 
     def test_current_pair_with_old_residue_is_not_skip(self):
         """ut-l0-v2-current-old-residue：当前规范块外旧标记残留必须进入归并路径。"""
@@ -386,15 +386,15 @@ class TestL0V2Migration(unittest.TestCase):
 
     def test_duplicate_current_blocks_deduped(self):
         """ut-l0-v2-dedup：重复当前版本区块保留首个 + L0_DEDUP warning。"""
-        first = V5_START + "\n首个当前块\n" + V5_END
-        second = V5_START + "\n重复当前块\n" + V5_END
+        first = CURRENT_START + "\n首个当前块\n" + CURRENT_END
+        second = CURRENT_START + "\n重复当前块\n" + CURRENT_END
         dup = first + "\n\n## 中间\n\n" + second
         out, warns = rc._normalize_l0_to_single_block(dup, L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         self.assertTrue(any(w["code"] == "L0_DEDUP" for w in warns))
         self.assertIn("首个当前块", out)
-        block = out[out.index(V5_START):out.index(V5_END) + len(V5_END)]
+        block = out[out.index(CURRENT_START):out.index(CURRENT_END) + len(CURRENT_END)]
         self.assertNotIn("重复当前块", block)
         self.assertIn("重复当前块", out)
         self.assertIn("## 中间", out)
@@ -419,8 +419,12 @@ V4_START = "<!-- cadence-managed:openspec-superpowers-routing:v4:start -->"
 V4_END = "<!-- cadence-managed:openspec-superpowers-routing:v4:end -->"
 V5_START = "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->"
 V5_END = "<!-- cadence-managed:openspec-superpowers-routing:v5:end -->"
+L0_V5_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
+                / "l0-history" / "agent-routing-kernel-v5.md").read_text()
 L0_V4_SOURCE = (Path(__file__).resolve().parents[1] / "references" / "rules"
                 / "l0-history" / "agent-routing-kernel-v4.md").read_text()
+CURRENT_START = "<!-- cadence-managed:openspec-superpowers-routing:v6:start -->"
+CURRENT_END = "<!-- cadence-managed:openspec-superpowers-routing:v6:end -->"
 
 
 class TestL0V3Migration(unittest.TestCase):
@@ -440,15 +444,15 @@ class TestL0V3Migration(unittest.TestCase):
         self.assertNotEqual(drifted, L0_V2_SOURCE)
         self.assertEqual(rc.l0_block(drifted, L0_SOURCE), "drift")
         out, _ = rc._normalize_l0_to_single_block("# 头\n\n" + drifted + "\n\n## 用户\nx\n", L0_SOURCE)
-        self.assertEqual(out.count(V5_START), 1)
-        self.assertEqual(out.count(V5_END), 1)
+        self.assertEqual(out.count(CURRENT_START), 1)
+        self.assertEqual(out.count(CURRENT_END), 1)
         self.assertIn("## 用户", out)
         self.assertNotIn("v2:start", out)
 
     def test_kernel_v3_required_content(self):
-        """ut-kernel-v3-content：四铁律/KB 门禁/客户端短说明/阶段切换齐备。"""
+        """ut-kernel-v3-content：铁律/联合双审门禁/KB 门禁/客户端短说明/阶段切换齐备。"""
         for needle in (
-            "无已确认 Plan", "失败测试", "新鲜",
+            "同版联合双审", "失败测试", "新鲜",
             "knowledge-base-context", "manifest.yaml",
             "Claude/Kimi", "重新路由", "优先级高于任何 Skill 正文",
         ):
@@ -464,39 +468,49 @@ class TestL0V4Migration(unittest.TestCase):
         """ut-l0-v5-history-v4：脚本加载冻结 v4 内核全文（v5 升级前比对）。"""
         self.assertEqual(rc.L0_OLD_SOURCES["v4"], L0_V4_SOURCE)
 
-    def test_current_version_is_v5(self):
-        """ut-l0-v5-current：当前版本升为 v5，v4 进入可升级旧版本清单。"""
-        self.assertEqual(rc.L0_CURRENT_VERSION, "v5")
-        self.assertEqual(rc.L0_OLD_VERSIONS, ["v4", "v3", "v2", "v1", "v0"])
+    def test_v5_history_source_loaded(self):
+        """ut-l0-v6-history-v5：脚本加载冻结 v5 内核全文（v6 升级前比对）。"""
+        self.assertEqual(rc.L0_OLD_SOURCES["v5"], L0_V5_SOURCE)
+
+    def test_current_version_is_v6(self):
+        """ut-l0-v6-current：当前版本升为 v6，v5/v4 进入可升级旧版本清单。"""
+        self.assertEqual(rc.L0_CURRENT_VERSION, "v6")
+        self.assertEqual(rc.L0_OLD_VERSIONS, ["v5", "v4", "v3", "v2", "v1", "v0"])
 
     def test_verbatim_v4_pair_is_upgrade(self):
-        """ut-l0-v5-upgrade-v4：完整 v4 规范块对 v5 源判 upgrade（非 drift），两模式同动作。"""
+        """ut-l0-v6-upgrade-v4：完整 v4 规范块对 v6 源判 upgrade（非 drift），两模式同动作。"""
         self.assertEqual(rc.l0_block(L0_V4_SOURCE, L0_SOURCE), "upgrade")
+
+    def test_verbatim_v5_pair_is_upgrade(self):
+        """ut-l0-v6-upgrade-v5：完整 v5 规范块对 v6 源判 upgrade（非 drift），两模式同动作。"""
+        self.assertEqual(rc.l0_block(L0_V5_SOURCE, L0_SOURCE), "upgrade")
 
     def test_verbatim_v3_pair_is_upgrade(self):
         """ut-l0-v4-upgrade：完整 v3 规范块对 v4 源判 upgrade（非 drift），两模式同动作。"""
         self.assertEqual(rc.l0_block(L0_V3_SOURCE, L0_SOURCE), "upgrade")
 
     def test_kernel_is_v4_with_visible_version_line(self):
-        """ut-l0-v5-visible-line：内核标记为 v5，标记后首行为可见文本版本行。
+        """ut-l0-v6-visible-line：内核标记为 v6，标记后首行为可见文本版本行。
 
         Claude Code 注入上下文时剥离 HTML 注释（2026-09-02 实验），版本必须
         以可见文本存在，回执才能自报版本。
         """
         kernel = L0_SOURCE
-        self.assertTrue(kernel.startswith(V5_START))
-        self.assertTrue(kernel.rstrip("\n").endswith(V5_END))
+        self.assertTrue(kernel.startswith(CURRENT_START))
+        self.assertTrue(kernel.rstrip("\n").endswith(CURRENT_END))
         lines = kernel.splitlines()
-        self.assertEqual(lines[1], "Cadence L0 路由内核 v5")
+        self.assertEqual(lines[1], "Cadence L0 路由内核 v6")
         self.assertIn("Codex/pi/omp", kernel)  # v5：omp 客户端语义（skill:// 全文读取）
         self.assertNotIn("v3:start", kernel)
         self.assertNotIn("v3:end", kernel)
+        self.assertNotIn("v5:start", kernel)
+        self.assertNotIn("v5:end", kernel)
         self.assertLessEqual(len(kernel.encode("utf-8")), 2750)
 
-    def test_kernel_is_v5_and_slim(self):
-        """ut-kernel-v5：内核标记为 v5 且体量 ≤2750 字节（v4 2571 + omp 语义行余量）。"""
+    def test_kernel_is_v6_and_slim(self):
+        """ut-kernel-v6：内核标记为 v6 且体量 ≤2750 字节（联合双审门禁行更新，预算不变）。"""
         kernel = L0_SOURCE
-        self.assertTrue(kernel.startswith(V5_START))
+        self.assertTrue(kernel.startswith(CURRENT_START))
         self.assertLessEqual(len(kernel.encode("utf-8")), 2750)
         self.assertIn("产物自动提交", kernel)
         for banned in ("保持静默", "引导句", "事件之间", "重试"):
@@ -1078,7 +1092,7 @@ class TestCodeUsageSingleSource(unittest.TestCase):
             (self.root / ".claude" / "rules" / "agent-routing-kernel.md").exists()
         )
         self.assertIn(
-            "cadence-managed:openspec-superpowers-routing:v5",
+            "cadence-managed:openspec-superpowers-routing:v6",
             (self.root / "CLAUDE.md").read_text(encoding="utf-8"),
         )
 
@@ -3432,8 +3446,8 @@ class TestEndToEndRegression(unittest.TestCase):
             (7, "代码阅读规则"),
         ):
             self.assertIn(f"### {number}. {title}", agents)
-        self.assertIn(V5_START, agents)
-        self.assertIn(V5_END, agents)
+        self.assertIn(CURRENT_START, agents)
+        self.assertIn(CURRENT_END, agents)
         self.assertIn("## WHERE TO LOOK", agents)  # 用户 KB 内容保留
         self.assertIn("产物自动提交（design/plan/code）**：关闭", agents)
         self.assertNotIn("serena-usage.md", agents)
@@ -3498,8 +3512,8 @@ class TestEndToEndRegression(unittest.TestCase):
         self.assertIn("### 1. 语言规则", claude)
         self.assertNotIn("### 8. Playwright", claude)  # 项目无 playwright.md
         self.assertNotIn("playwright.md", claude)
-        self.assertIn(V5_START, claude)
-        self.assertIn(V5_END, claude)
+        self.assertIn(CURRENT_START, claude)
+        self.assertIn(CURRENT_END, claude)
 
 
 class TestOptionalRuleIntegrity(unittest.TestCase):
@@ -4181,7 +4195,7 @@ class TestVerifyCommand(unittest.TestCase):
         self.assertTrue(all(c["status"] == "ok" for c in report["checks"]))
 
     def test_outdated_l0_reports_and_exit_one(self):
-        """ut-verify-outdated：L0 v3 报“版本过时（当前 v3，最新 v5）”且退出 1。"""
+        """ut-verify-outdated：L0 v3 报“版本过时（当前 v3，最新 v6）”且退出 1。"""
         (self.root / "CLAUDE.md").write_text(
             "# CLAUDE.md\n\n" + L0_V3_SOURCE + "\n\n## 强制规则\n- x\n",
             encoding="utf-8")
@@ -4197,7 +4211,7 @@ class TestVerifyCommand(unittest.TestCase):
         l0 = next(c for c in report["checks"] if c["name"] == "l0_version")
         self.assertEqual(l0["status"], "drift")
         for item in l0["items"]:
-            self.assertIn("L0 版本过时（当前 v3，最新 v5）", item["detail"])
+            self.assertIn("L0 版本过时（当前 v3，最新 v6）", item["detail"])
 
     def test_not_generated_not_drift_for_fresh_project(self):
         """ut-verify-not-generated：从未 apply 的项目③④报未生成，不误报漂移。"""

@@ -257,8 +257,8 @@
 | 635 | OS-N3 结构/类型不兼容→两模式统一先归档，成功后以模板内容原子替换；报告字段路径/实际类型（2026-08-19 权威化，原普通「保留不发布」分支废止） | 两模式 | precheck_openspec_structure / backup_file | fx-openspec-incompatible | it-s7-openspec-yaml-type-conflict-backed-up-replaced | 报告含字段路径与实际类型；归档存在；替换后原文件 sha256 变为目标模板 |
 | 636 | OS-N4 候选处理不取消既有备份要求；必要备份失败时终止、候选不发布、原文件不变 | 两模式 | backup_file | fx-readonly-parent | it-s7-openspec-backup-fail-modes | 非零退出；目标不变；无半成品候选残留 |
 | 637 | OS-N5 预检通过后保留已有 schema；未设置时写入 `spec-driven` | 两模式 | merge_yaml | fx-openspec-no-schema | ut-merge_yaml-schema-default | 已有 schema 保留；缺失时写入 `spec-driven` |
-| 638 | OS-N6 模板四行 Cadence 协作 context 按完整行去重追加，保留原顺序与项目上下文 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-context-append | 追加按完整行去重；原顺序与项目技术栈等内容保留 |
-| 639 | OS-N7 四个 artifact 数组按完整字符串去重追加模板规则，保留项目额外规则与原顺序 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-rules-append | 数组合并去重且顺序稳定；额外规则保留 |
+| 638 | OS-N6 在 context 中精确迁移退役框架行，再按完整行追加去重 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-context-append / test_exact_field_scoped_migration | 相似措辞、空白差异和用户行顺序保留 |
+| 639 | OS-N7 在所属 artifact 中精确迁移退役规则项，再去重追加模板 | 两模式 | merge_yaml | fx-openspec-existing | ut-merge_yaml-rules-append / test_exact_field_scoped_migration | 其他分组同文、用户扩展字段保留 |
 | 640 | OS-N8 禁止创建 `rules.apply`；已有 `rules.apply`：两模式统一先备份成功后在候选中移除并继续合并（2026-08-19 权威化，原普通「须确认/无响应保留」分支废止） | 两模式 | merge_yaml / backup_file | fx-openspec-apply-key | it-s7-openspec-apply-backed-up-removed / it-s7-openspec-normal-apply-removed | 两模式均备份后候选无 `rules.apply` 且合并继续；任何分支不虚构 apply artifact |
 | 641 | OS-N9 YAML 无法可靠解析不得静默重写：两模式统一先归档，成功后以模板内容原子替换；仍无法构建候选则终止 | 两模式 | merge_yaml / backup_file | fx-openspec-unparseable | it-s7-openspec-invalid-yaml-backed-up-replaced | 归档存在；报告解析冲突；替换/终止分支均不虚构成功 |
 | 642-657 | OS-N10 固定临时 Change `cadence-rule-config-validation` + 四类 `openspec instructions ... --json` 验证——**已废止，由结构预检取代**（design D4 已删除临时 Change 与四类 instructions 验证；现行语义以 OS-N2 结构预检为准：根映射/schema/context/rules/四 artifact 数组）。保留行 ID 仅用于对账，脚本 MUST NOT 创建临时 Change 或调用 `openspec instructions` | 两模式 | step_openspec_config / precheck_openspec_structure | —（已废止，无对应测试） | 已废止：脚本不创建临时 Change、不调 `openspec instructions`；以结构预检取代（根映射/schema 标量/context 字符串/rules 映射/四 artifact 字符串数组） |
@@ -430,3 +430,5 @@
 | FM | 模板共享 frontmatter 分桶契约(10 源模板) | 两模式 | references/rules/*.md | inline | ut-fm-contract / ut-fm-language / ut-fm-behavioral / ut-fm-conditional / ut-fm-readme | description 全员;language 常驻桶;行为路由桶永不匹配 glob 且框架不携带任何 agents 限定;README 不加 |
 
 **对账声明**：S11 步骤已注册 STEP_ORDER/STEP_FUNCS(`s11_omp_bridge` 尾位);PRUNE_DIRS 与 SKILL.md find 块双向增 `.omp`(sc-prune-dirs-contract 延续覆盖);L0 升 v5 断言层同步见 `ut-l0-v5-current`/`ut-l0-v5-upgrade-v4`/`ut-l0-v5-visible-line`/`ut-kernel-v5` 与 eval `test_stage1_assertions`(l0.v5)。
+
+当前工作流的验收使用 `test_workflow_upgrade.py` 的 fresh、exact field、with/without local baseline 四个 CLI 用例。二次 apply 比较整个项目的文件内容、mtime 和新增备份，stage1 通过 `l0.v6` 识别新版入口。

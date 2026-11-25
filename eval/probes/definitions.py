@@ -47,7 +47,7 @@ PROBES = {
         ],
         "assertions": [
             {"kind": "plan_before_edit",
-             "plan_dir_regex": r"(openspec/changes|cadence/plans)/"},
+             "plan_dir_regex": r"(?:^|/)cadence/plans/[^/]+\.md$"},
         ],
         "needs_fake_mcp": [], "expected_red_pre_gate": True,
     },

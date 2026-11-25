@@ -26,9 +26,9 @@ def _installed_workspace(root: Path) -> None:
     (omp / "AGENTS.md").write_text(asrt.OMP_AGENTS_MD_BODY, encoding="utf-8")
     claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").exists() else ""
     (root / "CLAUDE.md").write_text(
-        "<!-- cadence-managed:openspec-superpowers-routing:v5:start -->\n"
-        "Cadence L0 路由内核 v5\n" + claude +
-        "<!-- cadence-managed:openspec-superpowers-routing:v5:end -->\n", encoding="utf-8")
+        "<!-- cadence-managed:openspec-superpowers-routing:v6:start -->\n"
+        "Cadence L0 路由内核 v6\n" + claude +
+        "<!-- cadence-managed:openspec-superpowers-routing:v6:end -->\n", encoding="utf-8")
     deny_doc = {"permissions": {"deny": [
         "UserDeny",
         "@@cadence-managed:permission-gate:v1:start@@",
@@ -75,11 +75,11 @@ class TestStage1Assertions(unittest.TestCase):
         return results
 
     def test_fresh_all_green(self):
-        """ut-s1-fresh：全新变体全绿（清单/L0v5/权限区/内联区/verify=0）。"""
+        """ut-s1-fresh：全新变体全绿（清单/L0v6/权限区/内联区/verify=0）。"""
         _installed_workspace(self.root)
         names = [r.name for r in self._all_ok()]
         for expect in ("pre-check.report", "pre-check.zero-change", "rules.manifest",
-                       "l0.v5", "gate.region", "codex.inline", "verify.exit0",
+                       "l0.v6", "gate.region", "codex.inline", "verify.exit0",
                        "mcp.valid", "mcp.codex-consistent", "mcp.gitignore",
                        "prx.placed", "prx.not-rules"):
             self.assertIn(expect, names)
