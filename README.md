@@ -252,7 +252,7 @@ Agent 会把它们映射为脚本的 `--mirror cn` 与 `--upgrade` 参数。镜�
 
 ### 规则配置与产物提交开关（rule-config）
 
-`/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读五项自检（L0 版本/规则哈希/权限投影/内联漂移/软链解析，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
+`/rule-config` 由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成，另有 `verify` 子命令执行只读七项自检（L0 版本、规则哈希、权限投影、内联漂移、软链解析、omp 桥和 OpenSpec 配置，`--json` 输出可被 CI 断言消费）；需要整体撤销权限区块时使用 `--remove-permission-gate`。
 
 更新 skill 后的生效路径：本仓只发布 skill 与模板，目标项目不会自动跟随更新。更新完成后需在**目标项目**内执行 `/rule-config`——先 `dry-run` 预演（零写入，只产出计划、冲突清单与备份需求），确认计划后 `apply` 发布，再用 `verify` 只读核验落地结果；两个阶段携带同一组意图参数。当前 L0 内核为 v6（可从 v0~v5 确定性升级），协作规则为 v2（可从 v1 升级），旧版 OpenSpec 条款按所属字段精确迁移后合并。
 

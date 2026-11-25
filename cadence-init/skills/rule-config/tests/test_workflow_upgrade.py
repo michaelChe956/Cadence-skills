@@ -32,12 +32,12 @@ class WorkflowUpgradeTests(unittest.TestCase):
         self.root.mkdir()
         self.report = Path(home.name) / 'report.json'
 
-    def run_cli(self, command):
+    def run_cli(self, command, expected=0):
         proc = subprocess.run([sys.executable, str(SCRIPT), command, '--project-root',
                                str(self.root), '--report', str(self.report)],
                               capture_output=True, text=True, timeout=60,
                               env={**os.environ, "HOME": str(self.report.parent)})
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(proc.returncode, expected, proc.stdout + proc.stderr)
         return json.loads(self.report.read_text())
 
     def assert_rerun(self):
@@ -75,6 +75,32 @@ class WorkflowUpgradeTests(unittest.TestCase):
         self.assertIn(OLD_PROPOSAL, new['rules']['tasks'])
         self.assertEqual(new['x-project'], old['x-project'])
         self.assert_rerun()
+
+    def test_verify_detects_only_reverted_openspec_config(self):
+        self.run_cli('apply')
+        path = self.root / 'openspec/config.yaml'
+        doc = yaml.safe_load(path.read_text())
+        doc['context'] = OLD_CONTEXT + '\n项目自定义正文\n'
+        doc['rules']['proposal'].append(OLD_PROPOSAL)
+        doc['rules']['tasks'].append(OLD_PROPOSAL)
+        doc['x-project'] = {'literal': OLD_CONTEXT}
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True))
+        before = snapshot(self.root)
+        self.assertIn('openspec/config.yaml', self.run_cli('dry-run')['planned_backups'])
+        report = self.run_cli('verify', expected=1)
+        self.assertEqual(report['overall'], 'drift')
+        drift = [item['file'] for check in report['checks'] if check['status'] == 'drift'
+                 for item in check['items']]
+        self.assertEqual(drift, ['openspec/config.yaml'])
+        self.assertEqual(snapshot(self.root), before)
+        self.run_cli('apply')
+        self.assertEqual(self.run_cli('verify')['overall'], 'healthy')
+        current = yaml.safe_load(path.read_text())
+        self.assertIn('项目自定义正文', current['context'].splitlines())
+        self.assertNotIn(OLD_CONTEXT, current['context'].splitlines())
+        self.assertNotIn(OLD_PROPOSAL, current['rules']['proposal'])
+        self.assertIn(OLD_PROPOSAL, current['rules']['tasks'])
+        self.assertEqual(current['x-project'], doc['x-project'])
 
     def upgrade_entry_and_rule(self, with_baseline):
         rules = self.root / '.claude/rules'

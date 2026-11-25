@@ -4191,7 +4191,7 @@ class TestVerifyCommand(unittest.TestCase):
             code, 0, json.dumps(report.get("checks"), ensure_ascii=False))
         names = [c["name"] for c in report["checks"]]
         self.assertEqual(names, ["l0_version", "rules_hash", "permission_gate",
-                                 "codex_inline", "symlink_resolution", "omp_assets"])
+                                 "codex_inline", "symlink_resolution", "omp_assets", "openspec_config"])
         self.assertTrue(all(c["status"] == "ok" for c in report["checks"]))
 
     def test_outdated_l0_reports_and_exit_one(self):
@@ -4244,7 +4244,7 @@ class TestVerifyCommand(unittest.TestCase):
         self.assertEqual(payload["overall"], "drift")
         names = {c["name"] for c in payload["checks"]}
         self.assertEqual(names, {"l0_version", "rules_hash", "permission_gate",
-                                 "codex_inline", "symlink_resolution", "omp_assets"})
+                                 "codex_inline", "symlink_resolution", "omp_assets", "openspec_config"})
         rules_check = next(c for c in payload["checks"] if c["name"] == "rules_hash")
         self.assertEqual(rules_check["status"], "drift")
         inline_check = next(c for c in payload["checks"] if c["name"] == "codex_inline")

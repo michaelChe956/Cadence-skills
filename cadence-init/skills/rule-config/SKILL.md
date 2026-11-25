@@ -11,7 +11,7 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 
 脚本报告始终提供不影响 `overall` 的顶层 `warnings` 数组；其实际 code 为 `USER_LINES_KEPT`、`DUPLICATE_H2`、`ORPHAN_RULE6`、`INVALID_TOGGLE`、`L0_DEDUP`、`s9-settings-unsafe`（settings.json 无法安全合并时保守跳过权限写入）、`s9-allow-conflict`（用户显式 allow 与受管 deny 冲突时保守跳过该 deny）、`OMP_BRIDGE_USER_FILE_KEPT`（`.agents/rules/` 内用户文件保留/同名归档替换）、`OMP_BRIDGE_MATERIALIZED`（symlink 不可用降级物化副本），详情见 `references/merge-semantics.md` §11.3 与 §11.8。入口首个 `## 项目配置` 章节还会确保唯一的“产物自动提交（design/plan/code）”开关：缺失时写入 `关闭`，合法用户值保留，非法值保留原文并报告 warning；既有技术栈等项目配置内容逐字保留，不由脚本检测或写入。Agent 读取时以 CLAUDE.md 为准、AGENTS.md 兜底；两者不一致按关闭处理并提示 `ENTRY_TOGGLE_MISMATCH`（这是读取层告警，不是脚本 `warnings` code）。
 
-全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成；另有 `verify` 子命令执行只读五项自检，支持 `--json` 并以退出码 0/1 表示通过或发现漂移，适合在变更后核验并以报告为准；需要整体撤销权限区块时使用 `--remove-permission-gate`，详情均指向报告输出。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告；当前系统无活跃冲突类型，两模式全程不经用户决策（决策文件机制休眠兜底，见 references/merge-semantics.md §11.6）；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
+全部探测、非框架资产合并与受管文件写入由关联脚本 `scripts/rule-config.py` 以 dry-run / apply 两阶段完成；另有 `verify` 子命令执行只读自检，含 S7 对 OpenSpec 配置的迁移判定，支持 `--json` 并以退出码 0/1 表示通过或发现漂移，适合在变更后核验并以报告为准；需要整体撤销权限区块时使用 `--remove-permission-gate`，详情均指向报告输出。框架受管规则文件绝不执行章节合并，也不生成“项目补充”或“原项目补充”。Agent 只负责定位脚本、按本文件编排调用、解读报告；当前系统无活跃冲突类型，两模式全程不经用户决策（决策文件机制休眠兜底，见 references/merge-semantics.md §11.6）；不得由 Agent 自行读写目标项目的受管文件。合并与冲突处理的权威定义见 `references/merge-semantics.md`，本文件不重复其十张表。
 
 ## v3 合并语义（2026-11-25）
 

@@ -4644,6 +4644,18 @@ STEP_FUNCS = {
 # ---------------------------------------------------------------------------
 
 
+def _openspec_needs_update(path: Path, action: str, template_path: str | None) -> bool:
+    """对 S7 预演及只读自检使用与发布相同的合并候选。"""
+    if action != "merge":
+        return action != "skip"
+    existing = _safe_read(path)
+    template = _safe_read(Path(template_path)) if template_path else None
+    if existing is None or template is None:
+        return True
+    candidate, _ = merge_yaml(template, existing)
+    return candidate != existing
+
+
 def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents) -> bool:
     """判定 target 是否真实需要备份（有实际写入/备份后终止动作）。
 
@@ -4701,26 +4713,8 @@ def _backup_required_for(target: Path, root: Path, plan: dict, intents: Intents)
         if not _matches(asset):
             continue
         action = asset.get("action")
-        if action == "merge":
-            # 幂等判定：候选与现状逐字节比较（I3：幂等不进备份需求）
-            existing = _safe_read(target)
-            if existing is None:
-                return True  # 读不出 → 保守备份
-            template_text = ""
-            openspec_yaml = (plan.get("templates", {}) or {}).get("openspec_yaml")
-            if openspec_yaml:
-                try:
-                    template_text = Path(openspec_yaml).read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    template_text = ""
-            candidate, _ = merge_yaml(template_text, existing)
-            if candidate is None:
-                return True  # 无法判定 → 保守备份
-            return candidate != existing
-        if action in ("remove-apply", "replace"):
-            # 移除禁用键/模板整体替换（两模式同动作）→ 始终写入
-            return True
-        return False
+        return action != "create" and _openspec_needs_update(
+            target, action, (plan.get("templates") or {}).get("openspec_yaml"))
 
     # S9 权限投影（新增）
     for asset in (steps.get(STEP_PERMISSION_GATE, {}) or {}).get("assets", []) or []:
@@ -5108,7 +5102,7 @@ def run_apply(root: Path, intents: Intents, report: dict) -> int:
 
 
 def run_verify(root: Path, report: dict) -> int:
-    """--verify 只读自检：六项检查，退出码 0=全部健康、1=存在漂移/过时项。
+    """--verify 只读自检：退出码 0 表示各项健康，1 表示存在漂移或过时项。
 
     纯只读（compute_plan 本身零写入；报告文件由 CLI 写在项目根之外）；
     ③④ 对从未生成过投影区块的项目报 not-generated（提示 apply）而不报
@@ -5321,6 +5315,16 @@ def run_verify(root: Path, report: dict) -> int:
             omp_items.append({"status": "ok", "detail": "受管活引用一致"})
     checks.append({"name": "omp_assets",
                    "status": "drift" if omp_drift else "ok", "items": omp_items})
+    config = "openspec/config.yaml"
+    s7 = plan.get("steps", {}).get(STEP_OPENSPEC_CONFIG, {})
+    asset = next((a for a in s7.get("assets", []) if a["path"] == config), {})
+    drift = _openspec_needs_update(root / config, asset.get("action", "missing"),
+                                   templates_info.get("openspec_yaml"))
+    status = "drift" if drift else "ok"
+    checks.append({"name": "openspec_config", "status": status, "items": [{
+        "file": config, "status": status,
+        "detail": "配置需要运行 rule-config apply 更新" if drift else "与 S7 合并候选一致",
+    }]})
     exit_code = 1 if any(c["status"] == "drift" for c in checks) else 0
     report["overall"] = "drift" if exit_code == 1 else "healthy"
     report["checks"] = checks
