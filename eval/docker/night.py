@@ -2,6 +2,7 @@
 import json
 import re
 import os
+import shlex
 import shutil
 import tempfile
 import time
@@ -12,32 +13,43 @@ from eval.docker.container import Container, create_test_container, REPO_ROOT
 from eval.docker.session import (
     create_test_project, run_stage1, run_probe, _cli_command,
 )
+from eval.adapters import get_adapter
 from eval.install import assertions as inst_asrt
+from eval.install.idempotency import diff_trees
+from eval.runner.workflow_evidence import design_paths, save_evidence
 from eval.probes.definitions import PROBES
-from eval.ifmt import IntermediateTrajectory, ToolCall
+from eval.ifmt import IntermediateTrajectory
 from eval.scoring import assertor
 from eval.scoring import schema as result_schema
 
 RESULT_ROOT = REPO_ROOT / "eval/results/docker-night"
 
 
-def _make_trajectory(agent: str, probe_result: dict) -> IntermediateTrajectory:
-    """从 Docker 探针结果构造评分用的 trajectory。"""
-    traj = IntermediateTrajectory(agent=agent)
-    traj.final_text = probe_result.get("final_text", "")
-    traj.duration_s = probe_result.get("duration_s", 0.0)
-    traj.returncode = probe_result.get("returncode", 0)
-    # Docker 模式下 tool_calls 从 final_text 推断（简化——后续可从容器提取 transcript）
-    # 目前先用文本匹配做基本断言
-    return traj
+def _capture_design_probe(c, agent, prompt, session_id):
+    project = "/home/tester/project"
+    before = c.snapshot_fs(project)
+    # 自动重试会丢失首轮已写又撤回的操作。
+    result = run_probe(c, agent, prompt, retries=0, structured=True)
+    changes = diff_trees(before, c.snapshot_fs(project))
+    changes = {path.removeprefix(project + '/'): action for path, action in changes.items()}
+    documents = {}
+    for name in design_paths(changes):
+        file = shlex.quote(name)
+        readback = c.exec(f'test ! -L {file} && cat -- {file}', cwd=project)
+        if readback['rc'] == 0:
+            documents[name] = readback['stdout']
+    transcript = RESULT_ROOT / 'transcripts' / f'docker-{agent}-{session_id}-P3.jsonl'
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    transcript.write_text(result['final_text'], encoding='utf-8')
+    evidence = {'changes': changes, 'documents': documents, 'project_root': project}
+    save_evidence(transcript, evidence)
+    result.update(transcript_path=str(transcript), workflow_files=changes, design_documents=documents,
+                  project_root=project)
+    return result
 
 
 def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
-    """基于文本的探针评分（Docker 简化版）。
-
-    后续增强：从容器提取完整 transcript（claude 的 .claude/projects/），
-    用 adapter 解析出 tool_calls 后走 assertor.score_run 完整评分。
-    """
+    """P3 按原始轨迹和现场正文评分，其他探针使用各自的输出断言。"""
     probe = PROBES.get(probe_id, {})
     text = probe_result.get("final_text", "")
     rc = probe_result.get("returncode", -1)
@@ -53,9 +65,16 @@ def _score_probe_text(agent: str, probe_id: str, probe_result: dict) -> dict:
         if not any(kw in text for kw in ("调用链", "调用关系", "入口", "service", "handle")):
             failures.append("P1: 未产出调用链分析")
     elif probe_id == "P3":
-        from eval.scoring.assertor import stopped_at_design
-        if not stopped_at_design(probe_result.get("workflow_files", {})):
-            failures.append("P3: 本轮项目快照未停在完整 Design 阶段")
+        path = probe_result.get('transcript_path')
+        adapter = get_adapter('pi' if agent == 'omp' else agent)
+        traj = adapter.parse_file(Path(path)) if path else IntermediateTrajectory(agent=agent)
+        result = assertor.score_run('docker:P3', probe, traj, workflow_evidence={
+            'changes': probe_result.get('workflow_files'), 'documents': probe_result.get('design_documents'),
+            'project_root': probe_result.get('project_root')})
+        reason = result['fail_reason']
+        return {'verdict': result['verdict'], 'failures': [reason] if reason else [],
+                'behavior': result.get('details', {}).get('design_checkpoint', {}).get('verdict', result['verdict']),
+                'behavior_failures': reason or None}
     elif probe_id == "P5":  # 产物目录
         # 期望：提到文件产出/路径
         if not any(kw in text for kw in ("cadence", "文档", "部署", "方案")):
@@ -165,13 +184,9 @@ def run_docker_night(agent: str, probe_ids: list,
 
             print(f"  [{pid}] {prompt[:50]}...")
             if pid == "P3":
-                before_probe = c.snapshot_fs("/home/tester/project")
-            r = run_probe(c, agent, prompt)
-            if pid == "P3":
-                from eval.install.idempotency import diff_trees
-                changes = diff_trees(before_probe, c.snapshot_fs("/home/tester/project"))
-                r["workflow_files"] = {path.removeprefix("/home/tester/project/"): action
-                                       for path, action in changes.items()}
+                r = _capture_design_probe(c, agent, prompt, session_id)
+            else:
+                r = run_probe(c, agent, prompt)
             r["stdout_raw"] = r["final_text"]
             r["final_text"] = _extract_final_text(agent, r["final_text"])
             r["probe_id"] = pid
@@ -251,6 +266,7 @@ def _write_probe_result(agent: str, session_id: str, probe_r: dict) -> Path:
         verdict=score["verdict"],
         fail_reason=";".join(score.get("failures", [])),
         duration_s=probe_r.get("duration_s", 0.0),
+        transcript_path=probe_r.get("transcript_path", ""),
         details={
             "prompt": probe_r.get("prompt", ""),
 

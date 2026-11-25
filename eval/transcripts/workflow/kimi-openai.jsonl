@@ -1,0 +1,5 @@
+{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"ko1","function":{"name":"Write","arguments":"{\"path\":\"docs/de"}}]}}]}
+{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"sign.md\",\"content\":\"# v3\"}"}}]}}]}
+{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"ko2","function":{"name":"Write","arguments":"{broken"}}]}}]}
+{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}

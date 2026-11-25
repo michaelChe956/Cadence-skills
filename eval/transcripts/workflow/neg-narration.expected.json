@@ -1,0 +1,4 @@
+[
+  {"kind": "write", "path": "docs/design.md", "content": "# v1"},
+  {"kind": "write", "path": "src/app.py"}
+]

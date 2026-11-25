@@ -124,6 +124,10 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
     else:
         traj = ifmt.IntermediateTrajectory(agent=agent)
     traj.settings_snapshot = _settings_snapshot(fixture.root)
+    evidence = None
+    if probe_id == 'P3':
+        from eval.runner.workflow_evidence import workspace_evidence
+        evidence = workspace_evidence(fixture.root, pre_snapshot)
     drift = guards.model_drift(traj, pins)
     fake_log = fake.read_calls(log_dir) if log_dir.exists() else []
     if drift:
@@ -131,7 +135,7 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         # drift 会话照常评分，判定存 behavior 字段供人工/报告分析。
         result = assertor.score_run(
             run_id, probe, traj, workspace=fixture.root, fake_mcp_log=fake_log,
-            pre_snapshot=pre_snapshot, returncode=out["returncode"],
+            pre_snapshot=pre_snapshot, workflow_evidence=evidence, returncode=out["returncode"],
             stderr=out["stderr"], timed_out=out.get("timed_out", False))
         result["variant"] = variant
         result["behavior"] = result.get("verdict")
@@ -141,7 +145,7 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
     else:
         result = assertor.score_run(
             run_id, probe, traj, workspace=fixture.root, fake_mcp_log=fake_log,
-            pre_snapshot=pre_snapshot, returncode=out["returncode"],
+            pre_snapshot=pre_snapshot, workflow_evidence=evidence, returncode=out["returncode"],
             stderr=out["stderr"], timed_out=out.get("timed_out", False))
         result["variant"] = variant
     transcripts_dir.mkdir(parents=True, exist_ok=True)
@@ -150,6 +154,9 @@ def run_single_probe(agent, probe_id, variant_idx, fixture, pins, policy,
         target = transcripts_dir / f"{run_id}{ext}"
         if Path(transcript).resolve() != target.resolve():
             shutil.copyfile(transcript, target)
+        if evidence is not None:
+            from eval.runner.workflow_evidence import save_evidence
+            save_evidence(target, evidence)
         result["transcript_path"] = str(target)
     _save_run(results_dir.parent, run_id, result, traj)
     return result

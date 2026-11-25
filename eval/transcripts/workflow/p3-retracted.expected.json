@@ -1,0 +1,8 @@
+[
+  {"kind": "write", "path": "src/export.py", "content": "def export(): pass"},
+  {"kind": "write", "path": "src/export.py", "summary": "bash: rm src/export.py"},
+  {"kind": "write", "path": "cadence/designs/导出公开目录.md", "content": "# 导出公开目录\n\n## 范围\n只导出公开的目录名称，私有目录对匿名请求不可见。\n\n## 架构与方案\n在查询服务按可见性过滤记录，排序后通过导出端点逐行返回。\n\n## 验收场景\n输入公开目录 b、a 和私有目录 c，输出 a、b。空输入返回空清单。\n"},
+  {"kind": "review", "reviewer": "grounding-reviewer", "path": "cadence/designs/导出公开目录.md", "passed": true, "summary": "接地审查通过，公开目录过滤和排序可以在现有查询服务实现。"},
+  {"kind": "review", "reviewer": "consistency-reviewer", "path": "cadence/designs/导出公开目录.md", "passed": true, "summary": "一致性审查通过，公开范围和私有目录验收边界与用户委托相符。"},
+  {"kind": "ask", "text": "请确认这份 Design 是否符合要求？我会等待你的答复。"}
+]

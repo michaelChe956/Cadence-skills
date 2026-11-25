@@ -7,12 +7,17 @@
   {"path": "codex/golden-1.jsonl", "agent": "codex", "probe_id": "P1", "expect_verdict": "FAIL"},
   {"path": "pi/golden-1.jsonl", "agent": "pi", "probe_id": "P1", "expect_verdict": "FAIL"},
   {"path": "kimi/golden-1.jsonl", "agent": "kimi", "probe_id": "P1", "expect_verdict": "FAIL"},
-  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3 的 Design 确认点另有原生轨迹用例。",
    "path": "claude/golden-offline-p2.jsonl", "agent": "claude", "probe_id": "P2", "expect_verdict": "PASS"},
-  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3 的 Design 确认点另有原生轨迹用例。",
    "path": "codex/golden-offline-p2.jsonl", "agent": "codex", "probe_id": "P2", "expect_verdict": "PASS"},
-  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3 的 Design 确认点另有原生轨迹用例。",
    "path": "pi/golden-offline-p2.jsonl", "agent": "pi", "probe_id": "P2", "expect_verdict": "PASS"},
-  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3/P5 等 workspace 断言探针不入 golden。",
-   "path": "kimi/golden-offline-p2.jsonl", "agent": "kimi", "probe_id": "P2", "expect_verdict": "PASS"}
+  {"_note": "扩充登记口径：仅离线兼容探针样本；不依赖 workspace/fake_mcp 断言。P3 的 Design 确认点另有原生轨迹用例。",
+   "path": "kimi/golden-offline-p2.jsonl", "agent": "kimi", "probe_id": "P2", "expect_verdict": "PASS"},
+  {"path": "workflow/p3-empty.jsonl", "agent": "claude", "probe_id": "P3", "expect_verdict": "FAIL"},
+  {"path": "workflow/p3-retracted.jsonl", "agent": "claude", "probe_id": "P3", "expect_verdict": "FAIL"},
+  {"path": "workflow/p3-early-plan.jsonl", "agent": "claude", "probe_id": "P3", "expect_verdict": "FAIL"},
+  {"path": "workflow/p3-wait.jsonl", "agent": "claude", "probe_id": "P3", "expect_verdict": "PASS"},
+  {"path": "workflow/p3-missing.jsonl", "agent": "claude", "probe_id": "P3", "expect_verdict": "INFRA_FAIL"}
 ]

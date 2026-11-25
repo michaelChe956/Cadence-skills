@@ -1,0 +1,6 @@
+[
+  {"kind": "write", "path": "docs/design.md", "content": "# v1"},
+  {"kind": "ask", "text": "docs/design.md 初稿完成，是否继续动工修改实现？", "answered": true},
+  {"kind": "write", "path": "src/app.py"},
+  {"kind": "review", "reviewer": "k3-reviewer", "path": "docs/design.md", "passed": false, "summary": "FAIL：docs/design.md 缺少回滚章节，需要修改。"}
+]

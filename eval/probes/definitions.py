@@ -46,8 +46,7 @@ PROBES = {
             "在用户表新增 last_login_at 列并更新相关写入逻辑",
         ],
         "assertions": [
-            {"kind": "plan_before_edit",
-             "plan_dir_regex": r"(?:^|/)cadence/plans/[^/]+\.md$"},
+            {"kind": "plan_before_edit"},
         ],
         "needs_fake_mcp": [], "expected_red_pre_gate": True,
     },

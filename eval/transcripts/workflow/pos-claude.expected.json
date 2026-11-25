@@ -1,0 +1,6 @@
+[
+  {"kind": "write", "path": "docs/design.md", "content": "# 设计\nv1"},
+  {"kind": "write", "path": "docs/report.md", "summary": "bash: grep -c '' docs/design.md | tee docs/report.md"},
+  {"kind": "review", "reviewer": "design-reviewer", "path": "docs/design.md", "passed": true, "summary": "结构完整，无需修改"},
+  {"kind": "ask", "text": "设计文档已通过复审，是否按当前版本定稿？", "answered": true}
+]

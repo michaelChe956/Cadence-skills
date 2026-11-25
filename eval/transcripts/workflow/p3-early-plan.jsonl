@@ -1,0 +1,6 @@
+{"type": "assistant", "message": {"model": "fixture", "role": "assistant", "content": [{"type": "tool_use", "id": "d1", "name": "Write", "input": {"file_path": "cadence/designs/导出公开目录.md", "content": "# 导出公开目录\n\n## 范围\n只导出公开的目录名称，私有目录对匿名请求不可见。\n\n## 架构与方案\n在查询服务按可见性过滤记录，排序后通过导出端点逐行返回。\n\n## 验收场景\n输入公开目录 b、a 和私有目录 c，输出 a、b。空输入返回空清单。\n"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "d1", "is_error": false, "content": "写入成功"}]}}
+{"type": "assistant", "message": {"model": "fixture", "role": "assistant", "content": [{"type": "tool_use", "id": "p1", "name": "Write", "input": {"file_path": "cadence/plans/export.md", "content": "# Plan\n1. 首项任务"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "p1", "is_error": false, "content": "写入成功"}]}}
+{"type": "assistant", "message": {"model": "fixture", "role": "assistant", "content": [{"type": "tool_use", "id": "impl1", "name": "Write", "input": {"file_path": "src/export.py", "content": "def export(): pass"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "impl1", "is_error": false, "content": "写入成功"}]}}
