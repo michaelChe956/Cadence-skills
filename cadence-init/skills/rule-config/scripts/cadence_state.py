@@ -211,24 +211,60 @@ def build_overlay_body(
     return "\n".join(lines) + "\n", True
 
 
-def _region_parts(text: str, begin_prefix: str, end_prefix: str):
-    begin = text.find(begin_prefix)
-    finish = text.find(end_prefix, begin if begin >= 0 else 0)
-    if begin < 0 or finish < 0:
-        return None
-    start_line_end = text.find("\n", begin)
-    if start_line_end < 0:
-        start_line_end = begin
-    end_line_end = text.find("\n", finish)
-    if end_line_end < 0:
-        end_line_end = finish
-    return (
-        text[:begin],
-        text[begin:start_line_end],
-        text[start_line_end + 1:finish],
-        text[finish:end_line_end],
-        text[end_line_end + 1:] if end_line_end < len(text) else "",
-    )
+def _extracted_region(text: str, rule_name: str | None = None):
+    """返回标记内外的原始文本。手写 Markdown 围栏里的标记只是示例。"""
+    lines = text.splitlines(keepends=True)
+    start = "<!-- cadence-overlay:extracted:start"
+    end = "<!-- cadence-overlay:extracted:end -->"
+    header_seen = rule_name is None
+    begin = None
+    fence = ""
+    for i, line in enumerate(lines):
+        body = line.rstrip("\r\n")
+        stripped = body.lstrip()
+        if fence:
+            if stripped.startswith(fence) and not stripped.rstrip().strip(fence[0]):
+                fence = ""
+            continue
+        if stripped.startswith(("```", "~~~")):
+            fence = stripped[:len(stripped) - len(stripped.lstrip(stripped[0]))]
+            continue
+        if begin is not None and body == end:
+            return "".join(lines[:begin]), "".join(lines[begin:i]), "".join(lines[i:])
+        if begin is None:
+            if rule_name is not None and body.startswith(f"<!-- cadence-user-overlay: rule={rule_name} base="):
+                header_seen = i + 1 < len(lines) and lines[i + 1].rstrip("\r\n") == f"# 用户覆盖：{rule_name}"
+            elif header_seen and body.startswith(start) and body.endswith(" -->"):
+                begin = i + 1
+    return None
+
+
+def repair_extracted_region(existing: str, rule_name: str, repairs) -> tuple[str, bool]:
+    """只替换能从旧 CLI 原样重放的自动抽取批次，保留其余原始字节。"""
+    parts = _extracted_region(existing, rule_name)
+    if parts is None:
+        return existing, False
+    before, region, after = parts
+    repaired = region
+    for old, new in sorted(repairs, key=lambda pair: len(pair[0]), reverse=True):
+        for newline in ("\n", "\r\n"):
+            original = old.replace("\n", newline)
+            replacement = new.replace("\n", newline)
+            cursor = 0
+            while (position := repaired.find(original, cursor)) >= 0:
+                limit = position + len(original)
+                # 原始归档本身也可包含同名的用户标题。先匹配完整重放正文，
+                # 只在匹配范围外核对旧 CLI 累积批次时产生的边界。
+                prefix_ok = position == 0 or repaired[:position].endswith(newline * 2)
+                tail = repaired[limit:]
+                if prefix_ok and (not tail.strip("\r\n") or tail.startswith(newline * 2 + "## 用户新增" + newline)):
+                    repaired = repaired[:position] + replacement + tail
+                    cursor = position + len(replacement)
+                else:
+                    cursor = limit
+    if repaired == region:
+        return existing, False
+    return before + repaired + after, True
 
 
 def merge_overlay(
@@ -237,11 +273,15 @@ def merge_overlay(
     base_text: str,
     current_text: str,
     base_origin: str,
+    repairs=(),
 ) -> tuple[str | None, bool]:
-    """合并 overlay 自动抽取区；保留用户手写区，并累积既有抽取内容。"""
+    """合并 overlay 自动抽取区；保留用户手写区，清理旧框架残留并累积用户抽取。"""
+    cleaned = False
+    if existing is not None and repairs:
+        existing, cleaned = repair_extracted_region(existing, rule_name, repairs)
     body, changed = build_overlay_body(rule_name, base_text, current_text, base_origin)
     if not changed:
-        return existing, False
+        return existing, cleaned
 
     header = (
         f"{OVERLAY_HEADER_PREFIX} rule={rule_name} "
@@ -251,29 +291,19 @@ def merge_overlay(
     )
     if existing is None:
         return header + body, True
-    begin_prefix = "<!-- cadence-overlay:extracted:start"
-    end_prefix = "<!-- cadence-overlay:extracted:end"
-    old_parts = _region_parts(existing, begin_prefix, end_prefix)
-    new_parts = _region_parts(body, begin_prefix, end_prefix)
+    old_parts = _extracted_region(existing)
+    new_parts = _extracted_region(body)
     if old_parts is None or new_parts is None:
-        return (existing.rstrip("\n") + "\n\n" + header + body), True
-    before, _old_start, old_inner, _old_end, after = old_parts
-    _new_before, new_start, new_inner, new_end, _new_after = new_parts
-    old_text = old_inner.strip()
-    new_text = new_inner.strip()
-    combined = old_text
-    if new_text and new_text not in old_text:
-        combined = (old_text + "\n\n" + new_text).strip()
-    if not combined:
-        combined = new_text
-    if before.lstrip().startswith(OVERLAY_HEADER_PREFIX):
-        lines = before.splitlines()
-        if lines:
-            lines[0] = header.splitlines()[0]
-            before = "\n".join(lines) + "\n"
-    if not before.strip():
-        before = header
-    return before + new_start + "\n" + combined + "\n" + new_end + "\n" + after, True
+        separator = "\n" if existing.endswith("\n") else "\n\n"
+        return existing + separator + header + body, True
+    before, old_inner, after = old_parts
+    new_inner = new_parts[1].strip()
+    if new_inner in old_inner.replace("\r\n", "\n"):
+        return existing, cleaned
+    newline = "\r\n" if before.endswith("\r\n") else "\n"
+    addition = new_inner.replace("\n", newline) + newline
+    combined = (old_inner.rstrip("\r\n") + newline * 2 if old_inner.strip() else "") + addition
+    return before + combined + after, True
 
 
 def overlay_path(rules_dir: Path, rule_name: str) -> Path:

@@ -24,7 +24,7 @@ description: "配置 Claude Code 与 Codex 规则：创建 rules 规则文件、
 - loss guard：入口写入前检查被删除行是否属于已知框架文本/受管区/退役清单；无法归属即失败关闭，不静默删除。
 - L0（2026-11-25）：当前 v6，受支持旧版 v0~v5；v1~v5 仅在完整受管区块与 `references/rules/l0-history/agent-routing-kernel-<版本>.md` 逐字一致时判定可升级，v0 成对标记按无规范源例外升级；旧/当前区块内无法归属为用户行的 L0 文本迁到区块外保留，报 `L0_USER_LINES_RELOCATED`；旧版本区块不再直接 fail。
 - 入口冲突：规范条目内的用户行放入固定“用户覆盖（优先级高于上方框架条目）”块，并写 `pending`/`UNIT_CONFLICT_USER_WINS`；重复规范 H3 整块保留并报 `USER_HEADING_NUMBER_COLLISION`。
-- L1（2026-11-25）：当前 v2，受支持旧版 v1（历史完整正文在 `references/rules/l1-history/`，含长文、简版与带 frontmatter 版）；优先使用 manifest 基线，无基线时按历史完整行区分旧框架正文与用户改写，用户改写进入 overlay；`openspec-superpowers-workflow.md` 与其他 `.claude/rules` 文件一样走 overlay，不再直接覆盖。
+- L1（2026-11-25）：当前 v2，受支持旧版 v1（历史完整正文在 `references/rules/l1-history/`，含长文、简版与带 frontmatter 版）；优先使用 manifest 基线，无基线时按实装版本及正文位置识别框架内容。连续升级时按旧 CLI 的可重放自动抽取批次清理已退役的门槛，无法溯源的内容保留，用户改写进入 overlay；`openspec-superpowers-workflow.md` 与其他 `.claude/rules` 文件一样走 overlay，不再直接覆盖。
 - OpenSpec（2026-11-25）：可解析配置先按所属字段精确移除已退役的框架条款（context 按完整行，proposal/design/specs/tasks 按该字段的完整规则项），再执行既有去重追加合并；用户 context、额外规则、扩展字段、独立覆盖规则与产物自动提交开关按现行策略保留。
 - dry-run：输出 `planned_actions`、`planned_backups`、`pending`，预演 S3 overlay 与 S4 入口写入。
 - 开关：`开启/打开/启用/on` 视为开启，`关闭/关掉/禁用/off` 视为关闭；原值不改写，别名报告 `TOGGLE_ALIAS_KEPT`。
