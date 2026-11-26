@@ -62,16 +62,21 @@ Claude/Kimi 原生调用 Skill。Codex/pi/omp 从清单选择，用途并入首�
 
 ### 6. 项目个性化规则
 - **用户自定义规则只能存放在 `cadence/project-rules/` 目录**
-- 禁止在 `.claude/rules/` 目录中添加用户自定义规则
-- 禁止直接修改 `.claude/rules/` 目录下的框架内置规则文件
-- **持久 shell 会话里禁止 `export` 会话级全局变量**（`HOME`/`PATH`/`GIT_*`），隔离环境用单命令前缀赋值或子 shell → 详见 `cadence/project-rules/shell-session-isolation.md`
+- **禁止修改 `.claude/rules/` 下的 7 个框架规则文件**
+- 用户覆盖写入 `.claude/rules/user-<框架文件名>.md`
 - 详见 `cadence/project-rules/README.md`
+
+> **用户覆盖（优先级高于上方框架条目，rule-config 保留）**
+
+- **持久 shell 会话里禁止 `export` 会话级全局变量**（`HOME`/`PATH`/`GIT_*`），隔离环境用单命令前缀赋值或子 shell → 详见 `cadence/project-rules/shell-session-isolation.md`
 
 ### 7. 代码阅读规则
 - **大范围检索使用 CodeGraph，精确结构阅读优先使用 ast-grep outline** → 详见 `.claude/rules/code-reading.md`
 
 ### 8. Playwright CLI 使用规则
 - **浏览器自动化工具必须遵循项目规范** → 详见 `.claude/rules/playwright.md`
+
+> **用户覆盖（优先级高于上方框架条目，rule-config 保留）**
 
 > **必须遵守 - 无例外**
 
