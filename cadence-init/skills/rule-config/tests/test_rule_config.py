@@ -1828,6 +1828,40 @@ class TestStepS4EntryFiles(unittest.TestCase):
         agents = (self.root / "AGENTS.md").read_text(encoding="utf-8")
         self.assertNotIn("再按指令完成实现、验证与结果汇报。", agents)
 
+    def test_rerun_migrates_legacy_agents_role_with_backup(self):
+        """重跑迁移框架旧行，保留项目补充和代码围栏中的历史示例。"""
+        (self.root / "main.py").write_text("pass\n", encoding="utf-8")
+        intents = _intents(no_interrupt=True, defer_codegraph_index=True)
+
+        def apply():
+            report = rc.build_report("no-interrupt", self.root)
+            self.assertEqual(rc.run_apply(self.root, intents, report), 0, report.get("failure"))
+            return report
+
+        apply()
+        entry = self.root / "AGENTS.md"
+        role_prefix = "- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，"
+        old_role = role_prefix + "再按指令完成实现、验证与结果汇报。"
+        new_role = role_prefix + "再按要求实施、验证并汇报结果。"
+        expected = entry.read_text(encoding="utf-8").replace(
+            "## 默认角色\n\n",
+            f"## 默认角色\n\n- 发布前由项目负责人确认。\n\n```markdown\n{old_role}\n```\n\n",
+            1,
+        )
+        original = expected.replace(new_role, old_role, 1).encode("utf-8")
+        entry.write_bytes(original)
+
+        preview = rc.build_report("dry-run", self.root)
+        self.assertEqual(rc.run_dry_run(self.root, intents, preview), 0, preview.get("failure"))
+        self.assertEqual(entry.read_bytes(), original)
+        self.assertIn("AGENTS.md", preview["planned_backups"])
+
+        report = apply()
+        self.assertEqual(entry.read_bytes(), expected.encode("utf-8"))
+        (backup,) = [item for item in report["backups"] if item["file"] == str(entry)]
+        self.assertEqual(Path(backup["backup"]).read_bytes(), original)
+        self.assertFalse(any(item["file"] == str(entry) for item in apply()["backups"]))
+
     def test_skip_state_idempotent_no_change(self):
         """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要已收敛 → 幂等零写入）"""
         entry = self.root / "CLAUDE.md"
