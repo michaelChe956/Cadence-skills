@@ -20,9 +20,20 @@
   skipped|needs-rule-config CLAUDE.md|AGENTS.md
 
 收尾报告（stdout 最后一行，单行 JSON；状态行之后输出，--help 除外）：
-  {"skill": ..., "exit_code": N, "counts": {...}, "completed": [...],
-   "needs_rule_config": [...], "pending": N, "failure": null|{...}, "overall": "success"|"failed"}
-  overall 恒为最后一个键；退出码 0 ⇒ success，非 0 ⇒ failed。
+  {"schema": "cadence.skill-receipt/v1", "skill": "project-rules-examples",
+   "action": "apply"|null, "exit_code": N,
+   "counts": {...}, "completed": [...], "needs_rule_config": [...],
+   "pending": N, "failure": null|{...}, "run_id": str|null,
+   "overall": "success"|"failed"}
+  六字段回执契约（schema/skill/action/run_id/exit_code/overall）与明细字段同层扁平输出，
+  不加外包装层；overall 恒为最后一个键。
+  run_id 紧邻 overall 之前：旧扫描器按 `"overall"` 字面量取其后窗口，
+  run_id 恰为字面 overall 时窗口紧邻真实结论，不会误判。
+  末行按 json.dumps 默认 ensure_ascii 转义：纯 ASCII 单行，U+2028/U+0085 不会把末行拆开。
+  action 取本次实际解析的分支：铺设/合并/零改动/已进入业务的错误均为 "apply"；
+  用法错误（argparse）无法确定分支时为 null。
+  run_id 取当次环境 CADENCE_SKILL_RUN_ID 原样值（空串也算已设置，未设置为 null）。
+  退出码 0 ⇒ success，非 0 ⇒ failed。
   幂等重跑（全 pristine/unchanged/skipped）报告 success；needs-rule-config 是交接项，不算失败。
 
 退出码：0 正常；2 用法错误；3 内部错误（备份/写入/读取/模板缺失，均落失败报告）。
@@ -33,6 +44,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import shutil
 import sys
 from datetime import datetime
@@ -240,6 +252,16 @@ class ApplyError(Exception):
 
 STATUSES = ("created", "pristine", "merged", "unchanged", "skipped", "needs-rule-config")
 
+# 六字段回执契约：schema / skill / action / run_id / exit_code / overall
+RECEIPT_SCHEMA = "cadence.skill-receipt/v1"
+SKILL_NAME = "project-rules-examples"
+ACTION_APPLY = "apply"
+
+
+def _run_id() -> str | None:
+    """当次运行的 CADENCE_SKILL_RUN_ID：未设置返回 null；已设置则原样返回（空串也算已设置）。"""
+    return os.environ.get("CADENCE_SKILL_RUN_ID")
+
 
 class Run:
     """一次运行的状态累积：逐行输出与收尾报告共用同一份记录。"""
@@ -262,10 +284,16 @@ class Run:
         print(f"[prx-apply][pending] {message}", file=sys.stderr)
         self.pending += 1
 
-    def report(self, exit_code: int, error: ApplyError | None) -> dict:
-        """收尾报告。`overall` 必须是最后一个键：解析器只看该字段后 64 字符窗口。"""
+    def report(self, exit_code: int, error: ApplyError | None, action: str | None) -> dict:
+        """收尾报告。`overall` 必须是最后一个键：解析器只看该字段后 64 字符窗口。
+
+        前五个键是六字段回执契约（schema/skill/action/run_id/exit_code），
+        与原有明细字段同层扁平输出，不加外包装层。
+        """
         return {
-            "skill": "project-rules-examples",
+            "schema": RECEIPT_SCHEMA,
+            "skill": SKILL_NAME,
+            "action": action,
             "exit_code": exit_code,
             "counts": self.counts,
             "completed": self.completed,
@@ -276,6 +304,7 @@ class Run:
                 "reason": error.reason,
                 "recovery": error.recovery,
             },
+            "run_id": _run_id(),
             "overall": "failed" if exit_code != 0 else "success",
         }
 
@@ -382,8 +411,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-root", default=".")
     run = Run()
     error: ApplyError | None = None
+    action: str | None = None
     try:
         args = parser.parse_args(argv)
+        action = ACTION_APPLY  # 参数已解析：本次进入铺设/合并分支，后续错误同属该分支
         _apply(args, run)
         exit_code = 0
     except SystemExit as exc:  # argparse：--help 退出 0 不出报告；用法错误退出 2 出失败报告
@@ -392,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         exit_code = code
         error = ApplyError(code, "命令行参数错误", recovery="见上方 usage 提示修正参数")
+        # 用法错误：分支未解析出来，action 保持 null
     except ApplyError as exc:
         print(f"[prx-apply][错误] {exc.reason}", file=sys.stderr)
         exit_code, error = exc.code, exc
@@ -400,7 +432,9 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 3
         error = ApplyError(3, f"未预期异常：{type(exc).__name__}: {exc}")
     # 收尾报告：stdout 最后一行单行 JSON；逐行状态保持原样在其之前。
-    print(json.dumps(run.report(exit_code, error), ensure_ascii=False))
+    # 用 json.dumps 默认 ensure_ascii=True：输出纯 ASCII 单行，U+2028/U+0085 等分隔符
+    # 不会把末行拆开，消费端 splitlines() 仍只看到一行；PYTHONIOENCODING=ascii 下也能回传中文。
+    print(json.dumps(run.report(exit_code, error, action)))
     return exit_code
 
 

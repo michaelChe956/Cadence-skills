@@ -21,6 +21,16 @@ MIRROR="default"
 NO_INTERRUPT=0
 UPGRADE=0
 
+# JSON 步骤累积（每项一行紧凑 JSON，由报告汇总）。
+STEPS_JSON=""
+# 报告级警告累积（内容级关注项，不影响 overall/退出码）。
+WARNINGS_JSON=""
+# 报告级归档清单累积（凡写入项目既有文件前的归档都在此可见）。
+BACKUPS_JSON=""
+# 五阶段报告累积（使用字符串，不使用 Bash 4 关联数组）。
+PHASES_JSON=""
+FAILED_COUNT=0
+
 # 颜色（stderr 摘要）
 if [ -t 2 ]; then
   C_RED='\033[0;31m'; C_GRN='\033[0;32m'; C_YEL='\033[1;33m'; C_BLU='\033[0;34m'; C_NC='\033[0m'
@@ -83,11 +93,89 @@ npm_registry_args() { printf '%s' "--registry=$CADENCE_NPM_REGISTRY"; }
 # 调用方形如 env $(uv_index_env) pip ...（刻意不加引号），依赖单词拆分拆成两个 KEY=VAL。
 uv_index_env()      { printf '%s' "PIP_INDEX_URL=$CADENCE_PY_INDEX UV_INDEX_URL=$CADENCE_PY_INDEX"; }
 
+# 纯 Bash 转义，在探测 Python 等工具前也能写 JSON。C locale 仅匹配控制字节。
+json_escape() {
+  local LC_ALL=C s="$1" c escape
+  s="${s//\\/\\\\}"      # 反斜杠（须最先处理）
+  s="${s//\"/\\\"}"      # 双引号
+  s="${s//$'\n'/\\n}"      # 真实换行符 -> 两字符 \n
+  s="${s//$'\t'/\\t}"      # 真实 Tab 符 -> 两字符 \t
+  s="${s//$'\r'/\\r}"      # 真实回车符 -> 两字符 \r
+  while [[ $s =~ [[:cntrl:]] ]]; do
+    c=${BASH_REMATCH[0]}
+    printf -v escape '\\u%04x' "'$c"
+    s=${s//"$c"/"$escape"}
+  done
+  printf '%s' "$s"
+}
+
+# 普通模式的部分失败仍以 0 退出，业务结果由已记录的失败数决定。
+emit_report() {
+  # 进入收尾后，重复取消也不能截断或追加第二份 JSON。
+  trap '' HUP INT TERM
+  local exit_code="$1" overall=success action=null run_id=null
+  local _ts _git_candidates _git_first _candidate _mirror
+  if [ "$exit_code" -ne 0 ]; then
+    overall=failed
+  elif [ "$FAILED_COUNT" -gt 0 ]; then
+    overall=partial
+  fi
+  if [ -n "$MODE" ]; then action="\"$MODE\""; fi
+  if [ "${CADENCE_SKILL_RUN_ID+x}" ]; then
+    run_id="\"$(json_escape "$CADENCE_SKILL_RUN_ID")\""
+  fi
+  _ts="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
+  # CADENCE_SUPERPOWERS_GIT 使用空格分隔候选；逐项转义后输出 JSON 数组。
+  _git_candidates="["
+  _git_first=1
+  for _candidate in ${CADENCE_SUPERPOWERS_GIT:-}; do
+    _candidate="$(json_escape "$_candidate")"
+    if [ "$_git_first" -eq 1 ]; then
+      _git_first=0
+    else
+      _git_candidates="$_git_candidates,"
+    fi
+    _git_candidates="$_git_candidates\"$_candidate\""
+  done
+  _git_candidates="$_git_candidates]"
+  _mirror="$(json_escape "$MIRROR")"
+  printf '{\n'
+  printf '  "mirror": "%s",\n' "$_mirror"
+  printf '  "mode": "%s",\n' "$MODE"
+  printf '  "no_interrupt": %s,\n' "$NO_INTERRUPT"
+  printf '  "upgrade": %s,\n' "$UPGRADE"
+  printf '  "finished_at": "%s",\n' "$_ts"
+  printf '  "schema": "cadence.skill-receipt/v1",\n'
+  printf '  "skill": "pre-check",\n'
+  printf '  "action": %s,\n' "$action"
+  printf '  "exit_code": %s,\n' "$exit_code"
+  printf '  "run_id": %s,\n' "$run_id"
+  printf '  "overall": "%s",\n' "$overall"
+  printf '  "steps": [%s],\n' "$STEPS_JSON"
+  printf '  "phases": [%s],\n' "$PHASES_JSON"
+  printf '  "warnings": [%s],\n' "$WARNINGS_JSON"
+  printf '  "backups": [%s],\n' "$BACKUPS_JSON"
+  printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
+  printf '  "hints": {"superpowers_git_candidates": %s}\n' "$_git_candidates"
+  printf '}\n'
+}
+
+# 被信号终止时，Bash 的 EXIT 钩子可能看到上一条命令的状态。成功回执只从主流程末尾输出。
+trap 'report_status=$?; [ "$report_status" -eq 0 ] || emit_report "$report_status"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # 解析参数
 while [ $# -gt 0 ]; do
   case "$1" in
     run|check)
-      if [ -n "$MODE" ]; then err "❌ 子命令重复：$1"; usage; exit 2; fi
+      if [ -n "$MODE" ]; then
+        err "❌ 子命令重复：$1"
+        usage
+        [ "$MODE" = "$1" ] || MODE=""
+        exit 2
+      fi
       MODE="$1"; shift ;;
     --mirror)
       [ $# -ge 2 ] || { err "❌ --mirror 缺少参数"; exit 2; }
@@ -120,13 +208,6 @@ fi
 # 读取镜像配置后，阶段与既有工具均消费同一组源设置。
 load_mirror "$MIRROR"
 
-# JSON 步骤累积（每项一行紧凑 JSON，由报告汇总）。
-STEPS_JSON=""
-# 报告级警告累积（内容级关注项，不影响 overall/退出码）。
-WARNINGS_JSON=""
-# 报告级归档清单累积（凡写入项目既有文件前的归档都在此可见）。
-BACKUPS_JSON=""
-
 # 项目根固定为调用 cwd 的物理路径；所有阶段动作消费此根目录。
 PROJECT_ROOT="$(pwd -P)"
 
@@ -139,8 +220,6 @@ CLAUDE_SKILLS_LAYER="$HOME/.claude/skills"
 PI_SKILLS_LAYER="$HOME/.pi/agent/skills"
 CODEX_LEGACY_SKILLS_LAYER="$HOME/.codex/skills/skills"
 
-# 五阶段报告累积（使用字符串，不使用 Bash 4 关联数组）。
-PHASES_JSON=""
 PHASE_CURRENT_STARTED_S=0
 PHASE_CURRENT_CREATED=0
 PHASE_CURRENT_UPDATED=0
@@ -1376,7 +1455,6 @@ run_required_phase() {
   _rc=$?
   [ "$_rc" -eq 0 ] && return 0
   if [ "$NO_INTERRUPT" = "1" ]; then
-    emit_report "failed"
     return "$_rc"
   fi
   mark_phase_partial "$_phase" "$_rc"
@@ -1390,8 +1468,6 @@ log "${C_BLU}🐍 python index:${C_NC} $CADENCE_PY_INDEX"
 
 # --- 通用辅助 ---
 
-FAILED_COUNT=0
-
 # 执行命令并输出首行版本号；命令退出码非零或无输出时返回非零，不打印到 stdout/stderr（避免污染 JSON）
 probe_version() {
   # 先单独执行命令并保留退出码（管道会丢失原命令退出码，导致误判 ready）
@@ -1401,18 +1477,6 @@ probe_version() {
   _out="$(printf '%s' "$_out" | head -n 1 | tr -d '\r')"
   [ -n "$_out" ] || return 1
   printf '%s' "$_out"
-}
-
-# JSON 字符串转义（最小集：反斜杠、双引号、控制字符）
-# 用 bash 参数展开处理真实控制字符（$'\n'/$'\t'），避免 sed 的 \t/\n 是 GNU 扩展、
-# 在 BSD/mac sed 上会把字面字母 t 误转义（bash 3.2 兼容，GNU/BSD 行为一致）
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"      # 反斜杠（须最先处理）
-  s="${s//\"/\\\"}"      # 双引号
-  s="${s//$'\n'/\\n}"      # 真实换行符 -> 两字符 \n
-  s="${s//$'\t'/\\t}"      # 真实 Tab 符 -> 两字符 \t
-  printf '%s' "$s"
 }
 
 # 追加一个步骤到 STEPS_JSON（name/status/action/version/error）
@@ -1676,7 +1740,6 @@ upgrade_npm_tool() {
     log "${C_RED}❌ $_name 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
     if [ "$NO_INTERRUPT" = "1" ]; then
       err "🛑 no-interrupt 模式：升级失败立即终止"
-      emit_report "failed"
       exit 1
     fi
     return 0
@@ -1712,7 +1775,6 @@ upgrade_uv() {
     log "${C_RED}❌ uv 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
     if [ "$NO_INTERRUPT" = "1" ]; then
       err "🛑 no-interrupt 模式：升级失败立即终止"
-      emit_report "failed"
       exit 1
     fi
     return 0
@@ -1765,56 +1827,9 @@ upgrade_pi_mcp_adapter() {
   log "${C_RED}❌ pi-mcp-adapter 升级失败（目标 ${_lat}，当前 ${_new:-未知}）${C_NC}"
   if [ "$NO_INTERRUPT" = "1" ]; then
     err "🛑 no-interrupt 模式：升级失败立即终止"
-    emit_report "failed"
     exit 1
   fi
   return 0
-}
-
-# --- 报告 ---
-
-# 计算整体状态：有失败→failed（no-interrupt）或 partial；否则 success
-compute_overall() {
-  if [ "$FAILED_COUNT" -gt 0 ]; then
-    if [ "$NO_INTERRUPT" = "1" ]; then printf 'failed'; else printf 'partial'; fi
-  else
-    printf 'success'
-  fi
-}
-
-# 输出单份 JSON 到 stdout。强制 failed 由 run_required_phase 在 no-interrupt 失败分支调用 emit_report failed 触发。
-emit_report() {
-  _overall="${1:-$(compute_overall)}"
-  _ts="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
-  # CADENCE_SUPERPOWERS_GIT 使用空格分隔候选；逐项转义后输出 JSON 数组。
-  _git_candidates="["
-  _git_first=1
-  for _candidate in $CADENCE_SUPERPOWERS_GIT; do
-    _candidate="$(json_escape "$_candidate")"
-    if [ "$_git_first" -eq 1 ]; then
-      _git_first=0
-    else
-      _git_candidates="$_git_candidates,"
-    fi
-    _git_candidates="$_git_candidates\"$_candidate\""
-  done
-  _git_candidates="$_git_candidates]"
-  _mirror="$(json_escape "$MIRROR")"
-  _mode="$(json_escape "$MODE")"
-  printf '{\n'
-  printf '  "mirror": "%s",\n' "$_mirror"
-  printf '  "mode": "%s",\n' "$_mode"
-  printf '  "no_interrupt": %s,\n' "$NO_INTERRUPT"
-  printf '  "upgrade": %s,\n' "$UPGRADE"
-  printf '  "finished_at": "%s",\n' "$_ts"
-  printf '  "overall": "%s",\n' "$_overall"
-  printf '  "steps": [%s],\n' "$STEPS_JSON"
-  printf '  "phases": [%s],\n' "$PHASES_JSON"
-  printf '  "warnings": [%s],\n' "$WARNINGS_JSON"
-  printf '  "backups": [%s],\n' "$BACKUPS_JSON"
-  printf '  "next_actions": ["superpowers-sync","openspec-clients","playwright-optional","apikey-placeholder"],\n'
-  printf '  "hints": {"superpowers_git_candidates": %s}\n' "$_git_candidates"
-  printf '}\n'
 }
 
 # --- 主流程：固定五阶段顺序；required phase 统一实施 no-interrupt 屏障 ---
@@ -1836,14 +1851,8 @@ run_required_phase "superpowers-git" do_superpowers_git_phase || exit $?
 run_required_phase "superpowers-links" do_superpowers_links_phase || exit $?
 run_required_phase "verify" do_verify_phase || exit $?
 
-# 汇总输出
-_OVERALL="$(compute_overall)"
-emit_report "$_OVERALL"
-
-if [ "$_OVERALL" = "failed" ]; then
+if [ "$NO_INTERRUPT" = "1" ] && [ "$FAILED_COUNT" -gt 0 ]; then
   exit 1
-elif [ "$_OVERALL" = "partial" ]; then
-  exit 0   # 普通模式部分失败仍以 0 结束，由 SKILL.md 读 overall 判定
-else
-  exit 0
 fi
+emit_report 0
+exit 0

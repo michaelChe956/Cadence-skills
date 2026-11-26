@@ -54,19 +54,28 @@ no-interrupt 模式的全部写入由 `scripts/apply.py` 完成（`apply.sh` 为
 
 ### 收尾报告（stdout 最后一行）
 
-六态行之后，脚本在 stdout 最后一行输出单行 JSON 收尾报告（`--help` 除外）；上表的逐行输出不变，模型仍按上表解读。调用方（含 cadence-aria 的零变更判定）只读取该行的 `overall`。
+读取 stdout 最后一行的单行 JSON 回执。`skill` 和 `action` 标识本次铺设或合并，`run_id` 对应调用方的本次运行，`overall` 是末键。前面的六态行给出各文件的处理结果，`--help` 只显示帮助。
 
 | 字段 | 含义 |
 |------|------|
-| `overall` | 总是该行最后一个键。取值只有 `success`（退出码 0）与 `failed`（退出码 2 / 3），与 `pre-check` 对齐 |
-| `exit_code` | 进程退出码 |
+| `schema` | 固定 `cadence.skill-receipt/v1`（回执契约版本） |
+| `skill` | 规范名 `project-rules-examples` |
+| `action` | 本次实际解析的分支：铺设、合并、零改动与已进入业务的错误均为 `apply`；用法错误（无法确定分支）时为 `null` |
+| `run_id` | 当次环境 `CADENCE_SKILL_RUN_ID` 的原样值（特殊字符原样保留）；未设置为 `null`，空串表示已设置 |
+| `exit_code` | 进程真实退出码（整数） |
+| `overall` | `success` 对应退出码 0，`failed` 对应退出码 2 或 3 |
+
+同行的明细字段（语义不变）：
+
+| 字段 | 含义 |
+|------|------|
 | `counts` | 六种状态各出现的次数 |
 | `completed` | 已处理的路径（失败时即失败前已完成的文件） |
 | `needs_rule_config` | 缺少等价引用的入口文件；这是交给 `rule-config` 的交接项，**不算失败**，`overall` 仍为 `success` |
 | `pending` | stderr `pending` 提示的数量 |
 | `failure` | 失败时的 `file` / `reason` / `recovery`，成功时为 `null` |
 
-幂等重跑（全部 `pristine` / `unchanged` / `skipped`，零写入）输出 `overall` = `success`。
+幂等重跑时，文件状态为 `pristine`、`unchanged` 或 `skipped`，回执仍为 `apply / success / 0`。
 
 脚本保证的合并规则（模型不得绕过）：
 
