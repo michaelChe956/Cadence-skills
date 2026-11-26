@@ -32,7 +32,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, NamedTuple, Optional
+from typing import Any, Iterator, NamedTuple, Optional
 
 # 共享合并库与脚本同目录；skill 以目录为安装单元，直接加入 sys.path。
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -398,13 +398,22 @@ def render_mandatory_section(entry_name: str, project_type: str,
 _CLAUDE_HEADER = """# CLAUDE.md
 
 本文件为 Claude Code (claude.ai/code) 在此仓库中工作提供指导。"""
-_AGENTS_HEADER = """# AGENTS.md
+_AGENTS_DEFAULT_ROLE_HEADING = "## 默认角色"
+_AGENTS_CODING_ROLE_LINE = (
+    "- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，"
+    "再按要求实施、验证并汇报结果。"
+)
+_AGENTS_LEGACY_CODING_ROLE_LINE = (
+    "- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，"
+    "再按指令完成实现、验证与结果汇报。"
+)
+_AGENTS_HEADER = f"""# AGENTS.md
 
 本文件为 Codex 及其他 AI Agents 在此仓库中工作提供指导。
 
-## 默认角色
+{_AGENTS_DEFAULT_ROLE_HEADING}
 
-- **Coding 项目**：默认角色为**谨慎执行者**，优先阅读 issue、现有代码和约束，再按要求实施、验证并汇报结果。
+{_AGENTS_CODING_ROLE_LINE}
 - **非 Coding 项目**：默认遵循文档、配置、规则维护职责，非必要不编写代码。"""
 
 
@@ -2913,9 +2922,11 @@ def _known_framework_lines() -> set[str]:
 
 
 def _managed_lines_from_entry(existing: str, entry_name: str = "CLAUDE.md") -> set[str]:
-    """返回入口中框架受管区的原始行：L0 区块与规范 H3 条目。"""
+    """返回入口中可归属框架的原始行，供 loss guard 校验。"""
     managed: set[str] = set()
     lines = existing.splitlines()
+    if entry_name == "AGENTS.md" and next(_legacy_agents_role_indices(lines), None) is not None:
+        managed.add(_AGENTS_LEGACY_CODING_ROLE_LINE)
     # L0 受管区块
     begin = next((i for i, line in enumerate(lines) if line.strip() == L0_BEGIN), None)
     end = next((i for i, line in enumerate(lines) if line.strip() == L0_END), None)
@@ -3112,6 +3123,13 @@ def _compose_entry(existing: str, l0_source: str, *, state: str,
     text = existing
     if existing_rule_files is None:
         existing_rule_files = set()
+
+    # 仅迁移默认角色小节中仍与旧模板完全一致的 Coding 项目条目。
+    if entry_name == "AGENTS.md" and _AGENTS_LEGACY_CODING_ROLE_LINE in text:
+        lines = text.split("\n")
+        for index in _legacy_agents_role_indices(lines):
+            lines[index] = _AGENTS_CODING_ROLE_LINE
+        text = "\n".join(lines)
 
     # --- 步骤 1：规范化 L0 ---
     l0_warnings: list[dict] = []
@@ -3471,10 +3489,10 @@ def _normalize_mandatory_rules_legacy(
     return finish(result), warnings_out
 
 
-def _fence_aware_section_end(lines: list[str], start: int) -> int:
-    """返回从 start+1 起下一个 H1/H2 的行号；围栏内的 # 不算标题。"""
+def _unfenced_lines(lines: list[str], start: int) -> Iterator[tuple[int, str]]:
+    """遍历围栏外的行，保留原始行号。"""
     fence: tuple[str, int] | None = None
-    for i in range(start + 1, len(lines)):
+    for i in range(start, len(lines)):
         line = lines[i]
         match = re.match(r"^\s*(```+|~~~+)", line)
         if fence is None and match:
@@ -3484,6 +3502,26 @@ def _fence_aware_section_end(lines: list[str], start: int) -> int:
             if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= fence[1]:
                 fence = None
             continue
+        yield i, line
+
+
+def _legacy_agents_role_indices(lines: list[str]) -> Iterator[int]:
+    """识别首个默认角色小节直接正文里的旧版框架角色行。"""
+    if _AGENTS_LEGACY_CODING_ROLE_LINE not in lines:
+        return
+    in_default_role = False
+    for i, line in _unfenced_lines(lines, 0):
+        if _HEADING_RE.match(line):
+            if in_default_role:
+                break
+            in_default_role = line.rstrip() == _AGENTS_DEFAULT_ROLE_HEADING
+        elif in_default_role and line == _AGENTS_LEGACY_CODING_ROLE_LINE:
+            yield i
+
+
+def _fence_aware_section_end(lines: list[str], start: int) -> int:
+    """返回从 start+1 起下一个 H1/H2 的行号；围栏内的 # 不算标题。"""
+    for i, line in _unfenced_lines(lines, start + 1):
         stripped = line.strip()
         if stripped.startswith("## ") or stripped.startswith("# "):
             return i
