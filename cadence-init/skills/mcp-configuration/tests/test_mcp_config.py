@@ -16,15 +16,20 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_DIR / "scripts" / "mcp-config.py"
+
+RECEIPT_SCHEMA = "cadence.skill-receipt/v1"
+RUN_ID_ENV = "CADENCE_SKILL_RUN_ID"
 
 WRITE_ACTIONS = {
     "created", "merged", "server-restored", "field-added",
@@ -47,7 +52,14 @@ class McpConfigTestCase(unittest.TestCase):
 
     # -- helpers ---------------------------------------------------------
 
-    def run_apply(self, *extra: str) -> subprocess.CompletedProcess:
+    def child_env(self, overrides: Optional[dict] = None) -> dict:
+        """子进程环境：默认清除 `CADENCE_SKILL_RUN_ID`，让 run_id 断言确定。"""
+        env = {k: v for k, v in os.environ.items() if k != RUN_ID_ENV}
+        if overrides:
+            env.update(overrides)
+        return env
+
+    def run_apply(self, *extra: str, env: Optional[dict] = None) -> subprocess.CompletedProcess:
         """执行 mcp-config.py apply。"""
         cmd = [
             sys.executable, str(SCRIPT), "apply",
@@ -57,7 +69,8 @@ class McpConfigTestCase(unittest.TestCase):
             *extra,
         ]
         return subprocess.run(cmd, capture_output=True, text=True,
-                              stdin=subprocess.DEVNULL, timeout=120)
+                              stdin=subprocess.DEVNULL, timeout=120,
+                              env=self.child_env(env))
 
     def read_report(self) -> dict:
         return json.loads(self.report_path.read_text(encoding="utf-8"))
@@ -464,6 +477,17 @@ class TestStdoutReport(McpConfigTestCase):
         self.assertTrue(lines and lines[-1].startswith("{"), stdout)
         return json.loads(lines[-1])
 
+    def assert_receipt(self, receipt: dict, *, action: Optional[str],
+                       exit_code: int, overall: str) -> None:
+        """cadence.skill-receipt/v1 契约断言。"""
+        self.assertEqual(receipt["schema"], RECEIPT_SCHEMA)
+        self.assertEqual(receipt["skill"], "mcp-configuration")
+        self.assertEqual(receipt["action"], action)
+        self.assertEqual(receipt["exit_code"], exit_code)
+        self.assertEqual(receipt["overall"], overall)
+        self.assertIn("run_id", receipt)
+        self.assertEqual(list(receipt)[-1], "overall", "overall 必须是最后一个键")
+
     def test_first_run_reports_success(self) -> None:
         proc = self.run_apply()
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -474,6 +498,13 @@ class TestStdoutReport(McpConfigTestCase):
         self.assertEqual(report["report"], str(self.report_path))
         self.assertIn("mcp-config: overall=ok", proc.stdout)  # 原摘要行保留
         self.assertEqual(recipe_report_verdict(proc.stdout), "success")
+        # 收尾回执契约：动作、run_id、真实退出码；stdout 只有一行 JSON（空格不属契约）。
+        self.assert_receipt(report, action="apply", exit_code=0, overall="success")
+        self.assertIsNone(report["run_id"])
+        self.assertEqual(proc.returncode, report["exit_code"])
+        receipt_lines = [ln for ln in proc.stdout.splitlines()
+                         if ln.strip().startswith("{")]
+        self.assertEqual(len(receipt_lines), 1)
 
     def test_idempotent_rerun_reports_success(self) -> None:
         self.run_apply()
@@ -484,6 +515,8 @@ class TestStdoutReport(McpConfigTestCase):
         self.assertEqual(self.read_report()["backups"], [])
         self.assertEqual(self.last_report(proc.stdout)["overall"], "success")
         self.assertEqual(recipe_report_verdict(proc.stdout), "success")
+        self.assert_receipt(self.last_report(proc.stdout), action="apply",
+                             exit_code=0, overall="success")
 
     def test_degraded_reports_success_with_native_degraded(self) -> None:
         (self.project / ".mcp.json").write_text("{ this is not json\n", encoding="utf-8")
@@ -493,6 +526,9 @@ class TestStdoutReport(McpConfigTestCase):
         self.assertEqual(report["overall"], "success")
         self.assertEqual(report["native"], "degraded")
         self.assertGreaterEqual(report["pending"], 1)
+        # degraded 仍是成功收尾：原生取值保留在 native，退出码与进程一致。
+        self.assert_receipt(report, action="apply", exit_code=0, overall="success")
+        self.assertEqual(proc.returncode, report["exit_code"])
 
     def test_backup_failure_reports_failed(self) -> None:
         self.write_mcp_json({"mcpServers": {"context7": {
@@ -509,22 +545,129 @@ class TestStdoutReport(McpConfigTestCase):
         self.assertEqual(report["exit_code"], 1)
         self.assertTrue(report["failure"]["reason"])
         self.assertEqual(recipe_report_verdict(proc.stdout), "failed")
+        self.assert_receipt(report, action="apply", exit_code=1, overall="failed")
+        self.assertEqual(proc.returncode, report["exit_code"])
+
+    def test_report_write_failure_reports_failed(self) -> None:
+        """--report 指向目录：报告写不进去也要给出失败回执，退出码与真实进程一致。"""
+        report_dir = self.tmp / "report-dir"
+        report_dir.mkdir()
+        proc = subprocess.run([sys.executable, str(SCRIPT), "apply",
+                               "--project-root", str(self.project),
+                               "--report", str(report_dir),
+                               "--no-interrupt"],
+                              capture_output=True, text=True,
+                              env=self.child_env())
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        report = self.last_report(proc.stdout)
+        self.assert_receipt(report, action="apply", exit_code=1, overall="failed")
+        self.assertEqual(report["native"], "fail")
+        self.assertEqual(report["failure"]["file"], str(report_dir))
+        self.assertTrue(report["failure"]["reason"])
+        self.assertEqual(proc.returncode, report["exit_code"])
+
+    def test_report_path_expand_failure_reports_failed(self) -> None:
+        """--report 指向 ~不存在的账户：路径展开失败也要给出失败回执。"""
+        proc = subprocess.run([sys.executable, str(SCRIPT), "apply",
+                               "--project-root", str(self.project),
+                               "--report", "~不存在的账户/out",
+                               "--no-interrupt"],
+                              capture_output=True, text=True,
+                              env=self.child_env())
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        report = self.last_report(proc.stdout)
+        self.assert_receipt(report, action="apply", exit_code=1, overall="failed")
+        self.assertEqual(report["native"], "fail")
+        self.assertTrue(report["failure"]["reason"])
+        self.assertEqual(proc.returncode, report["exit_code"])
+
+    def test_project_root_expand_failure_reports_usage_error(self) -> None:
+        """项目根路径展开失败：走 UsageError / 退出码 2，非法 --report 也不得拖垮回执。"""
+        cases = [
+            (["--project-root", "~不存在的账户/x",
+              "--report", str(self.report_path)], str(self.report_path)),
+            (["--project-root", str(self.tmp / "nope"),
+              "--report", "~不存在的账户/out"], "~不存在的账户/out"),
+        ]
+        for extra, expected_report in cases:
+            with self.subTest(extra=extra):
+                proc = subprocess.run([sys.executable, str(SCRIPT), "apply", *extra],
+                                      capture_output=True, text=True,
+                                      env=self.child_env())
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                report = self.last_report(proc.stdout)
+                self.assert_receipt(report, action="apply", exit_code=2,
+                                     overall="failed")
+                self.assertIsNone(report["native"])
+                self.assertEqual(report["report"], expected_report)
+                self.assertEqual(proc.returncode, report["exit_code"])
 
     def test_usage_error_reports_failed(self) -> None:
         cmd = [sys.executable, str(SCRIPT), "apply",
                "--project-root", str(self.tmp / "nope"),
                "--report", str(self.report_path)]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              env=self.child_env())
         self.assertEqual(proc.returncode, 2)
         report = self.last_report(proc.stdout)
         self.assertEqual(report["overall"], "failed")
         self.assertEqual(report["exit_code"], 2)
+        # 子命令已解析：动作仍是 apply，退出码与真实进程一致。
+        self.assert_receipt(report, action="apply", exit_code=2, overall="failed")
+        self.assertEqual(proc.returncode, report["exit_code"])
+        self.assertIsNone(report["run_id"])
+
+    def test_usage_error_without_action_reports_null_action(self) -> None:
+        """用法错误且无法确定动作：action 为 null。"""
+        for argv in ([], ["bogus"]):
+            with self.subTest(argv=argv):
+                proc = subprocess.run([sys.executable, str(SCRIPT), *argv],
+                                      capture_output=True, text=True,
+                                      env=self.child_env())
+                self.assertEqual(proc.returncode, 2)
+                report = self.last_report(proc.stdout)
+                self.assert_receipt(report, action=None, exit_code=2,
+                                     overall="failed")
+                self.assertIsNone(report["run_id"])
+
+    def test_usage_error_inside_subcommand_keeps_action(self) -> None:
+        """子命令已选中但参数缺失：动作仍是 apply。"""
+        proc = subprocess.run([sys.executable, str(SCRIPT), "apply",
+                               "--project-root", str(self.project)],
+                              capture_output=True, text=True,
+                              env=self.child_env())
+        self.assertEqual(proc.returncode, 2)
+        report = self.last_report(proc.stdout)
+        self.assert_receipt(report, action="apply", exit_code=2, overall="failed")
+        self.assertEqual(proc.returncode, report["exit_code"])
+
+    def test_run_id_follows_environment(self) -> None:
+        """run_id 取当次环境变量：未设置 null，空串按已设置保留，特殊字符原样保留。
+
+        回执为纯 ASCII：U+2028 / U+0085 不拆行，中文经转义仍可在
+        PYTHONIOENCODING=ascii 的终端回传。
+        """
+        values = ("run-2026", "", 'a"b\\c', "中文\u2028\u2029\u0085run")
+        for value in values:
+            with self.subTest(run_id=value):
+                proc = self.run_apply(env={RUN_ID_ENV: value,
+                                           "PYTHONIOENCODING": "ascii"})
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                report = self.last_report(proc.stdout)
+                self.assertEqual(report["run_id"], value)
+                self.assert_receipt(report, action="apply", exit_code=0,
+                                     overall="success")
 
     def test_help_prints_no_report(self) -> None:
-        proc = subprocess.run([sys.executable, str(SCRIPT), "apply", "--help"],
-                              capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertNotIn('"overall"', proc.stdout)
+        for argv in (["apply", "--help"], ["--help"]):
+            with self.subTest(argv=argv):
+                proc = subprocess.run([sys.executable, str(SCRIPT), *argv],
+                                      capture_output=True, text=True,
+                                      env=self.child_env())
+                self.assertEqual(proc.returncode, 0)
+                self.assertNotIn('"overall"', proc.stdout)
+                self.assertNotIn(RECEIPT_SCHEMA, proc.stdout)
+                self.assertIn("usage:", proc.stdout)  # 原有帮助不变
 
 
 if __name__ == "__main__":

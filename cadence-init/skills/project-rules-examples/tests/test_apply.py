@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -48,12 +49,18 @@ class PrxTestCase(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
-    def run_apply(self, root: Path) -> subprocess.CompletedProcess:
+    def run_apply(self, root: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+        """真实 CLI 调用；默认剔除 CADENCE_SKILL_RUN_ID，env 中的变量原样设置（空串也算设置）。"""
+        child_env = os.environ.copy()
+        child_env.pop("CADENCE_SKILL_RUN_ID", None)
+        if env:
+            child_env.update(env)
         return subprocess.run(
             [sys.executable, str(SCRIPTS / "apply.py"), "--project-root", str(root)],
             capture_output=True,
             text=True,
             check=False,
+            env=child_env,
         )
 
     def state_of(self, stdout: str, rel: str) -> str:
@@ -275,12 +282,22 @@ def recipe_report_verdict(tool_output: str) -> str:
 
 
 class ReportContractTests(PrxTestCase):
-    """stdout 末尾收尾报告契约：单行 JSON，`"overall"` 取值 success|failed。"""
+    """stdout 末尾收尾报告契约：单行 JSON；六字段回执契约与明细字段同层，`"overall"` 取值 success|failed。"""
 
     def last_report(self, stdout: str) -> dict:
         lines = [ln for ln in stdout.splitlines() if ln.strip()]
         self.assertTrue(lines and lines[-1].startswith("{"), f"最后一行必须是报告 JSON：{stdout!r}")
         return json.loads(lines[-1])
+
+    def assert_receipt(self, report: dict, action: str | None, exit_code: int) -> None:
+        """六字段回执契约：schema/skill/action/run_id/exit_code/overall，overall 为最后一个键。"""
+        self.assertEqual(report["schema"], "cadence.skill-receipt/v1")
+        self.assertEqual(report["skill"], "project-rules-examples")
+        self.assertEqual(report["action"], action)
+        self.assertEqual(report["exit_code"], exit_code)
+        self.assertIsInstance(report["exit_code"], int)
+        self.assertEqual(report["overall"], "failed" if exit_code != 0 else "success")
+        self.assertEqual(list(report)[-1], "overall", "overall 必须是最后一个键")
 
     def test_fresh_run_reports_success_and_keeps_status_lines(self):
         root = self.make_root()
@@ -295,6 +312,9 @@ class ReportContractTests(PrxTestCase):
         self.assertEqual(recipe_report_verdict(result.stdout), "success")
         for rel in PROJECT_RELS:  # 逐行输出保持不变
             self.assertEqual(self.state_of(result.stdout, rel), "created", rel)
+        # 铺设分支：action=apply；未设置 CADENCE_SKILL_RUN_ID 时 run_id 为 null
+        self.assert_receipt(report, action="apply", exit_code=result.returncode)
+        self.assertIsNone(report["run_id"])
 
     def test_idempotent_rerun_zero_write_reports_success(self):
         root = self.make_root()
@@ -312,6 +332,8 @@ class ReportContractTests(PrxTestCase):
         self.assertEqual(report["counts"]["skipped"], len(prx.ENTRY_FILES))
         self.assertEqual(report["counts"]["created"] + report["counts"]["merged"], 0)
         self.assertEqual(recipe_report_verdict(second.stdout), "success")
+        # 零改动重跑仍属 apply 分支
+        self.assert_receipt(report, action="apply", exit_code=second.returncode)
 
     def write_entries(self, root: Path) -> None:
         for entry in prx.ENTRY_FILES:
@@ -340,6 +362,10 @@ class ReportContractTests(PrxTestCase):
         # 失败前已完成的文件仍以逐行状态输出并计入 completed
         self.assertEqual(self.state_of(result.stdout, "README.md"), "created")
         self.assertIn("cadence/project-rules/README.md", report["completed"])
+        # 已进入业务的错误仍属 apply 分支，故障描述原样保留
+        self.assert_receipt(report, action="apply", exit_code=result.returncode)
+        self.assertTrue(report["failure"]["reason"])
+        self.assertTrue(report["failure"]["recovery"])
 
     def test_backup_failure_exit_3_reports_failed_not_traceback(self):
         root = self.make_root()
@@ -354,6 +380,8 @@ class ReportContractTests(PrxTestCase):
         self.assertEqual(report["overall"], "failed")
         self.assertEqual(report["failure"]["file"], "cadence/project-rules/README.md")
         self.assertEqual(recipe_report_verdict(result.stdout), "failed")
+        # 备份失败属已进入业务的错误：action 仍为 apply
+        self.assert_receipt(report, action="apply", exit_code=result.returncode)
 
     def test_usage_error_exit_2_reports_failed(self):
         result = subprocess.run(
@@ -364,6 +392,9 @@ class ReportContractTests(PrxTestCase):
         report = self.last_report(result.stdout)
         self.assertEqual(report["overall"], "failed")
         self.assertEqual(report["exit_code"], 2)
+        # 根不存在发生在业务分支内：action 仍为 apply，故障描述保留
+        self.assert_receipt(report, action="apply", exit_code=result.returncode)
+        self.assertIn("项目根不存在", report["failure"]["reason"])
 
     def test_unknown_flag_exit_2_reports_failed(self):
         result = subprocess.run(
@@ -371,7 +402,10 @@ class ReportContractTests(PrxTestCase):
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(result.returncode, 2)
-        self.assertEqual(self.last_report(result.stdout)["overall"], "failed")
+        report = self.last_report(result.stdout)
+        self.assertEqual(report["overall"], "failed")
+        # 用法错误无法确定分支：action 为 null
+        self.assert_receipt(report, action=None, exit_code=result.returncode)
 
     def test_help_prints_no_report(self):
         result = subprocess.run(
@@ -380,6 +414,27 @@ class ReportContractTests(PrxTestCase):
         )
         self.assertEqual(result.returncode, 0)
         self.assertNotIn('"overall"', result.stdout)
+        # --help 只输出原有帮助，不输出回执
+        self.assertIn("usage:", result.stdout)
+        self.assertNotIn("cadence.skill-receipt/v1", result.stdout)
+
+    def test_run_id_from_environment(self):
+        """run_id：未设置→null；空串→""（算已设置）；特殊字符原样保留。
+
+        末行按 json.dumps 默认 ensure_ascii 转义输出：U+2028/U+0085 不落到实际字符上，
+        消费端 splitlines() 仍只看到一行；PYTHONIOENCODING=ascii 下也能回传中文。
+        """
+        root = self.make_root()
+        special = 'run-"x"\\y 空格' + chr(0x2028) + chr(0x0085)
+        for value, expected in ((None, None), ("", ""), (special, special)):
+            with self.subTest(run_id=value):
+                env = {"PYTHONIOENCODING": "ascii"}
+                if value is not None:
+                    env["CADENCE_SKILL_RUN_ID"] = value
+                result = self.run_apply(root, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = self.last_report(result.stdout)
+                self.assertEqual(report["run_id"], expected)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

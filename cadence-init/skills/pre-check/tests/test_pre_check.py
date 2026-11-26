@@ -1158,3 +1158,169 @@ class TestPhaseReport(unittest.TestCase):
                 [phase["phase"] for phase in report["phases"]],
                 ["base-tools", "openspec", "superpowers-git", "superpowers-links", "verify"],
             )
+
+
+class TestTerminalReceipt(unittest.TestCase):
+    """终端回执契约（cadence.skill-receipt/v1）：完整报告与早退错误共用六字段。"""
+
+    _UNSET = object()
+
+    def _run_receipt(self, fixture, *args, run_id=_UNSET):
+        """以真实 bash 进程运行 pre-check；默认剥离外部 CADENCE_SKILL_RUN_ID 保证断言确定性。"""
+        env = fixture.env()
+        env.pop("CADENCE_SKILL_RUN_ID", None)
+        if run_id is not TestTerminalReceipt._UNSET:
+            env["CADENCE_SKILL_RUN_ID"] = run_id
+        return subprocess.run(
+            ["bash", str(SCRIPT), *args],
+            cwd=fixture.project,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+    def test_check_partial_receipt_normal_mode(self):
+        """check 普通模式 partial 仍以 0 退出，回执六字段齐全且 run_id 紧邻顶层 overall 之前。"""
+        with isolated_fixture("base-tools-failure") as fx:
+            proc = self._run_receipt(fx, "check")
+            self.assertEqual(proc.returncode, 0)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["schema"], "cadence.skill-receipt/v1")
+            self.assertEqual(doc["skill"], "pre-check")
+            self.assertEqual(doc["action"], "check")
+            self.assertIsNone(doc["run_id"])
+            self.assertEqual(doc["exit_code"], 0)
+            self.assertEqual(doc["overall"], "partial")
+            # 旧消费端按文本扫描 "overall"：run_id 键必须出现在顶层真实 overall 之前。
+            self.assertLess(proc.stdout.index('"run_id"'), proc.stdout.index('"overall"'))
+
+    def test_no_interrupt_failure_receipt_nonzero(self):
+        """--no-interrupt 失败以非零退出，exit_code 等于真实退出码，stderr 诊断保留。"""
+        with isolated_fixture("base-tools-failure") as fx:
+            proc = self._run_receipt(fx, "run", "--no-interrupt")
+            self.assertEqual(proc.returncode, 1)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["schema"], "cadence.skill-receipt/v1")
+            self.assertEqual(doc["skill"], "pre-check")
+            self.assertEqual(doc["action"], "run")
+            self.assertIsNone(doc["run_id"])
+            self.assertEqual(doc["exit_code"], proc.returncode)
+            self.assertEqual(doc["overall"], "failed")
+            self.assertIn("❌", proc.stderr)
+
+    def test_cancelled_probe_reports_its_process_exit_code(self):
+        with isolated_fixture() as fx:
+            # 在第一个工具探测处发送真实信号；独立会话确保只取消本次预检。
+            (fx.bin / "npx").write_text('#!/bin/sh\nkill -s "$FAKE_CANCEL_SIGNAL" 0\n',
+                                        encoding="utf-8")
+            for sig, code in (("HUP", 129), ("INT", 130), ("TERM", 143)):
+                with self.subTest(signal=sig):
+                    proc = subprocess.run(
+                        ["bash", str(SCRIPT), "check"], cwd=fx.project,
+                        env=dict(fx.env(), FAKE_CANCEL_SIGNAL=sig), start_new_session=True,
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(proc.returncode, code, proc.stderr)
+                    report = json.loads(proc.stdout)
+                    self.assertEqual(report["exit_code"], proc.returncode)
+                    self.assertEqual(report["overall"], "failed")
+                    self.assertEqual(report["action"], "check")
+
+    def test_run_then_check_receipt_success_on_same_project(self):
+        """先 run 成功再对同一项目 check：两份回执 action 分别为 run/check 且 overall=success。"""
+        with isolated_fixture("openspec-ready") as fx:
+            run_proc = self._run_receipt(fx, "run")
+            self.assertEqual(run_proc.returncode, 0, run_proc.stderr)
+            run_doc = json.loads(run_proc.stdout)
+            self.assertEqual(run_doc["schema"], "cadence.skill-receipt/v1")
+            self.assertEqual(run_doc["skill"], "pre-check")
+            self.assertEqual(run_doc["action"], "run")
+            self.assertIsNone(run_doc["run_id"])
+            self.assertEqual(run_doc["exit_code"], 0)
+            self.assertEqual(run_doc["overall"], "success")
+            check_proc = self._run_receipt(fx, "check")
+            self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
+            check_doc = json.loads(check_proc.stdout)
+            self.assertEqual(check_doc["schema"], "cadence.skill-receipt/v1")
+            self.assertEqual(check_doc["action"], "check")
+            self.assertEqual(check_doc["exit_code"], 0)
+            self.assertEqual(check_doc["overall"], "success")
+
+    def test_run_id_special_characters_roundtrip(self):
+        """run_id 的双引号/反斜杠/换行/制表/回车/控制字符与尾换行必须原样回传。"""
+        run_id = 'pre"check\\v1\t混合\ncr\r\x07\n'
+        with isolated_fixture() as fx:
+            proc = self._run_receipt(fx, "check", run_id=run_id)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["run_id"], run_id)
+            self.assertEqual(doc["action"], "check")
+            self.assertEqual(doc["exit_code"], 0)
+
+    def test_run_id_empty_string_counts_as_set(self):
+        """空串 run_id 视为已设置，回传空字符串而非 null。"""
+        with isolated_fixture() as fx:
+            proc = self._run_receipt(fx, "check", run_id="")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["run_id"], "")
+
+    def test_usage_errors_missing_unknown_duplicate_and_help(self):
+        """缺少子命令/未知参数/子命令互斥重复/--help：同一 fixture 内依次验证兼容与回执。"""
+        run_id = 'usage"err\n'
+        with isolated_fixture() as fx:
+            # 缺少子命令：exit 2、action=null，run_id 仍原样回传，stderr 帮助与诊断保留。
+            proc = self._run_receipt(fx, run_id=run_id)
+            self.assertEqual(proc.returncode, 2)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["schema"], "cadence.skill-receipt/v1")
+            self.assertEqual(doc["skill"], "pre-check")
+            self.assertIsNone(doc["action"])
+            self.assertEqual(doc["run_id"], run_id)
+            self.assertEqual(doc["exit_code"], 2)
+            self.assertEqual(doc["overall"], "failed")
+            self.assertIn("用法:", proc.stderr)
+            self.assertIn("缺少子命令", proc.stderr)
+            self.assertLess(proc.stdout.index('"run_id"'), proc.stdout.index('"overall"'))
+            # 未知参数：action=null，stderr 帮助与诊断保留。
+            proc = self._run_receipt(fx, "bogus-subcommand")
+            self.assertEqual(proc.returncode, 2)
+            doc = json.loads(proc.stdout)
+            self.assertIsNone(doc["action"])
+            self.assertEqual(doc["exit_code"], 2)
+            self.assertEqual(doc["overall"], "failed")
+            self.assertIn("未知参数", proc.stderr)
+            self.assertIn("用法:", proc.stderr)
+            # 同时指定 run 与 check 为互斥输入：无法确定单一动作，action=null。
+            proc = self._run_receipt(fx, "run", "check")
+            self.assertEqual(proc.returncode, 2)
+            doc = json.loads(proc.stdout)
+            self.assertIsNone(doc["action"])
+            self.assertEqual(doc["exit_code"], 2)
+            self.assertEqual(doc["overall"], "failed")
+            self.assertIn("子命令重复", proc.stderr)
+            # --help：保持原有 stderr 帮助并以 0 退出，不输出回执 JSON。
+            proc = self._run_receipt(fx, "--help")
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(proc.stdout, "")
+            self.assertIn("用法:", proc.stderr)
+            self.assertIn("pre-check.sh run", proc.stderr)
+
+    def test_usage_error_after_parsed_subcommand_keeps_action(self):
+        """子命令解析后的用法错与镜像加载失败：回执保留实际解析的子命令。"""
+        with isolated_fixture() as fx:
+            proc = self._run_receipt(fx, "check", "--upgrade")
+            self.assertEqual(proc.returncode, 2)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["action"], "check")
+            self.assertEqual(doc["exit_code"], 2)
+            self.assertEqual(doc["overall"], "failed")
+            self.assertIn("check 模式不支持", proc.stderr)
+        with isolated_fixture() as fx:
+            proc = self._run_receipt(fx, "run", "--mirror", "bogus")
+            self.assertEqual(proc.returncode, 2)
+            doc = json.loads(proc.stdout)
+            self.assertEqual(doc["action"], "run")
+            self.assertEqual(doc["exit_code"], 2)
+            self.assertIn("未知 mirror", proc.stderr)

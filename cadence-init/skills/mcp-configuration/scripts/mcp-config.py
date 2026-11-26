@@ -22,6 +22,9 @@
 
 退出码：0=ok/degraded，1=fail，2=usage。
 
+收尾回执：stdout 最后一行是单行 JSON（schema `cadence.skill-receipt/v1`），含
+`skill` / `action` / `run_id` / `exit_code` / `overall`（末键）等字段；`--help` 只输出帮助。
+
 报告只输出 server 名、字段名、变量名与框架值，**绝不输出用户真实密钥**。
 """
 
@@ -50,6 +53,12 @@ REQUIRED_SERVERS_FILE = SKILL_DIR / "references" / "required-servers.json"
 LEGACY_GITIGNORE = "*\n!.gitignore\n"
 MCP_JSON_RELPATH = ".mcp.json"
 CODEX_TOML_RELPATH = ".codex/config.toml"
+
+# 技能收尾回执契约（cadence.skill-receipt/v1）。
+RECEIPT_SCHEMA = "cadence.skill-receipt/v1"
+SKILL_NAME = "mcp-configuration"
+RUN_ID_ENV = "CADENCE_SKILL_RUN_ID"
+SUBCOMMANDS = ("apply",)
 
 # 占位符判定：`your_*` 形式（含 `Bearer your_zhipu_api_key` 这类带前缀的值）。
 PLACEHOLDER_RE = re.compile(r"your_[A-Za-z0-9_]+")
@@ -1085,7 +1094,10 @@ def ensure_gitignore_security(root: Path, report: dict, allow_override: bool = F
 
 def cmd_apply(args: argparse.Namespace) -> int:
     """apply 子命令。"""
-    root = Path(args.project_root).expanduser()
+    try:
+        root = Path(args.project_root).expanduser()
+    except RuntimeError as exc:  # ~账户不存在：按用法错误收尾（退出码 2）
+        raise UsageError(f"项目根路径展开失败：{exc}") from exc
     if not root.exists() or not root.is_dir():
         raise UsageError(f"项目根不存在或不是目录：{root}")
     root = root.resolve()
@@ -1101,8 +1113,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "reason": str(exc),
             "recovery": "重新安装 mcp-configuration skill 后重试",
         }
-        _finish(args, report)
-        return 1
+        return _finish(args, report)
 
     if args.project_type:
         project_type = args.project_type
@@ -1126,8 +1137,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "reason": str(exc),
             "recovery": "检查归档目录与目标目录写权限后重试",
         }
-        _finish(args, report)
-        return 1
+        return _finish(args, report)
     except OSError as exc:
         report["overall"] = "fail"
         report["failure"] = {
@@ -1135,8 +1145,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "reason": f"文件系统错误：{exc}",
             "recovery": "检查项目目录权限后重试",
         }
-        _finish(args, report)
-        return 1
+        return _finish(args, report)
     except Exception as exc:  # noqa: BLE001 - 兜底：任何异常都要落报告
         report["overall"] = "fail"
         report["failure"] = {
@@ -1144,36 +1153,88 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "reason": f"未捕获异常：{exc}",
             "recovery": "检查项目状态与脚本版本后重试",
         }
-        _finish(args, report)
-        return 1
+        return _finish(args, report)
 
-    _finish(args, report)
-    return 0 if report["overall"] in ("ok", "degraded") else 1
+    return _finish(args, report)
+
+
+def _current_run_id() -> Optional[str]:
+    """本次运行的 run_id：未设置 `CADENCE_SKILL_RUN_ID` 时为 null，空串按已设置原样保留。"""
+    return os.environ.get(RUN_ID_ENV)
+
+
+def _safe_expand(raw: str) -> str:
+    """展开 `~`；展开失败时原样返回，不抛栈（非法 `--report` 不得拖垮回执）。"""
+    try:
+        return str(Path(raw).expanduser())
+    except RuntimeError:
+        return raw
+
+
+def _resolve_action(command: Optional[str]) -> Optional[str]:
+    """本次实际解析的动作（argparse 写入的子命令名）。
+
+    argparse 的 subparsers 在解析子命令自身参数之前就写入 `command`，
+    因此子命令内部的用法错误仍能取到动作；未解析出子命令或不是已注册
+    子命令（未知命令）时为 null。
+    """
+    return command if command in SUBCOMMANDS else None
 
 
 def emit_verdict(exit_code: int, native: Optional[str], report_path: str,
-                 failure: Optional[dict] = None, pending: int = 0) -> None:
+                 failure: Optional[dict] = None, pending: int = 0,
+                 action: Optional[str] = None) -> None:
     """stdout 末行输出机器可读收尾报告（单行 JSON）。
 
-    `overall` 取值与 pre-check 对齐：success（退出码 0，含 degraded）/ failed（非 0）；
-    必须是最后一个键，调用方只读该字段后的短窗口。原生三值（ok/degraded/fail）在 `native`。
+    `cadence.skill-receipt/v1` 契约字段：`schema` / `skill` / `action` / `run_id` /
+    `exit_code` / `overall`（键序只约束 `overall` 末位）；`overall` 取值与 pre-check 对齐：
+    success（退出码 0，含 degraded）/ failed（非 0），且必须是最后一个键，调用方只读该
+    字段后的短窗口。原生三值（ok/degraded/fail）在 `native`。
+    非 ASCII 走 `json.dumps` 默认转义：末行恒为纯 ASCII 单行。
     """
+    # 默认 ensure_ascii=True：回执恒为纯 ASCII 单行，ascii 终端也能回传中文。
     sys.stdout.write(json.dumps({
-        "skill": "mcp-configuration",
+        "schema": RECEIPT_SCHEMA,
+        "skill": SKILL_NAME,
+        "action": action,
         "exit_code": exit_code,
         "native": native,
         "report": report_path,
         "pending": pending,
         "failure": failure,
+        # run_id 紧邻 overall：旧 Aria 扫描器按字面 "overall" 取窗口时才不误判。
+        "run_id": _current_run_id(),
         "overall": "success" if exit_code == 0 else "failed",
-    }, ensure_ascii=False) + "\n")
+    }) + "\n")
     sys.stdout.flush()
 
 
-def _finish(args: argparse.Namespace, report: dict) -> None:
-    """写报告并输出摘要与收尾报告（不含任何密钥）。"""
-    report_path = Path(args.report).expanduser()
-    write_report(report_path, report)
+def _finish(args: argparse.Namespace, report: dict) -> int:
+    """写报告并输出摘要与收尾报告（不含任何密钥）；返回进程退出码。
+
+    报告路径展开失败（`~账户` 不存在）或报告文件写不进去（例如 `--report`
+    指向目录）：不再抛栈，改为按失败收尾——`overall=fail`、真实退出码 1，
+    回执里保留失败路径与原因；已完成的合并结果不回滚、不改写。
+    """
+    raw_path = str(args.report)
+    report_path = Path(raw_path)
+    try:
+        report_path = Path(raw_path).expanduser()
+        write_report(report_path, report)
+    except RuntimeError as exc:  # ~账户不存在，路径展开不了
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": raw_path,
+            "reason": f"报告路径展开失败：{exc}",
+            "recovery": "检查 --report 路径中的 ~ 账户是否存在后重试",
+        }
+    except OSError as exc:  # 报告文件写不进去
+        report["overall"] = "fail"
+        report["failure"] = {
+            "file": str(report_path),
+            "reason": f"写入报告文件失败：{exc}",
+            "recovery": "检查 --report 路径是否可写（不能是目录）后重试",
+        }
     restored = sum(1 for a in report["actions"] if a.get("action") == "server-restored")
     kept = sum(1 for a in report["actions"] if a.get("action") == "user-value-kept")
     sys.stdout.write(
@@ -1188,11 +1249,14 @@ def _finish(args: argparse.Namespace, report: dict) -> None:
             warn=len(report["warnings"]),
         )
     )
+    exit_code = 0 if report["overall"] in ("ok", "degraded") else 1
     emit_verdict(
-        0 if report["overall"] in ("ok", "degraded") else 1,
+        exit_code,
         report["overall"], str(report_path),
         failure=report.get("failure"), pending=len(report["pending"]),
+        action=_resolve_action(getattr(args, "command", None)),
     )
+    return exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1221,22 +1285,27 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     """入口。"""
     parser = build_parser()
+    # 预置 `command`：argparse 的 subparsers 会在解析子命令自身参数之前写入它，
+    # 用法错误时也能据此给出本次实际解析的动作。
+    args = argparse.Namespace(command=None)
     try:
-        args = parser.parse_args(argv)
+        parser.parse_args(argv, namespace=args)
     except SystemExit as exc:  # --help 退出 0 不出报告；参数错误出失败报告
         code = exc.code if isinstance(exc.code, int) else 2
         if code != 0:
             emit_verdict(code, None, "", failure={
                 "file": None, "reason": "命令行参数错误",
-                "recovery": "见上方 usage 提示修正参数"})
+                "recovery": "见上方 usage 提示修正参数"},
+                action=_resolve_action(args.command))
         raise
     try:
         return int(args.func(args))
     except UsageError as exc:
         sys.stderr.write(f"mcp-config: {exc}\n")
-        emit_verdict(2, None, str(Path(args.report).expanduser()), failure={
+        emit_verdict(2, None, _safe_expand(str(args.report)), failure={
             "file": None, "reason": str(exc),
-            "recovery": "修正命令行参数或项目根后重试"})
+            "recovery": "修正命令行参数或项目根后重试"},
+            action=_resolve_action(args.command))
         return 2
 
 

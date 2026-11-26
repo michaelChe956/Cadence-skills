@@ -34,9 +34,24 @@ python3 scripts/mcp-config.py apply \
 ```
 
 - 可选 `--project-type coding|non-coding`：显式指定项目类型（默认自动检测；`codegraph` 只在 coding 项目启用）。
-- 退出码：`0` = ok / degraded，`1` = fail（归档或写入失败，零发布），`2` = 用法错误。
+- 退出码：`0` = ok / degraded，`1` = fail，`2` = 用法错误。合并、归档或配置写入失败即终止且零发布；仅报告回执阶段失败（报告路径展开失败或报告文件写不进去）时退出码同为 `1`，但已完成的合并不回滚。
 - 报告 JSON 关键字段：`overall`、`steps[]`、`actions[]`、`backups[]`、`warnings[]`、`pending[]`、`overrides[]`、`failure{}`。
-- stdout 输出：先一行人读摘要（`mcp-config: overall=ok ...`），**最后一行**为单行 JSON 收尾报告，供调用方（含 cadence-aria 的零变更判定）机器读取，`--help` 除外。字段：`overall`（总是最后一个键，取值只有 `success` / `failed`，与 `pre-check` 对齐；退出码 0 即 `success`，含 `degraded`；非 0 即 `failed`）、`native`（报告文件里的原生取值 `ok` / `degraded` / `fail`，用法错误时为 `null`）、`exit_code`、`report`（报告文件路径）、`pending`（待人工处理项数量）、`failure`（成功时 `null`）。幂等重跑输出 `overall` = `success`；`degraded` 的人工项看 `native` 与 `pending`。
+- stdout 输出：先一行人读摘要（`mcp-config: overall=ok ...`），**最后一行**为单行 JSON 收尾回执，供调用方（含 cadence-aria 的零变更判定）机器读取，`--help` 除外（`--help` 只输出原有帮助文本）。回执 schema 固定为 `cadence.skill-receipt/v1`，字段如下：
+
+  - `schema`：固定 `cadence.skill-receipt/v1`
+  - `skill`：固定 `mcp-configuration`（技能规范名）
+  - `action`：本次实际解析的子命令（当前只有 `apply`）；子命令内部参数出错仍保留该子命令名，未解析出子命令或命令未知时为 `null`
+  - `exit_code`：本次进程的真实整数退出码（与进程实际退出码一致）
+  - `native`：报告文件里的原生取值 `ok` / `degraded` / `fail`，用法错误时为 `null`
+  - `report`：报告文件路径
+  - `pending`：待人工处理项数量
+  - `failure`：失败原因对象，成功时 `null`
+  - `run_id`：环境变量 `CADENCE_SKILL_RUN_ID` 的原样值；未设置为 `null`，空串按“已设置”原样保留
+  - `overall`：`success` / `failed`（退出码 0 即 `success`，含 `degraded`；非 0 即 `failed`），**总是最后一个键**
+
+  幂等重跑输出 `overall` = `success`；`degraded` 的人工项看 `native` 与 `pending`。
+- 报告路径展开失败（`--report` 的 `~账户` 不存在）或报告文件写不进去（`--report` 指向目录）：按失败收尾——`overall` = `failed`、`exit_code` = 1（与真实进程退出码一致），`failure` 保留报告路径与原因；已完成的合并不回滚。
+- 项目根路径展开失败（`--project-root` 的 `~账户` 不存在）：按用法错误收尾——退出码 2，回执 `action` = `apply`、`overall` = `failed`。
 - 默认 server 的单一数据源是 `references/required-servers.json`（与本文 §5 / §6 示例同源）；修改默认 server 必须同步该文件与本文示例。
 
 ### no-interrupt 通用规则

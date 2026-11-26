@@ -153,17 +153,21 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],a.get('a
 
 ### stdout 收尾报告（机器可读）
 
-除 `--report` 文件外，脚本在 stdout **最后一行**输出一份单行 JSON 收尾报告（`--help` 与 `verify --json` 除外；后者的 stdout 保持为单个完整 JSON 文档）。`verify` 的逐行 `[ok]` / `[drift]` 输出原样保留在其之前。调用方（含 cadence-aria 的零变更判定）只读取该行的 `overall`，不必再读报告文件。
+脚本在 stdout **最后一行**输出单行 JSON 回执。读取 `action` 可区分预演、应用和自检，`overall` 表示该动作的业务结果，`exit_code` 是本次进程的整数退出码。`verify` 的逐行 `[ok]` / `[drift]` 位于回执之前。`--help` 只显示帮助，`verify --json` 的 stdout 是单份原生自检报告。
 
 | 字段 | 含义 |
 |------|------|
-| `overall` | 总是该行最后一个键。取值只有 `success`（退出码 0，含 `degraded`、`healthy`）与 `failed`（退出码非 0，含 `fail`、`drift`、用法错误 2、缺 PyYAML 77），与 `pre-check` 对齐 |
+| `schema` | 固定为 `cadence.skill-receipt/v1` |
+| `skill` | 固定为 `rule-config` |
+| `action` | CLI 确认的 `dry-run`、`apply`、`verify`（含 `--verify`）或 `remove-permission-gate`。无法确定动作时为 `null` |
+| `run_id` | 环境变量 `CADENCE_SKILL_RUN_ID` 的原值，空字符串原样保留，未设置为 `null` |
+| `overall` | 总是该行最后一个键。`success` 对应退出码 0（含 `degraded`、`healthy`），`failed` 对应非零退出码（含 `fail`、`drift`、用法错误 2、缺 PyYAML 77） |
 | `native` | 报告文件里的原生 `overall`：`ok` / `degraded` / `fail`（`verify` 为 `healthy` / `drift`）；未生成报告时为 `null` |
 | `exit_code` | 进程退出码 |
-| `report` | `--report` 文件路径 |
+| `report` | 本次 `--report` 路径。路径校验失败时仍回传该路径，失败原因见 `failure.reason` |
 | `failure` | 失败信息（`file` / `reason` / `recovery`），成功时为 `null` |
 
-幂等重跑（全部 `ok`、零写入）输出 `overall` = `success`。`degraded` 同样是 `success`，是否需要人工补齐看 `native` 与报告里的 `warnings`。
+先 `dry-run` 再 `apply` 可以得到两个 `success`，分别匹配各自的 `action`。对已配置项目再 `apply`，即使零文件变更，回执仍是 `apply / success / 0`。`degraded` 同样计为 `success`，降级详情见 `native` 和报告里的 `warnings`。
 
 ## 失败关闭
 
@@ -174,7 +178,7 @@ python3 -c "import json;d=json.load(open('<REPORT>'));print([(s['name'],a.get('a
 | 2 | 用法错误（参数非法，或 `--report` / `--decisions` 路径位于项目根内） | 按本文件"调用方式"修正参数与路径后重跑 |
 | 77 | 缺少 PyYAML 依赖 | 改用 `uvx --with pyyaml python "<RULE_CONFIG_PY>" ...` 重跑，或先安装 PyYAML |
 
-任何失败分支脚本都先写报告再退出；失败时目标项目保持原样，已创建的恢复归档位于 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`，归档副本与原位文件均保留。不得跳过报告直接重试，也不得由 Agent 手工写入受管文件绕过失败关闭。延后索引模式（`--defer-codegraph-index`）不改变退出码语义：备份失败或发布失败仍是退出码 1 的 `fail`，畸形 `.mcp.json` 仍是退出码 0 的 `degraded`。
+有效报告路径上的执行失败会写出报告。若 `--report` 位于项目根内，脚本退出 2，stdout 回执保留已识别的 `action`、请求的路径和失败原因。已创建的恢复归档位于 `cadence/legacy/<14位时间戳[-N]>/<相对项目根路径>`。请按失败报告恢复，避免由 Agent 手工写入受管文件。延后索引模式（`--defer-codegraph-index`）的备份或发布失败为退出码 1 的 `fail`，畸形 `.mcp.json` 为退出码 0 的 `degraded`。
 
 ## 下一步
 

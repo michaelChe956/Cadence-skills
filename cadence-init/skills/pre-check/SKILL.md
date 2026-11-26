@@ -42,6 +42,12 @@ cd "<PROJECT_ROOT>" && bash "<PRE_CHECK_SH>" run [--mirror cn] [--no-interrupt]
 
 读取 `overall`、原有 `steps[]`、五项 `phases[]`、顶层 `warnings[]` 与 `backups[]`，呈现 `result/action/duration_ms/created/updated/skipped/conflicts`；Superpowers phase 呈现 `origin/branch/before_revision/after_revision`。`overall=success` 且五阶段通过才报告完成；重跑以 phase `skipped`/`all-skipped` 和产物无变化证明幂等。
 
+stdout 整份解析为一个 JSON 对象。顶层 `schema` 固定为 `cadence.skill-receipt/v1`，`skill` 为 `pre-check`。`action` 取已解析的 `run` 或 `check`，用法错误使动作无法确定时为 `null`。`run_id` 原样回传环境变量 `CADENCE_SKILL_RUN_ID`，未设置为 `null`，显式空串为 `""`。
+
+`exit_code` 是进程的整数退出码。普通模式出现部分失败时，回执为 `partial / 0`。无人值守模式失败时，`overall` 为 `failed`，`exit_code` 为实际非零值。`--help` 将帮助写入 stderr 并以 0 退出。
+
+脚本在预检期间收到 `SIGHUP`、`SIGINT`（Ctrl+C）或 `SIGTERM` 时，回执为 `failed`，进程与回执的退出码分别为 129、130、143。
+
 `--no-interrupt` 任一 phase failed 或脚本非零立即停止，报告失败原因、已完成 phase 和恢复建议；普通模式也不自行执行未覆盖写入。`unsupported` 必须报告人工处理，不静默回退模型自由编排。
 
 Playwright 仅用户明确要求时 opt-in，未要求不安装、不写入。API Key 只展示 `your_zhipu_api_key`、`your_minimax_api_key` 占位符和安全提醒，不询问、不收集、不验证真实密钥。

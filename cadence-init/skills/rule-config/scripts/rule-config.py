@@ -41,58 +41,10 @@ if str(_SCRIPT_DIR) not in sys.path:
 from cadence_merge import normalize_title, split_blocks  # noqa: E402
 import cadence_state  # noqa: E402
 
-# ---------------------------------------------------------------------------
-# 依赖探测：PyYAML 缺失时构造 failed 报告后退出 77（XC-06）。
-# 必须在任何业务逻辑之前；main() 入口已在更早处记录 T0。
-# ---------------------------------------------------------------------------
 try:
     import yaml  # type: ignore
 except ImportError:
-    # 允许 main() 在解析 argv 前就感知到 --report，以便写出 failed 报告。
-    _arg_report: Optional[str] = None
-    for _i, _a in enumerate(sys.argv):
-        if _a == "--report" and _i + 1 < len(sys.argv):
-            _arg_report = sys.argv[_i + 1]
-        elif _a.startswith("--report="):
-            _arg_report = _a.split("=", 1)[1]
-    if _arg_report:
-        try:
-            Path(_arg_report).parent.mkdir(parents=True, exist_ok=True)
-            Path(_arg_report).write_text(
-                json.dumps(
-                    {
-                        "overall": "fail",
-                        "mode": "normal",
-                        "failure": {
-                            "file": __file__,
-                            "reason": "missing dependency: PyYAML",
-                            "recovery": "pip install pyyaml",
-                        },
-                        "steps": [],
-                        "hints": {"next": "project-rules-examples"},
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
-    sys.stderr.write("rule-config: 缺少依赖 PyYAML，请执行 pip install pyyaml\n")
-    # 收尾报告（与 main 的契约一致）：缺依赖是失败，overall 恒为最后一个键。
-    sys.stdout.write(json.dumps({
-        "skill": "rule-config",
-        "exit_code": 77,
-        "native": "fail" if _arg_report else None,
-        "report": _arg_report,
-        "failure": {
-            "file": __file__,
-            "reason": "missing dependency: PyYAML",
-            "recovery": "pip install pyyaml",
-        },
-        "overall": "failed",
-    }, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
-    sys.exit(77)
+    yaml = None  # 仍可解析 CLI，输出帮助或带实际动作的缺依赖回执。
 
 
 # ---------------------------------------------------------------------------
@@ -5686,18 +5638,52 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _emit_verdict(exit_code: int, ctx: dict) -> None:
-    """stdout 末行输出机器可读收尾报告（单行 JSON）。
+def _parsed_action(args: argparse.Namespace) -> str:
+    """校验互斥选择。只使用 argparse 已解析的值，包括用法错误前取得的值。"""
+    if args.remove_permission_gate:
+        if args.mode is not None:
+            raise UsageError("--remove-permission-gate 为独立模式，不能与位置动作并用")
+        if args.verify:
+            raise UsageError("--verify 与 --remove-permission-gate 互斥")
+        return "remove-permission-gate"
+    if args.verify:
+        if args.mode not in (None, "verify"):
+            raise UsageError("--verify 为独立模式，不能与 dry-run/apply 并用")
+        return "verify"
+    if args.mode is None:
+        raise UsageError("缺少模式（dry-run / apply / verify）或 --verify / --remove-permission-gate")
+    return args.mode
 
-    `overall` 取值与 pre-check 对齐：success（退出码 0，含 degraded）/ failed（非 0）；
-    必须是最后一个键，调用方只读该字段后的短窗口。原生取值（ok/degraded/fail、
-    verify 的 healthy/drift）在 `native`。`--help` 与 `verify --json`（stdout 须为单个
-    JSON 文档）不输出。
+
+def _fail_missing_yaml(ctx: dict) -> int:
+    failure = {"file": __file__, "reason": "missing dependency: PyYAML",
+               "recovery": "pip install pyyaml"}
+    ctx["failure"] = failure
+    if "report_path" in ctx:
+        report = {"overall": "fail", "mode": "normal", "failure": failure,
+                  "steps": [], "hints": {"next": "project-rules-examples"}}
+        ctx["report"] = report
+    sys.stderr.write("rule-config: 缺少依赖 PyYAML，请执行 pip install pyyaml\n")
+    return 77
+
+
+def _emit_verdict(exit_code: int, ctx: dict) -> None:
+    """输出末行回执，或按请求输出单份原生自检 JSON。帮助文本由 argparse 输出。
+
+    `overall` 是末键，退出码 0 对应 success，非 0 对应 failed。
+    `native` 保留业务报告的 ok/degraded/fail 或自检的 healthy/drift。
     """
-    if ctx.get("silent"):
+    if ctx.get("help"):
         return
     report = ctx.get("report")
-    failure = report.get("failure") if report else None
+    failure = (report or ctx).get("failure")
+    if "verify_root" in ctx:
+        if not report or report.get("mode") != "verify":
+            # 在自检开始前失败。磁盘仍采用原有失败报告，stdout 采用自检格式。
+            report = {"overall": "fail", "mode": "verify", "project_root": ctx["verify_root"],
+                      "checks": [], "exit_code": exit_code, "failure": failure}
+        sys.stdout.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        return
     if exit_code != 0 and not failure:
         failure = {
             "file": None,
@@ -5705,13 +5691,16 @@ def _emit_verdict(exit_code: int, ctx: dict) -> None:
             "recovery": "按 stderr 提示修正命令行参数后重试",
         }
     sys.stdout.write(json.dumps({
+        "schema": "cadence.skill-receipt/v1",
         "skill": "rule-config",
+        "action": ctx.get("action"),
         "exit_code": exit_code,
         "native": report.get("overall") if report else None,
         "report": ctx.get("report_path"),
         "failure": failure,
+        "run_id": os.environ.get("CADENCE_SKILL_RUN_ID"),
         "overall": "success" if exit_code == 0 else "failed",
-    }, ensure_ascii=False) + "\n")
+    }) + "\n")
     sys.stdout.flush()
 
 
@@ -5719,6 +5708,13 @@ def main(argv: Optional[list] = None) -> int:
     """CLI 入口：执行 `_main` 后在 stdout 末行输出收尾报告。"""
     ctx: dict = {}
     exit_code = _main(argv, ctx)
+    if ctx.get("report") is not None:
+        report_path = Path(ctx["report_path"])
+        try:
+            write_report(report_path, ctx["report"])
+        except OSError as exc:
+            # 报告写入失败时保留已确定的进程退出码和 stdout 诊断。
+            sys.stderr.write(f"rule-config: 无法写出报告到 {report_path}：{exc}\n")
     _emit_verdict(exit_code, ctx)
     return exit_code
 
@@ -5726,43 +5722,39 @@ def main(argv: Optional[list] = None) -> int:
 def _main(argv: Optional[list], ctx: dict) -> int:
     """CLI 主体。退出码：0=success/degraded，1=failed，2=usage，77=missing-yaml。
 
-    ctx 回传 report / report_path / silent 供 `main` 生成收尾报告。
+    ctx 保存本次解析的动作、输出格式与报告，供收尾时使用。
     """
     global T0
     T0 = time.monotonic()  # 入口第一行：budget 基准
 
     parser = _build_parser()
+    args = argparse.Namespace()
+    usage_code = 0
     try:
-        args = parser.parse_args(argv)
+        parser.parse_args(argv, namespace=args)
     except SystemExit as exc:
-        # argparse 解析失败 → 退出码 2（usage）；--help（退出码 0）不输出收尾报告
-        code = exc.code if isinstance(exc.code, int) else 2
-        ctx["silent"] = code == 0
-        return code if code != 0 else 2
+        usage_code = exc.code if isinstance(exc.code, int) else 2
+        if usage_code == 0:
+            ctx["help"] = True
+            return 0
 
-    if args.remove_permission_gate and args.mode is not None:
-        sys.stderr.write(
-            "rule-config: --remove-permission-gate 为独立模式，不能与 dry-run/apply 并用\n")
-        return 2
-    if args.verify and args.remove_permission_gate:
-        sys.stderr.write("rule-config: --verify 与 --remove-permission-gate 互斥\n")
-        return 2
-    if args.verify and args.mode not in (None, "verify"):
-        sys.stderr.write(
-            "rule-config: --verify 为独立模式，不能与 dry-run/apply 并用\n")
-        return 2
-    if (args.mode is None and not args.remove_permission_gate
-            and not args.verify):
-        sys.stderr.write(
-            "rule-config: 缺少模式（dry-run / apply / verify）"
-            "或 --verify / --remove-permission-gate\n")
-        return 2
+    try:
+        action = _parsed_action(args)
+        ctx["action"] = action
+    except UsageError as exc:
+        if not usage_code:  # argparse 已打印语法错误时，保留该诊断。
+            sys.stderr.write(f"rule-config: {exc}\n")
+            ctx["failure"] = {"file": None, "reason": str(exc), "recovery": "指定单一动作后重试"}
+        usage_code = 2
+    if usage_code and (yaml is not None or not args.project_root or not args.report):
+        return _fail_missing_yaml(ctx) if yaml is None else usage_code
 
     # 构造 intents
     root = Path(args.project_root).resolve()
     report_path = Path(args.report).resolve()
     ctx["report_path"] = str(report_path)
-    ctx["silent"] = bool(args.json and (args.verify or args.mode == "verify"))
+    if args.json and ctx.get("action") == "verify":
+        ctx["verify_root"] = str(root)
     decisions_path = Path(args.decisions).resolve() if args.decisions else None
 
     # --report 必须位于项目根之外（Plan L22 全局约束：脚本拒绝根内路径）。
@@ -5772,7 +5764,12 @@ def _main(argv: Optional[list], ctx: dict) -> int:
         validate_external_path(report_path, root)
     except UsageError as exc:
         sys.stderr.write(f"rule-config: {exc}\n")
+        ctx["failure"] = {"file": str(report_path), "reason": str(exc),
+                          "recovery": "将 --report 路径放在项目根目录之外"}
         return 2
+
+    if yaml is None:
+        return _fail_missing_yaml(ctx)
 
     # decisions 必须位于项目根之外（外部输入；根内 → UsageError，退出码 2）
     if decisions_path is not None:
@@ -5786,7 +5783,6 @@ def _main(argv: Optional[list], ctx: dict) -> int:
                 "reason": str(exc),
                 "recovery": "将 decisions 文件放在项目根目录之外（外部输入）",
             }
-            write_report(report_path, report)
             ctx["report"] = report
             return 2
 
@@ -5801,7 +5797,7 @@ def _main(argv: Optional[list], ctx: dict) -> int:
     )
 
     mode = "no-interrupt" if args.no_interrupt else "normal"
-    if args.verify or args.mode == "verify":
+    if action == "verify":
         report = {
             "overall": "healthy",
             "mode": "verify",
@@ -5814,11 +5810,11 @@ def _main(argv: Optional[list], ctx: dict) -> int:
     ctx["report"] = report
 
     try:
-        if args.remove_permission_gate:
+        if action == "remove-permission-gate":
             exit_code = run_remove_permission_gate(root, report)
-        elif args.verify or args.mode == "verify":
+        elif action == "verify":
             exit_code = run_verify(root, report)
-        elif args.mode == "dry-run":
+        elif action == "dry-run":
             exit_code = run_dry_run(root, intents, report)
         else:
             exit_code = run_apply(root, intents, report)
@@ -5832,22 +5828,13 @@ def _main(argv: Optional[list], ctx: dict) -> int:
         }
         exit_code = 1
 
-    # 始终写出报告
-    try:
-        write_report(report_path, report)
-    except OSError:
-        # 报告写失败不影响已确定的退出码语义，但记录到 stderr
-        sys.stderr.write(f"rule-config: 无法写出报告到 {report_path}\n")
-
-    if (args.verify or args.mode == "verify") and not args.json:
+    if action == "verify" and not args.json:
         for check in report.get("checks", []):
             for item in check.get("items", []):
                 label = item.get("file") or item.get("layer") or ""
                 sys.stdout.write(
                     f"[{check['status']}] {check['name']} {label}: "
                     f"{item.get('detail', '')}\n")
-    if args.json and (args.verify or args.mode == "verify"):
-        sys.stdout.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
     return exit_code
 
