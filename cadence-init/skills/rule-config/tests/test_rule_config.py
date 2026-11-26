@@ -1820,6 +1820,14 @@ class TestStepS4EntryFiles(unittest.TestCase):
         self.assertIn(rc.L0_END, text)
         self.assertIn("## 强制规则", text)
 
+    def test_fresh_agents_omits_kimi_1026_trigger(self):
+        """新建 AGENTS.md 避免已知触发 Kimi Code 1026 的措辞。"""
+        intents = _intents(project_type="coding")
+        plan = rc.compute_plan(self.root, intents)
+        rc.step_s4_entry_files(self.root, intents, plan, {})
+        agents = (self.root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertNotIn("再按指令完成实现、验证与结果汇报。", agents)
+
     def test_skip_state_idempotent_no_change(self):
         """ut-step_s4-skip-idempotent / L0-P6+SM-01（skip 且摘要已收敛 → 幂等零写入）"""
         entry = self.root / "CLAUDE.md"
